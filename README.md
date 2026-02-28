@@ -1,6 +1,7 @@
 # Next.js AI Studio
 
 一个可私有化部署的全栈 AI Studio 示例，基于 Next.js（Pages Router）构建，集成了聊天编排、项目代码工作区、Skills 工作流、MCP 工具接入与基础账号体系。
+![Uploading image.png…]()
 
 ## 功能介绍
 
