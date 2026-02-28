@@ -73,6 +73,7 @@ JWT_SECRET=replace_with_a_long_random_secret
 AUTH_COOKIE_SECURE=false
 
 # 二选一优先级：AIPROXY > OpenAI 兼容
+aiproxy 使用labring家的，可以结合 fastgpt 一起使用。https://github.com/labring/aiproxy
 AIPROXY_API_ENDPOINT=
 AIPROXY_API_TOKEN=
 # 或者
