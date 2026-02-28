@@ -1,0 +1,49 @@
+services:
+  nextjs-ai-studio:
+    container_name: nextjs-ai-studio
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: https://registry.npmmirror.com
+    ports:
+      - 3000:3000
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      CHAT_MODEL_CONFIG_FILE: config/config.json
+
+      MONGODB_URI: mongodb://myusername:mypassword@10.21.8.6:37017/nextjs_ai_studio?authSource=admin&directConnection=true
+      JWT_SECRET: dev-auth-secret-change-me
+      AUTH_COOKIE_SECURE: "false"
+
+      AIPROXY_API_ENDPOINT: http://10.21.8.6:33006
+      AIPROXY_API_TOKEN: aichat-token
+
+      MCP_SERVER_URLS: '[{"name":"mcp-gitlab-kb","url":"http://10.21.8.6:8008/sse"}]'
+      AGENT_SKILL_FILE: skills/aistudio-mcp-code-workflow/SKILL.md
+      SYSTEM_NAME: AI
+
+      FEISHU_APP_ID: cli_a8a85d3c9729d013
+      FEISHU_REDIRECT_URI: http://aistudio.asiainfo.tech/auth/feishu/callback
+      FEISHU_APP_SECRET: XERk7R8NgkjubxxH8yqdngutC3Y2uea7
+      FEISHU_DEFAULT_PASSWORD: Feishu@123456
+
+      STORAGE_VENDOR: minio
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY_ID: minio_admin_9xK2pQw
+      STORAGE_SECRET_ACCESS_KEY: M!n10S3cur32024!XyZ9@Kp7
+      STORAGE_PUBLIC_BUCKET: aichat-public
+      STORAGE_PRIVATE_BUCKET: aichat-private
+      STORAGE_EXTERNAL_ENDPOINT: http://10.21.8.6:39000
+      STORAGE_S3_ENDPOINT: http://10.21.8.6:39000
+      STORAGE_S3_FORCE_PATH_STYLE: "true"
+      STORAGE_S3_MAX_RETRIES: "3"
+
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/projects:/app/data/projects
+
+    restart: unless-stopped

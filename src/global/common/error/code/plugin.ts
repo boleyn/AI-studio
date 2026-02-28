@@ -1,0 +1,23 @@
+import { type ErrType } from '../errorCode';
+/* dataset: 508000 */
+export enum PluginErrEnum {
+  unExist = 'pluginUnExist',
+  unAuth = 'pluginUnAuth'
+}
+
+const errList = [
+  { statusText: PluginErrEnum.unExist, message: '插件不存在' },
+  { statusText: PluginErrEnum.unAuth, message: '未授权插件' }
+];
+
+export default errList.reduce((acc, cur, index) => {
+  return {
+    ...acc,
+    [cur.statusText]: {
+      code: 508000 + index,
+      statusText: cur.statusText,
+      message: cur.message,
+      data: null
+    }
+  };
+}, {} as ErrType<`${PluginErrEnum}`>);

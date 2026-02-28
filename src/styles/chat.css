@@ -1,0 +1,26 @@
+.chat-code {
+  font-family: "JetBrains Mono", "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.chat-message pre {
+  white-space: pre-wrap;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid #e2e8f0;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.markdown blockquote {
+  border-left: 3px solid #e2e8f0;
+  padding-left: 12px;
+  color: #4a5568;
+}

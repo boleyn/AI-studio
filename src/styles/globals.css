@@ -1,0 +1,18 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  background: linear-gradient(120deg, #f5f7ff 0%, #f8f6f2 48%, #f4f7fb 100%);
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}

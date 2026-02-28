@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@aistudio/*": ["./src/*"],
+      "@server/*": ["./src/server/*"],
+      "@features/*": ["./src/features/*"],
+      "@components/*": ["./src/components/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@fastgpt/global/*": ["./src/global/*", "./src/ai/compat/global/*"],
+      "@fastgpt/web/styles/theme": ["./src/styles/theme.ts"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/pages/**/*.ts",
+    "src/pages/**/*.tsx",
+    "src/server/**/*.ts",
+    "src/server/**/*.tsx",
+    "src/features/**/*.ts",
+    "src/features/**/*.tsx",
+    "src/shared/**/*.ts",
+    "src/shared/**/*.tsx",
+    "src/contexts/**/*.ts",
+    "src/contexts/**/*.tsx",
+    "src/hooks/**/*.ts",
+    "src/hooks/**/*.tsx",
+    "src/types/**/*.ts",
+    "src/types/**/*.d.ts",
+    "src/global/**/*.ts",
+    "src/global/**/*.tsx"
+  ],
+  "exclude": ["node_modules"]
+}
