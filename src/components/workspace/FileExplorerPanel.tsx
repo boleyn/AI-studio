@@ -474,7 +474,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
         </Text>
         <HStack spacing={styles.spacing.menuActionsGap}>
           <IconButton
-            aria-label="Search files"
+            aria-label="搜索文件"
             size="sm"
             variant="ghost"
             icon={<SearchIcon />}
@@ -483,33 +483,36 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
           <Menu placement="bottom-end" isLazy>
             <MenuButton
               as={IconButton}
-              aria-label="Create or upload"
+              aria-label="新建或上传"
               size="sm"
               variant="ghost"
               icon={<AddIcon />}
             />
             <MenuList minW={styles.sizes.createMenuListW}>
-              <MenuItem onClick={() => openCreateFromSelection("file")}>Create new file</MenuItem>
-              <MenuItem onClick={() => openCreateFromSelection("folder")}>Create new folder</MenuItem>
-              <MenuItem onClick={() => fileUploadInputRef.current?.click()}>Upload files</MenuItem>
-              <MenuItem onClick={() => zipUploadInputRef.current?.click()}>Upload zip file</MenuItem>
+              <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
+              <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
+              <MenuItem onClick={() => fileUploadInputRef.current?.click()}>上传文件</MenuItem>
+              <MenuItem onClick={() => zipUploadInputRef.current?.click()}>上传 zip 文件</MenuItem>
             </MenuList>
           </Menu>
           <IconButton
-            aria-label={allExpanded ? "Collapse all folders" : "Expand all folders"}
+            aria-label={allExpanded ? "折叠全部文件夹" : "展开全部文件夹"}
             size="sm"
             variant="ghost"
             icon={
-              <ChevronDownIcon
-                width="16px"
-                height="16px"
-                style={{
-                  display: "block",
-                  transform: allExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                  transformOrigin: "center",
-                  transition: styles.motion.chevronTransition,
-                }}
-              />
+              <Box
+                as="span"
+                display="inline-flex"
+                alignItems="center"
+                justifyContent="center"
+                w="16px"
+                h="16px"
+                transform={allExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                transformOrigin="50% 50%"
+                transition={styles.motion.chevronTransition}
+              >
+                <ChevronDownIcon width="16px" height="16px" style={{ display: "block" }} />
+              </Box>
             }
             onClick={handleToggleExpandAll}
           />

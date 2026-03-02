@@ -170,11 +170,11 @@ const FileTree = ({
             onClick={(event) => event.stopPropagation()}
           />
           <MenuList minW={styles.sizes.menuListW}>
-            <MenuItem onClick={() => onSelectFile(fileNode.path)}>Show in editor</MenuItem>
-            <MenuItem onClick={() => onStartRename(fileNode.path, "file")}>Rename</MenuItem>
-            <MenuItem onClick={() => void onDeleteFile(fileNode.path)}>Delete</MenuItem>
-            <MenuItem onClick={() => onCopyPath(fileNode.path)}>Copy path</MenuItem>
-            <MenuItem onClick={() => onDownloadFile(fileNode.path, fileNode.name)}>Download</MenuItem>
+            <MenuItem onClick={() => onSelectFile(fileNode.path)}>在编辑器中打开</MenuItem>
+            <MenuItem onClick={() => onStartRename(fileNode.path, "file")}>重命名</MenuItem>
+            <MenuItem onClick={() => void onDeleteFile(fileNode.path)}>删除</MenuItem>
+            <MenuItem onClick={() => onCopyPath(fileNode.path)}>复制路径</MenuItem>
+            <MenuItem onClick={() => onDownloadFile(fileNode.path, fileNode.name)}>下载</MenuItem>
           </MenuList>
         </Menu>
       </Flex>
@@ -256,11 +256,11 @@ const FileTree = ({
             onClick={(event) => event.stopPropagation()}
           />
           <MenuList minW={styles.sizes.menuListW}>
-            <MenuItem onClick={() => onOpenCreateAt("file", folder.path)}>Create new file</MenuItem>
-            <MenuItem onClick={() => onOpenCreateAt("folder", folder.path)}>Create new folder</MenuItem>
-            <MenuItem onClick={() => onStartRename(folder.path, "folder")}>Rename</MenuItem>
-            <MenuItem onClick={() => void onDeleteFolder(folder.path)}>Delete</MenuItem>
-            <MenuItem onClick={() => onCopyPath(folder.path)}>Copy path</MenuItem>
+            <MenuItem onClick={() => onOpenCreateAt("file", folder.path)}>新建文件</MenuItem>
+            <MenuItem onClick={() => onOpenCreateAt("folder", folder.path)}>新建文件夹</MenuItem>
+            <MenuItem onClick={() => onStartRename(folder.path, "folder")}>重命名</MenuItem>
+            <MenuItem onClick={() => void onDeleteFolder(folder.path)}>删除</MenuItem>
+            <MenuItem onClick={() => onCopyPath(folder.path)}>复制路径</MenuItem>
           </MenuList>
         </Menu>
       </Flex>
