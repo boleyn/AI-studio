@@ -1,55 +1,157 @@
-import { Badge, Flex, Text } from "@chakra-ui/react";
+import { Badge, Box, Flex, Text, useTheme } from "@chakra-ui/react";
+import { FileTabs } from "@codesandbox/sandpack-react";
 
 type WorkspaceHeaderProps = {
   activeView: "preview" | "code";
   onChangeView: (view: "preview" | "code") => void;
   status: "idle" | "loading" | "ready" | "error";
   error: string;
+  compileStatus: "ready" | "compiling" | "error";
+  compileErrorCount: number;
+  onCompileBadgeHoverChange: (hovering: boolean) => void;
+  onCompileBadgeToggle: () => void;
 };
 
-const viewButtonStyle = (active: boolean) => ({
-  border: "1px solid",
-  borderColor: active ? "rgba(56, 124, 255, 0.45)" : "#e2e8f0",
-  background: active
-    ? "linear-gradient(135deg, rgba(51,112,255,0.14) 0%, rgba(14,165,233,0.12) 100%)"
-    : "rgba(255,255,255,0.92)",
-  color: active ? "#1d4ed8" : "#1f2937",
-  borderRadius: "999px",
-  padding: "6px 12px",
-  fontSize: "12px",
-  fontWeight: 700,
-});
+const WorkspaceHeader = ({
+  activeView,
+  onChangeView,
+  status,
+  error,
+  compileStatus,
+  compileErrorCount,
+  onCompileBadgeHoverChange,
+  onCompileBadgeToggle,
+}: WorkspaceHeaderProps) => {
+  const theme = useTheme() as Record<string, any>;
+  const headerTheme = theme.workspace?.header ?? {
+    container: {
+      borderColor: "myGray.200",
+      bg: "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.75) 100%)",
+    },
+    divider: {
+      bg: "myGray.300",
+    },
+    viewButton: {
+      borderColor: "myGray.200",
+      activeBorderColor: "blue.300",
+      bg: "rgba(255,255,255,0.92)",
+      activeBg: "linear-gradient(135deg, rgba(51,112,255,0.14) 0%, rgba(14,165,233,0.12) 100%)",
+      color: "myGray.800",
+      activeColor: "blue.700",
+      fontSize: "xs",
+      fontWeight: "700",
+      px: "12px",
+      py: "6px",
+      radius: "999px",
+    },
+    error: {
+      color: "red.500",
+      fontSize: "xs",
+    },
+  };
 
-const WorkspaceHeader = ({ activeView, onChangeView, status, error }: WorkspaceHeaderProps) => {
+  const hasCompileErrors = status === "ready" && compileStatus === "error" && compileErrorCount > 0;
+
+  const badgeColorScheme =
+    status === "error"
+      ? "red"
+      : status !== "ready"
+      ? "gray"
+      : compileStatus === "error"
+      ? "red"
+      : compileStatus === "compiling"
+      ? "orange"
+      : "green";
+
+  const badgeText =
+    status === "idle"
+      ? "等待输入"
+      : status === "loading"
+      ? "正在加载"
+      : status === "error"
+      ? "加载失败"
+      : compileStatus === "error"
+      ? `编译报错 ${compileErrorCount} 个`
+      : compileStatus === "compiling"
+      ? "编译中"
+      : "已就绪";
+
   return (
     <Flex
       align="center"
       gap={2}
-      wrap="wrap"
       borderBottom="1px solid"
-      borderColor="rgba(226,232,240,0.9)"
+      borderColor={headerTheme.container.borderColor}
       px={4}
-      py={2.5}
-      bg="linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.75) 100%)"
+      py={1.5}
+      bg={headerTheme.container.bg}
       flexShrink={0}
     >
       <Flex gap={2} align="center">
-        <button style={viewButtonStyle(activeView === "preview")} type="button" onClick={() => onChangeView("preview")}>
+        <Box
+          as="button"
+          border="1px solid"
+          borderColor={activeView === "preview" ? headerTheme.viewButton.activeBorderColor : headerTheme.viewButton.borderColor}
+          bg={activeView === "preview" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
+          color={activeView === "preview" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
+          borderRadius={headerTheme.viewButton.radius}
+          px={headerTheme.viewButton.px}
+          py={headerTheme.viewButton.py}
+          fontSize={headerTheme.viewButton.fontSize}
+          fontWeight={headerTheme.viewButton.fontWeight}
+          lineHeight="1"
+          type="button"
+          onClick={() => onChangeView("preview")}
+        >
           预览
-        </button>
-        <button style={viewButtonStyle(activeView === "code")} type="button" onClick={() => onChangeView("code")}>
+        </Box>
+        <Box
+          as="button"
+          border="1px solid"
+          borderColor={activeView === "code" ? headerTheme.viewButton.activeBorderColor : headerTheme.viewButton.borderColor}
+          bg={activeView === "code" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
+          color={activeView === "code" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
+          borderRadius={headerTheme.viewButton.radius}
+          px={headerTheme.viewButton.px}
+          py={headerTheme.viewButton.py}
+          fontSize={headerTheme.viewButton.fontSize}
+          fontWeight={headerTheme.viewButton.fontWeight}
+          lineHeight="1"
+          type="button"
+          onClick={() => onChangeView("code")}
+        >
           代码
-        </button>
+        </Box>
+      </Flex>
+      <Flex
+        aria-hidden="true"
+        width="1px"
+        height="28px"
+        bg={headerTheme.divider.bg}
+        borderRadius="full"
+        mx={1}
+      />
+      <Flex flex="1" minW="0" align="stretch" display={activeView === "code" ? "flex" : "none"}>
+        <FileTabs closableTabs={false} />
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
-        <Badge colorScheme={status === "error" ? "red" : status === "ready" ? "green" : "gray"} variant="subtle">
-          {status === "idle" && "等待输入"}
-          {status === "loading" && "正在加载"}
-          {status === "ready" && "已就绪"}
-          {status === "error" && "加载失败"}
+        <Badge
+          colorScheme={badgeColorScheme}
+          variant="subtle"
+          cursor={hasCompileErrors ? "pointer" : "default"}
+          userSelect="none"
+          title={hasCompileErrors ? "悬停可展开下方编译错误" : undefined}
+          onMouseEnter={() => onCompileBadgeHoverChange(true)}
+          onMouseLeave={() => onCompileBadgeHoverChange(false)}
+          onClick={() => {
+            if (!hasCompileErrors) return;
+            onCompileBadgeToggle();
+          }}
+        >
+          {badgeText}
         </Badge>
         {error ? (
-          <Text fontSize="xs" color="red.500">
+          <Text fontSize={headerTheme.error.fontSize} color={headerTheme.error.color}>
             {error}
           </Text>
         ) : null}

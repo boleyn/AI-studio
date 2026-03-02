@@ -16,3 +16,68 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Sandpack FileTabs overrides (high-specificity to beat injected Sandpack styles) */
+.sp-wrapper .sp-tabs {
+  border-bottom: none !important;
+  background: transparent !important;
+}
+
+.sp-wrapper .sp-tabs-scrollable-container {
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 12px 2px;
+}
+
+.sp-wrapper .sp-tab-container {
+  padding-right: 0;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+.sp-wrapper .sp-tab-button {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent !important;
+  border-radius: 12px;
+  background: transparent !important;
+  color: #8b95a5 !important;
+  font-size: 14px;
+  font-weight: 500;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.sp-wrapper .sp-tab-button:hover {
+  color: #374151 !important;
+  background: transparent !important;
+}
+
+.sp-wrapper .sp-tab-button[data-active="true"] {
+  border-color: #93c5fd !important;
+  background: #dbeafe !important;
+  color: #1e3a8a !important;
+  font-weight: 600;
+}
+
+.sp-wrapper .sp-tab-button[data-active="false"] {
+  background: transparent !important;
+}
+
+.sp-wrapper .sp-tab-container[aria-selected="true"] .sp-tab-button {
+  border-color: #93c5fd !important;
+  background: #dbeafe !important;
+  color: #1e3a8a !important;
+  font-weight: 600;
+}
+
+.sp-wrapper .sp-tab-container[aria-selected="false"] .sp-tab-button {
+  background: transparent !important;
+}
+
+/* Remove Sandpack default focus ring on tab container (black outline) */
+.sp-wrapper .sp-tab-container:has(.sp-tab-button:focus),
+.sp-wrapper .sp-tab-container:has(.sp-tab-button:focus-visible) {
+  outline: none !important;
+}

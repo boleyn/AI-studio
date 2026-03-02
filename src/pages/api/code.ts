@@ -226,6 +226,42 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       return;
     }
 
+    if (action === "merge-files") {
+      try {
+        const project = await getProject(token);
+        if (!project) {
+          res.status(404).json({ error: "项目不存在" });
+          return;
+        }
+        if (project.userId && project.userId !== userId) {
+          res.status(403).json({ error: "无权访问该项目" });
+          return;
+        }
+
+        if (!body.files || typeof body.files !== "object") {
+          res.status(400).json({ error: "缺少files参数" });
+          return;
+        }
+
+        if (!hasNonEmptyFiles(body.files)) {
+          res.status(400).json({ error: "files 不能为空" });
+          return;
+        }
+
+        const mergedFiles = {
+          ...project.files,
+          ...body.files,
+        };
+
+        await updateFiles(token, mergedFiles);
+        res.status(200).json({ success: true });
+      } catch (error) {
+        console.error("Failed to merge files:", error);
+        res.status(500).json({ error: "合并文件失败" });
+      }
+      return;
+    }
+
     // 更新多个文件（批量更新）
     try {
       const project = await getProject(token);

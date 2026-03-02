@@ -550,6 +550,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               }}
             />
             <WorkspaceShell
+              token={token}
               status={status}
               error={error}
               activeView={activeView}
