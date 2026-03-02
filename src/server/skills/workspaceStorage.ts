@@ -40,6 +40,11 @@ const filterSkillFiles = (files: Record<string, { code: string }>): Record<strin
       .sort(([a], [b]) => a.localeCompare(b))
   );
 
+const filterNonSkillFiles = (files: Record<string, { code: string }>) =>
+  Object.fromEntries(
+    Object.entries(files).filter(([filePath]) => !(filePath === SKILLS_ROOT || filePath.startsWith(`${SKILLS_ROOT}/`)))
+  );
+
 const ensureSkillReadme = async (projectToken: string, files: Record<string, { code: string }>) => {
   if (files[`${SKILLS_ROOT}/README.md`]) return files;
   const next = {
@@ -155,6 +160,33 @@ export const writeSkillWorkspaceFile = async ({
   };
   await updateFiles(project.token, nextFiles);
   return filterSkillFiles(nextFiles);
+};
+
+export const replaceSkillWorkspaceFiles = async ({
+  workspaceId,
+  userId,
+  projectToken,
+  files,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  files: Record<string, SkillWorkspaceFile>;
+}) => {
+  const project = await requireSkillWorkspace(workspaceId, userId, projectToken);
+  const normalizedSkillFiles = Object.fromEntries(
+    Object.entries(files).map(([path, file]) => {
+      const filePath = normalizeSkillPath(path);
+      return [filePath, { code: typeof file?.code === "string" ? file.code : "" }];
+    })
+  );
+
+  const mergedFiles = {
+    ...filterNonSkillFiles(project.files || {}),
+    ...normalizedSkillFiles,
+  };
+  await updateFiles(project.token, mergedFiles);
+  return filterSkillFiles(mergedFiles);
 };
 
 export const runWorkspaceAction = async (workspaceId: string, input: WorkspaceActionInput) => {

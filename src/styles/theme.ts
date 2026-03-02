@@ -195,6 +195,16 @@ export const theme = extendTheme({
     "6xl": "3.6rem",
   },
   workspace: {
+    chatInput: {
+      skillMention: {
+        bg: "adora.50",
+        borderColor: "adora.300",
+        color: "adora.800",
+        labelColor: "adora.700",
+        pickerBorderColor: "adora.200",
+        pickerActiveBg: "adora.50",
+      },
+    },
     header: {
       container: {
         borderColor: "myGray.200",

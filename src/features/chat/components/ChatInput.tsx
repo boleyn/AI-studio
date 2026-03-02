@@ -6,8 +6,10 @@ import {
   Input,
   Text,
   Textarea,
+  useTheme,
 } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
+import { PencilIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,16 +30,21 @@ const ChatInput = ({
   modelOptions,
   modelLoading,
   selectedSkill,
+  selectedSkills,
   skillOptions = [],
   prefillText,
   prefillVersion,
   onChangeModel,
   onChangeSelectedSkill,
+  onChangeSelectedSkills,
   onUploadFiles,
   onSend,
   onStop,
 }: ChatInputProps) => {
   const { t } = useTranslation();
+  const theme = useTheme() as Record<string, any>;
+  const chatInputTheme = theme?.workspace?.chatInput || {};
+  const skillTheme = chatInputTheme?.skillMention || {};
   const [text, setText] = useState("");
   const [files, setFiles] = useState<LocalInputFile[]>([]);
   const [isComposing, setIsComposing] = useState(false);
@@ -87,9 +94,27 @@ const ChatInput = ({
       (text.trim().length > 0 || files.length > 0),
     [files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, text]
   );
+  const selectedSkillList = useMemo(() => {
+    if (Array.isArray(selectedSkills) && selectedSkills.length > 0) {
+      return selectedSkills.filter(Boolean);
+    }
+    return selectedSkill ? [selectedSkill] : [];
+  }, [selectedSkill, selectedSkills]);
+  const commitSelectedSkills = useCallback(
+    (next: string[]) => {
+      if (onChangeSelectedSkills) {
+        onChangeSelectedSkills(next);
+        return;
+      }
+      onChangeSelectedSkill?.(next[0]);
+    },
+    [onChangeSelectedSkill, onChangeSelectedSkills]
+  );
+
   const filteredSkillOptions = useMemo(() => {
     const keyword = skillQuery.trim();
-    const available = skillOptions.filter((item) => Boolean(item.name && item.name !== selectedSkill));
+    const selectedSet = new Set(selectedSkillList);
+    const available = skillOptions.filter((item) => Boolean(item.name && !selectedSet.has(item.name)));
     if (!keyword) return available.slice(0, 8);
     return available
       .filter((item) => {
@@ -98,7 +123,7 @@ const ChatInput = ({
         return name.includes(keyword) || description.includes(keyword);
       })
       .slice(0, 8);
-  }, [selectedSkill, skillOptions, skillQuery]);
+  }, [selectedSkillList, skillOptions, skillQuery]);
   const showSkillPicker =
     Boolean(mentionRange) &&
     filteredSkillOptions.length > 0 &&
@@ -155,7 +180,10 @@ const ChatInput = ({
 
   const applySelectedSkill = useCallback(
     (skillName: string) => {
-      onChangeSelectedSkill?.(skillName);
+      const next = selectedSkillList.includes(skillName)
+        ? selectedSkillList
+        : [...selectedSkillList, skillName];
+      commitSelectedSkills(next);
       if (!mentionRange) return;
       const nextText = `${text.slice(0, mentionRange.start)}${text.slice(mentionRange.end)}`.replace(
         /\s{2,}/g,
@@ -176,7 +204,7 @@ const ChatInput = ({
         textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
       });
     },
-    [mentionRange, onChangeSelectedSkill, resetTextareaHeight, text]
+    [commitSelectedSkills, mentionRange, resetTextareaHeight, selectedSkillList, text]
   );
 
   const uploadSingleFile = useCallback(
@@ -273,7 +301,8 @@ const ChatInput = ({
       text: text.trim(),
       files: selectedFiles,
       uploadedFiles,
-      selectedSkill: selectedSkill || undefined,
+      selectedSkill: selectedSkillList[0] || undefined,
+      selectedSkills: selectedSkillList.length > 0 ? selectedSkillList : undefined,
     };
 
     setIsSubmitting(true);
@@ -304,7 +333,7 @@ const ChatInput = ({
         }
         direction="column"
         minH="108px"
-        overflow="hidden"
+        overflow="visible"
       >
         {previewFiles.length > 0 ? (
           <Flex gap="6px" mb={2} pt={2} px={3} userSelect="none" wrap="wrap">
@@ -397,34 +426,40 @@ const ChatInput = ({
 
         <Flex align="center" px={2}>
           <Box position="relative" w="100%">
-            {selectedSkill ? (
+            {selectedSkillList.length > 0 ? (
               <Flex px={2} pt={2}>
-                <Flex
-                  align="center"
-                  bg="#EFF6FF"
-                  border="1px solid"
-                  borderColor="#BFDBFE"
-                  borderRadius="10px"
-                  color="#1E40AF"
-                  gap={1}
-                  h="28px"
-                  maxW="380px"
-                  pl={2.5}
-                  pr={1}
-                >
-                  <Text color="#1D4ED8" fontSize="11px" fontWeight={700} opacity={0.88}>
-                    skill
-                  </Text>
-                  <Text fontSize="13px" fontWeight={600} noOfLines={1}>
-                    {selectedSkill}
-                  </Text>
-                  <CloseButton
-                    color="#1D4ED8"
-                    onClick={() => onChangeSelectedSkill?.(undefined)}
-                    aria-label="清除技能选择"
-                    size="sm"
-                    transform="scale(0.88)"
-                  />
+                <Flex gap={1.5} wrap="wrap">
+                  {selectedSkillList.map((skill) => (
+                    <Flex
+                      key={skill}
+                      align="center"
+                      bg={skillTheme.bg || "adora.50"}
+                      border="1px solid"
+                      borderColor={skillTheme.borderColor || "adora.300"}
+                      borderRadius="10px"
+                      color={skillTheme.color || "adora.800"}
+                      gap={1}
+                      h="28px"
+                      maxW="280px"
+                      pl={2.5}
+                      pr={1}
+                    >
+                      <Box as={PencilIcon} color={skillTheme.labelColor || "adora.700"} h="13px" w="13px" />
+                      <Text fontSize="13px" fontWeight={600} noOfLines={1}>
+                        {skill}
+                      </Text>
+                      <CloseButton
+                        color={skillTheme.labelColor || "adora.700"}
+                        onClick={() => {
+                          const next = selectedSkillList.filter((item) => item !== skill);
+                          commitSelectedSkills(next);
+                        }}
+                        aria-label={`移除技能 ${skill}`}
+                        size="sm"
+                        transform="scale(0.88)"
+                      />
+                    </Flex>
+                  ))}
                 </Flex>
               </Flex>
             ) : null}
@@ -479,9 +514,15 @@ const ChatInput = ({
                     return;
                   }
                   if (event.key === "Enter" && !event.shiftKey) {
-                    // Keep Enter for normal send; skill selection should be explicit (click/Tab).
-                    setMentionRange(null);
-                    setSkillQuery("");
+                    event.preventDefault();
+                    const picked = filteredSkillOptions[activeSkillIndex];
+                    if (picked?.name) {
+                      applySelectedSkill(picked.name);
+                    } else {
+                      setMentionRange(null);
+                      setSkillQuery("");
+                    }
+                    return;
                   }
                   if (event.key === "Tab") {
                     event.preventDefault();
@@ -520,7 +561,7 @@ const ChatInput = ({
               <Box
                 bg="white"
                 border="1px solid"
-                borderColor="blue.100"
+                borderColor={skillTheme.pickerBorderColor || "adora.200"}
                 borderRadius="10px"
                 boxShadow="0 8px 24px rgba(15, 23, 42, 0.14)"
                 left={0}
@@ -528,7 +569,7 @@ const ChatInput = ({
                 overflowY="auto"
                 position="absolute"
                 right={0}
-                top="calc(100% + 4px)"
+                bottom="calc(100% + 4px)"
                 zIndex={30}
               >
                 <Flex direction="column" p={1}>
@@ -537,7 +578,7 @@ const ChatInput = ({
                     return (
                       <Box
                         key={item.name}
-                        bg={isActive ? "blue.50" : "transparent"}
+                        bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
                         borderRadius="8px"
                         cursor="pointer"
                         onMouseDown={(event) => {

@@ -511,18 +511,20 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
             onFilesChange={handleFilesChange}
           />
           <SandpackCompileListener token={token} />
-          <Flex ref={mainRef} as="main" align="stretch" gap={0} flex="1" minH="0">
+          <Flex ref={mainRef} as="main" align="stretch" gap={0} flex="1" minH="0" h={workspaceHeight}>
             <Box
               flex="0 0 auto"
               minW="300px"
               maxW="728px"
               w={`${chatWidth}px`}
               alignSelf="stretch"
+              h="100%"
+              minH="0"
             >
               <ChatPanel
                 token={token}
                 onFilesUpdated={handleAgentFilesUpdated}
-                height={workspaceHeight}
+                height="100%"
               />
             </Box>
             <Box
@@ -555,7 +557,6 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
-              workspaceHeight={workspaceHeight}
             />
           </Flex>
         </SandpackProvider>

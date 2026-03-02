@@ -10,6 +10,7 @@ export interface ChatInputSubmitPayload {
   files: ChatInputFile[];
   uploadedFiles: UploadedFileArtifact[];
   selectedSkill?: string;
+  selectedSkills?: string[];
 }
 
 export interface ChatInputModelOption {
@@ -25,6 +26,7 @@ export interface ChatInputProps {
   modelOptions: ChatInputModelOption[];
   modelLoading?: boolean;
   selectedSkill?: string;
+  selectedSkills?: string[];
   skillOptions?: Array<{
     name: string;
     description?: string;
@@ -33,6 +35,7 @@ export interface ChatInputProps {
   prefillVersion?: number;
   onChangeModel: (model: string) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
+  onChangeSelectedSkills?: (skillNames: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;
   onStop?: () => void;
   onSend: (payload: ChatInputSubmitPayload) => Promise<void> | void;

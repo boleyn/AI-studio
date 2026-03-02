@@ -310,6 +310,13 @@ const getSelectedSkillFromMessages = (messages: ConversationMessage[]) => {
     const message = messages[i];
     if (message.role !== "user") continue;
     if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") continue;
+    const selectedSkills = (message.additional_kwargs as { selectedSkills?: unknown }).selectedSkills;
+    if (Array.isArray(selectedSkills)) {
+      const first = selectedSkills.find((item) => typeof item === "string" && item.trim());
+      if (typeof first === "string" && first.trim()) {
+        return first.trim();
+      }
+    }
     const selectedSkill = (message.additional_kwargs as { selectedSkill?: unknown }).selectedSkill;
     if (typeof selectedSkill === "string" && selectedSkill.trim()) {
       return selectedSkill.trim();
@@ -446,6 +453,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const channel = typeof req.body?.channel === "string" ? req.body.channel : "";
   const modelCatalogKey = typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
+  const selectedSkillsInput = Array.isArray(req.body?.selectedSkills)
+    ? (req.body.selectedSkills as unknown[])
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   const selectedSkillInput =
     typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
   const created = Math.floor(Date.now() / 1000);
@@ -508,7 +521,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     artifact: message.artifact,
   }));
   const contextMessages = [...historyMessages, ...newMessages];
-  const selectedSkillRequested = selectedSkillInput || getSelectedSkillFromMessages(contextMessages);
+  const selectedSkillRequested =
+    selectedSkillsInput[0] || selectedSkillInput || getSelectedSkillFromMessages(contextMessages);
   const nextTitleFromInput = getTitleFromMessages(contextMessages);
 
   const appendAssistantError = async (text: string) => {

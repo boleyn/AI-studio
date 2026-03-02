@@ -249,6 +249,7 @@ const ChatPanel = ({
   emptyStateTitle,
   emptyStateDescription,
   roundTop = true,
+  defaultSelectedSkill,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -262,6 +263,7 @@ const ChatPanel = ({
   emptyStateTitle?: string;
   emptyStateDescription?: string;
   roundTop?: boolean;
+  defaultSelectedSkill?: string;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -288,7 +290,9 @@ const ChatPanel = ({
   const [channel, setChannel] = useState("aiproxy");
   const [model, setModel] = useState("agent");
   const [isSkillsOpen, setIsSkillsOpen] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<string | undefined>(undefined);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(
+    defaultSelectedSkill ? [defaultSelectedSkill] : []
+  );
   const [skillOptions, setSkillOptions] = useState<Array<{ name: string; description?: string }>>([]);
   const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string; channel: string; icon?: string }>>([
     { value: "agent", label: "agent", channel: "aiproxy" },
@@ -444,6 +448,13 @@ const ChatPanel = ({
             description: item.description,
           }));
         setSkillOptions(next);
+        if (
+          defaultSelectedSkill &&
+          selectedSkills.length === 0 &&
+          next.some((item) => item.name === defaultSelectedSkill)
+        ) {
+          setSelectedSkills([defaultSelectedSkill]);
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -452,7 +463,7 @@ const ChatPanel = ({
     return () => {
       active = false;
     };
-  }, [isSkillsOpen]);
+  }, [defaultSelectedSkill, isSkillsOpen, selectedSkills.length]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -591,6 +602,7 @@ const ChatPanel = ({
           ...(userMessage.additional_kwargs || {}),
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
+          ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
         },
       };
 
@@ -755,6 +767,7 @@ const ChatPanel = ({
               channel,
               model,
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
+              ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
               ...(completionsExtraBody || {}),
             }),
           });
@@ -790,6 +803,7 @@ const ChatPanel = ({
               channel,
               model,
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
+              ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
               ...(completionsExtraBody || {}),
             },
             headers: withAuthHeaders(),
@@ -1078,10 +1092,11 @@ const ChatPanel = ({
         text,
         files: [],
         uploadedFiles: [],
-        selectedSkill,
+        selectedSkill: selectedSkills[0],
+        selectedSkills,
       }, { echoUserMessage: false });
     },
-    [handleSend, isSending, messages, selectedSkill]
+    [handleSend, isSending, messages, selectedSkills]
   );
 
   const activeConversationTitle = useMemo(
@@ -1090,7 +1105,7 @@ const ChatPanel = ({
   );
 
   const handleUseSkill = useCallback((skillName: string) => {
-    setSelectedSkill(skillName);
+    setSelectedSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]));
   }, []);
 
   const handleCreateSkillViaChat = useCallback(() => {
@@ -1197,10 +1212,11 @@ const ChatPanel = ({
           model={model}
           modelLoading={modelLoading}
           modelOptions={modelOptions}
-          selectedSkill={selectedSkill}
+          selectedSkill={selectedSkills[0]}
+          selectedSkills={selectedSkills}
           skillOptions={skillOptions}
           onChangeModel={setModel}
-          onChangeSelectedSkill={setSelectedSkill}
+          onChangeSelectedSkills={setSelectedSkills}
           onUploadFiles={prepareUploadFiles}
           onSend={handleSend}
           onStop={handleStop}

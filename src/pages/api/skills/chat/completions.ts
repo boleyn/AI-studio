@@ -94,6 +94,18 @@ const getProjectToken = (req: NextApiRequest) => {
   return typeof fromQuery === "string" ? fromQuery : "";
 };
 
+const toSelectedSkills = (req: NextApiRequest) => {
+  const fromArray = Array.isArray(req.body?.selectedSkills)
+    ? (req.body.selectedSkills as unknown[])
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+  const fromSingle = typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
+  const merged = [...fromArray, ...(fromSingle ? [fromSingle] : [])];
+  return Array.from(new Set(merged));
+};
+
 const sendSseEvent = (res: NextApiResponse, event: string, data: string) => {
   res.write(`event: ${event}\n`);
   res.write(`data: ${data}\n\n`);
@@ -188,6 +200,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workspaceTools = createSkillWorkspaceTools(workspaceId);
   const runtimeSkills = await getRuntimeSkills();
+  const selectedSkillsInput = toSelectedSkills(req);
+  const selectedRuntimeSkills = selectedSkillsInput
+    .map((requestedName) =>
+      runtimeSkills.find(
+        (item) =>
+          item.name === requestedName ||
+          item.name.toLowerCase() === requestedName.toLowerCase()
+      )
+    )
+    .filter((item): item is (typeof runtimeSkills)[number] => Boolean(item));
   const skillLoadTool = runtimeSkills.length > 0 ? await createSkillLoadTool() : null;
   const allTools: AgentToolDefinition[] = [...workspaceTools, ...(skillLoadTool ? [skillLoadTool] : [])];
 
@@ -223,6 +245,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const skillsCatalogPrompt =
     runtimeSkills.length > 0 ? buildSkillsCatalogPrompt(runtimeSkills) : "";
+  const selectedSkillsPrompt =
+    selectedRuntimeSkills.length > 0
+      ? [
+          "User selected the following skills for this task:",
+          ...selectedRuntimeSkills.map((item) => `- ${item.name}`),
+          'Before executing the task, call tool "skill_load" for each selected skill (exact names), then follow those instructions.',
+        ].join("\n")
+      : "";
   const historyMessages = conversationId
     ? ((await getConversation(conversationToken, conversationId))?.messages ?? []).map((message) => ({
         role: message.role,
@@ -236,6 +266,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { role: "system", content: STUDIO_PROMPT },
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
+      : []),
+    ...(selectedSkillsPrompt
+      ? [{ role: "system", content: selectedSkillsPrompt } as ChatCompletionMessageParam]
       : []),
     ...contextMessages,
   ];

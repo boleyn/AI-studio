@@ -5,7 +5,8 @@ import SkillsEditorPanel from "@features/skills-studio/components/SkillsEditorPa
 import SkillsFileTreePanel from "@features/skills-studio/components/SkillsFileTreePanel";
 import SkillsPageHeader from "@features/skills-studio/components/SkillsPageHeader";
 import SkillsStudioTopBar from "@features/skills-studio/components/SkillsStudioTopBar";
-import { buildFileTree, getAncestorDirs } from "@features/skills-studio/components/fileTree";
+import { buildTree } from "@components/workspace/fileExplorer/utils";
+import type { SandpackFilesPayload } from "@components/workspace/fileExplorer/types";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -24,12 +25,10 @@ const SkillCreatePage = () => {
   const [files, setFiles] = useState<FileMap>({});
   const [selectedFile, setSelectedFile] = useState("");
   const [openedFiles, setOpenedFiles] = useState<string[]>([]);
-  const [fileQuery, setFileQuery] = useState("");
   const [draftCode, setDraftCode] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set(["/skills"]));
   const [fileTreeWidth, setFileTreeWidth] = useState(280);
   const [isResizingTree, setIsResizingTree] = useState(false);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
@@ -100,14 +99,9 @@ const SkillCreatePage = () => {
   }, [router]);
 
   const fileList = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
-  const filteredFiles = useMemo(() => {
-    const keyword = fileQuery.trim().toLowerCase();
-    if (!keyword) return fileList;
-    return fileList.filter((path) => path.toLowerCase().includes(keyword));
-  }, [fileList, fileQuery]);
-
-  const fileTree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
-  const activeFile = selectedFile && files[selectedFile] ? selectedFile : filteredFiles[0] || fileList[0] || "";
+  const fileMap = useMemo<SandpackFilesPayload>(() => files as SandpackFilesPayload, [files]);
+  const fileTreeRoot = useMemo(() => buildTree(fileMap), [fileMap]);
+  const activeFile = selectedFile && files[selectedFile] ? selectedFile : fileList[0] || "";
   const selectedCode = activeFile ? files[activeFile]?.code || "" : "";
   const isMarkdownFile = /\.md$/i.test(activeFile);
   const workspaceStatus: "idle" | "loading" | "ready" | "error" = isBootstrapping
@@ -138,18 +132,6 @@ const SkillCreatePage = () => {
     setSaveError("");
   }, [activeFile, selectedCode]);
 
-  useEffect(() => {
-    if (!activeFile) return;
-    setOpenedFiles((prev) => (prev.includes(activeFile) ? prev : [...prev, activeFile]));
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      for (const dir of getAncestorDirs(activeFile)) {
-        next.add(dir);
-      }
-      return next;
-    });
-  }, [activeFile]);
-
   const handleSelectFile = (filePath: string) => {
     if (filePath === activeFile) return;
     if (isDirty && typeof window !== "undefined") {
@@ -157,6 +139,7 @@ const SkillCreatePage = () => {
       if (!ok) return;
     }
     setSelectedFile(filePath);
+    setOpenedFiles((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
   };
 
   const handleSaveFile = async () => {
@@ -200,16 +183,36 @@ const SkillCreatePage = () => {
     }
   };
 
-  const toggleDir = (dirPath: string) => {
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(dirPath)) {
-        next.delete(dirPath);
-      } else {
-        next.add(dirPath);
-      }
-      return next;
+  const applyWorkspaceFiles = async (nextFilesMap: FileMap, nextActiveFile?: string) => {
+    if (!workspaceId) return;
+    const res = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...withAuthHeaders(),
+      },
+      body: JSON.stringify({
+        projectToken: typeof router.query.projectToken === "string" ? router.query.projectToken : "",
+        files: nextFilesMap,
+      }),
     });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof payload?.error === "string" ? payload.error : "写入失败");
+    }
+    const persistedFiles = payload.files && typeof payload.files === "object" ? (payload.files as FileMap) : null;
+    if (persistedFiles) {
+      setFiles(persistedFiles);
+    } else {
+      setFiles(nextFilesMap);
+    }
+    if (nextActiveFile) {
+      setSelectedFile(nextActiveFile);
+      setOpenedFiles((prev) => (prev.includes(nextActiveFile) ? prev : [...prev, nextActiveFile]));
+    } else if (selectedFile && !(persistedFiles || nextFilesMap)[selectedFile]) {
+      const fallback = Object.keys(persistedFiles || nextFilesMap).sort((a, b) => a.localeCompare(b))[0] || "";
+      setSelectedFile(fallback);
+    }
   };
 
   const handleStartResizeTree = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -341,6 +344,7 @@ const SkillCreatePage = () => {
                 defaultHeaderTitle="技能助手"
                 emptyStateTitle="创建你的第一个技能"
                 emptyStateDescription="先用一句话描述能力目标，我会生成 SKILL.md 并同步到右侧文件。"
+                defaultSelectedSkill="skill-creator"
                 onFilesUpdated={(nextFiles) => setFiles(nextFiles)}
               />
             )}
@@ -399,13 +403,13 @@ const SkillCreatePage = () => {
             >
               <Box w={`${fileTreeWidth}px`} flexShrink={0} minH={0} h="100%">
                 <SkillsFileTreePanel
-                  fileQuery={fileQuery}
-                  onChangeQuery={setFileQuery}
-                  fileTree={fileTree}
-                  expandedDirs={expandedDirs}
-                  onToggleDir={toggleDir}
+                  root={fileTreeRoot}
+                  files={fileMap}
                   activeFile={activeFile}
                   onSelectFile={handleSelectFile}
+                  onApplyFiles={async (nextFiles, nextActiveFile) => {
+                    await applyWorkspaceFiles(nextFiles as FileMap, nextActiveFile);
+                  }}
                 />
               </Box>
 
@@ -430,36 +434,25 @@ const SkillCreatePage = () => {
                 }}
               />
 
-              <Box flex="1" minH={0} h="100%" p={3}>
-                <Box
-                  bg="white"
-                  border="1px solid"
-                  borderColor="myGray.200"
-                  borderRadius="10px"
-                  minH="100%"
-                  h="100%"
-                  p={3}
-                  overflow="hidden"
-                >
-                  <SkillsEditorPanel
-                    activeView={activeView}
-                    activeFile={activeFile}
-                    isMarkdownFile={isMarkdownFile}
-                    selectedCode={selectedCode}
-                    draftCode={draftCode}
-                    isDirty={isDirty}
-                    isSaving={isSaving}
-                    saveError={saveError}
-                    onChangeDraft={(next) => {
-                      setDraftCode(next);
-                      setIsDirty(next !== selectedCode);
-                      setSaveError("");
-                    }}
-                    onSave={() => {
-                      void handleSaveFile();
-                    }}
-                  />
-                </Box>
+              <Box flex="1" minH={0} h="100%" overflow="hidden">
+                <SkillsEditorPanel
+                  activeView={activeView}
+                  activeFile={activeFile}
+                  isMarkdownFile={isMarkdownFile}
+                  selectedCode={selectedCode}
+                  draftCode={draftCode}
+                  isDirty={isDirty}
+                  isSaving={isSaving}
+                  saveError={saveError}
+                  onChangeDraft={(next) => {
+                    setDraftCode(next);
+                    setIsDirty(next !== selectedCode);
+                    setSaveError("");
+                  }}
+                  onSave={() => {
+                    void handleSaveFile();
+                  }}
+                />
               </Box>
             </Flex>
           </Flex>

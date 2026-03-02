@@ -9,7 +9,7 @@ import {
   useLoadingOverlayState,
 } from "@codesandbox/sandpack-react";
 import { Box, Flex } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
@@ -23,7 +23,6 @@ type WorkspaceShellProps = {
   error: string;
   activeView: ActiveView;
   onChangeView: (view: ActiveView) => void;
-  workspaceHeight: string;
 };
 
 const toLogText = (value: unknown): string => {
@@ -52,31 +51,14 @@ const WorkspaceShell = ({
   error,
   activeView,
   onChangeView,
-  workspaceHeight,
 }: WorkspaceShellProps) => {
   const { sandpack } = useSandpack();
   const { logs } = useSandpackConsole({ resetOnPreviewRestart: true });
   const runtimeErrorMessage = useErrorMessage();
   const loadingState = useLoadingOverlayState();
 
-  const headerRef = useRef<HTMLDivElement | null>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
   const [isCompileBadgeHovered, setIsCompileBadgeHovered] = useState(false);
   const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
-
-  useEffect(() => {
-    const header = headerRef.current;
-    if (!header) {
-      return;
-    }
-    const updateHeight = () => {
-      setHeaderHeight(header.getBoundingClientRect().height);
-    };
-    updateHeight();
-    const observer = new ResizeObserver(() => updateHeight());
-    observer.observe(header);
-    return () => observer.disconnect();
-  }, []);
 
   const compileErrorMessages = useMemo(() => {
     const fromLogs = logs
@@ -123,17 +105,12 @@ const WorkspaceShell = ({
     compileErrorMessages.length > 0 &&
     (isCompileBadgeHovered || isCompilePanelPinned);
 
-  const baseHeight = Number.parseFloat(workspaceHeight);
-  const contentHeight =
-    Number.isFinite(baseHeight) && baseHeight > 0
-      ? `${Math.max(0, baseHeight - headerHeight)}px`
-      : "100%";
-
   return (
     <Flex
       as="section"
       direction="column"
       flex="1"
+      h="100%"
       minH="0"
       border="1px solid rgba(255,255,255,0.75)"
       borderTopLeftRadius={0}
@@ -146,7 +123,7 @@ const WorkspaceShell = ({
       overflow="hidden"
     >
       <Flex direction="column" flex="1" minH="0" h="100%">
-        <Box ref={headerRef}>
+        <Box>
           <WorkspaceHeader
             activeView={activeView}
             onChangeView={onChangeView}
@@ -166,8 +143,6 @@ const WorkspaceShell = ({
           flex="1"
           minH="0"
           display="flex"
-          height={contentHeight}
-          minHeight={contentHeight}
           overflow="hidden"
           bg="rgba(248,250,252,0.65)"
         >
@@ -177,6 +152,10 @@ const WorkspaceShell = ({
               height: "100%",
               minHeight: 0,
               display: activeView === "code" ? "flex" : "none",
+              border: "none",
+              borderRadius: 0,
+              boxShadow: "none",
+              background: "transparent",
             }}
           >
             <FileExplorerPanel token={token} />
