@@ -83,7 +83,14 @@ export type InstallSkillCreatorResponse = {
   sourceFile?: string;
 };
 
-export const listSkills = () => httpGet<SkillListResponse>("/agent/skills");
+export const listSkills = (projectToken?: string) =>
+  httpGet<SkillListResponse>(
+    `/agent/skills${
+      projectToken && projectToken.trim()
+        ? `?projectToken=${encodeURIComponent(projectToken.trim())}`
+        : ""
+    }`
+  );
 export const getSkillDetail = (name: string) =>
   httpGet<SkillDetailResponse>(`/agent/skills/${encodeURIComponent(name)}`);
 export const validateSkills = (name?: string) =>

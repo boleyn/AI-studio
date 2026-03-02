@@ -3,6 +3,7 @@ import { formatGlobalResult } from "@server/agent/globalResultFormatter";
 import { parseGlobalCommand, runGlobalAction, type ChangeTracker } from "@server/agent/globalTools";
 import { loadMcpTools } from "@server/agent/mcpClient";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
+import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
@@ -635,12 +636,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const localTools = createProjectTools(token, tracker);
   const mcpTools = await loadMcpTools();
   const runtimeSkills = await getRuntimeSkills();
-  const selectedRuntimeSkill =
+  const projectSkillsParsed = collectProjectRuntimeSkills(project.files || {}, `project:${token}`);
+  const mergedSkillByName = new Map<string, (typeof runtimeSkills)[number]>();
+  for (const skill of runtimeSkills) mergedSkillByName.set(skill.name, skill);
+  for (const skill of projectSkillsParsed.skills) mergedSkillByName.set(skill.name, skill);
+  const allAvailableSkills = [...mergedSkillByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const selectedResolvedSkill =
     selectedSkillRequested.length > 0
-      ? runtimeSkills.find((item) => item.name === selectedSkillRequested) ||
-        runtimeSkills.find((item) => item.name.toLowerCase() === selectedSkillRequested.toLowerCase()) ||
+      ? allAvailableSkills.find((item) => item.name === selectedSkillRequested) ||
+        allAvailableSkills.find((item) => item.name.toLowerCase() === selectedSkillRequested.toLowerCase()) ||
         null
       : null;
+  const selectedRuntimeSkill = selectedResolvedSkill
+    ? runtimeSkills.find((item) => item.name === selectedResolvedSkill.name) || null
+    : null;
+  const selectedProjectSkill =
+    selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
   const skillLoadTool = runtimeSkills.length > 0 ? await createSkillLoadTool() : null;
   const allTools = [
     ...localTools,
@@ -752,9 +763,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }) as ChatCompletionMessageParam[];
 
   const skillsCatalogPrompt =
-    runtimeSkills.length > 0 ? buildSkillsCatalogPrompt(runtimeSkills) : "";
+    allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const fallbackSkillPrompt =
-    runtimeSkills.length === 0 ? await getAgentRuntimeSkillPrompt() : "";
+    allAvailableSkills.length === 0 ? await getAgentRuntimeSkillPrompt() : "";
   const baseAgentMessages = toAgentMessages(contextMessages);
   const systemPrompts: ChatCompletionMessageParam[] = [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
@@ -768,6 +779,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               `You must call tool "skill_load" first with {"skill_name":"${selectedRuntimeSkill.name}"} before executing the task.`,
               "After loading, follow that skill instructions for the rest of the task.",
             ].join("\n"),
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
+    ...(selectedProjectSkill
+      ? [
+          {
+            role: "system",
+            content: [
+              `User selected project skill: ${selectedProjectSkill.name}`,
+              "The following skill content is preloaded. Follow these instructions for this task.",
+              selectedProjectSkill.body,
+            ].join("\n\n"),
           } as ChatCompletionMessageParam,
         ]
       : []),
@@ -785,6 +808,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     skillsCatalogEnabled: Boolean(skillsCatalogPrompt),
     fallbackEnabled: Boolean(fallbackSkillPrompt),
     runtimeSkillCount: runtimeSkills.length,
+    projectSkillCount: projectSkillsParsed.skills.length,
+    availableSkillCount: allAvailableSkills.length,
     skillLoadToolEnabled: Boolean(skillLoadTool),
     hasMcpTools,
     hasProjectKnowledgeTools,
@@ -794,7 +819,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     routeReason: routedTools.reason,
     toolChoiceMode,
     selectedSkillRequested,
-    selectedSkillResolved: selectedRuntimeSkill?.name || "",
+    selectedSkillResolved: selectedResolvedSkill?.name || "",
+    selectedSkillSource: selectedProjectSkill ? "project" : selectedRuntimeSkill ? "runtime" : "",
     routedToolCount: selectedTools.length,
     baseMessageCount: baseAgentMessages.length,
     finalMessageCount: agentMessages.length,

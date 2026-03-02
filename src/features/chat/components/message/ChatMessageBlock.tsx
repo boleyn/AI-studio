@@ -1,5 +1,6 @@
 import { Box, Flex } from "@chakra-ui/react";
 import { extractText } from "@shared/chat/messages";
+import React from "react";
 import { useCopyData } from "@/hooks/useCopyData";
 import type { ConversationMessage } from "@/types/conversation";
 import ChatItem from "../ChatItem";
@@ -73,4 +74,12 @@ const ChatMessageBlock = ({
   );
 };
 
-export default ChatMessageBlock;
+export default React.memo(
+  ChatMessageBlock,
+  (prevProps, nextProps) =>
+    prevProps.message === nextProps.message &&
+    prevProps.messageId === nextProps.messageId &&
+    prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.rating === nextProps.rating &&
+    prevProps.canRegenerate === nextProps.canRegenerate
+);

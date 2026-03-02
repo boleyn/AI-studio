@@ -88,33 +88,36 @@ export function useConversations(
       if (loadingConversationIdRef.current === id) return;
       loadingConversationIdRef.current = id;
       setIsLoadingConversation(true);
-      const conversation = await getConversation(token, id);
-      setIsLoadingConversation(false);
-      loadingConversationIdRef.current = null;
-      if (conversation) {
-        activeConversationIdRef.current = conversation.id;
-        setActiveConversation(conversation);
-        setConversations((prev) => {
-          const exists = prev.some((item) => item.id === conversation.id);
-          if (exists) {
-            return prev.map((item) =>
-              item.id === conversation.id
-                ? { ...item, title: conversation.title, updatedAt: conversation.updatedAt }
-                : item
+      try {
+        const conversation = await getConversation(token, id);
+        if (conversation) {
+          activeConversationIdRef.current = conversation.id;
+          setActiveConversation(conversation);
+          setConversations((prev) => {
+            const exists = prev.some((item) => item.id === conversation.id);
+            if (exists) {
+              return prev.map((item) =>
+                item.id === conversation.id
+                  ? { ...item, title: conversation.title, updatedAt: conversation.updatedAt }
+                  : item
+              );
+            }
+            return [conversation, ...prev];
+          });
+          if (queryConversationId !== conversation.id) {
+            router.replace(
+              {
+                pathname: router.pathname,
+                query: { ...router.query, conversation: conversation.id },
+              },
+              undefined,
+              { shallow: true }
             );
           }
-          return [conversation, ...prev];
-        });
-        if (queryConversationId !== conversation.id) {
-          router.replace(
-            {
-              pathname: router.pathname,
-              query: { ...router.query, conversation: conversation.id },
-            },
-            undefined,
-            { shallow: true }
-          );
         }
+      } finally {
+        setIsLoadingConversation(false);
+        loadingConversationIdRef.current = null;
       }
     },
     [queryConversationId, router, token]
@@ -200,7 +203,7 @@ export function useConversations(
 
   useEffect(() => {
     if (!token || !router.isReady) return;
-    const initKey = `${token}:${queryConversationId ?? ""}`;
+    const initKey = token;
     if (initKeyRef.current === initKey) return;
     initKeyRef.current = initKey;
     setIsInitialized(false);
@@ -209,13 +212,9 @@ export function useConversations(
       const list = await refreshConversations();
       if (!active) return;
       setConversations(list);
-      if (queryConversationId) {
-        await loadConversation(queryConversationId);
-        if (active) setIsInitialized(true);
-        return;
-      }
-      if (list.length > 0) {
-        await loadConversation(list[0].id);
+      const initialConversationId = queryConversationId || list[0]?.id;
+      if (initialConversationId) {
+        await loadConversation(initialConversationId);
         if (active) setIsInitialized(true);
         return;
       }
@@ -236,6 +235,13 @@ export function useConversations(
     router.isReady,
     token,
   ]);
+
+  useEffect(() => {
+    if (!token || !router.isReady || !isInitialized) return;
+    if (!queryConversationId) return;
+    if (activeConversationIdRef.current === queryConversationId) return;
+    void loadConversation(queryConversationId);
+  }, [isInitialized, loadConversation, queryConversationId, router.isReady, token]);
 
   return {
     conversations,

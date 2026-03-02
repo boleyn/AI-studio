@@ -70,6 +70,8 @@ interface ReasoningStreamPayload {
 interface WorkflowDurationPayload {
   durationSeconds?: number;
 }
+const FILE_TAG_MARKER_PREFIX = "FILETAG:";
+const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 
 const getMessageFeedback = (message: ConversationMessage): MessageRating | undefined => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return undefined;
@@ -141,19 +143,33 @@ const buildFilePromptFromArtifacts = (files: UploadedFileArtifact[]) => {
 const buildUserBubbleContent = ({
   text,
   files,
+  selectedSkills,
+  selectedFilePaths,
 }: {
   text: string;
   files: UploadedFileArtifact[];
+  selectedSkills?: string[];
+  selectedFilePaths?: string[];
 }) => {
   const trimmedText = text.trim();
+  const skillTagsMarkdown =
+    selectedSkills && selectedSkills.length > 0
+      ? selectedSkills
+          .map((skill) => `[${skill}](${SKILL_TAG_MARKER_PREFIX}${encodeURIComponent(skill)})`)
+          .join(" ")
+      : "";
+  const fileTagsMarkdown =
+    selectedFilePaths && selectedFilePaths.length > 0
+      ? selectedFilePaths
+          .map((path) => `[${path}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
+          .join(" ")
+      : "";
   const imageMarkdown = files
     .filter((file) => (file.type || "").startsWith("image/") && file.previewUrl)
     .map((file) => `![${file.name || "image"}](${file.previewUrl})`)
     .join("\n\n");
 
-  if (!imageMarkdown) return trimmedText;
-  if (!trimmedText) return imageMarkdown;
-  return `${trimmedText}\n\n${imageMarkdown}`;
+  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
 };
 
 const hydrateArtifactsMarkdown = async (files: UploadedFileArtifact[]) => {
@@ -250,6 +266,8 @@ const ChatPanel = ({
   emptyStateDescription,
   roundTop = true,
   defaultSelectedSkill,
+  fileOptions = [],
+  skillsProjectToken,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -264,6 +282,8 @@ const ChatPanel = ({
   emptyStateDescription?: string;
   roundTop?: boolean;
   defaultSelectedSkill?: string;
+  fileOptions?: string[];
+  skillsProjectToken?: string;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -299,12 +319,22 @@ const ChatPanel = ({
   ]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const scrollRafRef = useRef<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef("");
   const streamingReasoningRef = useRef("");
   const streamFlushFrameRef = useRef<number | null>(null);
   const reasoningFlushFrameRef = useRef<number | null>(null);
+  const skillListRefreshKey = useMemo(
+    () =>
+      fileOptions
+        .filter((item) => /\/SKILL\.md$/i.test(item))
+        .sort((a, b) => a.localeCompare(b))
+        .join("|"),
+    [fileOptions]
+  );
 
   const flushAssistantReasoning = useCallback((assistantMessageId: string, reasoningText: string) => {
     setMessages((prev) =>
@@ -376,6 +406,7 @@ const ChatPanel = ({
       }
       return next;
     });
+    shouldAutoScrollRef.current = true;
   }, [activeConversation?.id, activeConversation?.messages]);
 
   useEffect(() => {
@@ -438,7 +469,10 @@ const ChatPanel = ({
 
   useEffect(() => {
     let active = true;
-    listSkills()
+    const tokenForSkills =
+      (skillsProjectToken && skillsProjectToken.trim()) ||
+      (token.startsWith("skill-studio:") ? "" : token);
+    listSkills(tokenForSkills)
       .then((result) => {
         if (!active) return;
         const next = (result.skills || [])
@@ -463,15 +497,36 @@ const ChatPanel = ({
     return () => {
       active = false;
     };
-  }, [defaultSelectedSkill, isSkillsOpen, selectedSkills.length]);
+  }, [
+    defaultSelectedSkill,
+    isSkillsOpen,
+    selectedSkills.length,
+    skillsProjectToken,
+    token,
+    skillListRefreshKey,
+  ]);
 
   useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+    if (!shouldAutoScrollRef.current) return;
+    if (scrollRafRef.current !== null) {
+      window.cancelAnimationFrame(scrollRafRef.current);
+    }
+    scrollRafRef.current = window.requestAnimationFrame(() => {
+      const target = scrollRef.current;
+      if (!target) return;
+      target.scrollTop = target.scrollHeight;
+      scrollRafRef.current = null;
+    });
   }, [messages]);
 
   useEffect(() => {
     return () => {
+      if (scrollRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
       if (streamFlushFrameRef.current !== null) {
         window.cancelAnimationFrame(streamFlushFrameRef.current);
         streamFlushFrameRef.current = null;
@@ -529,13 +584,17 @@ const ChatPanel = ({
       }
     ) => {
       const text = payload.text.trim();
-      if ((text.length === 0 && payload.files.length === 0) || isSending) return;
+      if ((text.length === 0 && payload.files.length === 0 && !payload.selectedFilePaths?.length) || isSending)
+        return;
       const echoUserMessage = options?.echoUserMessage ?? true;
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
 
-      const displayText = text || `已上传 ${payload.files.length} 个文件`;
+      const displayText =
+        text ||
+        (payload.selectedFilePaths?.length ? `已选择 ${payload.selectedFilePaths.length} 个文件` : "") ||
+        `已上传 ${payload.files.length} 个文件`;
       const nextConversationTitle = buildConversationTitle(text);
 
       const userMessageId = createId();
@@ -572,6 +631,8 @@ const ChatPanel = ({
       const userBubbleContent = buildUserBubbleContent({
         text,
         files: finalArtifacts,
+        selectedSkills: payload.selectedSkills || (payload.selectedSkill ? [payload.selectedSkill] : undefined),
+        selectedFilePaths: payload.selectedFilePaths,
       });
 
       const userMessage: ConversationMessage = {
@@ -582,7 +643,10 @@ const ChatPanel = ({
         additional_kwargs: filePrompt
           ? {
               filePrompt,
+              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
             }
+          : payload.selectedFilePaths
+          ? { selectedFilePaths: payload.selectedFilePaths }
           : undefined,
       };
 
@@ -603,6 +667,7 @@ const ChatPanel = ({
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
+          ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
         },
       };
 
@@ -768,6 +833,7 @@ const ChatPanel = ({
               model,
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
+              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             }),
           });
@@ -804,6 +870,7 @@ const ChatPanel = ({
               model,
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
+              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             },
             headers: withAuthHeaders(),
@@ -1094,6 +1161,13 @@ const ChatPanel = ({
         uploadedFiles: [],
         selectedSkill: selectedSkills[0],
         selectedSkills,
+        selectedFilePaths:
+          previousUserMessage.additional_kwargs &&
+          typeof previousUserMessage.additional_kwargs === "object" &&
+          Array.isArray((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
+            ? ((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
+                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            : undefined,
       }, { echoUserMessage: false });
     },
     [handleSend, isSending, messages, selectedSkills]
@@ -1116,6 +1190,7 @@ const ChatPanel = ({
         : "/skills/create"
     );
   }, [router, token]);
+  const showInitialLoading = !isInitialized && messages.length === 0;
 
   return (
     <Flex
@@ -1154,8 +1229,13 @@ const ChatPanel = ({
           overflowY="auto"
           px={4}
           py={4}
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            shouldAutoScrollRef.current = distanceToBottom < 80;
+          }}
         >
-          {!isInitialized || isLoadingConversation ? (
+          {showInitialLoading ? (
             <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
               <Spinner size="sm" />
               <Text fontSize="sm">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
@@ -1203,6 +1283,12 @@ const ChatPanel = ({
                   </Box>
                 );
               })}
+              {isLoadingConversation ? (
+                <Flex align="center" color="gray.500" gap={2} justify="center" py={1}>
+                  <Spinner size="xs" />
+                  <Text fontSize="xs">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
+                </Flex>
+              ) : null}
             </Flex>
           )}
         </Box>
@@ -1215,6 +1301,7 @@ const ChatPanel = ({
           selectedSkill={selectedSkills[0]}
           selectedSkills={selectedSkills}
           skillOptions={skillOptions}
+          fileOptions={fileOptions}
           onChangeModel={setModel}
           onChangeSelectedSkills={setSelectedSkills}
           onUploadFiles={prepareUploadFiles}

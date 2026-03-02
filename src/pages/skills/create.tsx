@@ -33,34 +33,26 @@ const SkillCreatePage = () => {
   const [isResizingTree, setIsResizingTree] = useState(false);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const bootstrapKeyRef = useRef<string>("");
 
   useEffect(() => {
     if (!router.isReady) return;
+    const projectToken =
+      typeof router.query.projectToken === "string" ? router.query.projectToken.trim() : "";
+    if (!projectToken) {
+      setBootstrapError("缺少 projectToken，无法绑定项目");
+      setIsBootstrapping(false);
+      return;
+    }
+    if (bootstrapKeyRef.current === projectToken) return;
+    bootstrapKeyRef.current = projectToken;
+
     let cancelled = false;
 
     const bootstrap = async () => {
       setIsBootstrapping(true);
       setBootstrapError("");
       try {
-        if (typeof router.query.conversation === "string" && router.query.conversation) {
-          const nextQuery = { ...router.query };
-          delete nextQuery.conversation;
-          void router.replace(
-            {
-              pathname: router.pathname,
-              query: nextQuery,
-            },
-            undefined,
-            { shallow: true }
-          );
-        }
-
-        const projectToken =
-          typeof router.query.projectToken === "string" ? router.query.projectToken.trim() : "";
-        if (!projectToken) {
-          throw new Error("缺少 projectToken，无法绑定项目");
-        }
-
         const res = await fetch("/api/skills/workspaces/create", {
           method: "POST",
           headers: {
@@ -96,7 +88,7 @@ const SkillCreatePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router.isReady, router.query.projectToken]);
 
   const fileList = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const fileMap = useMemo<SandpackFilesPayload>(() => files as SandpackFilesPayload, [files]);
@@ -282,11 +274,12 @@ const SkillCreatePage = () => {
   };
 
   return (
-    <Box position="relative" minH="100vh" overflow="hidden">
+    <Box position="relative" minH="100vh" h="100vh" overflow="hidden">
       <VectorBackground />
       <Flex
         direction="column"
-        minH="100vh"
+        minH="100%"
+        h="100%"
         align="stretch"
         justify="flex-start"
         px={{ base: 4, md: 8, xl: 10 }}
@@ -345,6 +338,10 @@ const SkillCreatePage = () => {
                 emptyStateTitle="创建你的第一个技能"
                 emptyStateDescription="先用一句话描述能力目标，我会生成 SKILL.md 并同步到右侧文件。"
                 defaultSelectedSkill="skill-creator"
+                fileOptions={fileList}
+                skillsProjectToken={
+                  typeof router.query.projectToken === "string" ? router.query.projectToken : undefined
+                }
                 onFilesUpdated={(nextFiles) => setFiles(nextFiles)}
               />
             )}

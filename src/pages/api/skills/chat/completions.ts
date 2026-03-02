@@ -1,5 +1,6 @@
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "@aistudio/ai/compat/global/core/ai/type";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
+import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
@@ -14,7 +15,7 @@ import {
   getConversation,
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
-import { getSkillWorkspace, requireSkillWorkspace } from "@server/skills/workspaceStorage";
+import { getSkillWorkspace } from "@server/skills/workspaceStorage";
 import { createId, extractText } from "@shared/chat/messages";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -37,6 +38,12 @@ const STUDIO_PROMPT = [
   "This studio is isolated from project files.",
   "Only edit files inside this workspace.",
   "When creating skills, write files under /skills/<skill-name>/SKILL.md.",
+  "When creating or updating any /skills/*/SKILL.md file, always include YAML frontmatter at the top.",
+  "The frontmatter must start and end with --- and include at least:",
+  "name: <kebab-case-skill-name>",
+  "description: <one-line-purpose-and-trigger>",
+  "Optional fields: version, compatibility, license, metadata.",
+  "The frontmatter name must match the parent folder name exactly.",
 ].join("\n");
 
 const toMessages = (messages: unknown): ChatCompletionMessageParam[] => {
@@ -68,6 +75,13 @@ const getConversationId = (req: NextApiRequest) =>
     : typeof req.body?.conversationId === "string"
     ? req.body.conversationId
     : undefined;
+const getConversationToken = (req: NextApiRequest, projectToken: string, workspaceId: string) => {
+  const bodyToken = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (bodyToken.startsWith("skill-studio:")) {
+    return bodyToken;
+  }
+  return `skill-studio:${projectToken}:${workspaceId}`;
+};
 
 const toStringValue = (value: unknown) => {
   if (value == null) return "";
@@ -145,8 +159,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const resolvedWorkspaceId = workspaceId || projectToken;
 
+  let workspace: Awaited<ReturnType<typeof getSkillWorkspace>>;
   try {
-    await requireSkillWorkspace(resolvedWorkspaceId, userId, projectToken);
+    workspace = await getSkillWorkspace(resolvedWorkspaceId, userId, projectToken);
   } catch (error) {
     const message = error instanceof Error ? error.message : "workspace 不可用";
     res.status(403).json({ error: message });
@@ -160,7 +175,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const stream = req.body?.stream !== false;
   const conversationId = getConversationId(req);
-  const conversationToken = `skill-studio:${projectToken}:${resolvedWorkspaceId}`;
+  const conversationToken = getConversationToken(req, projectToken, resolvedWorkspaceId);
   const created = Math.floor(Date.now() / 1000);
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
   let streamStarted = false;
@@ -200,16 +215,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workspaceTools = createSkillWorkspaceTools(workspaceId);
   const runtimeSkills = await getRuntimeSkills();
+  const projectSkillsParsed = collectProjectRuntimeSkills(
+    workspace.files || {},
+    `project:${projectToken}`
+  );
+  const mergedSkillByName = new Map<string, (typeof runtimeSkills)[number]>();
+  for (const skill of runtimeSkills) mergedSkillByName.set(skill.name, skill);
+  for (const skill of projectSkillsParsed.skills) mergedSkillByName.set(skill.name, skill);
+  const allAvailableSkills = [...mergedSkillByName.values()].sort((a, b) => a.name.localeCompare(b.name));
   const selectedSkillsInput = toSelectedSkills(req);
-  const selectedRuntimeSkills = selectedSkillsInput
+  const selectedResolvedSkills = selectedSkillsInput
     .map((requestedName) =>
-      runtimeSkills.find(
-        (item) =>
-          item.name === requestedName ||
-          item.name.toLowerCase() === requestedName.toLowerCase()
+      allAvailableSkills.find(
+        (item) => item.name === requestedName || item.name.toLowerCase() === requestedName.toLowerCase()
       )
     )
     .filter((item): item is (typeof runtimeSkills)[number] => Boolean(item));
+  const selectedRuntimeSkills = selectedResolvedSkills.filter((item) =>
+    runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
+  );
+  const selectedProjectSkills = selectedResolvedSkills.filter(
+    (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
+  );
   const skillLoadTool = runtimeSkills.length > 0 ? await createSkillLoadTool() : null;
   const allTools: AgentToolDefinition[] = [...workspaceTools, ...(skillLoadTool ? [skillLoadTool] : [])];
 
@@ -244,13 +271,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : catalog.models[0]?.id || requestedModel;
 
   const skillsCatalogPrompt =
-    runtimeSkills.length > 0 ? buildSkillsCatalogPrompt(runtimeSkills) : "";
+    allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const selectedSkillsPrompt =
-    selectedRuntimeSkills.length > 0
+    selectedResolvedSkills.length > 0
       ? [
           "User selected the following skills for this task:",
-          ...selectedRuntimeSkills.map((item) => `- ${item.name}`),
-          'Before executing the task, call tool "skill_load" for each selected skill (exact names), then follow those instructions.',
+          ...selectedResolvedSkills.map((item) => `- ${item.name}`),
+          ...(selectedRuntimeSkills.length > 0
+            ? [
+                'Before executing the task, call tool "skill_load" for each runtime skill (exact names), then follow those instructions.',
+              ]
+            : []),
+          ...(selectedProjectSkills.length > 0
+            ? ["Project-bound selected skills are preloaded below. Follow them as mandatory instructions."]
+            : []),
         ].join("\n")
       : "";
   const historyMessages = conversationId
@@ -270,6 +304,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ...(selectedSkillsPrompt
       ? [{ role: "system", content: selectedSkillsPrompt } as ChatCompletionMessageParam]
       : []),
+    ...selectedProjectSkills.map(
+      (item) =>
+        ({
+          role: "system",
+          content: [`Loaded project skill: ${item.name}`, item.body].join("\n\n"),
+        } as ChatCompletionMessageParam)
+    ),
     ...contextMessages,
   ];
 
@@ -377,7 +418,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    const workspace = await getSkillWorkspace(resolvedWorkspaceId, userId, projectToken);
     const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
     if (conversationId && newConversationMessages.length > 0) {
       await appendConversationMessages(conversationToken, conversationId, newConversationMessages);

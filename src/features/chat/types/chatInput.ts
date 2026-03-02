@@ -11,6 +11,7 @@ export interface ChatInputSubmitPayload {
   uploadedFiles: UploadedFileArtifact[];
   selectedSkill?: string;
   selectedSkills?: string[];
+  selectedFilePaths?: string[];
 }
 
 export interface ChatInputModelOption {
@@ -31,6 +32,7 @@ export interface ChatInputProps {
     name: string;
     description?: string;
   }>;
+  fileOptions?: string[];
   prefillText?: string;
   prefillVersion?: number;
   onChangeModel: (model: string) => void;

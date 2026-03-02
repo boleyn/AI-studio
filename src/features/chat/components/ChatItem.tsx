@@ -231,7 +231,6 @@ const ChatItem = ({
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="full">
       <Box
-        backdropFilter="blur(3px)"
         bg={
           isUser
             ? "linear-gradient(135deg, rgba(64,124,255,0.12) 0%, rgba(148,163,184,0.08) 100%)"

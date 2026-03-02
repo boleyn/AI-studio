@@ -32,6 +32,7 @@ const ChatInput = ({
   selectedSkill,
   selectedSkills,
   skillOptions = [],
+  fileOptions = [],
   prefillText,
   prefillVersion,
   onChangeModel,
@@ -51,23 +52,41 @@ const ChatInput = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [skillQuery, setSkillQuery] = useState("");
+  const [fileQuery, setFileQuery] = useState("");
+  const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
+  const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
-  const updateMentionState = useCallback((value: string, cursorPosition: number) => {
+  const updateTriggerState = useCallback((value: string, cursorPosition: number) => {
     const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
     const prefix = value.slice(0, safeCursor);
-    const match = prefix.match(/(^|\s)@([a-zA-Z0-9_-]*)$/);
-    if (!match) {
+    const skillMatch = prefix.match(/(^|\s)@([a-zA-Z0-9_-]*)$/);
+    if (skillMatch) {
+      const query = skillMatch[2] || "";
+      const triggerStart = safeCursor - query.length - 1;
+      setMentionRange({ start: triggerStart, end: safeCursor });
+      setSkillQuery(query.toLowerCase());
+      setFileRange(null);
+      setFileQuery("");
+      return;
+    }
+    const fileMatch = prefix.match(/(^|\s)\/([^\s/]*)$/);
+    if (fileMatch) {
+      const query = fileMatch[2] || "";
+      const triggerStart = safeCursor - query.length - 1;
+      setFileRange({ start: triggerStart, end: safeCursor });
+      setFileQuery(query.toLowerCase());
       setMentionRange(null);
       setSkillQuery("");
       return;
     }
-    const query = match[2] || "";
-    const mentionStart = safeCursor - query.length - 1;
-    setMentionRange({ start: mentionStart, end: safeCursor });
-    setSkillQuery(query.toLowerCase());
+    setMentionRange(null);
+    setSkillQuery("");
+    setFileRange(null);
+    setFileQuery("");
   }, []);
   const resetTextareaHeight = useCallback(() => {
     const textarea = textAreaRef.current;
@@ -91,8 +110,8 @@ const ChatInput = ({
       !isSubmitting &&
       !hasUploadingFiles &&
       !hasUploadErrors &&
-      (text.trim().length > 0 || files.length > 0),
-    [files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, text]
+      (text.trim().length > 0 || files.length > 0 || selectedFilePaths.length > 0),
+    [files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, selectedFilePaths.length, text]
   );
   const selectedSkillList = useMemo(() => {
     if (Array.isArray(selectedSkills) && selectedSkills.length > 0) {
@@ -129,6 +148,16 @@ const ChatInput = ({
     filteredSkillOptions.length > 0 &&
     !isSending &&
     !isSubmitting;
+  const filteredFileOptions = useMemo(() => {
+    const keyword = fileQuery.trim();
+    const selectedSet = new Set(selectedFilePaths);
+    const available = fileOptions.filter((item) => !selectedSet.has(item));
+    if (!keyword) return available.slice(0, 10);
+    return available
+      .filter((item) => item.toLowerCase().includes(keyword))
+      .slice(0, 10);
+  }, [fileOptions, fileQuery, selectedFilePaths]);
+  const showFilePicker = Boolean(fileRange) && filteredFileOptions.length > 0 && !isSending && !isSubmitting;
   const previewFiles = useMemo(
     () =>
       files.map((item) => {
@@ -177,6 +206,9 @@ const ChatInput = ({
   useEffect(() => {
     setActiveSkillIndex(0);
   }, [skillQuery, showSkillPicker]);
+  useEffect(() => {
+    setActiveFileIndex(0);
+  }, [fileQuery, showFilePicker]);
 
   const applySelectedSkill = useCallback(
     (skillName: string) => {
@@ -205,6 +237,28 @@ const ChatInput = ({
       });
     },
     [commitSelectedSkills, mentionRange, resetTextareaHeight, selectedSkillList, text]
+  );
+  const applySelectedFile = useCallback(
+    (filePath: string) => {
+      if (!fileRange) return;
+      const nextText = `${text.slice(0, fileRange.start)}${text.slice(fileRange.end)}`.replace(/\s{2,}/g, " ");
+      const nextCursor = fileRange.start;
+      setText(nextText);
+      setSelectedFilePaths((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
+      setFileRange(null);
+      setFileQuery("");
+      window.requestAnimationFrame(() => {
+        const textarea = textAreaRef.current;
+        if (!textarea) return;
+        textarea.focus();
+        textarea.setSelectionRange(nextCursor, nextCursor);
+        resetTextareaHeight();
+        const nextHeight = Math.min(textarea.scrollHeight, 128);
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
+      });
+    },
+    [fileRange, resetTextareaHeight, text]
   );
 
   const uploadSingleFile = useCallback(
@@ -303,11 +357,13 @@ const ChatInput = ({
       uploadedFiles,
       selectedSkill: selectedSkillList[0] || undefined,
       selectedSkills: selectedSkillList.length > 0 ? selectedSkillList : undefined,
+      selectedFilePaths: selectedFilePaths.length > 0 ? selectedFilePaths : undefined,
     };
 
     setIsSubmitting(true);
     setText("");
     setFiles([]);
+    setSelectedFilePaths([]);
     resetTextareaHeight();
     window.requestAnimationFrame(() => {
       resetTextareaHeight();
@@ -317,7 +373,7 @@ const ChatInput = ({
     Promise.resolve(onSend(payload)).finally(() => {
       setIsSubmitting(false);
     });
-  }, [canSend, files, onSend, resetTextareaHeight, text]);
+  }, [canSend, files, onSend, resetTextareaHeight, selectedFilePaths, text, selectedSkillList]);
 
   return (
     <Box px={4} py={3}>
@@ -463,6 +519,41 @@ const ChatInput = ({
                 </Flex>
               </Flex>
             ) : null}
+            {selectedFilePaths.length > 0 ? (
+              <Flex px={2} pt={selectedSkillList.length > 0 ? 1.5 : 2}>
+                <Flex gap={1.5} wrap="wrap">
+                  {selectedFilePaths.map((filePath) => (
+                    <Flex
+                      key={filePath}
+                      align="center"
+                      bg="gray.50"
+                      border="1px solid"
+                      borderColor="gray.200"
+                      borderRadius="10px"
+                      color="gray.700"
+                      gap={1}
+                      h="28px"
+                      maxW="360px"
+                      pl={2.5}
+                      pr={1}
+                    >
+                      <Text fontSize="12px" fontWeight={600} noOfLines={1}>
+                        {filePath}
+                      </Text>
+                      <CloseButton
+                        color="gray.500"
+                        onClick={() => {
+                          setSelectedFilePaths((prev) => prev.filter((item) => item !== filePath));
+                        }}
+                        aria-label={`移除文件 ${filePath}`}
+                        size="sm"
+                        transform="scale(0.88)"
+                      />
+                    </Flex>
+                  ))}
+                </Flex>
+              </Flex>
+            ) : null}
             <Textarea
               ref={textAreaRef}
               _focusVisible={{ border: "none", boxShadow: "none" }}
@@ -484,12 +575,14 @@ const ChatInput = ({
                 window.setTimeout(() => {
                   setMentionRange(null);
                   setSkillQuery("");
+                  setFileRange(null);
+                  setFileQuery("");
                 }, 80);
               }}
               onChange={(event) => {
                 const nextValue = event.target.value;
                 setText(nextValue);
-                updateMentionState(nextValue, event.target.selectionStart ?? nextValue.length);
+                updateTriggerState(nextValue, event.target.selectionStart ?? nextValue.length);
                 const textarea = event.target;
                 resetTextareaHeight();
                 const nextHeight = Math.min(textarea.scrollHeight, 128);
@@ -500,6 +593,32 @@ const ChatInput = ({
               onCompositionStart={() => setIsComposing(true)}
               onFocus={() => setIsFocused(true)}
               onKeyDown={(event) => {
+                if (showFilePicker) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setActiveFileIndex((prev) => (prev + 1) % filteredFileOptions.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveFileIndex((prev) => (prev <= 0 ? filteredFileOptions.length - 1 : prev - 1));
+                    return;
+                  }
+                  if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+                    event.preventDefault();
+                    const picked = filteredFileOptions[activeFileIndex];
+                    if (picked) {
+                      applySelectedFile(picked);
+                    }
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setFileRange(null);
+                    setFileQuery("");
+                    return;
+                  }
+                }
                 if (showSkillPicker) {
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
@@ -557,6 +676,46 @@ const ChatInput = ({
               w="100%"
               whiteSpace="pre-wrap"
             />
+            {showFilePicker ? (
+              <Box
+                bg="white"
+                border="1px solid"
+                borderColor={skillTheme.pickerBorderColor || "adora.200"}
+                borderRadius="10px"
+                boxShadow="0 8px 24px rgba(15, 23, 42, 0.14)"
+                left={0}
+                maxH="220px"
+                overflowY="auto"
+                position="absolute"
+                right={0}
+                bottom="calc(100% + 4px)"
+                zIndex={31}
+              >
+                <Flex direction="column" p={1}>
+                  {filteredFileOptions.map((item, index) => {
+                    const isActive = index === activeFileIndex;
+                    return (
+                      <Box
+                        key={item}
+                        bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
+                        borderRadius="8px"
+                        cursor="pointer"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          applySelectedFile(item);
+                        }}
+                        px={2}
+                        py={1.5}
+                      >
+                        <Text color="myGray.900" fontSize="sm" fontWeight={600} noOfLines={1}>
+                          {item}
+                        </Text>
+                      </Box>
+                    );
+                  })}
+                </Flex>
+              </Box>
+            ) : null}
             {showSkillPicker ? (
               <Box
                 bg="white"

@@ -195,6 +195,36 @@ export const theme = extendTheme({
     "6xl": "3.6rem",
   },
   workspace: {
+    skillEditor: {
+      header: {
+        bg: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,250,252,0.82) 100%)",
+        borderColor: "myGray.200",
+      },
+      status: {
+        idleBg: "green.50",
+        idleColor: "green.700",
+        dirtyBg: "yellow.50",
+        dirtyColor: "yellow.700",
+        savingBg: "blue.50",
+        savingColor: "blue.700",
+        errorBg: "red.50",
+        errorColor: "red.700",
+      },
+      panel: {
+        bg: "rgba(255,255,255,0.86)",
+        borderColor: "myGray.200",
+      },
+      sectionTitle: {
+        color: "myGray.600",
+      },
+      inputHint: {
+        color: "myGray.500",
+      },
+      editor: {
+        borderColor: "myGray.200",
+        bg: "white",
+      },
+    },
     chatInput: {
       skillMention: {
         bg: "adora.50",

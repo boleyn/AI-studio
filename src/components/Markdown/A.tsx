@@ -1,5 +1,5 @@
 import { eventBus, EventNameEnum } from '@/shared/utils/eventbus';
-import { Button, Link } from '@chakra-ui/react';
+import { Box, Button, Link } from '@chakra-ui/react';
 import MyIcon from '@/components/common/MyIcon';
 import MyTooltip from '@/components/common/MyTooltip';
 import React, { useMemo } from 'react';
@@ -85,6 +85,69 @@ const A = ({
   // empty href link
   if (!props.href && typeof children?.[0] === 'string') {
     return <EmptyHrefLink content={content} />;
+  }
+
+  // File tag syntax: [label](FILETAG:%2Fpath%2Fto%2Ffile)
+  if (typeof props.href === 'string' && props.href.startsWith('FILETAG:')) {
+    const encoded = props.href.slice('FILETAG:'.length);
+    let decoded = encoded;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch {
+      decoded = encoded;
+    }
+    return (
+      <Box
+        as="span"
+        display="inline-flex"
+        alignItems="center"
+        px={2}
+        py={0.5}
+        mr={1.5}
+        mb={1}
+        borderRadius="8px"
+        border="1px solid"
+        borderColor="gray.200"
+        bg="gray.50"
+        color="gray.700"
+        fontSize="12px"
+        fontWeight={600}
+        lineHeight={1.2}
+      >
+        {decoded}
+      </Box>
+    );
+  }
+  // Skill tag syntax: [skill-name](SKILLTAG:skill-name)
+  if (typeof props.href === 'string' && props.href.startsWith('SKILLTAG:')) {
+    const encoded = props.href.slice('SKILLTAG:'.length);
+    let decoded = encoded;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch {
+      decoded = encoded;
+    }
+    return (
+      <Box
+        as="span"
+        display="inline-flex"
+        alignItems="center"
+        px={2}
+        py={0.5}
+        mr={1.5}
+        mb={1}
+        borderRadius="8px"
+        border="1px solid"
+        borderColor="adora.300"
+        bg="adora.50"
+        color="adora.800"
+        fontSize="12px"
+        fontWeight={700}
+        lineHeight={1.2}
+      >
+        {decoded}
+      </Box>
+    );
   }
 
   // Cite

@@ -1,5 +1,17 @@
 import dynamic from "next/dynamic";
-import { Box, Button, Flex, HStack, Input, Text, Textarea } from "@chakra-ui/react";
+import {
+  Badge,
+  Box,
+  Button,
+  Collapse,
+  Flex,
+  HStack,
+  Input,
+  SimpleGrid,
+  Text,
+  Textarea,
+  useTheme,
+} from "@chakra-ui/react";
 import yaml from "js-yaml";
 import Markdown from "@/components/Markdown";
 import { useEffect, useMemo, useState } from "react";
@@ -140,10 +152,13 @@ const SkillsEditorPanel = ({
   onChangeDraft,
   onSave,
 }: SkillsEditorPanelProps) => {
+  const theme = useTheme() as Record<string, any>;
+  const editorTheme = theme?.workspace?.skillEditor || {};
   const content = isDirty ? draftCode : selectedCode;
   const isSkillFile = useMemo(() => /\/SKILL\.md$/i.test(activeFile), [activeFile]);
   const [skillFrontmatter, setSkillFrontmatter] = useState<SkillFrontmatter>(DEFAULT_SKILL_FRONTMATTER);
   const [skillBody, setSkillBody] = useState("");
+  const [showSkillFormat, setShowSkillFormat] = useState(false);
   const fileStatus = (() => {
     if (saveError) return `文件：${saveError}`;
     if (!activeFile) return "文件：未选择";
@@ -151,13 +166,25 @@ const SkillsEditorPanel = ({
     if (isDirty) return "文件：未保存";
     return "文件：已保存";
   })();
-  const fileStatusColor = saveError
-    ? "red.500"
+  const fileStatusPalette = saveError
+    ? {
+        bg: editorTheme?.status?.errorBg || "red.50",
+        color: editorTheme?.status?.errorColor || "red.700",
+      }
     : isDirty
-    ? "orange.500"
+    ? {
+        bg: editorTheme?.status?.dirtyBg || "yellow.50",
+        color: editorTheme?.status?.dirtyColor || "yellow.700",
+      }
     : isSaving
-    ? "blue.500"
-    : "green.600";
+    ? {
+        bg: editorTheme?.status?.savingBg || "blue.50",
+        color: editorTheme?.status?.savingColor || "blue.700",
+      }
+    : {
+        bg: editorTheme?.status?.idleBg || "green.50",
+        color: editorTheme?.status?.idleColor || "green.700",
+      };
 
   useEffect(() => {
     if (!isSkillFile) return;
@@ -175,7 +202,7 @@ const SkillsEditorPanel = ({
 
   if (activeView === "preview") {
     return (
-      <Flex direction="column" minH="100%" h="100%">
+      <Flex direction="column" minH="100%" h="100%" maxH="100%" overflow="hidden">
         <Text color="myGray.700" fontSize="xs" fontWeight="700" mb={2}>
           {activeFile || "请选择文件"}
         </Text>
@@ -197,18 +224,35 @@ const SkillsEditorPanel = ({
   if (isSkillFile) {
     return (
       <Flex direction="column" minH="100%" h="100%">
-        <Flex align="center" justify="space-between" px={3} py={2} borderBottom="1px solid" borderColor="myGray.200">
+        <Flex
+          align="center"
+          justify="space-between"
+          px={3}
+          py={2.5}
+          borderBottom="1px solid"
+          borderColor={editorTheme?.header?.borderColor || "myGray.200"}
+          bg={editorTheme?.header?.bg}
+        >
           <Flex align="center" gap={2} minW={0}>
             <Text color="myGray.700" fontSize="xs" fontWeight="700" isTruncated>
               {activeFile || "请选择文件"}
             </Text>
-            <Text color={fileStatusColor} fontSize="xs" fontWeight="600" flexShrink={0}>
+            <Badge
+              bg={fileStatusPalette.bg}
+              color={fileStatusPalette.color}
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="11px"
+              fontWeight="700"
+              textTransform="none"
+            >
               {fileStatus}
-            </Text>
+            </Badge>
           </Flex>
           <Button
             size="xs"
-            colorScheme="blue"
+            colorScheme="purple"
             onClick={onSave}
             isDisabled={!activeFile || !isDirty}
             isLoading={isSaving}
@@ -217,95 +261,157 @@ const SkillsEditorPanel = ({
           </Button>
         </Flex>
 
-        <Flex direction="column" gap={3} p={3} borderBottom="1px solid" borderColor="myGray.200" bg="white">
-          <Text fontSize="xs" fontWeight="700" color="myGray.600">
-            Skill 基础信息
-          </Text>
-          <HStack spacing={3}>
-            <Input
-              size="sm"
-              placeholder="name (例如: example-refactor)"
-              value={skillFrontmatter.name}
-              onChange={(event) => {
-                const nextFrontmatter = { ...skillFrontmatter, name: event.target.value };
-                setSkillFrontmatter(nextFrontmatter);
-                updateSkillDoc({ frontmatter: nextFrontmatter });
-              }}
-            />
-            <Input
-              size="sm"
-              placeholder="version (可选)"
-              value={skillFrontmatter.version}
-              onChange={(event) => {
-                const nextFrontmatter = { ...skillFrontmatter, version: event.target.value };
-                setSkillFrontmatter(nextFrontmatter);
-                updateSkillDoc({ frontmatter: nextFrontmatter });
-              }}
-            />
-          </HStack>
-          <Input
-            size="sm"
-            placeholder="description"
-            value={skillFrontmatter.description}
-            onChange={(event) => {
-              const nextFrontmatter = { ...skillFrontmatter, description: event.target.value };
-              setSkillFrontmatter(nextFrontmatter);
-              updateSkillDoc({ frontmatter: nextFrontmatter });
-            }}
-          />
-          <HStack spacing={3}>
-            <Input
-              size="sm"
-              placeholder="compatibility (可选)"
-              value={skillFrontmatter.compatibility}
-              onChange={(event) => {
-                const nextFrontmatter = { ...skillFrontmatter, compatibility: event.target.value };
-                setSkillFrontmatter(nextFrontmatter);
-                updateSkillDoc({ frontmatter: nextFrontmatter });
-              }}
-            />
-            <Input
-              size="sm"
-              placeholder="license (可选)"
-              value={skillFrontmatter.license}
-              onChange={(event) => {
-                const nextFrontmatter = { ...skillFrontmatter, license: event.target.value };
-                setSkillFrontmatter(nextFrontmatter);
-                updateSkillDoc({ frontmatter: nextFrontmatter });
-              }}
-            />
-          </HStack>
-          <Textarea
-            size="sm"
-            placeholder={"metadata（YAML对象），例如:\naudience: developers\nworkflow: refactor"}
-            minH="90px"
-            value={yaml.dump(skillFrontmatter.metadata || {}, { lineWidth: 120, noRefs: true })}
-            onChange={(event) => {
-              const raw = event.target.value.trim();
-              try {
-                const parsed = raw
-                  ? yaml.load(raw)
-                  : {};
-                const nextMetadata =
-                  parsed && typeof parsed === "object" && !Array.isArray(parsed)
-                    ? Object.fromEntries(
-                        Object.entries(parsed as Record<string, unknown>).filter(
-                          (item): item is [string, string] =>
-                            typeof item[0] === "string" && typeof item[1] === "string"
-                        )
-                      )
-                    : {};
-                const nextFrontmatter = { ...skillFrontmatter, metadata: nextMetadata };
-                setSkillFrontmatter(nextFrontmatter);
-                updateSkillDoc({ frontmatter: nextFrontmatter });
-              } catch {
-                // ignore temporary invalid YAML while typing
-              }
-            }}
-          />
-        </Flex>
+        <Box
+          p={3}
+          flexShrink={0}
+          borderBottom="1px solid"
+          borderColor={editorTheme?.panel?.borderColor || "myGray.200"}
+          bg={editorTheme?.panel?.bg || "rgba(255,255,255,0.86)"}
+        >
+          <Flex align="center" justify="space-between" mb={showSkillFormat ? 2 : 0}>
+            <Text fontSize="xs" fontWeight="700" color={editorTheme?.sectionTitle?.color || "myGray.600"}>
+              Skill Format
+            </Text>
+            <Button
+              size="xs"
+              variant="ghost"
+              color="myGray.600"
+              px={1}
+              onClick={() => setShowSkillFormat((prev) => !prev)}
+            >
+              {showSkillFormat ? "折叠" : "展开"}
+            </Button>
+          </Flex>
+          <Collapse in={showSkillFormat} animateOpacity>
+            <Box
+              border="1px solid"
+              borderColor={editorTheme?.panel?.borderColor || "myGray.200"}
+              borderRadius="xl"
+              bg="white"
+              p={3}
+              maxH={{ base: "220px", md: "280px" }}
+              overflowY="auto"
+            >
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                <Box>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    Name
+                  </Text>
+                  <Input
+                    size="sm"
+                    placeholder="example-refactor"
+                    value={skillFrontmatter.name}
+                    onChange={(event) => {
+                      const nextFrontmatter = { ...skillFrontmatter, name: event.target.value };
+                      setSkillFrontmatter(nextFrontmatter);
+                      updateSkillDoc({ frontmatter: nextFrontmatter });
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    Version
+                  </Text>
+                  <Input
+                    size="sm"
+                    placeholder="0.1.0"
+                    value={skillFrontmatter.version}
+                    onChange={(event) => {
+                      const nextFrontmatter = { ...skillFrontmatter, version: event.target.value };
+                      setSkillFrontmatter(nextFrontmatter);
+                      updateSkillDoc({ frontmatter: nextFrontmatter });
+                    }}
+                  />
+                </Box>
+                <Box gridColumn={{ base: "span 1", md: "span 2" }}>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    Description
+                  </Text>
+                  <Input
+                    size="sm"
+                    placeholder="Describe what this skill should help accomplish."
+                    value={skillFrontmatter.description}
+                    onChange={(event) => {
+                      const nextFrontmatter = { ...skillFrontmatter, description: event.target.value };
+                      setSkillFrontmatter(nextFrontmatter);
+                      updateSkillDoc({ frontmatter: nextFrontmatter });
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    Compatibility
+                  </Text>
+                  <Input
+                    size="sm"
+                    placeholder="nextjs-ai-studio"
+                    value={skillFrontmatter.compatibility}
+                    onChange={(event) => {
+                      const nextFrontmatter = { ...skillFrontmatter, compatibility: event.target.value };
+                      setSkillFrontmatter(nextFrontmatter);
+                      updateSkillDoc({ frontmatter: nextFrontmatter });
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    License
+                  </Text>
+                  <Input
+                    size="sm"
+                    placeholder="Apache-2.0"
+                    value={skillFrontmatter.license}
+                    onChange={(event) => {
+                      const nextFrontmatter = { ...skillFrontmatter, license: event.target.value };
+                      setSkillFrontmatter(nextFrontmatter);
+                      updateSkillDoc({ frontmatter: nextFrontmatter });
+                    }}
+                  />
+                </Box>
+                <Box gridColumn={{ base: "span 1", md: "span 2" }}>
+                  <Text fontSize="11px" color={editorTheme?.inputHint?.color || "myGray.500"} mb={1}>
+                    Extra metadata (optional key-value)
+                  </Text>
+                  <Textarea
+                    size="sm"
+                    placeholder={"audience: developers\nworkflow: refactor"}
+                    minH="88px"
+                    value={yaml.dump(skillFrontmatter.metadata || {}, { lineWidth: 120, noRefs: true })}
+                    onChange={(event) => {
+                      const raw = event.target.value.trim();
+                      try {
+                        const parsed = raw ? yaml.load(raw) : {};
+                        const nextMetadata =
+                          parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                            ? Object.fromEntries(
+                                Object.entries(parsed as Record<string, unknown>).filter(
+                                  (item): item is [string, string] =>
+                                    typeof item[0] === "string" && typeof item[1] === "string"
+                                )
+                              )
+                            : {};
+                        const nextFrontmatter = { ...skillFrontmatter, metadata: nextMetadata };
+                        setSkillFrontmatter(nextFrontmatter);
+                        updateSkillDoc({ frontmatter: nextFrontmatter });
+                      } catch {
+                        // ignore temporary invalid YAML while typing
+                      }
+                    }}
+                  />
+                </Box>
+              </SimpleGrid>
+            </Box>
+          </Collapse>
+        </Box>
 
-        <Box flex="1" minH={0} bg="white">
+        <Box
+          flex="1"
+          minH={0}
+          overflow="hidden"
+          bg={editorTheme?.editor?.bg || "white"}
+          borderTop="1px solid"
+          borderColor={editorTheme?.editor?.borderColor || "myGray.200"}
+        >
           <MonacoEditor
             path={activeFile || "SKILL.md"}
             value={skillBody}
@@ -334,18 +440,35 @@ const SkillsEditorPanel = ({
 
   return (
     <Flex direction="column" minH="100%" h="100%">
-      <Flex align="center" justify="space-between" px={3} py={2} borderBottom="1px solid" borderColor="myGray.200">
+      <Flex
+        align="center"
+        justify="space-between"
+        px={3}
+        py={2.5}
+        borderBottom="1px solid"
+        borderColor={editorTheme?.header?.borderColor || "myGray.200"}
+        bg={editorTheme?.header?.bg}
+      >
         <Flex align="center" gap={2} minW={0}>
           <Text color="myGray.700" fontSize="xs" fontWeight="700" isTruncated>
             {activeFile || "请选择文件"}
           </Text>
-          <Text color={fileStatusColor} fontSize="xs" fontWeight="600" flexShrink={0}>
+          <Badge
+            bg={fileStatusPalette.bg}
+            color={fileStatusPalette.color}
+            borderRadius="full"
+            px={2}
+            py={0.5}
+            fontSize="11px"
+            fontWeight="700"
+            textTransform="none"
+          >
             {fileStatus}
-          </Text>
+          </Badge>
         </Flex>
         <Button
           size="xs"
-          colorScheme="blue"
+          colorScheme="purple"
           onClick={onSave}
           isDisabled={!activeFile || !isDirty}
           isLoading={isSaving}
