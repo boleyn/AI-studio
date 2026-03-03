@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:20.14.0-alpine AS base
 WORKDIR /app
 ARG APK_MIRROR=mirrors.aliyun.com
 RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
