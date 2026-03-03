@@ -153,13 +153,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   let user = await findUserByUsername(username);
-  const nextContact = phone || email || displayName || username;
+  const nextDisplayName = displayName || phone || email || username;
+  const nextContact = phone || email || username;
   const nextAvatar = avatarFromFeishu || DEFAULT_AVATAR;
   if (!user) {
     const passwordHash = await hashPassword(defaultPassword);
     const userId = await createUser({
       username,
       passwordHash,
+      displayName: nextDisplayName,
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
@@ -168,6 +170,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       _id: userId,
       username,
       passwordHash,
+      displayName: nextDisplayName,
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
@@ -175,15 +178,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       updatedAt: new Date(),
     };
   } else {
+    const shouldPatchDisplayName = !user.displayName && Boolean(nextDisplayName);
     const shouldPatchContact = !user.contact && Boolean(nextContact);
     const shouldPatchAvatar = !user.avatar && Boolean(nextAvatar);
-    if (shouldPatchContact || shouldPatchAvatar) {
+    if (shouldPatchDisplayName || shouldPatchContact || shouldPatchAvatar) {
       await updateUserProfile(String(user._id), {
+        displayName: shouldPatchDisplayName ? nextDisplayName : undefined,
         contact: shouldPatchContact ? nextContact : undefined,
         avatar: shouldPatchAvatar ? nextAvatar : undefined,
       });
       user = {
         ...user,
+        displayName: shouldPatchDisplayName ? nextDisplayName : user.displayName,
         contact: shouldPatchContact ? nextContact : user.contact,
         avatar: shouldPatchAvatar ? nextAvatar : user.avatar,
       };
@@ -198,6 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     user: {
       id: String(user._id),
       username: user.username,
+      displayName: user.displayName || user.username,
       contact: user.contact,
       avatar: user.avatar || DEFAULT_AVATAR,
       provider: user.provider ?? "feishu",

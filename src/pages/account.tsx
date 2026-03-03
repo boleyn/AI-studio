@@ -22,6 +22,7 @@ import { getAuthUserFromRequest } from "@server/auth/ssr";
 type AuthUser = {
   id: string;
   username: string;
+  displayName?: string;
   contact?: string;
   avatar?: string;
   provider?: string;
@@ -102,10 +103,10 @@ const AccountPage = () => {
               </Flex>
             ) : (
               <Flex direction={{ base: "column", md: "row" }} gap={6} align="center">
-                <Avatar size="xl" name={user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
+                <Avatar size="xl" name={user?.displayName || user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
                 <Box flex="1">
                   <HStack spacing={3} mb={3} flexWrap="wrap">
-                    <Heading size="md">{user?.username || "未命名用户"}</Heading>
+                    <Heading size="md">{user?.displayName || user?.username || "未命名用户"}</Heading>
                     <Badge colorScheme="blue" variant="subtle">
                       {user?.provider === "feishu" ? "飞书登录" : "密码登录"}
                     </Badge>

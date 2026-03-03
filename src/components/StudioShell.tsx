@@ -27,6 +27,7 @@ import WorkspaceShell from "./WorkspaceShell";
 import type { SaveStatus } from "./CodeChangeListener";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
+import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 
 type SandpackFile = { code: string };
 export type SandpackFiles = Record<string, SandpackFile>;
@@ -203,10 +204,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   );
 
   const customSetup = useMemo(() => {
-    if (!dependencies || Object.keys(dependencies).length === 0) {
-      return undefined;
-    }
-    return { dependencies };
+    return buildSandpackCustomSetup(dependencies);
   }, [dependencies]);
 
   const handleManualSave = useCallback(async () => {

@@ -5,6 +5,7 @@ export type UserDoc = {
   _id: ObjectId;
   username: string;
   passwordHash: string;
+  displayName?: string;
   contact?: string;
   avatar?: string;
   provider?: "password" | "feishu";
@@ -32,6 +33,7 @@ export const findUserById = async (id: string) => {
 export const createUser = async (input: {
   username: string;
   passwordHash: string;
+  displayName?: string;
   contact?: string;
   avatar?: string;
   provider?: "password" | "feishu";
@@ -41,6 +43,7 @@ export const createUser = async (input: {
   const result = await users.insertOne({
     username: input.username,
     passwordHash: input.passwordHash,
+    displayName: input.displayName,
     contact: input.contact,
     avatar: input.avatar,
     provider: input.provider ?? "password",
@@ -61,10 +64,13 @@ export const updateUserPassword = async (userId: string, passwordHash: string) =
 
 export const updateUserProfile = async (
   userId: string,
-  patch: { contact?: string; avatar?: string }
+  patch: { displayName?: string; contact?: string; avatar?: string }
 ) => {
   const users = await getUsersCollection();
   const setDoc: Record<string, unknown> = { updatedAt: new Date() };
+  if (typeof patch.displayName === "string") {
+    setDoc.displayName = patch.displayName;
+  }
   if (typeof patch.contact === "string") {
     setDoc.contact = patch.contact;
   }

@@ -38,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userId = await createUser({
     username,
     passwordHash,
+    displayName: username,
     contact,
     avatar: DEFAULT_AVATAR,
     provider: "password",
@@ -51,6 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     user: {
       id: String(userId),
       username,
+      displayName: username,
       contact,
       avatar: DEFAULT_AVATAR,
       provider: "password",

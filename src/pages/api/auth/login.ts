@@ -46,6 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     user: {
       id: String(user._id),
       username: user.username,
+      displayName: user.displayName || user.username,
       contact: user.contact,
       avatar: user.avatar || DEFAULT_AVATAR,
       provider: user.provider ?? "password",
