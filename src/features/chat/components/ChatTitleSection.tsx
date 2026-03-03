@@ -4,6 +4,7 @@ import type { ConversationSummary } from "@/types/conversation";
 
 interface ChatTitleSectionProps {
   onReset: () => void;
+  messageCount?: number;
   model?: string;
   modelOptions?: Array<{ value: string; label: string }>;
   modelLoading?: boolean;
@@ -19,6 +20,7 @@ interface ChatTitleSectionProps {
 
 const ChatTitleSection = ({
   onReset,
+  messageCount,
   model,
   modelOptions,
   modelLoading,
@@ -35,6 +37,7 @@ const ChatTitleSection = ({
     <ChatHeader
       activeConversationId={activeConversationId}
       conversations={conversations}
+      messageCount={messageCount}
       model={model}
       modelLoading={modelLoading}
       modelOptions={modelOptions}

@@ -237,7 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedProjectSkills = selectedResolvedSkills.filter(
     (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
   );
-  const skillLoadTool = runtimeSkills.length > 0 ? await createSkillLoadTool() : null;
+  const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
   const allTools: AgentToolDefinition[] = [...workspaceTools, ...(skillLoadTool ? [skillLoadTool] : [])];
 
   const tools: ChatCompletionTool[] = allTools.map((tool) => ({

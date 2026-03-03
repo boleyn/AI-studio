@@ -652,7 +652,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : null;
   const selectedProjectSkill =
     selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
-  const skillLoadTool = runtimeSkills.length > 0 ? await createSkillLoadTool() : null;
+  const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
   const allTools = [
     ...localTools,
     ...mcpTools,
@@ -776,7 +776,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             role: "system",
             content: [
               `User selected skill: ${selectedRuntimeSkill.name}`,
-              `You must call tool "skill_load" first with {"skill_name":"${selectedRuntimeSkill.name}"} before executing the task.`,
+              `You must call tool "skill_load" first with {"name":"${selectedRuntimeSkill.name}"} before executing the task.`,
               "After loading, follow that skill instructions for the rest of the task.",
             ].join("\n"),
           } as ChatCompletionMessageParam,

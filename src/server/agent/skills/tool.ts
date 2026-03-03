@@ -1,5 +1,6 @@
 import { buildSkillContentBlock } from "./prompt";
-import { getRuntimeSkillByName, getRuntimeSkills, sampleSkillFiles } from "./registry";
+import { getRuntimeSkills, sampleSkillFiles } from "./registry";
+import type { RuntimeSkill } from "./types";
 import type { AgentToolDefinition } from "../tools/types";
 
 const NO_SKILL_PARAMETERS: Record<string, unknown> = {
@@ -13,8 +14,12 @@ const NO_SKILL_PARAMETERS: Record<string, unknown> = {
   required: ["name"],
 };
 
-export const createSkillLoadTool = async (): Promise<AgentToolDefinition | null> => {
-  const skills = await getRuntimeSkills();
+export const createSkillLoadTool = async (
+  options?: {
+    skills?: RuntimeSkill[];
+  }
+): Promise<AgentToolDefinition | null> => {
+  const skills = options?.skills && options.skills.length > 0 ? options.skills : await getRuntimeSkills();
   if (skills.length === 0) return null;
 
   return {
@@ -31,7 +36,8 @@ export const createSkillLoadTool = async (): Promise<AgentToolDefinition | null>
         throw new Error("缺少 name 参数。");
       }
 
-      const { skill, available } = await getRuntimeSkillByName(name);
+      const skill = skills.find((item) => item.name === name) || null;
+      const available = skills.map((item) => item.name).sort((a, b) => a.localeCompare(b));
       if (!skill) {
         throw new Error(
           `未找到 skill "${name}"。可用 skills: ${available.length > 0 ? available.join(", ") : "none"}`

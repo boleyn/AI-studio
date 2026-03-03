@@ -24,11 +24,10 @@ services:
 
       MCP_SERVER_URLS: '[{"name":"mcp-gitlab-kb","url":"http://10.21.8.6:8008/sse"}]'
       AGENT_SKILL_FILE: skills/aistudio-mcp-code-workflow/SKILL.md
-      SYSTEM_NAME: AI
 
-      FEISHU_APP_ID: cli_a8a85d3c9729d013
+      FEISHU_APP_ID: cli_a92cf83a1a741cb5
       FEISHU_REDIRECT_URI: http://aistudio.asiainfo.tech/auth/feishu/callback
-      FEISHU_APP_SECRET: XERk7R8NgkjubxxH8yqdngutC3Y2uea7
+      FEISHU_APP_SECRET: wNrVRvzr4rYf5FQNgeZgefxDFNHzOOD1
       FEISHU_DEFAULT_PASSWORD: Feishu@123456
 
       STORAGE_VENDOR: minio

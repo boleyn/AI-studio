@@ -22,7 +22,9 @@ import { getAuthUserFromRequest } from "@server/auth/ssr";
 type AuthUser = {
   id: string;
   username: string;
+  displayName?: string;
   contact?: string;
+  avatar?: string;
   provider?: string;
 };
 
@@ -41,8 +43,8 @@ const AccountPage = () => {
         if (!response.ok) {
           throw new Error("获取用户信息失败");
         }
-        const data = (await response.json()) as AuthUser;
-        setUser(data);
+        const data = (await response.json()) as { user?: AuthUser } | AuthUser;
+        setUser((data as { user?: AuthUser }).user ?? (data as AuthUser));
       } catch (error) {
         toast({
           title: "加载失败",
@@ -101,10 +103,10 @@ const AccountPage = () => {
               </Flex>
             ) : (
               <Flex direction={{ base: "column", md: "row" }} gap={6} align="center">
-                <Avatar size="xl" name={user?.username || "用户"} />
+                <Avatar size="xl" name={user?.displayName || user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
                 <Box flex="1">
                   <HStack spacing={3} mb={3} flexWrap="wrap">
-                    <Heading size="md">{user?.username || "未命名用户"}</Heading>
+                    <Heading size="md">{user?.displayName || user?.username || "未命名用户"}</Heading>
                     <Badge colorScheme="blue" variant="subtle">
                       {user?.provider === "feishu" ? "飞书登录" : "密码登录"}
                     </Badge>

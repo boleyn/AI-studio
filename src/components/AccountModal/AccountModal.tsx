@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Flex,
+  IconButton,
   Modal,
   ModalBody,
   ModalContent,
@@ -46,6 +47,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
     <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
       <ModalOverlay bg="blackAlpha.400" />
       <ModalContent
+        position="relative"
         maxW="720px"
         borderRadius="xl"
         border="1px solid rgba(255,255,255,0.65)"
@@ -53,6 +55,20 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
         backdropFilter="blur(18px)"
         boxShadow="0px 18px 40px -18px rgba(15, 23, 42, 0.35)"
       >
+        <IconButton
+          aria-label="关闭账号弹窗"
+          icon={<Box as="span" fontSize="16px" lineHeight="1">×</Box>}
+          size="sm"
+          variant="ghost"
+          position="absolute"
+          top={3}
+          right={3}
+          borderRadius="full"
+          color="myGray.600"
+          _hover={{ bg: "myGray.100", color: "myGray.800" }}
+          _active={{ bg: "myGray.150" }}
+          onClick={onClose}
+        />
         <ModalBody p={0}>
           <Flex minH="420px">
             <Box
@@ -68,7 +84,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
               <Text fontSize="xs" color="myGray.500" mb={3} px={2} textTransform="uppercase" letterSpacing="wider">
                 账号
               </Text>
-              <Flex direction="column" gap={0}>
+              <Flex direction="column" gap={1.5}>
                 {menuItems.map(({ key, label }) => (
                   <Button
                     key={key}
@@ -79,8 +95,8 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
                     color="myGray.800"
                     fontSize="sm"
                     borderRadius="md"
-                    bg={panel === key ? "myGray.100" : "transparent"}
-                    _hover={{ bg: "myGray.100" }}
+                    bg={panel === key ? "myGray.150" : "transparent"}
+                    _hover={{ bg: panel === key ? "myGray.150" : "myGray.100" }}
                     _active={{ bg: "myGray.150" }}
                     onClick={() => setPanel(key)}
                   >

@@ -1209,6 +1209,7 @@ const ChatPanel = ({
       <ChatHeader
         activeConversationId={activeConversation?.id}
         conversations={conversations}
+        messageCount={messages.length}
         model={model}
         modelLoading={modelLoading}
         modelOptions={modelOptions}

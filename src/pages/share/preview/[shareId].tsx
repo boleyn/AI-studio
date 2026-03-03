@@ -7,6 +7,7 @@ import { githubLight } from "@codesandbox/sandpack-themes";
 import type { SandpackFiles } from "../../../components/StudioShell";
 import { getProject } from "@server/projects/projectStorage";
 import { getShareLink } from "@server/shares/shareStorage";
+import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 
 type PreviewProject = {
   token: string;
@@ -51,10 +52,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
   }, [shareId, project.updatedAt]);
 
   const customSetup = useMemo(() => {
-    if (!project.dependencies || Object.keys(project.dependencies).length === 0) {
-      return undefined;
-    }
-    return { dependencies: project.dependencies };
+    return buildSandpackCustomSetup(project.dependencies);
   }, [project.dependencies]);
 
   return (
