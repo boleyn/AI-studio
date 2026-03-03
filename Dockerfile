@@ -6,11 +6,10 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
     "${APK_MIRROR}" "${ALPINE_VERSION}" "${APK_MIRROR}" "${ALPINE_VERSION}" > /etc/apk/repositories \
   && apk add --no-cache libc6-compat
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG YARN_VERSION=4.5.1
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 RUN npm config set registry ${NPM_REGISTRY} \
   && rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg \
-  && npm install -g @yarnpkg/cli-dist@${YARN_VERSION}
+  && npm install -g @yarnpkg/cli-dist@4.5.1
 
 FROM base AS deps
 COPY package.json yarn.lock ./
