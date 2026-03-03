@@ -193,14 +193,35 @@ const ChatItem = ({
   const toolDetails = useMemo(() => getToolDetails(message), [message]);
   const reasoningText = useMemo(() => getReasoningText(message), [message]);
   const timelineItems = useMemo(() => getTimelineItems(message), [message]);
+  const timelineToolIndexes = useMemo(
+    () =>
+      timelineItems
+        .map((item, index) => (item.type === "tool" ? index : -1))
+        .filter((index) => index >= 0),
+    [timelineItems]
+  );
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
   const [expandedToolKeys, setExpandedToolKeys] = useState<Record<string, boolean>>({});
+  const [expandedTimelineReasoningKeys, setExpandedTimelineReasoningKeys] = useState<Record<string, boolean>>({});
+  const [expandedTimelineToolKeys, setExpandedTimelineToolKeys] = useState<Record<string, boolean>>({});
   const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const { copyData } = useCopyData();
 
   const toggleToolDetails = useCallback((key: string) => {
     setExpandedToolKeys((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
+  const toggleTimelineReasoning = useCallback((key: string) => {
+    setExpandedTimelineReasoningKeys((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
+  const toggleTimelineToolDetails = useCallback((key: string) => {
+    setExpandedTimelineToolKeys((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
@@ -225,6 +246,7 @@ const ChatItem = ({
   const hasReasoning = reasoningText.trim().length > 0;
   const hasAnswerText = content.trim().length > 0;
   const streamingPhaseText = isStreaming ? (hasAnswerText ? "回复中..." : "思考中...") : "";
+  const showAssistantAnimation = Boolean(isStreaming && !isUser && !isSystem);
   const containsImageMarkdown = isUser ? hasImageInContent(content) : false;
   if (!content.trim() && !isStreaming && files.length === 0 && toolDetails.length === 0 && !hasReasoning && timelineItems.length === 0) return null;
 
@@ -337,57 +359,202 @@ const ChatItem = ({
               <Flex direction="column" gap={2}>
                 {timelineItems.map((item, index) => {
                   if (item.type === "reasoning") {
+                    const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
+                    const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
                     return (
                       <Box
-                        key={`${messageId}-timeline-reasoning-${index}`}
+                        key={reasoningKey}
                         bg="rgba(248,250,252,0.96)"
                         border="1px solid"
                         borderColor="rgba(203,213,225,0.92)"
                         borderRadius="10px"
                         p={2.5}
                       >
-                        <Text color="gray.700" fontSize="12px" fontWeight="600" mb={1}>
-                          思考过程
-                        </Text>
-                        <Markdown source={item.text || ""} />
+                        <Flex align="center" gap={2}>
+                          <Text color="gray.700" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
+                            思考过程
+                          </Text>
+                          {streamingPhaseText ? (
+                            <Text color="blue.500" fontSize="11px">
+                              {streamingPhaseText}
+                            </Text>
+                          ) : null}
+                          <IconButton
+                            aria-label={isExpanded ? "收起思考" : "展开思考"}
+                            icon={
+                              <Icon
+                                boxSize={4}
+                                color="gray.500"
+                                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                transition="transform 0.2s ease"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  d="M6 9L12 15L18 9"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                />
+                              </Icon>
+                            }
+                            minW="24px"
+                            h="24px"
+                            onClick={() => toggleTimelineReasoning(reasoningKey)}
+                            size="xs"
+                            variant="ghost"
+                          />
+                        </Flex>
+                        <Collapse animateOpacity in={isExpanded}>
+                          <Box borderLeft="2px solid" borderColor="gray.300" color="gray.600" mt={2} pl={2.5}>
+                            <Markdown showAnimation={showAssistantAnimation} source={item.text || ""} />
+                          </Box>
+                        </Collapse>
                       </Box>
                     );
                   }
                   if (item.type === "tool") {
+                    const toolKey = item.id || `${messageId}-timeline-tool-${index}`;
+                    const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
+                    const isRunning = isStreaming && !item.response;
+                    const isLastTool = timelineToolIndexes[timelineToolIndexes.length - 1] === index;
+                    const truncatedParams = truncateDetailText(item.params);
+                    const truncatedResponse = truncateDetailText(item.response);
+                    const paramsTruncated = isDetailTruncated(item.params);
+                    const responseTruncated = isDetailTruncated(item.response);
                     return (
-                      <Box
-                        key={`${messageId}-timeline-tool-${item.id || index}`}
-                        bg="rgba(248,250,252,0.95)"
-                        border="1px solid"
-                        borderColor="rgba(203,213,225,0.9)"
-                        borderRadius="10px"
-                        p={2.5}
-                      >
-                        <Text color="gray.800" fontSize="12px" fontWeight="600" mb={1}>
-                          {item.toolName || `工具 ${index + 1}`}
-                        </Text>
-                        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
-                          <Text color="blue.700" fontSize="10px" fontWeight="700" mb={1}>
-                            入参
-                          </Text>
-                          <Text color="gray.600" fontFamily="mono" fontSize="11px" whiteSpace="pre-wrap">
-                            {truncateDetailText(item.params) || "{}"}
-                          </Text>
+                      <Flex key={toolKey} align="stretch" gap={2}>
+                        <Flex align="center" direction="column" w="12px">
+                          <Box bg={isRunning ? "blue.400" : "green.400"} borderRadius="full" h="7px" mt="7px" w="7px" />
+                          {!isLastTool ? <Box bg="gray.300" flex="1" mt={1} w="1px" /> : null}
+                        </Flex>
+                        <Box
+                          bg="rgba(248,250,252,0.95)"
+                          border="1px solid"
+                          borderColor="rgba(203,213,225,0.9)"
+                          borderRadius="10px"
+                          flex="1"
+                          minW={0}
+                          p={2.5}
+                        >
+                          <Flex align="center" gap={2}>
+                            <Text color="gray.800" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
+                              {item.toolName || `工具 ${index + 1}`}
+                            </Text>
+                            <IconButton
+                              aria-label={isExpanded ? "收起工具详情" : "展开工具详情"}
+                              icon={
+                                <Icon
+                                  boxSize={4}
+                                  color="gray.500"
+                                  transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                  transition="transform 0.2s ease"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    d="M6 9L12 15L18 9"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                  />
+                                </Icon>
+                              }
+                              minW="24px"
+                              h="24px"
+                              onClick={() => toggleTimelineToolDetails(toolKey)}
+                              size="xs"
+                              variant="ghost"
+                            />
+                          </Flex>
+                          <Collapse animateOpacity in={isExpanded}>
+                            <Flex direction="column" gap={2} mt={2}>
+                              <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
+                                <Flex align="center" justify="space-between" mb={1}>
+                                  <Text color="blue.700" fontSize="10px" fontWeight="700">
+                                    入参
+                                  </Text>
+                                  {paramsTruncated ? (
+                                    <Button
+                                      colorScheme="blue"
+                                      h="20px"
+                                      minW="auto"
+                                      onClick={() =>
+                                        openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 入参`, item.params)
+                                      }
+                                      px={2}
+                                      size="xs"
+                                      variant="ghost"
+                                    >
+                                      查看完整
+                                    </Button>
+                                  ) : null}
+                                </Flex>
+                                <Text
+                                  color="gray.600"
+                                  fontFamily="mono"
+                                  fontSize="11px"
+                                  overflowWrap="anywhere"
+                                  whiteSpace="pre-wrap"
+                                  wordBreak="break-word"
+                                >
+                                  {truncatedParams || "{}"}
+                                </Text>
+                              </Box>
+
+                              <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
+                                <Flex align="center" justify="space-between" mb={1}>
+                                  <Text color="green.700" fontSize="10px" fontWeight="700">
+                                    出参
+                                  </Text>
+                                  {responseTruncated ? (
+                                    <Button
+                                      colorScheme="green"
+                                      h="20px"
+                                      minW="auto"
+                                      onClick={() =>
+                                        openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)
+                                      }
+                                      px={2}
+                                      size="xs"
+                                      variant="ghost"
+                                    >
+                                      查看完整
+                                    </Button>
+                                  ) : null}
+                                </Flex>
+                                {truncatedResponse ? (
+                                  <Text
+                                    color="gray.800"
+                                    fontFamily="mono"
+                                    fontSize="11px"
+                                    overflowWrap="anywhere"
+                                    whiteSpace="pre-wrap"
+                                    wordBreak="break-word"
+                                  >
+                                    {truncatedResponse}
+                                  </Text>
+                                ) : isRunning ? (
+                                  <Text color="gray.500" fontSize="12px">
+                                    执行中...
+                                  </Text>
+                                ) : (
+                                  <Text color="gray.400" fontSize="12px">
+                                    暂无输出
+                                  </Text>
+                                )}
+                              </Box>
+                            </Flex>
+                          </Collapse>
                         </Box>
-                        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2} mt={2}>
-                          <Text color="green.700" fontSize="10px" fontWeight="700" mb={1}>
-                            出参
-                          </Text>
-                          <Text color="gray.800" fontFamily="mono" fontSize="11px" whiteSpace="pre-wrap">
-                            {truncateDetailText(item.response) || "暂无输出"}
-                          </Text>
-                        </Box>
-                      </Box>
+                      </Flex>
                     );
                   }
                   return (
                     <Box key={`${messageId}-timeline-answer-${index}`}>
-                      <Markdown source={item.text || ""} />
+                      <Markdown showAnimation={showAssistantAnimation} source={item.text || ""} />
                     </Box>
                   );
                 })}
@@ -448,7 +615,7 @@ const ChatItem = ({
                     mt={2}
                     pl={2.5}
                   >
-                    <Markdown source={reasoningText} />
+                    <Markdown showAnimation={showAssistantAnimation} source={reasoningText} />
                   </Box>
                 </Collapse>
               </Box>
@@ -600,7 +767,7 @@ const ChatItem = ({
                 })}
               </Flex>
             ) : null}
-            {content ? <Markdown source={content} /> : null}
+            {content ? <Markdown showAnimation={showAssistantAnimation} source={content} /> : null}
               </>
             ) : null}
           </Flex>

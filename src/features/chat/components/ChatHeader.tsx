@@ -15,6 +15,7 @@ import type { ConversationSummary } from "@/types/conversation";
 
 interface ChatHeaderProps {
   title?: string;
+  messageCount?: number;
   model?: string;
   modelOptions?: Array<{ value: string; label: string }>;
   modelLoading?: boolean;
@@ -31,6 +32,7 @@ interface ChatHeaderProps {
 
 const ChatHeader = ({
   title,
+  messageCount = 0,
   conversations = [],
   activeConversationId,
   onSelectConversation,
@@ -56,7 +58,7 @@ const ChatHeader = ({
           {title || "代码助手"}
         </Text>
         <Text color="myGray.500" fontSize="xs" mt={0.5}>
-          对话数 {conversations.length}
+          对话数 {messageCount}
         </Text>
       </Box>
 
