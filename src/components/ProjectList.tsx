@@ -173,7 +173,7 @@ export default function ProjectList() {
                   _hover={{ boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
                   onClick={openAccountModal}
                 >
-                  <Avatar size="sm" name={user?.username || "用户"} />
+                  <Avatar size="sm" name={user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
                   <Box flex="1" minW={0}>
                     <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
                       {loadingUser ? "加载中..." : user?.username || "未命名用户"}

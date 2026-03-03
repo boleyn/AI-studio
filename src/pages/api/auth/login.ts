@@ -5,6 +5,8 @@ import { verifyPassword } from "@server/auth/password";
 import { signAuthToken } from "@server/auth/jwt";
 import { setAuthCookie } from "@server/auth/session";
 
+const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
+
 const payloadSchema = z.object({
   username: z.string().min(1, "请输入账号"),
   password: z.string().min(1, "请输入密码"),
@@ -45,6 +47,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       id: String(user._id),
       username: user.username,
       contact: user.contact,
+      avatar: user.avatar || DEFAULT_AVATAR,
+      provider: user.provider ?? "password",
     },
   });
 }

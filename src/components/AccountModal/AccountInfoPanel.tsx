@@ -8,7 +8,7 @@ type AccountInfoPanelProps = {
 export function AccountInfoPanel({ user }: AccountInfoPanelProps) {
   return (
     <Flex align="center" gap={5} direction="column" textAlign="center">
-      <Avatar size="xl" name={user?.username || "用户"} />
+      <Avatar size="xl" name={user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
       <Box>
         <Text fontSize="lg" fontWeight="semibold" color="myGray.800">
           {user?.username || "未命名用户"}

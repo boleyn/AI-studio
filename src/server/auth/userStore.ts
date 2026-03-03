@@ -6,6 +6,7 @@ export type UserDoc = {
   username: string;
   passwordHash: string;
   contact?: string;
+  avatar?: string;
   provider?: "password" | "feishu";
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +33,7 @@ export const createUser = async (input: {
   username: string;
   passwordHash: string;
   contact?: string;
+  avatar?: string;
   provider?: "password" | "feishu";
 }) => {
   const users = await getUsersCollection();
@@ -40,6 +42,7 @@ export const createUser = async (input: {
     username: input.username,
     passwordHash: input.passwordHash,
     contact: input.contact,
+    avatar: input.avatar,
     provider: input.provider ?? "password",
     createdAt: now,
     updatedAt: now,
@@ -53,5 +56,21 @@ export const updateUserPassword = async (userId: string, passwordHash: string) =
     { _id: new ObjectId(userId) },
     { $set: { passwordHash, updatedAt: new Date() } }
   );
+  return result.modifiedCount > 0;
+};
+
+export const updateUserProfile = async (
+  userId: string,
+  patch: { contact?: string; avatar?: string }
+) => {
+  const users = await getUsersCollection();
+  const setDoc: Record<string, unknown> = { updatedAt: new Date() };
+  if (typeof patch.contact === "string") {
+    setDoc.contact = patch.contact;
+  }
+  if (typeof patch.avatar === "string") {
+    setDoc.avatar = patch.avatar;
+  }
+  const result = await users.updateOne({ _id: new ObjectId(userId) }, { $set: setDoc });
   return result.modifiedCount > 0;
 };

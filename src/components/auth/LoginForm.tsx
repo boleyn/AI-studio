@@ -6,7 +6,7 @@ import { useToast } from "@chakra-ui/react";
 
 export type AuthSuccessPayload = {
   token: string;
-  user: { id: string; username: string; contact?: string; provider?: string };
+  user: { id: string; username: string; contact?: string; avatar?: string; provider?: string };
 };
 
 interface Props {

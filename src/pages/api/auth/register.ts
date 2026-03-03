@@ -5,6 +5,8 @@ import { hashPassword } from "@server/auth/password";
 import { signAuthToken } from "@server/auth/jwt";
 import { setAuthCookie } from "@server/auth/session";
 
+const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
+
 const payloadSchema = z.object({
   username: z.string().min(3, "用户名至少 3 位"),
   password: z.string().min(6, "密码至少 6 位"),
@@ -33,7 +35,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const passwordHash = await hashPassword(password);
-  const userId = await createUser({ username, passwordHash, contact, provider: "password" });
+  const userId = await createUser({
+    username,
+    passwordHash,
+    contact,
+    avatar: DEFAULT_AVATAR,
+    provider: "password",
+  });
 
   const token = signAuthToken({ sub: String(userId), username });
   setAuthCookie(res, token);
@@ -44,6 +52,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       id: String(userId),
       username,
       contact,
+      avatar: DEFAULT_AVATAR,
+      provider: "password",
     },
   });
 }
