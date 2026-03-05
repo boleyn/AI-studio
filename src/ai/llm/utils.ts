@@ -196,6 +196,9 @@ export const loadRequestMessages = async ({
               }
 
               // 检查下这个图片是否可以被访问，如果不行的话，则过滤掉
+              if (item.key || /(?:X-Amz-Signature|Signature|Expires)=/i.test(imgUrl)) {
+                return item;
+              }
               const response = await fetch(imgUrl, {
                 method: 'HEAD'
               });

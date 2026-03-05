@@ -28,8 +28,8 @@ const ChatMessageBlock = ({
   onRate,
 }: ChatMessageBlockProps) => {
   const { copyData } = useCopyData();
-  const isAssistant = message.role === "assistant";
-  const canShowActions = isAssistant && !isStreaming;
+  const isUser = message.role === "user";
+  const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
 
   return (
     <Flex
@@ -51,20 +51,21 @@ const ChatMessageBlock = ({
       {canShowActions ? (
         <Box
           className="message-action-anchor"
-          left={0}
           position="absolute"
+          {...(isUser ? { right: 0 } : { left: 0 })}
           top={0}
           transform="translateY(calc(-100% - 2px))"
           zIndex={3}
         >
           <MessageActionBar
-            canDelete
-            canRegenerate={canRegenerate}
+            canDelete={isUser}
+            canRegenerate={isUser && canRegenerate}
             onCopy={() => copyData(extractText(message.content))}
-            onDelete={onDelete}
-            onRate={onRate}
-            onRegenerate={onRegenerate}
+            onDelete={isUser ? onDelete : undefined}
+            onRate={isUser ? undefined : onRate}
+            onRegenerate={isUser ? onRegenerate : undefined}
             rating={rating}
+            showRating={!isUser}
           />
         </Box>
       ) : null}

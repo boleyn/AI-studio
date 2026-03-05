@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 
-import { createId, extractText } from "@shared/chat/messages";
+import { createChatId, createDataId } from "@shared/chat/ids";
+import { extractText } from "@shared/chat/messages";
 import type { ToolCall } from "../../types/conversation";
 
 import { getMongoDb } from "../db/mongo";
@@ -82,7 +83,7 @@ const getItemCollection = async () => {
   return col;
 };
 
-const getChatId = () => createId();
+const getChatId = () => createChatId();
 
 const toDate = (value: unknown, fallback: Date) => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -107,7 +108,10 @@ const messageToDoc = ({
   _id: new ObjectId(),
   token,
   chatId,
-  dataId: createId(),
+  dataId:
+    typeof message.id === "string" && message.id.trim().length > 0
+      ? message.id
+      : createDataId(),
   time,
   role: message.role,
   content: message.content,

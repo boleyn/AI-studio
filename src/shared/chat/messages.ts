@@ -1,4 +1,4 @@
-import { getNanoid } from "@/global/common/string/tools";
+import { createDataId } from "./ids";
 
 export type AgentToolCall = {
   id: string;
@@ -53,5 +53,5 @@ export const extractText = (content: unknown): string => {
 };
 
 export const createId = () => {
-  return getNanoid(24);
+  return createDataId();
 };

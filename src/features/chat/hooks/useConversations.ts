@@ -1,6 +1,6 @@
 import type { NextRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createId } from "@shared/chat/messages";
+import { createChatId } from "@shared/chat/ids";
 
 
 import {
@@ -127,7 +127,7 @@ export function useConversations(
     if (!token) return null;
     const now = new Date().toISOString();
     const conversation: Conversation = {
-      id: createId(),
+      id: createChatId(),
       title: "新对话",
       createdAt: now,
       updatedAt: now,

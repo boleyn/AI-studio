@@ -12,6 +12,7 @@ type MessageRating = "up" | "down";
 interface MessageActionBarProps {
   canRegenerate?: boolean;
   canDelete?: boolean;
+  showRating?: boolean;
   rating?: MessageRating;
   onCopy: () => void;
   onRegenerate?: () => void;
@@ -27,6 +28,7 @@ const iconProps = {
 const MessageActionBar = ({
   canRegenerate,
   canDelete,
+  showRating = true,
   rating,
   onCopy,
   onRegenerate,
@@ -90,31 +92,35 @@ const MessageActionBar = ({
         </Tooltip>
       ) : null}
 
-      <Tooltip label="赞">
-        <Box
-          _hover={{ color: "green.600" }}
-          borderRight="1px solid"
-          borderRightColor="gray.200"
-          color={rating === "up" ? "green.500" : undefined}
-          cursor="pointer"
-          onClick={() => onRate?.("up")}
-          p="5px"
-        >
-          <ThumbUpIcon {...iconProps} />
-        </Box>
-      </Tooltip>
+      {showRating ? (
+        <>
+          <Tooltip label="赞">
+            <Box
+              _hover={{ color: "green.600" }}
+              borderRight="1px solid"
+              borderRightColor="gray.200"
+              color={rating === "up" ? "green.500" : undefined}
+              cursor="pointer"
+              onClick={() => onRate?.("up")}
+              p="5px"
+            >
+              <ThumbUpIcon {...iconProps} />
+            </Box>
+          </Tooltip>
 
-      <Tooltip label="踩">
-        <Box
-          _hover={{ color: "yellow.500" }}
-          color={rating === "down" ? "yellow.500" : undefined}
-          cursor="pointer"
-          onClick={() => onRate?.("down")}
-          p="5px"
-        >
-          <ThumbDownIcon {...iconProps} />
-        </Box>
-      </Tooltip>
+          <Tooltip label="踩">
+            <Box
+              _hover={{ color: "yellow.500" }}
+              color={rating === "down" ? "yellow.500" : undefined}
+              cursor="pointer"
+              onClick={() => onRate?.("down")}
+              p="5px"
+            >
+              <ThumbDownIcon {...iconProps} />
+            </Box>
+          </Tooltip>
+        </>
+      ) : null}
     </Flex>
   );
 };

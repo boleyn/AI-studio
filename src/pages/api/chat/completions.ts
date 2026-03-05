@@ -24,8 +24,23 @@ import {
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
 import { getProject } from "@server/projects/projectStorage";
+import {
+  isImageInputPart,
+  toArtifactFileParts,
+  type UserInputPart,
+} from "@server/chat/completions/multimodalMemory";
+import {
+  getFileContentFromHistory,
+  getHistories,
+  type ConversationHistoryWithSummary,
+} from "@server/chat/completions/historyMemory";
+import {
+  mergeAssistantToolMessages,
+  normalizeToolDetails,
+  toToolMemoryMessages,
+} from "@server/chat/completions/toolMemory";
+import { createDataId } from "@shared/chat/ids";
 import { extractText, type IncomingMessage } from "@shared/chat/messages";
-import { createId } from "@shared/chat/messages";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -107,7 +122,7 @@ const chatCompletionMessageToConversationMessage = (
   return {
     role,
     content: content ?? "",
-    id: (message as { id?: string }).id ?? createId(),
+    id: (message as { id?: string }).id ?? createDataId(),
     name: (message as { name?: string }).name,
     tool_call_id: (message as { tool_call_id?: string }).tool_call_id,
     tool_calls: (message as { tool_calls?: ConversationMessage["tool_calls"] }).tool_calls,
@@ -118,7 +133,7 @@ const normalizeStoredMessages = (messages: ConversationMessage[]) => {
   const seen = new Set<string>();
   const result: ConversationMessage[] = [];
   for (const message of [...messages].reverse()) {
-    const id = message.id ?? createId();
+    const id = message.id ?? createDataId();
     if (seen.has(id)) continue;
     seen.add(id);
     result.push({ ...message, id });
@@ -136,117 +151,6 @@ const toStringValue = (value: unknown) => {
   }
 };
 
-const normalizeToolDetails = (value: unknown) => {
-  if (!Array.isArray(value)) return [] as Array<{
-    id?: string;
-    toolName?: string;
-    params?: string;
-    response?: string;
-  }>;
-  return value
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      id: typeof item.id === "string" ? item.id : undefined,
-      toolName: typeof item.toolName === "string" ? item.toolName : undefined,
-      params: typeof item.params === "string" ? item.params : undefined,
-      response: typeof item.response === "string" ? item.response : undefined,
-    }));
-};
-
-const isImageInputPart = (
-  value: unknown
-): value is { type: "image_url"; image_url: { url: string }; key?: string } => {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  if (record.type !== "image_url") return false;
-  if (typeof record.key !== "undefined" && typeof record.key !== "string") return false;
-  const imageUrl = record.image_url;
-  if (!imageUrl || typeof imageUrl !== "object") return false;
-  return typeof (imageUrl as Record<string, unknown>).url === "string";
-};
-
-const mergeAssistantToolMessages = (messages: ConversationMessage[]): ConversationMessage[] => {
-  const output: ConversationMessage[] = [];
-  const pendingCalls = new Map<string, { toolName?: string; params?: string }>();
-
-  const appendToolToLastAssistant = (tool: {
-    id?: string;
-    toolName?: string;
-    params?: string;
-    response?: string;
-  }) => {
-    for (let i = output.length - 1; i >= 0; i -= 1) {
-      if (output[i].role !== "assistant") continue;
-      const current = output[i];
-      const kwargs =
-        current.additional_kwargs && typeof current.additional_kwargs === "object"
-          ? current.additional_kwargs
-          : {};
-      const toolDetails = Array.isArray(kwargs.toolDetails) ? kwargs.toolDetails : [];
-      output[i] = {
-        ...current,
-        additional_kwargs: {
-          ...kwargs,
-          toolDetails: [...toolDetails, tool],
-        },
-      };
-      return;
-    }
-  };
-
-  for (const message of messages) {
-    if (message.role === "assistant") {
-      if (Array.isArray(message.tool_calls)) {
-        for (const call of message.tool_calls) {
-          if (!call?.id) continue;
-          pendingCalls.set(call.id, {
-            toolName: call.function?.name,
-            params: call.function?.arguments || "",
-          });
-        }
-      }
-      output.push(message);
-      continue;
-    }
-
-    if (message.role === "tool") {
-      let parsed: unknown = null;
-      if (typeof message.content === "string") {
-        try {
-          parsed = JSON.parse(message.content || "{}");
-        } catch {
-          parsed = null;
-        }
-      }
-      const parsedObj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-      const toolId =
-        message.tool_call_id ||
-        (typeof parsedObj.id === "string" ? parsedObj.id : undefined) ||
-        message.id;
-      const pending = toolId ? pendingCalls.get(toolId) : undefined;
-      appendToolToLastAssistant({
-        id: toolId,
-        toolName:
-          message.name ||
-          (typeof parsedObj.toolName === "string" ? parsedObj.toolName : undefined) ||
-          pending?.toolName ||
-          "工具",
-        params:
-          (typeof parsedObj.params === "string" ? parsedObj.params : undefined) ||
-          pending?.params ||
-          "",
-        response:
-          (typeof parsedObj.response === "string" ? parsedObj.response : undefined) ||
-          toStringValue(message.content),
-      });
-      continue;
-    }
-
-    output.push(message);
-  }
-
-  return output;
-};
 
 const getTitleFromMessages = (messages: ConversationMessage[]): string | undefined => {
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
@@ -454,6 +358,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const channel = typeof req.body?.channel === "string" ? req.body.channel : "";
   const modelCatalogKey = typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
+  const history = (() => {
+    const value = req.body?.history;
+    if (typeof value === "undefined") {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    if (typeof value === "number") return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
+      return value as ConversationHistoryWithSummary;
+    }
+    return 6;
+  })();
   const selectedSkillsInput = Array.isArray(req.body?.selectedSkills)
     ? (req.body.selectedSkills as unknown[])
         .filter((item): item is string => typeof item === "string")
@@ -513,7 +432,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const newMessages = incomingMessages.map((message) => ({
     role: message.role,
     content: message.content,
-    id: message.id ?? createId(),
+    id: message.id ?? createDataId(),
     name: message.name,
     tool_call_id: message.tool_call_id,
     tool_calls: message.tool_calls,
@@ -521,7 +440,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     status: message.status,
     artifact: message.artifact,
   }));
-  const contextMessages = [...historyMessages, ...newMessages];
+  const historyPayload = getHistories(history, { histories: historyMessages });
+  const contextMessages = [...historyPayload.histories, ...newMessages];
+  try {
+    const historyMeta = contextMessages.map((msg, index) => {
+      const imageInputParts =
+        msg.role === "user" && msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+          ? Array.isArray((msg.additional_kwargs as Record<string, unknown>).imageInputParts)
+            ? ((msg.additional_kwargs as Record<string, unknown>).imageInputParts as unknown[]).filter(
+                (item) => isImageInputPart(item)
+              )
+            : []
+          : [];
+      const artifactFiles =
+        msg.role === "user" && msg.artifact && typeof msg.artifact === "object"
+          ? Array.isArray((msg.artifact as { files?: unknown }).files)
+            ? ((msg.artifact as { files?: unknown }).files as unknown[])
+            : []
+          : [];
+      return {
+        i: index,
+        role: msg.role,
+        id: msg.id,
+        textLen: extractText(msg.content).length,
+        imageInputParts: imageInputParts.length,
+        artifactFiles: artifactFiles.length,
+      };
+    });
+    console.info(
+      "[chat-debug][history-selection]",
+      JSON.stringify(
+        {
+          conversationId,
+          requestedHistory: history,
+          totalStoredHistory: historyMessages.length,
+          selectedHistory: historyPayload.histories.length,
+          incomingMessages: newMessages.length,
+          finalContextMessages: contextMessages.length,
+          historyMeta,
+        },
+        null,
+        2
+      )
+    );
+  } catch {}
   const selectedSkillRequested =
     selectedSkillsInput[0] || selectedSkillInput || getSelectedSkillFromMessages(contextMessages);
   const nextTitleFromInput = getTitleFromMessages(contextMessages);
@@ -534,22 +496,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   };
 
   if (conversationId && newMessages.length > 0) {
-    const sanitizedMessages = newMessages.map((message) => {
-      if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") {
-        return message;
-      }
-
-      const { imageInputParts: _imageInputParts, ...rest } = message.additional_kwargs as Record<
-        string,
-        unknown
-      >;
-      return {
-        ...message,
-        additional_kwargs: Object.keys(rest).length > 0 ? rest : undefined,
-      };
-    });
-
-    await appendConversationMessages(token, conversationId, sanitizedMessages, nextTitleFromInput);
+    await appendConversationMessages(token, conversationId, newMessages, nextTitleFromInput);
   }
 
   if (incomingMessages[incomingMessages.length - 1]?.role === "user") {
@@ -718,16 +665,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     toolNames: tools.map((tool) => tool.function.name),
   });
 
-  const toAgentMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] =>
-    messages.map((message) => {
+  const toAgentMessages = async (
+    messages: ConversationMessage[]
+  ): Promise<ChatCompletionMessageParam[]> => {
+    const chunks = await Promise.all(
+      messages.map(async (message) => {
       const baseText = extractText(message.content);
-      const filePrompt =
-        message.role === "user" &&
-        message.additional_kwargs &&
-        typeof message.additional_kwargs.filePrompt === "string"
-          ? message.additional_kwargs.filePrompt
-          : "";
-
       const imageInputParts =
         message.role === "user" && message.additional_kwargs
           ? Array.isArray((message.additional_kwargs as Record<string, unknown>).imageInputParts)
@@ -737,39 +680,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               )
             : []
           : [];
+      const artifactFileParts = message.role === "user" ? toArtifactFileParts(message.artifact) : [];
+      const mergedInputParts = [...imageInputParts, ...artifactFileParts].filter(
+        (item): item is UserInputPart => item.type === "image_url"
+      );
 
-      const content = filePrompt
-        ? [baseText, "以下为用户附加文件内容:", filePrompt].filter(Boolean).join("\n\n")
-        : baseText;
+      const content = baseText;
 
-      if (message.role === "user" && imageInputParts.length > 0) {
+      if (message.role === "assistant") {
+        const toolMemoryMessages = toToolMemoryMessages(message);
+        const hasInlineToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+        const assistantContentMessage =
+          content.trim().length > 0 || hasInlineToolCalls
+            ? [
+                {
+                  role: message.role,
+                  content,
+                  name: message.name,
+                  tool_call_id: message.tool_call_id,
+                  tool_calls: message.tool_calls,
+                } as ChatCompletionMessageParam,
+              ]
+            : [];
+        return [...toolMemoryMessages, ...assistantContentMessage];
+      }
+
+      if (message.role === "user" && mergedInputParts.length > 0) {
         const textForImage = content.trim() || "用户上传了图片，请结合图片内容理解并回答。";
-        return {
+        const resolvedParts: UserInputPart[] = mergedInputParts.filter(
+          (part) => part.type === "image_url" && Boolean(part.image_url.url || part.key)
+        );
+        return [
+          {
+            role: message.role,
+            content: [{ type: "text", text: textForImage }, ...resolvedParts],
+            name: message.name,
+            tool_call_id: message.tool_call_id,
+            tool_calls: message.tool_calls,
+          } as ChatCompletionMessageParam,
+        ];
+      }
+
+      return [
+        {
           role: message.role,
-          content: [{ type: "text", text: textForImage }, ...imageInputParts],
+          content,
           name: message.name,
           tool_call_id: message.tool_call_id,
           tool_calls: message.tool_calls,
-        } as ChatCompletionMessageParam;
-      }
-
-      return {
-        role: message.role,
-        content,
-        name: message.name,
-        tool_call_id: message.tool_call_id,
-        tool_calls: message.tool_calls,
-      };
-    }) as ChatCompletionMessageParam[];
+        } as ChatCompletionMessageParam,
+      ];
+    })
+    );
+    return chunks.flat();
+  };
 
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const fallbackSkillPrompt =
     allAvailableSkills.length === 0 ? await getAgentRuntimeSkillPrompt() : "";
-  const baseAgentMessages = toAgentMessages(contextMessages);
+  const historyFileContent = getFileContentFromHistory({
+    histories: contextMessages,
+  });
+  const baseAgentMessages = await toAgentMessages(contextMessages);
   const systemPrompts: ChatCompletionMessageParam[] = [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: toolRoutingPrompt },
+    ...(historyFileContent
+      ? [
+          {
+            role: "system",
+            content: [
+              "以下是用户历史上传文件的可用正文，请在回答中结合这些文件内容：",
+              historyFileContent,
+            ].join("\n\n"),
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
     ...(selectedRuntimeSkill
       ? [
           {
@@ -967,7 +954,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       assistantToStore = {
         role: "assistant",
         content: resolvedFinalMessage,
-        id: createId(),
+        id: createDataId(),
         additional_kwargs: {
           reasoning_text: finalReasoning,
           toolDetails: toolDetailsFromFlow,

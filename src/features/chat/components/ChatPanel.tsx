@@ -1,7 +1,7 @@
 import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
-import { createId } from "@shared/chat/messages";
 import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
@@ -12,12 +12,14 @@ import {
   buildPreviewUrl,
   fetchMarkdownContent,
   fetchMarkdownContentByUrl,
+  getPresignedChatFileGetUrl,
   parseChatFiles,
   uploadChatFiles,
 } from "../services/files";
 import { updateMessageFeedback } from "../services/feedback";
 import { getChatModels } from "../services/models";
 import type { ChatModelCatalog } from "../services/models";
+import { replaceConversationMessages } from "../services/conversations";
 import { listSkills } from "../services/skills";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
@@ -543,7 +545,7 @@ const ChatPanel = ({
       if (pickedFiles.length === 0) return [] as UploadedFileArtifact[];
 
       const conversation = await ensureConversation();
-      const uploadChatId = conversation?.id ?? activeConversation?.id ?? createId();
+      const uploadChatId = conversation?.id ?? activeConversation?.id ?? createChatId();
 
       const uploadedFiles = await uploadChatFiles({
         token,
@@ -557,19 +559,31 @@ const ChatPanel = ({
             }).catch(() => uploadedFiles)
           : uploadedFiles;
 
-      const withPreviewUrls = parsedFiles.map((file) => ({
-        ...file,
-        previewUrl: file.publicUrl
-          ? buildPreviewUrl({
-              publicUrl: file.publicUrl,
-            })
-          : undefined,
-        downloadUrl: file.storagePath
-          ? buildDownloadUrl({
-              storagePath: file.storagePath,
-            })
-          : undefined,
-      }));
+      const withPreviewUrls = await Promise.all(
+        parsedFiles.map(async (file) => {
+          const signedPreviewUrl = file.storagePath
+            ? await getPresignedChatFileGetUrl({
+                token,
+                key: file.storagePath,
+              }).catch(() => "")
+            : "";
+          return {
+            ...file,
+            previewUrl:
+              signedPreviewUrl ||
+              (file.publicUrl
+                ? buildPreviewUrl({
+                    publicUrl: file.publicUrl,
+                  })
+                : undefined),
+            downloadUrl: file.storagePath
+              ? buildDownloadUrl({
+                  storagePath: file.storagePath,
+                })
+              : undefined,
+          };
+        })
+      );
 
       return withPreviewUrls.length > 0 ? await hydrateArtifactsMarkdown(withPreviewUrls) : withPreviewUrls;
     },
@@ -597,7 +611,7 @@ const ChatPanel = ({
         `已上传 ${payload.files.length} 个文件`;
       const nextConversationTitle = buildConversationTitle(text);
 
-      const userMessageId = createId();
+      const userMessageId = createDataId();
       const fallbackArtifacts = toFileArtifacts(payload.files);
       const finalArtifacts =
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
@@ -671,7 +685,7 @@ const ChatPanel = ({
         },
       };
 
-      const assistantMessageId = createId();
+      const assistantMessageId = createDataId();
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
       if (streamFlushFrameRef.current !== null) {
@@ -1131,30 +1145,37 @@ const ChatPanel = ({
   }, []);
 
   const handleRegenerateMessage = useCallback(
-    async (assistantMessageId: string) => {
+    async (userMessageId: string) => {
       if (isSending) return;
       const snapshot = [...messages];
-      const assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
-      if (assistantIndex < 0) return;
+      const userIndex = snapshot.findIndex((message) => message.id === userMessageId);
+      if (userIndex < 0) return;
 
-      const previousUserMessage = [...snapshot.slice(0, assistantIndex)]
-        .reverse()
-        .find((message) => message.role === "user");
-      if (!previousUserMessage) return;
+      const userMessage = snapshot[userIndex];
+      if (userMessage.role !== "user") return;
 
-      const text = extractText(previousUserMessage.content).trim();
+      const text = extractText(userMessage.content).trim();
       if (!text) return;
 
-      setMessages((prev) => prev.slice(0, assistantIndex));
+      const conversationId = activeConversation?.id;
+      if (!conversationId) return;
+
+      // Step 1: 删除当前用户消息及其以下所有消息（持久化到后端）
+      const remainedMessages = snapshot.slice(0, userIndex);
+      const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
+      if (!replaced) return;
+
+      setMessages((prev) => prev.slice(0, userIndex));
       setMessageRatings((prev) => {
         const next = { ...prev };
-        for (const message of snapshot.slice(assistantIndex)) {
+        for (const message of snapshot.slice(userIndex)) {
           if (!message.id) continue;
           delete next[message.id];
         }
         return next;
       });
 
+      // Step 2: 重新发送当前用户消息，走 completions 生成新回复
       await handleSend({
         text,
         files: [],
@@ -1162,15 +1183,15 @@ const ChatPanel = ({
         selectedSkill: selectedSkills[0],
         selectedSkills,
         selectedFilePaths:
-          previousUserMessage.additional_kwargs &&
-          typeof previousUserMessage.additional_kwargs === "object" &&
-          Array.isArray((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
-            ? ((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
+          userMessage.additional_kwargs &&
+          typeof userMessage.additional_kwargs === "object" &&
+          Array.isArray((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
+            ? ((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
                 .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
             : undefined,
-      }, { echoUserMessage: false });
+      });
     },
-    [handleSend, isSending, messages, selectedSkills]
+    [activeConversation?.id, handleSend, isSending, messages, selectedSkills, token]
   );
 
   const activeConversationTitle = useMemo(
@@ -1259,8 +1280,8 @@ const ChatPanel = ({
                 const messageId = message.id ?? `${message.role}-${index}`;
                 const summary = getExecutionSummary(message);
                 const canRegenerate =
-                  message.role === "assistant" &&
-                  messages.slice(0, index).some((item) => item.role === "user");
+                  message.role === "user" &&
+                  messages.slice(index + 1).some((item) => item.role === "assistant");
                 return (
                   <Box key={messageId}>
                     <ChatMessageBlock

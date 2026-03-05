@@ -33,6 +33,12 @@ export const computedMaxToken = ({
     const contextBasedDefault = Math.floor(model.maxContext * 0.25);
     return Math.max(2000, Math.min(contextBasedDefault, 16000));
   })();
+  // max_tokens 不能只看 maxResponse，还必须受 maxContext 约束。
+  // 否则会出现 max_tokens > maxContext，导致历史上下文在预过滤阶段被全部裁掉。
+  const contextLimitedMaxResponse = (() => {
+    const contextCap = Math.max(512, Math.floor(model.maxContext * 0.4));
+    return Math.min(normalizedMaxResponse, contextCap);
+  })();
 
   // 参数校验
   if (maxToken !== undefined && maxToken !== null) {
@@ -47,9 +53,9 @@ export const computedMaxToken = ({
       );
     }
     // 检查是否超过模型上限（使用规范化后的值）
-    if (maxToken > normalizedMaxResponse) {
+    if (maxToken > contextLimitedMaxResponse) {
       throw new Error(
-        `max_tokens (${maxToken}) exceeds model maximum response limit (${normalizedMaxResponse}). Please reduce max_tokens or use a model with higher limits.`
+        `max_tokens (${maxToken}) exceeds model response/context limit (${contextLimitedMaxResponse}). Please reduce max_tokens or use a model with higher limits.`
       );
     }
   }
@@ -70,22 +76,22 @@ export const computedMaxToken = ({
     // 大上下文模型（>= 100k）：激进策略，给输出预留更多空间
     // 例如 Gemini 1.5 (300k), Claude 3 (200k) - 使用 70% 的 maxResponse，最小 8000
     if (ctx >= 100000) {
-      return Math.max(8000, Math.floor(normalizedMaxResponse * 0.7));
+      return Math.max(8000, Math.floor(contextLimitedMaxResponse * 0.7));
     }
 
     // 中等上下文模型（32k-100k）：平衡策略
     // 例如 GPT-4-32k - 使用 60% 的 maxResponse，最小 4000
     if (ctx >= 32000) {
-      return Math.max(4000, Math.floor(normalizedMaxResponse * 0.6));
+      return Math.max(4000, Math.floor(contextLimitedMaxResponse * 0.6));
     }
 
     // 小上下文模型（< 32k）：保守策略，优先保证历史空间
     // 例如 GPT-3.5, GPT-4 - 使用 50% 的 maxResponse，最小 2000
-    return Math.max(2000, Math.floor(normalizedMaxResponse * 0.5));
+    return Math.max(2000, Math.floor(contextLimitedMaxResponse * 0.5));
   })();
 
   // 确保不超过模型上限
-  const limited = Math.min(targetMaxToken, normalizedMaxResponse);
+  const limited = Math.min(targetMaxToken, contextLimitedMaxResponse);
   // 确保满足最小值要求
   return Math.max(limited, min || 1);
 };

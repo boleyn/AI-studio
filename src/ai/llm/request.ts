@@ -109,6 +109,23 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
     useVision,
     origin: requestOrigin
   });
+  try {
+    console.info(
+      '[llm-debug][after-loadRequestMessages]',
+      JSON.stringify(
+        {
+          model: body.model,
+          useVision: !!useVision,
+          messageCount: requestMessages.length,
+          messages: requestMessages
+        },
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.warn('[llm-debug][after-loadRequestMessages] serialize_failed', getErrText(error));
+  }
   // Message process
   const rewriteMessages = requestMessages;
 
@@ -192,6 +209,28 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
     ...body,
     messages: cacheControlMessages
   });
+  try {
+    console.info(
+      '[llm-debug][before-createChatCompletion]',
+      JSON.stringify(
+        {
+          model: requestBody.model,
+          stream: requestBody.stream,
+          temperature: requestBody.temperature,
+          top_p: requestBody.top_p,
+          tool_choice: requestBody.tool_choice,
+          toolCallMode: body.toolCallMode,
+          messageCount: Array.isArray(requestBody.messages) ? requestBody.messages.length : 0,
+          messages: requestBody.messages,
+          tools: requestBody.tools
+        },
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.warn('[llm-debug][before-createChatCompletion] serialize_failed', getErrText(error));
+  }
 
   // console.log(JSON.stringify(requestBody, null, 2));
   const { response, isStreamResponse, requestMeta } = await createChatCompletion({

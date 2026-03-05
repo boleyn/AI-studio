@@ -16,7 +16,8 @@ import {
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
-import { createId, extractText } from "@shared/chat/messages";
+import { createDataId } from "@shared/chat/ids";
+import { extractText } from "@shared/chat/messages";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -66,7 +67,7 @@ const toConversationMessages = (messages: ChatCompletionMessageParam[]): Convers
   messages.map((message) => ({
     role: message.role,
     content: typeof message.content === "string" ? message.content : extractText(message.content),
-    id: createId(),
+    id: createDataId(),
   }));
 
 const getConversationId = (req: NextApiRequest) =>
@@ -433,7 +434,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         {
           role: "assistant",
           content: result.finalMessage,
-          id: createId(),
+          id: createDataId(),
           additional_kwargs: {
             reasoning_text: result.finalReasoning,
             toolDetails,

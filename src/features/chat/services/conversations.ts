@@ -1,4 +1,4 @@
-import { createId } from "@shared/chat/messages";
+import { createChatId } from "@shared/chat/ids";
 
 import type { ChatHistoryItemType } from "../types/conversationApi";
 
@@ -46,7 +46,7 @@ export async function createConversation(
   token: string,
   messages: ConversationMessage[]
 ): Promise<Conversation | null> {
-  const chatId = createId();
+  const chatId = createChatId();
   try {
     const payload = await putConversationHistory({ token, chatId, messages });
     if (payload?.history) return payload.history;
@@ -92,6 +92,19 @@ export async function getConversation(
 export async function deleteConversation(token: string, id: string): Promise<boolean> {
   try {
     await deleteConversationHistory({ token, chatId: id });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function replaceConversationMessages(
+  token: string,
+  chatId: string,
+  messages: ConversationMessage[]
+): Promise<boolean> {
+  try {
+    await putConversationHistory({ token, chatId, messages });
     return true;
   } catch {
     return false;

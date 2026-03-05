@@ -17,6 +17,7 @@ import { computedMaxToken } from '@aistudio/ai/utils';
 import { filterGPTMessageByMaxContext } from '@aistudio/ai/utils';
 import { getLLMModel } from '@aistudio/ai/model';
 import { filterEmptyAssistantMessages } from './utils';
+import { countGptMessagesTokens } from '@aistudio/ai/compat/common/string/tiktoken/index';
 
 type RunAgentCallProps = {
   maxRunAgentTimes: number;
@@ -113,10 +114,34 @@ export const runAgentCall = async ({
   // 本轮产生的 assistantMessages，包括 tool 内产生的
   const assistantMessages: ChatCompletionMessageParam[] = [];
   // 多轮运行时候的请求 messages
+  const initialMaxContext = modelData.maxContext - maxTokens;
+  const beforeFilterCount = messages.length;
+  const beforeFilterTokens = await countGptMessagesTokens(messages).catch(() => -1);
   let requestMessages = await filterGPTMessageByMaxContext({
     messages,
-    maxContext: modelData.maxContext - maxTokens // filter token. not response maxToken
+    maxContext: initialMaxContext // filter token. not response maxToken
   });
+  const afterFilterCount = requestMessages.length;
+  const afterFilterTokens = await countGptMessagesTokens(requestMessages).catch(() => -1);
+  console.info(
+    '[agent-debug][context-filter]',
+    JSON.stringify(
+      {
+        model: modelData.model,
+        modelMaxContext: modelData.maxContext,
+        reservedMaxTokens: maxTokens,
+        effectiveMaxContext: initialMaxContext,
+        beforeFilterCount,
+        beforeFilterTokens,
+        afterFilterCount,
+        afterFilterTokens,
+        beforeRoles: messages.map((item) => item.role),
+        afterRoles: requestMessages.map((item) => item.role)
+      },
+      null,
+      2
+    )
+  );
 
   let inputTokens: number = 0;
   let outputTokens: number = 0;
@@ -189,6 +214,22 @@ export const runAgentCall = async ({
       messages: requestMessages,
       model: modelData
     });
+    if (result.messages.length !== requestMessages.length) {
+      console.info(
+        '[agent-debug][compression-changed]',
+        JSON.stringify(
+          {
+            runTimes,
+            beforeCount: requestMessages.length,
+            afterCount: result.messages.length,
+            beforeRoles: requestMessages.map((item) => item.role),
+            afterRoles: result.messages.map((item) => item.role)
+          },
+          null,
+          2
+        )
+      );
+    }
     requestMessages = result.messages;
     inputTokens += result.usage?.inputTokens || 0;
     outputTokens += result.usage?.outputTokens || 0;

@@ -28,35 +28,50 @@ const requestPresignedUploads = async ({
   chatId: string;
   files: ChatInputFile[];
 }) => {
-  const response = await fetch("/api/core/chat/files/presign", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...withAuthHeaders(),
-    },
-    body: JSON.stringify({
-      token,
-      chatId,
-      files: files.map((item) => ({
+  const results = await Promise.all(
+    files.map(async (item) => {
+      const response = await fetch("/api/core/chat/file/presignChatFilePostUrl", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...withAuthHeaders(),
+        },
+        body: JSON.stringify({
+          token,
+          chatId,
+          filename: item.file.name,
+          contentType: item.file.type,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        key?: string;
+        url?: string;
+        headers?: Record<string, string>;
+      };
+      if (!response.ok || !data.key || !data.url) {
+        throw new Error(typeof data.error === "string" ? data.error : "申请上传地址失败");
+      }
+
+      return {
         id: item.id,
         name: item.file.name,
-        type: item.file.type,
+        type: item.file.type || "application/octet-stream",
         size: item.file.size,
         lastModified: item.file.lastModified,
-      })),
-    }),
-  });
+        storagePath: data.key,
+        publicUrl: "",
+        upload: {
+          method: "PUT" as const,
+          url: data.url,
+          headers: data.headers || {},
+        },
+      } satisfies PresignedUploadArtifact;
+    })
+  );
 
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    files?: PresignedUploadArtifact[];
-  };
-
-  if (!response.ok) {
-    throw new Error(typeof data.error === "string" ? data.error : "申请上传地址失败");
-  }
-
-  return Array.isArray(data.files) ? data.files : [];
+  return results;
 };
 
 const uploadFileByPresignedUrl = ({
@@ -119,7 +134,6 @@ const finalizeUploadedFiles = async ({
         size: item.size,
         lastModified: item.lastModified,
         storagePath: item.storagePath,
-        markdownStoragePath: item.markdownStoragePath,
       })),
     }),
   });
@@ -237,6 +251,29 @@ export const fetchMarkdownContentByUrl = async (url: string) => {
   });
   if (!response.ok) return "";
   return await response.text();
+};
+
+export const getPresignedChatFileGetUrl = async ({
+  token,
+  key,
+}: {
+  token: string;
+  key: string;
+}) => {
+  const response = await fetch("/api/core/chat/file/presignChatFileGetUrl", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...withAuthHeaders(),
+    },
+    body: JSON.stringify({
+      token,
+      key,
+    }),
+  });
+  const data = await response.json().catch(() => "");
+  if (!response.ok) return "";
+  return typeof data === "string" ? data : "";
 };
 
 export const buildPreviewUrl = ({ publicUrl }: { publicUrl: string }) => publicUrl;
