@@ -1,4 +1,4 @@
-import { Box, Flex, Tooltip } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import {
   CopyIcon,
   DeleteIcon,
@@ -6,6 +6,7 @@ import {
   ThumbDownIcon,
   ThumbUpIcon,
 } from "@/components/common/Icon";
+import MyTooltip from "@/components/ui/MyTooltip";
 
 type MessageRating = "up" | "down";
 
@@ -49,7 +50,7 @@ const MessageActionBar = ({
         },
       }}
     >
-      <Tooltip label="复制">
+      <MyTooltip label="复制">
         <Box
           _hover={{ color: "primary.600" }}
           borderRight="1px solid"
@@ -60,10 +61,10 @@ const MessageActionBar = ({
         >
           <CopyIcon {...iconProps} />
         </Box>
-      </Tooltip>
+      </MyTooltip>
 
       {canRegenerate ? (
-        <Tooltip label="重新生成">
+        <MyTooltip label="重新生成">
           <Box
             _hover={{ color: "green.500" }}
             borderRight="1px solid"
@@ -74,11 +75,11 @@ const MessageActionBar = ({
           >
             <RefreshIcon {...iconProps} />
           </Box>
-        </Tooltip>
+        </MyTooltip>
       ) : null}
 
       {canDelete ? (
-        <Tooltip label="删除">
+        <MyTooltip label="删除">
           <Box
             _hover={{ color: "red.600" }}
             borderRight="1px solid"
@@ -89,12 +90,12 @@ const MessageActionBar = ({
           >
             <DeleteIcon {...iconProps} />
           </Box>
-        </Tooltip>
+        </MyTooltip>
       ) : null}
 
       {showRating ? (
         <>
-          <Tooltip label="赞">
+          <MyTooltip label="赞">
             <Box
               _hover={{ color: "green.600" }}
               borderRight="1px solid"
@@ -106,9 +107,9 @@ const MessageActionBar = ({
             >
               <ThumbUpIcon {...iconProps} />
             </Box>
-          </Tooltip>
+          </MyTooltip>
 
-          <Tooltip label="踩">
+          <MyTooltip label="踩">
             <Box
               _hover={{ color: "yellow.500" }}
               color={rating === "down" ? "yellow.500" : undefined}
@@ -118,7 +119,7 @@ const MessageActionBar = ({
             >
               <ThumbDownIcon {...iconProps} />
             </Box>
-          </Tooltip>
+          </MyTooltip>
         </>
       ) : null}
     </Flex>

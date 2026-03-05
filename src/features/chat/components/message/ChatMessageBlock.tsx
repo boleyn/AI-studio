@@ -12,9 +12,9 @@ interface ChatMessageBlockProps {
   isStreaming?: boolean;
   rating?: MessageRating;
   canRegenerate?: boolean;
-  onRegenerate?: () => void;
-  onDelete?: () => void;
-  onRate?: (rating: MessageRating) => void;
+  onRegenerate?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
+  onRate?: (messageId: string, rating: MessageRating) => void;
 }
 
 const ChatMessageBlock = ({
@@ -61,9 +61,9 @@ const ChatMessageBlock = ({
             canDelete={isUser}
             canRegenerate={isUser && canRegenerate}
             onCopy={() => copyData(extractText(message.content))}
-            onDelete={isUser ? onDelete : undefined}
-            onRate={isUser ? undefined : onRate}
-            onRegenerate={isUser ? onRegenerate : undefined}
+            onDelete={isUser ? () => onDelete?.(messageId) : undefined}
+            onRate={isUser ? undefined : (rating) => onRate?.(messageId, rating)}
+            onRegenerate={isUser ? () => onRegenerate?.(messageId) : undefined}
             rating={rating}
             showRating={!isUser}
           />
@@ -82,5 +82,8 @@ export default React.memo(
     prevProps.messageId === nextProps.messageId &&
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.rating === nextProps.rating &&
-    prevProps.canRegenerate === nextProps.canRegenerate
+    prevProps.canRegenerate === nextProps.canRegenerate &&
+    prevProps.onRegenerate === nextProps.onRegenerate &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onRate === nextProps.onRate
 );

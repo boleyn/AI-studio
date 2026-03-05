@@ -1289,11 +1289,9 @@ const ChatPanel = ({
                       message={message}
                       messageId={messageId}
                       canRegenerate={canRegenerate}
-                      onDelete={() => handleDeleteMessage(messageId)}
-                      onRate={(rating) => handleRateMessage(messageId, rating)}
-                      onRegenerate={() => {
-                        void handleRegenerateMessage(messageId);
-                      }}
+                      onDelete={handleDeleteMessage}
+                      onRate={handleRateMessage}
+                      onRegenerate={handleRegenerateMessage}
                       rating={messageRatings[messageId]}
                     />
                     {summary ? (
