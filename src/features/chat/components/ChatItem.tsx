@@ -3,6 +3,7 @@ import {
   Button,
   Collapse,
   Flex,
+  Grid,
   Icon,
   IconButton,
   Modal,
@@ -14,6 +15,7 @@ import {
   Text,
   useDisclosure,
 } from "@chakra-ui/react";
+import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { extractText } from "@shared/chat/messages";
 import { useTranslation } from "next-i18next";
 import React, { useCallback, useMemo, useState } from "react";
@@ -55,14 +57,6 @@ interface TimelineItem {
 
 const MAX_TOOL_DETAIL_CHARS = 800;
 
-const formatFileSize = (size?: number) => {
-  if (typeof size !== "number" || Number.isNaN(size) || size < 0) return "";
-  if (size < 1024) return `${size} B`;
-  const kb = size / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-};
-
 const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
   if (!message.artifact || typeof message.artifact !== "object") return [];
   const files = (message.artifact as { files?: unknown }).files;
@@ -78,26 +72,6 @@ const isImageFile = (file: MessageFile) => {
   return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"].some((ext) =>
     name.endsWith(ext)
   );
-};
-
-const getParseStatusLabel = (file: MessageFile) => {
-  const parse = file.parse;
-  if (!parse) return "待处理";
-  if (isImageFile(file)) {
-    if (parse.status === "error") return "处理失败";
-    if (parse.status === "success") return "已上传";
-    return "上传中";
-  }
-  if (parse.status === "success") return `解析完成 ${Math.max(0, Math.min(100, parse.progress || 0))}%`;
-  if (parse.status === "error") return `解析失败 ${Math.max(0, Math.min(100, parse.progress || 0))}%`;
-  if (parse.status === "skipped") return `已跳过 ${Math.max(0, Math.min(100, parse.progress || 0))}%`;
-  return "处理中";
-};
-
-const buildImageMarkdown = (file: MessageFile) => {
-  if (!file.previewUrl) return "";
-  const alt = file.name || "image";
-  return `![${alt}](${file.previewUrl})`;
 };
 
 const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
@@ -190,6 +164,14 @@ const ChatItem = ({
   const isSystem = message.role === "system";
 
   const files = useMemo(() => getMessageFiles(message), [message]);
+  const sortedFiles = useMemo(() => {
+    return [...files].sort((a, b) => {
+      const aImage = isImageFile(a);
+      const bImage = isImageFile(b);
+      if (aImage === bImage) return 0;
+      return aImage ? 1 : -1;
+    });
+  }, [files]);
   const toolDetails = useMemo(() => getToolDetails(message), [message]);
   const reasoningText = useMemo(() => getReasoningText(message), [message]);
   const timelineItems = useMemo(() => getTimelineItems(message), [message]);
@@ -273,78 +255,46 @@ const ChatItem = ({
       >
         {isUser ? (
           <Flex direction="column" gap={2}>
-            {files.length > 0 && !containsImageMarkdown ? (
-              <Box bg="white" border="1px solid" borderColor="blue.100" borderRadius="md" p={2}>
-                <Text color="blue.700" fontSize="xs" fontWeight="700" mb={1.5}>
-                  {t("chat:attachments", { defaultValue: "附件" })}
-                </Text>
-                <Flex direction="column" gap={1}>
-                  {files.map((file, index) => (
-                    <Box key={`${file.name || "file"}-${index}`}>
-                      {isImageFile(file) && file.previewUrl ? (
-                        <Box
-                          border="1px solid"
-                          borderColor="gray.200"
-                          borderRadius="8px"
-                          maxW="220px"
-                          mb={1}
-                          overflow="hidden"
-                          p={1}
+            {sortedFiles.length > 0 && !containsImageMarkdown ? (
+              <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }}>
+                {sortedFiles.map((file, index) => {
+                  const isImage = isImageFile(file);
+                  const icon = getFileIcon(file.name || "");
+                  const fileUrl = file.previewUrl || file.downloadUrl || "";
+                  return (
+                    <Box key={`${file.name || "file"}-${index}`} bg="white" borderRadius="md" overflow="hidden">
+                      {isImage ? (
+                        fileUrl ? (
+                          <Box
+                            alt={file.name || `文件 ${index + 1}`}
+                            as="img"
+                            maxH="220px"
+                            objectFit="contain"
+                            src={fileUrl}
+                            w="100%"
+                          />
+                        ) : null
+                      ) : (
+                        <Flex
+                          alignItems="center"
+                          cursor={fileUrl ? "pointer" : "default"}
+                          onClick={() => {
+                            if (!fileUrl) return;
+                            window.open(fileUrl);
+                          }}
+                          p={2}
+                          w="100%"
                         >
-                          <Markdown source={buildImageMarkdown(file)} />
-                        </Box>
-                      ) : null}
-
-                      <Flex align="center" gap={2} wrap="wrap">
-                        <Text color="gray.700" fontSize="xs">
-                          {file.name || `文件 ${index + 1}`}
-                          {file.type ? ` · ${file.type}` : ""}
-                          {formatFileSize(file.size) ? ` · ${formatFileSize(file.size)}` : ""}
-                        </Text>
-                        <Text color="gray.500" fontSize="11px">
-                          {getParseStatusLabel(file)}
-                        </Text>
-                        {file.previewUrl ? (
-                          <Button
-                            as="a"
-                            colorScheme="blue"
-                            fontSize="10px"
-                            h="20px"
-                            href={file.previewUrl}
-                            px={2}
-                            size="xs"
-                            target="_blank"
-                            variant="ghost"
-                          >
-                            预览
-                          </Button>
-                        ) : null}
-                        {file.downloadUrl ? (
-                          <Button
-                            as="a"
-                            colorScheme="blue"
-                            fontSize="10px"
-                            h="20px"
-                            href={file.downloadUrl}
-                            px={2}
-                            size="xs"
-                            target="_blank"
-                            variant="ghost"
-                          >
-                            下载
-                          </Button>
-                        ) : null}
-                      </Flex>
-
-                      {file.parse?.error ? (
-                        <Text color="orange.500" fontSize="11px">
-                          {file.parse.error}
-                        </Text>
-                      ) : null}
+                          <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />
+                          <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
+                            {file.name || fileUrl || `文件 ${index + 1}`}
+                          </Text>
+                        </Flex>
+                      )}
                     </Box>
-                  ))}
-                </Flex>
-              </Box>
+                  );
+                })}
+              </Grid>
             ) : null}
 
             {content ? <Markdown source={content} /> : null}

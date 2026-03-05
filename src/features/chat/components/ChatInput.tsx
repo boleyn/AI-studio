@@ -328,9 +328,10 @@ const ChatInput = ({
   );
 
   const onPickFiles = useCallback(
-    async (picked: FileList | null) => {
+    async (picked: FileList | File[] | null) => {
       if (!picked || picked.length === 0) return;
-      const next = Array.from(picked).map((file) => ({
+      const pickedFiles = Array.isArray(picked) ? picked : Array.from(picked);
+      const next = pickedFiles.map((file) => ({
         id: createId(),
         file,
         uploadState: "uploading" as const,
@@ -340,6 +341,17 @@ const ChatInput = ({
     },
     [uploadSingleFile]
   );
+  const getPastedFiles = useCallback((data: DataTransfer | null) => {
+    if (!data) return [] as File[];
+
+    const itemFiles = Array.from(data.items || [])
+      .map((item) => (item.kind === "file" ? item.getAsFile() : null))
+      .filter((item): item is File => item instanceof File);
+
+    if (itemFiles.length > 0) return itemFiles;
+
+    return Array.from(data.files || []);
+  }, []);
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
@@ -592,6 +604,15 @@ const ChatInput = ({
               onCompositionEnd={() => setIsComposing(false)}
               onCompositionStart={() => setIsComposing(true)}
               onFocus={() => setIsFocused(true)}
+              onPaste={(event) => {
+                if (isInputLocked) return;
+                const pastedFiles = getPastedFiles(event.clipboardData);
+                if (pastedFiles.length === 0) return;
+
+                void onPickFiles(pastedFiles);
+                event.preventDefault();
+                event.stopPropagation();
+              }}
               onKeyDown={(event) => {
                 if (showFilePicker) {
                   if (event.key === "ArrowDown") {
