@@ -17,10 +17,14 @@ import { parseToolArgs } from '@aistudio/ai/utils';
  */
 export const compressRequestMessages = async ({
   messages,
-  model
+  model,
+  focusQuery,
+  force
 }: {
   messages: ChatCompletionMessageParam[];
   model: LLMModelItemType;
+  focusQuery?: string;
+  force?: boolean;
 }): Promise<{
   messages: ChatCompletionMessageParam[];
   usage?: ChatNodeUsageType;
@@ -47,7 +51,7 @@ export const compressRequestMessages = async ({
   const messageTokens = await countGptMessagesTokens(otherMessages);
   const thresholds = calculateCompressionThresholds(model.maxContext).messages;
 
-  if (messageTokens < thresholds.threshold) {
+  if (!force && messageTokens < thresholds.threshold) {
     return {
       messages
     };
@@ -63,7 +67,11 @@ export const compressRequestMessages = async ({
     model
   });
 
-  const userPrompt = '请执行压缩操作，严格按照JSON格式返回结果。';
+  const focusHint =
+    typeof focusQuery === 'string' && focusQuery.trim()
+      ? `\n当前轮用户核心问题：${focusQuery.trim().slice(0, 800)}\n压缩时请优先保留与该问题直接相关的约束、事实、决策、工具结果与上下文。`
+      : '';
+  const userPrompt = `请执行压缩操作，严格按照JSON格式返回结果。${focusHint}`;
 
   try {
     const { answerText, usage } = await createLLMResponse({

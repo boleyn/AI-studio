@@ -1,4 +1,6 @@
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "@aistudio/ai/compat/global/core/ai/type";
+import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
+import { getLLMModel } from "@aistudio/ai/model";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
@@ -314,10 +316,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ),
     ...contextMessages,
   ];
+  const selectedModelInfo = getLLMModel(selectedModel);
+  const promptUsedTokens = await countGptMessagesTokens(messages, tools).catch(() => 0);
+  const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
+  const promptUsedPercent = Math.min(100, Math.max(0, (promptUsedTokens / promptMaxContext) * 100));
+  const contextWindowUsage = {
+    model: selectedModel,
+    usedTokens: promptUsedTokens,
+    maxContext: promptMaxContext,
+    remainingTokens: Math.max(0, promptMaxContext - promptUsedTokens),
+    usedPercent: Number(promptUsedPercent.toFixed(2)),
+  };
 
   try {
     if (stream) {
       startStream();
+      sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(contextWindowUsage));
     }
     const workflowStartAt = Date.now();
     const timeline: TimelineItem[] = [];
@@ -480,6 +494,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         content: result.finalMessage,
         reasoning: result.finalReasoning,
       },
+      contextWindow: contextWindowUsage,
       toolResponses: result.flowResponses,
       files: workspace.files,
       workspaceId,

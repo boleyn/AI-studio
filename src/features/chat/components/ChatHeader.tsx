@@ -1,5 +1,6 @@
 import {
   Box,
+  CircularProgress,
   Flex,
   IconButton,
   MenuDivider,
@@ -9,9 +10,11 @@ import {
   MenuList,
   Text,
 } from "@chakra-ui/react";
+import MyTooltip from "@/components/ui/MyTooltip";
 
 import { AddIcon, ClockIcon, CloseIcon, SettingsIcon } from "@/components/common/Icon";
 import type { ConversationSummary } from "@/types/conversation";
+import type { ContextWindowUsage } from "../types/contextWindow";
 
 interface ChatHeaderProps {
   title?: string;
@@ -28,6 +31,7 @@ interface ChatHeaderProps {
   onReset?: () => void;
   onNewConversation?: () => void;
   onOpenSkills?: () => void;
+  contextUsage?: ContextWindowUsage | null;
 }
 
 const ChatHeader = ({
@@ -41,7 +45,15 @@ const ChatHeader = ({
   onReset,
   onNewConversation,
   onOpenSkills,
+  contextUsage,
 }: ChatHeaderProps) => {
+  const usedPercent = Math.min(100, Math.max(0, contextUsage?.usedPercent || 0));
+  const usedPercentText = usedPercent.toFixed(1);
+  const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
+  const tooltipLabel = contextUsage
+    ? `背景信息窗口：\n${usedPercentText}% 已用（剩余 ${remainingPercentText}%）\n已用 ${contextUsage.usedTokens.toLocaleString()} 标记，共 ${contextUsage.maxContext.toLocaleString()}`
+    : "背景信息窗口：计算中...";
+
   return (
     <Flex
       align="center"
@@ -62,7 +74,20 @@ const ChatHeader = ({
         </Text>
       </Box>
 
-      <Flex gap={1}>
+      <Flex align="center" gap={2}>
+        <MyTooltip label={tooltipLabel}>
+          <Box alignItems="center" display="flex" h="28px" justifyContent="center" w="28px">
+            <CircularProgress
+              color={usedPercent >= 90 ? "red.400" : usedPercent >= 70 ? "orange.400" : "gray.300"}
+              size="18px"
+              thickness="14px"
+              trackColor="gray.100"
+              value={usedPercent}
+            />
+          </Box>
+        </MyTooltip>
+
+        <Flex gap={1}>
         {onOpenSkills ? (
           <IconButton
             _hover={{ bg: "myGray.100" }}
@@ -148,6 +173,7 @@ const ChatHeader = ({
           onClick={onNewConversation ?? onReset}
           size="sm"
         />
+        </Flex>
       </Flex>
     </Flex>
   );

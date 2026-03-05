@@ -22,6 +22,7 @@ import type { ChatModelCatalog } from "../services/models";
 import { replaceConversationMessages } from "../services/conversations";
 import { listSkills } from "../services/skills";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
+import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { getExecutionSummary } from "../utils/executionSummary";
 import { type FlowNodeResponsePayload } from "../utils/flowNodeMessages";
@@ -320,6 +321,7 @@ const ChatPanel = ({
     { value: "agent", label: "agent", channel: "aiproxy" },
   ]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
+  const [contextUsage, setContextUsage] = useState<ContextWindowUsage | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
@@ -857,6 +859,13 @@ const ChatPanel = ({
               typeof responsePayload?.error === "string" ? responsePayload.error : "请求失败"
             );
           }
+          const contextWindowPayload =
+            responsePayload?.contextWindow && typeof responsePayload.contextWindow === "object"
+              ? (responsePayload.contextWindow as ContextWindowUsage)
+              : null;
+          if (contextWindowPayload) {
+            setContextUsage(contextWindowPayload);
+          }
           const assistantText =
             typeof responsePayload?.assistant?.content === "string"
               ? responsePayload.assistant.content
@@ -988,6 +997,25 @@ const ChatPanel = ({
                   ...current,
                   durationSeconds: streamPayload.durationSeconds,
                 }));
+                return;
+              }
+              if (item.event === SseResponseEventEnum.contextWindow) {
+                const streamPayload = item as Partial<ContextWindowUsage>;
+                if (
+                  typeof streamPayload.usedTokens !== "number" ||
+                  typeof streamPayload.maxContext !== "number" ||
+                  typeof streamPayload.remainingTokens !== "number" ||
+                  typeof streamPayload.usedPercent !== "number"
+                ) {
+                  return;
+                }
+                setContextUsage({
+                  model: typeof streamPayload.model === "string" ? streamPayload.model : model,
+                  usedTokens: streamPayload.usedTokens,
+                  maxContext: streamPayload.maxContext,
+                  remainingTokens: streamPayload.remainingTokens,
+                  usedPercent: streamPayload.usedPercent,
+                });
               }
             },
           });
@@ -1230,6 +1258,7 @@ const ChatPanel = ({
       <ChatHeader
         activeConversationId={activeConversation?.id}
         conversations={conversations}
+        contextUsage={contextUsage}
         messageCount={messages.length}
         model={model}
         modelLoading={modelLoading}

@@ -1,4 +1,7 @@
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
+import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
+import { compressRequestMessages } from "@aistudio/ai/llm/compress";
+import { getLLMModel } from "@aistudio/ai/model";
 import { formatGlobalResult } from "@server/agent/globalResultFormatter";
 import { parseGlobalCommand, runGlobalAction, type ChangeTracker } from "@server/agent/globalTools";
 import { loadMcpTools } from "@server/agent/mcpClient";
@@ -182,6 +185,7 @@ const PROJECT_LOCAL_TOOL_NAMES = new Set([
 ]);
 
 const MCP_TOOL_NAME_PREFIX = "mcp_";
+const CONTEXT_PRECOMPRESS_RATIO = 0.9;
 
 const isMcpToolName = (toolName: string) => toolName.startsWith(MCP_TOOL_NAME_PREFIX);
 
@@ -360,18 +364,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
   const history = (() => {
     const value = req.body?.history;
-    if (typeof value === "undefined") {
-      return Number.MAX_SAFE_INTEGER;
-    }
-    if (typeof value === "number") return value;
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
     if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
       return value as ConversationHistoryWithSummary;
     }
-    return 6;
+    return Number.MAX_SAFE_INTEGER;
   })();
   const selectedSkillsInput = Array.isArray(req.body?.selectedSkills)
     ? (req.body.selectedSkills as unknown[])
@@ -788,7 +784,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? [{ role: "system", content: fallbackSkillPrompt } as ChatCompletionMessageParam]
       : []),
   ];
-  const agentMessages = [...systemPrompts, ...baseAgentMessages] as ChatCompletionMessageParam[];
+  let agentMessages = [...systemPrompts, ...baseAgentMessages] as ChatCompletionMessageParam[];
+  const selectedModelInfo = getLLMModel(selectedModel);
+  const calcContextUsage = async (messages: ChatCompletionMessageParam[]) => {
+    const usedTokens = await countGptMessagesTokens(messages).catch(() => 0);
+    const maxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
+    return {
+      usedTokens,
+      maxContext,
+      usedRatio: usedTokens / maxContext,
+    };
+  };
+  const beforePrecompressUsage = await calcContextUsage(agentMessages);
+  if (beforePrecompressUsage.usedRatio >= CONTEXT_PRECOMPRESS_RATIO) {
+    const focusedQuery = getLastUserText(contextMessages);
+    const compressed = await compressRequestMessages({
+      messages: agentMessages,
+      model: selectedModelInfo,
+      focusQuery: focusedQuery,
+      force: true,
+    });
+    if (compressed.messages.length > 0) {
+      agentMessages = compressed.messages;
+    }
+    const afterPrecompressUsage = await calcContextUsage(agentMessages);
+    console.info("[agent-debug][pre-send-compress]", {
+      triggered: true,
+      focusedQueryLength: focusedQuery.length,
+      thresholdRatio: CONTEXT_PRECOMPRESS_RATIO,
+      beforeUsedTokens: beforePrecompressUsage.usedTokens,
+      afterUsedTokens: afterPrecompressUsage.usedTokens,
+      maxContext: beforePrecompressUsage.maxContext,
+      beforeRatio: Number(beforePrecompressUsage.usedRatio.toFixed(4)),
+      afterRatio: Number(afterPrecompressUsage.usedRatio.toFixed(4)),
+      beforeCount: beforePrecompressUsage.usedTokens,
+      afterCount: afterPrecompressUsage.usedTokens,
+      beforeMessageCount: systemPrompts.length + baseAgentMessages.length,
+      afterMessageCount: agentMessages.length,
+    });
+  }
+  const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
+  const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
+  const promptUsedPercent = Math.min(100, Math.max(0, (promptUsedTokens / promptMaxContext) * 100));
+  const contextWindowUsage = {
+    model: selectedModel,
+    usedTokens: promptUsedTokens,
+    maxContext: promptMaxContext,
+    remainingTokens: Math.max(0, promptMaxContext - promptUsedTokens),
+    usedPercent: Number(promptUsedPercent.toFixed(2)),
+  };
+  if (stream) {
+    startStream();
+    sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(contextWindowUsage));
+  }
 
   console.info("[agent-skill] injection", {
     enabled: Boolean(skillsCatalogPrompt || fallbackSkillPrompt),
@@ -975,6 +1023,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
+      contextWindow: contextWindowUsage,
       responseData: flowResponses,
       durationSeconds,
       choices: [
