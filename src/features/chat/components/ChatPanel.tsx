@@ -36,29 +36,6 @@ import ExecutionSummaryRow from "./ExecutionSummaryRow";
 
 import type { ConversationMessage } from "@/types/conversation";
 
-const TEXT_FILE_EXTENSIONS = [
-  ".txt",
-  ".md",
-  ".json",
-  ".js",
-  ".ts",
-  ".tsx",
-  ".jsx",
-  ".py",
-  ".java",
-  ".go",
-  ".rs",
-  ".css",
-  ".html",
-  ".xml",
-  ".yml",
-  ".yaml",
-  ".log",
-  ".csv",
-] as const;
-const MAX_TEXT_FILE_SIZE = 200 * 1024;
-const MAX_TEXT_FILE_PREVIEW = 3000;
-
 interface ToolStreamPayload {
   id?: string;
   toolName?: string;
@@ -87,60 +64,20 @@ const buildConversationTitle = (value: string): string | null => {
   if (!trimmed) return null;
   return trimmed.length > 40 ? `${trimmed.slice(0, 40)}...` : trimmed;
 };
-
-const isTextLikeFile = (file: File) => {
-  if (file.type.startsWith("text/")) return true;
-  const lowerName = file.name.toLowerCase();
-  return TEXT_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-};
-
-const buildFilePrompt = async (files: ChatInputFile[]) => {
-  if (files.length === 0) return "";
-
-  const sections: string[] = [];
-
-  for (const item of files) {
-    const file = item.file;
-    const header = `文件: ${file.name} (${file.type || "unknown"}, ${file.size} bytes)`;
-
-    if (!isTextLikeFile(file) || file.size > MAX_TEXT_FILE_SIZE) {
-      sections.push(`${header}\n该文件为二进制或过大文件，仅提供元信息。`);
+const normalizeProjectFiles = (rawFiles: unknown): Record<string, { code: string }> | null => {
+  if (!rawFiles || typeof rawFiles !== "object") return null;
+  const next: Record<string, { code: string }> = {};
+  for (const [filePath, value] of Object.entries(rawFiles as Record<string, unknown>)) {
+    if (typeof filePath !== "string" || !filePath) continue;
+    if (typeof value === "string") {
+      next[filePath] = { code: value };
       continue;
     }
-
-    try {
-      const raw = await file.text();
-      const preview = raw.slice(0, MAX_TEXT_FILE_PREVIEW);
-      sections.push(
-        `${header}\n\n\`\`\`\n${preview}${raw.length > MAX_TEXT_FILE_PREVIEW ? "\n... [truncated]" : ""}\n\`\`\``
-      );
-    } catch {
-      sections.push(`${header}\n无法读取文件内容，仅提供元信息。`);
+    if (value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string") {
+      next[filePath] = { code: (value as { code: string }).code };
     }
   }
-
-  return sections.join("\n\n");
-};
-
-const buildFilePromptFromArtifacts = (files: UploadedFileArtifact[]) => {
-  if (!files.length) return "";
-
-  const sections = files.map((file) => {
-    const header = `### 文件: ${file.name}`;
-    const markdown = typeof file.parse?.markdown === "string" ? file.parse.markdown.trim() : "";
-
-    if ((file.type || "").startsWith("image/") && file.previewUrl) {
-      return [header, `![${file.name}](${file.previewUrl})`].join("\n\n");
-    }
-
-    if (markdown) {
-      return [header, markdown].join("\n\n");
-    }
-
-    return `${header}\n\n该文件当前无可解析正文，仅提供元信息。`;
-  });
-
-  return sections.join("\n\n");
+  return Object.keys(next).length > 0 ? next : null;
 };
 
 const buildUserBubbleContent = ({
@@ -175,13 +112,25 @@ const buildUserBubbleContent = ({
   return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
 };
 
-const hydrateArtifactsMarkdown = async (files: UploadedFileArtifact[]) => {
+const hydrateArtifactsMarkdown = async ({
+  files,
+  token,
+  chatId,
+}: {
+  files: UploadedFileArtifact[];
+  token: string;
+  chatId: string;
+}) => {
   const hydrated = await Promise.all(
     files.map(async (file) => {
       const markdown = file.markdownPublicUrl
         ? await fetchMarkdownContentByUrl(file.markdownPublicUrl).catch(() => "")
         : file.markdownStoragePath
-        ? await fetchMarkdownContent(file.markdownStoragePath).catch(() => "")
+        ? await fetchMarkdownContent({
+            storagePath: file.markdownStoragePath,
+            token,
+            chatId,
+          }).catch(() => "")
         : "";
       if (!markdown) return file;
       return {
@@ -557,6 +506,8 @@ const ChatPanel = ({
       const parsedFiles =
         uploadedFiles.length > 0
           ? await parseChatFiles({
+              token,
+              chatId: uploadChatId,
               files: uploadedFiles,
             }).catch(() => uploadedFiles)
           : uploadedFiles;
@@ -581,15 +532,36 @@ const ChatPanel = ({
             downloadUrl: file.storagePath
               ? buildDownloadUrl({
                   storagePath: file.storagePath,
+                  token,
+                  chatId: uploadChatId,
                 })
               : undefined,
           };
         })
       );
 
-      return withPreviewUrls.length > 0 ? await hydrateArtifactsMarkdown(withPreviewUrls) : withPreviewUrls;
+      const hydratedFiles = withPreviewUrls.length > 0
+        ? await hydrateArtifactsMarkdown({
+            files: withPreviewUrls,
+            token,
+            chatId: uploadChatId,
+          })
+        : withPreviewUrls;
+
+      if (onFilesUpdated) {
+        const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
+          headers: withAuthHeaders(),
+        }).catch(() => null);
+        if (response?.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { files?: unknown };
+          const normalized = normalizeProjectFiles(payload.files);
+          if (normalized) onFilesUpdated(normalized);
+        }
+      }
+
+      return hydratedFiles;
     },
-    [activeConversation?.id, ensureConversation, token]
+    [activeConversation?.id, ensureConversation, onFilesUpdated, token]
   );
 
   const handleSend = useCallback(
@@ -634,10 +606,6 @@ const ChatPanel = ({
         ]);
       }
 
-      const filePrompt =
-        payload.uploadedFiles.length > 0
-          ? buildFilePromptFromArtifacts(payload.uploadedFiles)
-          : await buildFilePrompt(payload.files);
       const imageInputParts = await getImageInputParts(finalArtifacts);
 
       if (echoUserMessage && conversationId && nextConversationTitle) {
@@ -656,12 +624,7 @@ const ChatPanel = ({
         content: userBubbleContent || displayText,
         id: userMessageId,
         artifact: payload.files.length > 0 ? { files: finalArtifacts } : undefined,
-        additional_kwargs: filePrompt
-          ? {
-              filePrompt,
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
-            }
-          : payload.selectedFilePaths
+        additional_kwargs: payload.selectedFilePaths
           ? { selectedFilePaths: payload.selectedFilePaths }
           : undefined,
       };

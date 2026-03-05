@@ -1,6 +1,7 @@
 import { requireAuth } from "@server/auth/session";
 import { assertChatStoragePath, getObjectFromStorage, getStorageFileName } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { assertChatScopedStoragePath } from "./shared";
 
 const getStoragePath = (req: NextApiRequest): string | null => {
   const queryPath = typeof req.query.storagePath === "string" ? req.query.storagePath : null;
@@ -12,6 +13,16 @@ const parseDownloadFlag = (value: unknown) => {
   if (typeof value !== "string") return false;
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
+};
+const getToken = (req: NextApiRequest): string | null => {
+  const queryToken = typeof req.query.token === "string" ? req.query.token : null;
+  const bodyToken = typeof req.body?.token === "string" ? req.body.token : null;
+  return queryToken ?? bodyToken;
+};
+const getChatId = (req: NextApiRequest): string | null => {
+  const queryChatId = typeof req.query.chatId === "string" ? req.query.chatId : null;
+  const bodyChatId = typeof req.body?.chatId === "string" ? req.body.chatId : null;
+  return queryChatId ?? bodyChatId;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -33,7 +44,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const download = parseDownloadFlag(req.query.download);
 
   try {
-    const normalizedPath = assertChatStoragePath(storagePath);
+    const token = getToken(req);
+    const chatId = getChatId(req) || undefined;
+    const scopedPath =
+      token && token.trim()
+        ? assertChatScopedStoragePath({
+            storagePath,
+            token: token.trim(),
+            chatId: chatId?.trim() || undefined,
+          })
+        : storagePath;
+    const normalizedPath = assertChatStoragePath(scopedPath);
     const { buffer, contentType, contentLength } = await getObjectFromStorage({
       key: normalizedPath,
       bucketType: "private",

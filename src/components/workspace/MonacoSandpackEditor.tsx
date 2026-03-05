@@ -1,6 +1,5 @@
 import dynamic from "next/dynamic";
-import { Box } from "@chakra-ui/react";
-import { useActiveCode, useSandpack } from "@codesandbox/sandpack-react";
+import { Box, Text } from "@chakra-ui/react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -35,31 +34,48 @@ const getEditorLanguage = (filePath: string): string => {
   return languageByExt[extension] || "plaintext";
 };
 
-const MonacoSandpackEditor = () => {
-  const { code, updateCode } = useActiveCode();
-  const { sandpack } = useSandpack();
-  const activeFile = sandpack.activeFile;
+type MonacoSandpackEditorProps = {
+  code: string;
+  activeFile: string;
+  onChangeCode: (nextCode: string) => void;
+};
+
+const MonacoSandpackEditor = ({ activeFile, code, onChangeCode }: MonacoSandpackEditorProps) => {
 
   return (
     <Box display="flex" flexDirection="column" flex="1" minH="0">
       <Box flex="1" minH="0" bg="white">
-        <MonacoEditor
-          path={activeFile}
-          value={code}
-          language={getEditorLanguage(activeFile)}
-          onChange={(value) => updateCode(value ?? "")}
-          theme="vs"
-          options={{
-            minimap: { enabled: false },
-            fontSize: 13,
-            lineNumbers: "on",
-            wordWrap: "on",
-            automaticLayout: true,
-            scrollBeyondLastLine: false,
-          }}
-          width="100%"
-          height="100%"
-        />
+        {!activeFile ? (
+          <Box
+            height="100%"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            p={4}
+          >
+            <Text fontSize="sm" color="gray.600">
+              暂无可编辑文件
+            </Text>
+          </Box>
+        ) : (
+          <MonacoEditor
+            path={activeFile}
+            value={code}
+            language={getEditorLanguage(activeFile)}
+            onChange={(value) => onChangeCode(value ?? "")}
+            theme="vs"
+            options={{
+              minimap: { enabled: false },
+              fontSize: 13,
+              lineNumbers: "on",
+              wordWrap: "on",
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+            }}
+            width="100%"
+            height="100%"
+          />
+        )}
       </Box>
     </Box>
   );

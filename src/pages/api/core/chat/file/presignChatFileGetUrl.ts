@@ -2,7 +2,7 @@ import { requireAuth } from "@server/auth/session";
 import { createGetObjectPresignedUrl, normalizeStorageKey } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-import { toSafeSegment } from "../files/shared";
+import { getTokenUploadPrefix } from "../files/shared";
 
 const getToken = (req: NextApiRequest) =>
   typeof req.body?.token === "string" ? req.body.token : "";
@@ -42,7 +42,7 @@ export default async function handler(
   }
 
   if (token) {
-    const expectedPrefix = `chat_uploads/${toSafeSegment(token)}/`;
+    const expectedPrefix = `${getTokenUploadPrefix(token)}/`;
     if (!key.startsWith(expectedPrefix)) {
       res.status(403).json({ error: "无权限访问该文件" });
       return;

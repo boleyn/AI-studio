@@ -32,11 +32,97 @@ import {
   toSandpackPath,
 } from "./fileExplorer/utils";
 
-type FileExplorerPanelProps = {
-  token: string;
+const textFileExtSet = new Set([
+  "txt",
+  "md",
+  "json",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "css",
+  "scss",
+  "less",
+  "html",
+  "htm",
+  "xml",
+  "yml",
+  "yaml",
+  "svg",
+  "csv",
+  "log",
+  "env",
+  "gitignore",
+  "gitattributes",
+  "npmrc",
+  "editorconfig",
+  "sh",
+  "bash",
+  "zsh",
+  "py",
+  "java",
+  "go",
+  "rs",
+  "sql",
+]);
+
+const imageMimeByExt: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  avif: "image/avif",
 };
 
-const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
+const extFromPath = (filePath: string) => filePath.split(".").pop()?.toLowerCase() || "";
+
+const isTextLikePath = (filePath: string) => textFileExtSet.has(extFromPath(filePath));
+
+const inferMimeFromPath = (filePath: string) => imageMimeByExt[extFromPath(filePath)] || "application/octet-stream";
+
+const uint8ArrayToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
+const toDataUrl = (base64: string, contentType: string) => `data:${contentType};base64,${base64}`;
+
+const readBrowserFileAsWorkspaceCode = async (file: File, filePath: string) => {
+  if (file.type.startsWith("text/") || isTextLikePath(filePath)) {
+    return file.text();
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const contentType = file.type || inferMimeFromPath(filePath);
+  return toDataUrl(uint8ArrayToBase64(bytes), contentType);
+};
+
+const readZipEntryAsWorkspaceCode = async (
+  entry: { async: (type: "string" | "base64") => Promise<string> },
+  filePath: string
+) => {
+  if (isTextLikePath(filePath)) {
+    return entry.async("string");
+  }
+  const base64 = await entry.async("base64");
+  return toDataUrl(base64, inferMimeFromPath(filePath));
+};
+
+type FileExplorerPanelProps = {
+  token: string;
+  onOpenFile: (filePath: string) => void;
+};
+
+const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
   const { sandpack } = useSandpack();
   const toast = useToast();
   const styles = useFileExplorerTheme();
@@ -128,12 +214,12 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       });
 
       if (nextActiveFile) {
-        sandpack.setActiveFile(nextActiveFile);
+        onOpenFile(nextActiveFile);
         setSelectedType("file");
         setSelectedPath(nextActiveFile);
       }
     },
-    [files, sandpack]
+    [files, onOpenFile, sandpack]
   );
 
   const applyFullFiles = useCallback(
@@ -331,7 +417,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       for (const file of selectedFiles) {
         const path = toSandpackPath(file.webkitRelativePath || file.name);
         if (!path) continue;
-        nextFiles[path] = { code: await file.text() };
+        nextFiles[path] = { code: await readBrowserFileAsWorkspaceCode(file, path) };
       }
 
       const firstPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name) || undefined;
@@ -356,7 +442,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
         for (const entry of entries) {
           const path = toSandpackPath(entry.name);
           if (!path) continue;
-          nextFiles[path] = { code: await entry.async("string") };
+          nextFiles[path] = { code: await readZipEntryAsWorkspaceCode(entry, path) };
           if (!firstImportedPath) firstImportedPath = path;
         }
 
@@ -547,7 +633,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
                     spacing={styles.spacing.searchResultGap}
                     _hover={{ bg: styles.colors.searchResultHoverBg }}
                     onClick={() => {
-                      sandpack.setActiveFile(filePath);
+                      onOpenFile(filePath);
                       setSelectedType("file");
                       setSelectedPath(filePath);
                       ensureFolderExpanded(getParentPath(filePath));
@@ -601,7 +687,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
           onSelectFile={(filePath) => {
             setSelectedType("file");
             setSelectedPath(filePath);
-            sandpack.setActiveFile(filePath);
+            onOpenFile(filePath);
           }}
           onCreateDraftNameChange={setCreateDraftName}
           onConfirmCreate={confirmCreate}

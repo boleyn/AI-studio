@@ -33,11 +33,14 @@ body {
   padding-right: 0;
   margin: 0 !important;
   background: transparent !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .sp-wrapper .sp-tab-button {
   height: 32px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: 1px solid transparent !important;
   border-radius: 12px;
   background: transparent !important;
@@ -47,6 +50,24 @@ body {
   outline: none !important;
   box-shadow: none !important;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.sp-wrapper .sp-tab-container .sp-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: #64748b !important;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sp-wrapper .sp-tab-container .sp-close-button:hover {
+  background: rgba(148, 163, 184, 0.2);
+  color: #334155 !important;
 }
 
 .sp-wrapper .sp-tab-button:hover {

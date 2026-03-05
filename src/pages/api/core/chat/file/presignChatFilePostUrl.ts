@@ -2,7 +2,7 @@ import { requireAuth } from "@server/auth/session";
 import { createPutObjectPresignedUrl } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-import { isImageFile, toSafeFileName, toSafeSegment } from "../files/shared";
+import { getChatUploadRoot, isImageFile, toSafeFileName } from "../files/shared";
 
 type ResponseBody =
   | {
@@ -45,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
   const safeName = toSafeFileName(filename);
   const ts = Date.now();
-  const prefix = `chat_uploads/${toSafeSegment(token)}/${toSafeSegment(chatId)}/.files`;
+  const prefix = getChatUploadRoot(token, chatId);
   const key = isImageFile(filename, contentType)
     ? `${prefix}/images/${ts}-${safeName}`
     : `${prefix}/files/${ts}-${safeName}`;

@@ -1,8 +1,16 @@
+import path from "node:path";
 import { requireAuth } from "@server/auth/session";
-import { buildChatFileViewUrl, uploadObjectToStorage } from "@server/storage/s3";
+import { buildChatFileViewUrl, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
+import { updateBinaryFile } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-import { isImageFile, MAX_FILES, MAX_FILE_SIZE } from "./shared";
+import {
+  assertChatScopedStoragePath,
+  isImageFile,
+  MAX_FILES,
+  MAX_FILE_SIZE,
+  toSafeFileName,
+} from "./shared";
 import { pendingParseInfo, type UploadFileResult } from "./types";
 
 interface UploadFileInput {
@@ -14,6 +22,35 @@ interface UploadFileInput {
   storagePath: string;
   markdownStoragePath?: string;
 }
+const buildMirrorRawFilePath = ({
+  storagePath,
+}: {
+  storagePath: string;
+}) => {
+  const base = toSafeFileName(path.posix.basename(storagePath));
+  return `/.files/${base}`;
+};
+
+const syncAttachmentRawToProject = async ({
+  token,
+  file,
+  storagePath,
+}: {
+  token: string;
+  file: UploadFileInput;
+  storagePath: string;
+}) => {
+  if (!isImageFile(file.name, file.type)) return;
+  const mirrorPath = buildMirrorRawFilePath({
+    storagePath,
+  });
+  const { buffer } = await getObjectFromStorage({
+    key: storagePath,
+    bucketType: "private",
+  });
+  const type = file.type || "application/octet-stream";
+  await updateBinaryFile(token, mirrorPath, buffer, type);
+};
 
 const getToken = (req: NextApiRequest): string | null =>
   typeof req.body?.token === "string" ? req.body.token : null;
@@ -60,11 +97,6 @@ export default async function handler(
       continue;
     }
 
-    if (!file.storagePath.startsWith("chat_uploads/")) {
-      res.status(400).json({ error: `文件 ${file.name} 路径非法` });
-      return;
-    }
-
     const size = Number.isFinite(Number(file.size)) ? Number(file.size) : 0;
     if (size > MAX_FILE_SIZE) {
       res.status(400).json({ error: `文件 ${file.name} 超过 ${MAX_FILE_SIZE / (1024 * 1024)}MB 限制` });
@@ -72,12 +104,42 @@ export default async function handler(
     }
 
     const type = file.type || "application/octet-stream";
-    const storagePath = file.storagePath;
+    let storagePath = "";
+    try {
+      storagePath = assertChatScopedStoragePath({
+        storagePath: file.storagePath,
+        token,
+        chatId,
+      });
+    } catch {
+      res.status(400).json({ error: `文件 ${file.name} 路径非法` });
+      return;
+    }
 
     let markdownStoragePath: string | undefined;
     let markdownPublicUrl: string | undefined;
-    if (!isImageFile(file.name, type) && file.markdownStoragePath) {
-      markdownStoragePath = file.markdownStoragePath;
+    if (!isImageFile(file.name, type)) {
+      if (file.markdownStoragePath) {
+        try {
+          markdownStoragePath = assertChatScopedStoragePath({
+            storagePath: file.markdownStoragePath,
+            token,
+            chatId,
+          });
+        } catch {
+          res.status(400).json({ error: `文件 ${file.name} markdown 路径非法` });
+          return;
+        }
+      } else {
+        const fileName = path.posix.basename(storagePath);
+        const marker = "/.files/";
+        const markerIndex = storagePath.indexOf(marker);
+        const filesRoot =
+          markerIndex >= 0
+            ? `${storagePath.slice(0, markerIndex + marker.length)}markdown`
+            : `${storagePath.replace(/\/files\/[^/]+$/, "")}/markdown`;
+        markdownStoragePath = `${filesRoot}/${fileName}.md`;
+      }
       await uploadObjectToStorage({
         key: markdownStoragePath,
         body: "",
@@ -86,11 +148,15 @@ export default async function handler(
       });
       markdownPublicUrl = buildChatFileViewUrl({
         storagePath: markdownStoragePath,
+        token,
+        chatId,
       });
     }
 
     const publicUrl = buildChatFileViewUrl({
       storagePath,
+      token,
+      chatId,
     });
 
     results.push({
@@ -105,6 +171,20 @@ export default async function handler(
       markdownPublicUrl,
       parse: pendingParseInfo,
     });
+
+    try {
+      await syncAttachmentRawToProject({
+        token,
+        file,
+        storagePath,
+      });
+    } catch (error) {
+      console.warn("[chat-files] sync attachment raw to project failed", {
+        fileName: file.name,
+        storagePath,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
   }
 
   res.status(200).json({ files: results });

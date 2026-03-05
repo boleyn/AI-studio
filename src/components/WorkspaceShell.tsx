@@ -12,6 +12,7 @@ import { Box, Flex } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
+import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPanel";
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
 import WorkspaceHeader from "./workspace/WorkspaceHeader";
 
@@ -59,6 +60,32 @@ const WorkspaceShell = ({
 
   const [isCompileBadgeHovered, setIsCompileBadgeHovered] = useState(false);
   const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
+  const [openTabs, setOpenTabs] = useState<string[]>(() => (sandpack.activeFile ? [sandpack.activeFile] : []));
+
+  useEffect(() => {
+    const active = sandpack.activeFile;
+    if (!active) return;
+    setOpenTabs((prev) => (prev.includes(active) ? prev : [...prev, active]));
+  }, [sandpack.activeFile]);
+
+  const handleOpenFile = (filePath: string) => {
+    if (!filePath) return;
+    sandpack.setActiveFile(filePath);
+    setOpenTabs((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
+  };
+
+  const handleCloseTab = (filePath: string) => {
+    setOpenTabs((prev) => {
+      const nextTabs = prev.filter((item) => item !== filePath);
+      if (sandpack.activeFile === filePath) {
+        const fallback = nextTabs[nextTabs.length - 1] || Object.keys(sandpack.files || {})[0] || "";
+        if (fallback) {
+          sandpack.setActiveFile(fallback);
+        }
+      }
+      return nextTabs;
+    });
+  };
 
   const compileErrorMessages = useMemo(() => {
     const fromLogs = logs
@@ -104,6 +131,15 @@ const WorkspaceShell = ({
     activeView === "code" &&
     compileErrorMessages.length > 0 &&
     (isCompileBadgeHovered || isCompilePanelPinned);
+  const activeFile = sandpack.activeFile || "";
+  const previewable = isPreviewableFile(activeFile);
+  const rawFileEntry = (sandpack.files as Record<string, unknown>)[activeFile];
+  const activeFileCode =
+    typeof rawFileEntry === "string"
+      ? rawFileEntry
+      : rawFileEntry && typeof rawFileEntry === "object" && "code" in rawFileEntry
+      ? String((rawFileEntry as { code?: unknown }).code ?? "")
+      : "";
 
   return (
     <Flex
@@ -136,6 +172,10 @@ const WorkspaceShell = ({
               if (compileErrorMessages.length === 0) return;
               setIsCompilePanelPinned((prev) => !prev);
             }}
+            tabs={openTabs}
+            activeFile={activeFile}
+            onSelectTab={handleOpenFile}
+            onCloseTab={handleCloseTab}
           />
         </Box>
         <Box
@@ -158,7 +198,7 @@ const WorkspaceShell = ({
               background: "transparent",
             }}
           >
-            <FileExplorerPanel token={token} />
+            <FileExplorerPanel token={token} onOpenFile={handleOpenFile} />
             <Box style={{ flex: 1, minWidth: 0, position: "relative" }}>
               <SandpackStack
                 style={{
@@ -171,7 +211,22 @@ const WorkspaceShell = ({
                   height: "100%",
                 }}
               >
-                <MonacoSandpackEditor />
+                {previewable ? (
+                  <FilePreviewPanel
+                    token={token}
+                    activeFile={activeFile}
+                    sourceCode={activeFileCode}
+                  />
+                ) : (
+                  <MonacoSandpackEditor
+                    activeFile={activeFile}
+                    code={activeFileCode}
+                    onChangeCode={(nextCode) => {
+                      if (!activeFile) return;
+                      sandpack.updateFile(activeFile, nextCode, true);
+                    }}
+                  />
+                )}
                 <Box
                   style={{
                     maxHeight: isCompilePanelOpen ? "35%" : "0%",

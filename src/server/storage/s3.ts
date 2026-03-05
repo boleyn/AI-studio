@@ -221,15 +221,25 @@ export const deleteStorageObjects = async ({
 
 export const buildChatFileViewUrl = ({
   storagePath,
+  token,
+  chatId,
   download,
 }: {
   storagePath: string;
+  token?: string;
+  chatId?: string;
   download?: boolean;
 }) => {
   const normalizedPath = normalizeStorageKey(storagePath);
   const params = new URLSearchParams({
     storagePath: normalizedPath,
   });
+  if (token) {
+    params.set("token", token);
+  }
+  if (chatId) {
+    params.set("chatId", chatId);
+  }
   if (download) {
     params.set("download", "1");
   }

@@ -116,8 +116,7 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
         {
           model: body.model,
           useVision: !!useVision,
-          messageCount: requestMessages.length,
-          messages: requestMessages
+          messageCount: requestMessages.length
         },
         null,
         2
@@ -221,8 +220,7 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
           tool_choice: requestBody.tool_choice,
           toolCallMode: body.toolCallMode,
           messageCount: Array.isArray(requestBody.messages) ? requestBody.messages.length : 0,
-          messages: requestBody.messages,
-          tools: requestBody.tools
+          toolCount: Array.isArray(requestBody.tools) ? requestBody.tools.length : 0
         },
         null,
         2

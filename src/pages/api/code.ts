@@ -4,7 +4,9 @@ import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { normalizeSandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import JSZip from "jszip";
 import {
+  createProjectFileViewUrl,
   getProject,
+  readProjectFile,
   updateProjectMeta,
   updateFile,
   updateFiles,
@@ -79,6 +81,43 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       }
 
       const action = typeof req.query.action === "string" ? req.query.action : "";
+
+      if (action === "view") {
+        const filePath = typeof req.query.path === "string" ? req.query.path : "";
+        if (!filePath) {
+          res.status(400).json({ error: "缺少 path 参数" });
+          return;
+        }
+        try {
+          const { buffer, contentType, contentLength } = await readProjectFile(token, filePath);
+          res.setHeader("Cache-Control", "private, no-store, must-revalidate");
+          res.setHeader("Content-Type", contentType || "application/octet-stream");
+          if (typeof contentLength === "number" && contentLength >= 0) {
+            res.setHeader("Content-Length", String(contentLength));
+          } else {
+            res.setHeader("Content-Length", String(buffer.length));
+          }
+          res.status(200).send(buffer);
+        } catch {
+          res.status(404).json({ error: "文件不存在" });
+        }
+        return;
+      }
+
+      if (action === "view-url") {
+        const filePath = typeof req.query.path === "string" ? req.query.path : "";
+        if (!filePath) {
+          res.status(400).json({ error: "缺少 path 参数" });
+          return;
+        }
+        try {
+          const url = await createProjectFileViewUrl(token, filePath, 900);
+          res.status(200).json({ url });
+        } catch {
+          res.status(404).json({ error: "文件不存在" });
+        }
+        return;
+      }
 
       if (action === "download") {
         const zip = new JSZip();

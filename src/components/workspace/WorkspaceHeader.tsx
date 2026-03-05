@@ -1,5 +1,4 @@
 import { Badge, Box, Flex, Text, useTheme } from "@chakra-ui/react";
-import { FileTabs } from "@codesandbox/sandpack-react";
 
 type WorkspaceHeaderProps = {
   activeView: "preview" | "code";
@@ -10,6 +9,10 @@ type WorkspaceHeaderProps = {
   compileErrorCount: number;
   onCompileBadgeHoverChange: (hovering: boolean) => void;
   onCompileBadgeToggle: () => void;
+  tabs: string[];
+  activeFile: string;
+  onSelectTab: (path: string) => void;
+  onCloseTab: (path: string) => void;
 };
 
 const WorkspaceHeader = ({
@@ -21,6 +24,10 @@ const WorkspaceHeader = ({
   compileErrorCount,
   onCompileBadgeHoverChange,
   onCompileBadgeToggle,
+  tabs,
+  activeFile,
+  onSelectTab,
+  onCloseTab,
 }: WorkspaceHeaderProps) => {
   const theme = useTheme() as Record<string, any>;
   const headerTheme = theme.workspace?.header ?? {
@@ -132,7 +139,71 @@ const WorkspaceHeader = ({
         mx={1}
       />
       <Flex flex="1" minW="0" align="stretch" display={activeView === "code" ? "flex" : "none"}>
-        <FileTabs closableTabs={false} />
+        <Flex minW="0" align="center" gap={2} overflowX="auto" py={1}>
+          {tabs.map((filePath) => {
+            const active = activeFile === filePath;
+            const label = filePath.split("/").pop() || filePath;
+            return (
+              <Flex
+                key={filePath}
+                align="center"
+                border="1px solid"
+                borderColor={active ? "#93c5fd" : "transparent"}
+                bg={active ? "#dbeafe" : "transparent"}
+                color={active ? "#1e3a8a" : "#8b95a5"}
+                borderRadius="12px"
+                px={2}
+                py={1}
+                gap={2}
+                maxW="260px"
+                flexShrink={0}
+              >
+                <Box
+                  as="button"
+                  type="button"
+                  onClick={() => onSelectTab(filePath)}
+                  title={filePath}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "inherit",
+                    fontSize: "14px",
+                    lineHeight: 1.2,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "180px",
+                  }}
+                >
+                  {label}
+                </Box>
+                <Box
+                  as="button"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseTab(filePath);
+                  }}
+                  title={`关闭 ${label}`}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "inherit",
+                    fontSize: "14px",
+                    lineHeight: 1,
+                    cursor: "pointer",
+                    width: "18px",
+                    height: "18px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  ×
+                </Box>
+              </Flex>
+            );
+          })}
+        </Flex>
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
         <Badge

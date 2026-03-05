@@ -3,10 +3,15 @@ import { assertChatStoragePath, getObjectFromStorage, uploadObjectToStorage } fr
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { parseFileToMarkdown, readCustomPdfParseConfig } from "./parser";
+import { assertChatScopedStoragePath } from "./shared";
 import type { UploadFileResult } from "./types";
 
 const getFiles = (req: NextApiRequest): UploadFileResult[] =>
   Array.isArray(req.body?.files) ? (req.body.files as UploadFileResult[]) : [];
+const getToken = (req: NextApiRequest): string | null =>
+  typeof req.body?.token === "string" ? req.body.token : null;
+const getChatId = (req: NextApiRequest): string | null =>
+  typeof req.body?.chatId === "string" ? req.body.chatId : null;
 
 const callInternalParse = async (input: {
   fileName: string;
@@ -36,6 +41,12 @@ export default async function handler(
   }
 
   const files = getFiles(req);
+  const token = getToken(req);
+  const chatId = getChatId(req);
+  if (!token || !chatId) {
+    res.status(400).json({ error: "缺少 token 或 chatId 参数" });
+    return;
+  }
   if (files.length === 0) {
     res.status(400).json({ error: "缺少 files 参数" });
     return;
@@ -57,7 +68,12 @@ export default async function handler(
       }
 
       try {
-        const storagePath = assertChatStoragePath(file.storagePath);
+        const scopedStoragePath = assertChatScopedStoragePath({
+          storagePath: file.storagePath,
+          token,
+          chatId,
+        });
+        const storagePath = assertChatStoragePath(scopedStoragePath);
         const { buffer } = await getObjectFromStorage({
           key: storagePath,
           bucketType: "private",
@@ -70,7 +86,12 @@ export default async function handler(
         });
 
         if (file.markdownStoragePath) {
-          const markdownPath = assertChatStoragePath(file.markdownStoragePath);
+          const scopedMarkdownPath = assertChatScopedStoragePath({
+            storagePath: file.markdownStoragePath,
+            token,
+            chatId,
+          });
+          const markdownPath = assertChatStoragePath(scopedMarkdownPath);
           await uploadObjectToStorage({
             key: markdownPath,
             body: parse.markdown || "",

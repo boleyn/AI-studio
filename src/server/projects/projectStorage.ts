@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { getMongoDb } from "../db/mongo";
 import {
+  createGetObjectPresignedUrl,
   deleteStorageObjects,
   getObjectFromStorage,
   listStorageObjectKeysByPrefix,
@@ -207,6 +208,24 @@ function toProjectFilePathFromStorageKey(token: string, storageKey: string): str
   return `/${relative}`;
 }
 
+const isImagePath = (filePath: string) => {
+  const ext = path.posix.extname(filePath).toLowerCase();
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif"].includes(ext);
+};
+
+const inferImageMimeFromPath = (filePath: string) => {
+  const ext = path.posix.extname(filePath).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".ico") return "image/x-icon";
+  if (ext === ".avif") return "image/avif";
+  return "image/png";
+};
+
 async function syncFileToStorage(token: string, filePath: string, code: string) {
   await uploadObjectToStorage({
     key: toProjectStorageFileKey(token, filePath),
@@ -216,10 +235,48 @@ async function syncFileToStorage(token: string, filePath: string, code: string) 
   });
 }
 
+async function syncBinaryFileToStorage(
+  token: string,
+  filePath: string,
+  content: Buffer | Uint8Array,
+  contentType?: string
+) {
+  const normalizedType = (contentType || "").toLowerCase();
+  const resolvedContentType =
+    normalizedType && normalizedType !== "application/octet-stream"
+      ? normalizedType
+      : isImagePath(filePath)
+      ? inferImageMimeFromPath(filePath)
+      : contentType || "application/octet-stream";
+  await uploadObjectToStorage({
+    key: toProjectStorageFileKey(token, filePath),
+    body: content,
+    contentType: resolvedContentType,
+    bucketType: "private",
+  });
+}
+
 async function syncFilesToStorage(token: string, files: Record<string, { code: string }>) {
+  const dataUrlPrefix = "data:";
+  const dataUrlBase64Flag = ";base64,";
   await Promise.all(
     Object.entries(files).map(async ([filePath, file]) => {
-      await syncFileToStorage(token, filePath, file.code ?? "");
+      const code = file.code ?? "";
+      const trimmed = code.trim();
+      if (trimmed.startsWith(dataUrlPrefix) && trimmed.includes(dataUrlBase64Flag)) {
+        const commaIndex = trimmed.indexOf(",");
+        const header = trimmed.slice(5, commaIndex);
+        const base64Body = trimmed.slice(commaIndex + 1);
+        const contentType = header.split(";")[0] || "application/octet-stream";
+        try {
+          const bytes = Buffer.from(base64Body, "base64");
+          await syncBinaryFileToStorage(token, filePath, bytes, contentType);
+          return;
+        } catch {
+          // fallback to plain text persistence
+        }
+      }
+      await syncFileToStorage(token, filePath, code);
     })
   );
 }
@@ -264,10 +321,16 @@ async function collectFilesFromStorage(token: string): Promise<Record<string, Pr
   const entries = await Promise.all(
     keys.map(async (key) => {
       const filePath = toProjectFilePathFromStorageKey(token, key);
-      const { buffer } = await getObjectFromStorage({
+      const { buffer, contentType } = await getObjectFromStorage({
         key,
         bucketType: "private",
       });
+      const type = (contentType || "").toLowerCase();
+      if (type.startsWith("image/") || isImagePath(filePath)) {
+        const mime = type.startsWith("image/") ? type : inferImageMimeFromPath(filePath);
+        const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+        return [filePath, { code: dataUrl }] as const;
+      }
       return [filePath, { code: buffer.toString("utf8") }] as const;
     })
   );
@@ -436,6 +499,57 @@ export async function updateFile(token: string, filePath: string, code: string):
     { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
+export async function updateBinaryFile(
+  token: string,
+  filePath: string,
+  content: Buffer | Uint8Array,
+  contentType?: string
+): Promise<void> {
+  const coll = await getCollection();
+  const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
+  if (!exists) throw new Error("项目不存在");
+
+  await syncBinaryFileToStorage(token, filePath, content, contentType);
+  await cleanupLegacyDir(token);
+
+  const now = new Date().toISOString();
+  const result = await coll.updateOne(
+    { token },
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+  );
+  if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
+export async function readProjectFile(
+  token: string,
+  filePath: string
+): Promise<{ buffer: Buffer; contentType?: string; contentLength?: number }> {
+  const key = toProjectStorageFileKey(token, filePath);
+  const object = await getObjectFromStorage({
+    key,
+    bucketType: "private",
+  });
+  return {
+    buffer: object.buffer,
+    contentType: object.contentType,
+    contentLength: object.contentLength,
+  };
+}
+
+export async function createProjectFileViewUrl(
+  token: string,
+  filePath: string,
+  expiresIn = 900
+): Promise<string> {
+  const key = toProjectStorageFileKey(token, filePath);
+  const { url } = await createGetObjectPresignedUrl({
+    key,
+    bucketType: "private",
+    expiresIn,
+  });
+  return url;
 }
 
 /**

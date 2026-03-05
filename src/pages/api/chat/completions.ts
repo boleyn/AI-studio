@@ -34,7 +34,6 @@ import {
   type UserInputPart,
 } from "@server/chat/completions/multimodalMemory";
 import {
-  getFileContentFromHistory,
   getHistories,
   type ConversationHistoryWithSummary,
 } from "@server/chat/completions/historyMemory";
@@ -153,6 +152,75 @@ const toStringValue = (value: unknown) => {
   } catch {
     return String(value);
   }
+};
+
+type UserArtifactFileMeta = {
+  name: string;
+  type: string;
+  storagePath: string;
+  isImage: boolean;
+};
+
+const getUserArtifactFiles = (message: ConversationMessage): UserArtifactFileMeta[] => {
+  if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") return [];
+  const files = Array.isArray((message.artifact as { files?: unknown }).files)
+    ? ((message.artifact as { files?: unknown }).files as unknown[])
+    : [];
+  return files
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => {
+      const name = typeof item.name === "string" ? item.name : "file";
+      const type = typeof item.type === "string" ? item.type : "";
+      const storagePath = typeof item.storagePath === "string" ? item.storagePath : "";
+      return {
+        name,
+        type,
+        storagePath,
+        isImage: type.toLowerCase().startsWith("image/"),
+      };
+    });
+};
+
+const getLatestUserArtifactFiles = (messages: ConversationMessage[]): UserArtifactFileMeta[] => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role !== "user") continue;
+    const files = getUserArtifactFiles(message);
+    if (files.length > 0) return files;
+  }
+  return [];
+};
+
+const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
+  if (files.length === 0) return "";
+  const imageFiles = files.filter((item) => item.isImage);
+  const imageCount = imageFiles.length;
+  const docFiles = files.filter((item) => !item.isImage);
+  const lines: string[] = ["【附件信息】"];
+  if (imageCount > 0) {
+    lines.push(`- 本轮包含图片 ${imageCount} 张。可调用 read_file(storagePath=...)；图片会返回 base64（也可显式 mode=raw）。`);
+    const imagePreviews = imageFiles.slice(0, 8).map((file) => {
+      const typePart = file.type ? ` | type=${file.type}` : "";
+      const pathPart = file.storagePath ? ` | storagePath=${file.storagePath}` : "";
+      return `  - ${file.name}${typePart}${pathPart}`;
+    });
+    lines.push(...imagePreviews);
+  }
+  if (docFiles.length > 0) {
+    lines.push(
+      `- 本轮包含文档 ${docFiles.length} 个。可调用 read_file(storagePath=...)；docx/pdf/excel 等会返回解析后的 markdown（也可显式 mode=markdown）。`
+    );
+    const previews = docFiles.slice(0, 8).map((file) => {
+      const typePart = file.type ? ` | type=${file.type}` : "";
+      const pathPart = file.storagePath ? ` | storagePath=${file.storagePath}` : "";
+      return `  - ${file.name}${typePart}${pathPart}`;
+    });
+    lines.push(...previews);
+    if (docFiles.length > 8) {
+      lines.push(`  - ... 其余 ${docFiles.length - 8} 个文档可通过 fileName 模糊匹配读取`);
+    }
+  }
+  return lines.join("\n");
 };
 
 
@@ -359,6 +427,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : typeof req.body?.conversationId === "string"
       ? req.body.conversationId
       : undefined;
+  const chatId =
+    typeof req.body?.chatId === "string"
+      ? req.body.chatId
+      : typeof req.body?.chat_id === "string"
+      ? req.body.chat_id
+      : conversationId;
   const stream = req.body?.stream === true;
   const channel = typeof req.body?.channel === "string" ? req.body.channel : "";
   const modelCatalogKey = typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
@@ -483,6 +557,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch {}
   const selectedSkillRequested =
     selectedSkillsInput[0] || selectedSkillInput || getSelectedSkillFromMessages(contextMessages);
+  const latestUserArtifactFiles = getLatestUserArtifactFiles(contextMessages);
   const nextTitleFromInput = getTitleFromMessages(contextMessages);
 
   const appendAssistantError = async (text: string) => {
@@ -577,7 +652,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const tracker: ChangeTracker = { changed: false, paths: new Set() };
-  const localTools = createProjectTools(token, tracker);
+  const localTools = createProjectTools(token, tracker, { chatId });
   const mcpTools = await loadMcpTools();
   const runtimeSkills = await getRuntimeSkills();
   const projectSkillsParsed = collectProjectRuntimeSkills(project.files || {}, `project:${token}`);
@@ -607,6 +682,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedTools = routedTools.selectedTools;
   const toolChoiceMode = selectedTools.length > 0
     ? selectedRuntimeSkill
+      ? "required"
+      : latestUserArtifactFiles.length > 0
       ? "required"
       : resolveToolChoice(userIntent)
     : "auto";
@@ -668,6 +745,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const chunks = await Promise.all(
       messages.map(async (message) => {
       const baseText = extractText(message.content);
+      const artifactFiles = getUserArtifactFiles(message);
+      const attachmentHintText = buildAttachmentHintText(artifactFiles);
+      const content =
+        attachmentHintText && baseText.trim()
+          ? `${baseText}\n\n${attachmentHintText}`
+          : attachmentHintText || baseText;
       const imageInputParts =
         message.role === "user" && message.additional_kwargs
           ? Array.isArray((message.additional_kwargs as Record<string, unknown>).imageInputParts)
@@ -681,8 +764,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const mergedInputParts = [...imageInputParts, ...artifactFileParts].filter(
         (item): item is UserInputPart => item.type === "image_url"
       );
-
-      const content = baseText;
 
       if (message.role === "assistant") {
         const toolMemoryMessages = toToolMemoryMessages(message);
@@ -703,7 +784,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (message.role === "user" && mergedInputParts.length > 0) {
-        const textForImage = content.trim() || "用户上传了图片，请结合图片内容理解并回答。";
+        const textForImage = content.trim() || "用户上传了图片和附件，请结合内容理解并回答。";
         const resolvedParts: UserInputPart[] = mergedInputParts.filter(
           (part) => part.type === "image_url" && Boolean(part.image_url.url || part.key)
         );
@@ -739,6 +820,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const buildCoreSystemPrompts = (): ChatCompletionMessageParam[] => [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: toolRoutingPrompt },
+    ...(latestUserArtifactFiles.length > 0
+      ? [
+          {
+            role: "system",
+            content: [
+              "Current turn includes uploaded attachments.",
+              'Before giving the final answer, you must call tool "read_file" at least once for an uploaded file.',
+              "Use storagePath from attachment metadata.",
+              "For image files use mode=raw.",
+              "For docx/pdf/excel and other documents use mode=markdown.",
+            ].join("\n"),
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
     ...(selectedRuntimeSkill
       ? [
           {
@@ -770,31 +865,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? [{ role: "system", content: fallbackSkillPrompt } as ChatCompletionMessageParam]
       : []),
   ];
-  const buildHistoryFilePrompt = (historyFileContent: string): ChatCompletionMessageParam[] =>
-    historyFileContent
-      ? [
-          {
-            role: "system",
-            content: [
-              "以下是用户历史上传文件的可用正文，请在回答中结合这些文件内容：",
-              historyFileContent,
-            ].join("\n\n"),
-          } as ChatCompletionMessageParam,
-        ]
-      : [];
-  const historyFileContent = getFileContentFromHistory({
-    histories: contextMessages,
-  });
-  const historyOnlyFileContent = getFileContentFromHistory({
-    histories: historyPayload.histories,
-  });
   const baseAgentMessages = await toAgentMessages(contextMessages);
   const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
   const coreSystemPrompts = buildCoreSystemPrompts();
-  const historyFilePrompts = buildHistoryFilePrompt(historyFileContent);
-  const historyOnlyFilePrompts = buildHistoryFilePrompt(historyOnlyFileContent);
-  const systemPrompts = [...coreSystemPrompts, ...historyFilePrompts];
-  const historySystemPrompts = [...coreSystemPrompts, ...historyOnlyFilePrompts];
+  const systemPrompts = [...coreSystemPrompts];
+  const historySystemPrompts = [...coreSystemPrompts];
   let agentMessages = [...systemPrompts, ...baseAgentMessages] as ChatCompletionMessageParam[];
   const backgroundAgentMessages = [
     ...historySystemPrompts,
@@ -842,7 +917,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundAgentMessages, tools).catch(() => 0);
   const systemAndSkillsTokens = await countGptMessagesTokens(coreSystemPrompts).catch(() => 0);
   const historyTokens = await countGptMessagesTokens(historyBaseAgentMessages).catch(() => 0);
-  const historyFileTokens = await countGptMessagesTokens(historyOnlyFilePrompts).catch(() => 0);
+  const historyFileTokens = 0;
   const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
   const reservedOutputTokens = computedMaxToken({
     model: selectedModelInfo,

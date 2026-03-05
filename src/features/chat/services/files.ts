@@ -203,9 +203,13 @@ export const uploadChatFiles = async ({
 };
 
 export const parseChatFiles = async ({
+  token,
+  chatId,
   files,
   onProgress,
 }: {
+  token: string;
+  chatId: string;
   files: UploadedFileArtifact[];
   onProgress?: (phase: UploadPhase, progress: number) => void;
 }): Promise<UploadedFileArtifact[]> => {
@@ -218,7 +222,7 @@ export const parseChatFiles = async ({
       "Content-Type": "application/json",
       ...withAuthHeaders(),
     },
-    body: JSON.stringify({ files }),
+    body: JSON.stringify({ token, chatId, files }),
   });
 
   if (!response.ok) {
@@ -232,8 +236,21 @@ export const parseChatFiles = async ({
   return nextFiles;
 };
 
-export const fetchMarkdownContent = async (storagePath: string) => {
-  const response = await fetch(`/api/core/chat/files/markdown?storagePath=${encodeURIComponent(storagePath)}`, {
+export const fetchMarkdownContent = async ({
+  storagePath,
+  token,
+  chatId,
+}: {
+  storagePath: string;
+  token?: string;
+  chatId?: string;
+}) => {
+  const params = new URLSearchParams({
+    storagePath,
+  });
+  if (token) params.set("token", token);
+  if (chatId) params.set("chatId", chatId);
+  const response = await fetch(`/api/core/chat/files/markdown?${params.toString()}`, {
     headers: {
       ...withAuthHeaders(),
     },
@@ -278,5 +295,20 @@ export const getPresignedChatFileGetUrl = async ({
 
 export const buildPreviewUrl = ({ publicUrl }: { publicUrl: string }) => publicUrl;
 
-export const buildDownloadUrl = ({ storagePath }: { storagePath: string }) =>
-  `/api/core/chat/files/view?storagePath=${encodeURIComponent(storagePath)}&download=1`;
+export const buildDownloadUrl = ({
+  storagePath,
+  token,
+  chatId,
+}: {
+  storagePath: string;
+  token?: string;
+  chatId?: string;
+}) => {
+  const params = new URLSearchParams({
+    storagePath,
+    download: "1",
+  });
+  if (token) params.set("token", token);
+  if (chatId) params.set("chatId", chatId);
+  return `/api/core/chat/files/view?${params.toString()}`;
+};
