@@ -2,6 +2,7 @@ import type { ChatCompletionTool, ChatCompletionMessageParam } from "@aistudio/a
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { compressRequestMessages } from "@aistudio/ai/llm/compress";
 import { getLLMModel } from "@aistudio/ai/model";
+import { computedMaxToken } from "@aistudio/ai/utils";
 import { formatGlobalResult } from "@server/agent/globalResultFormatter";
 import { parseGlobalCommand, runGlobalAction, type ChangeTracker } from "@server/agent/globalTools";
 import { loadMcpTools } from "@server/agent/mcpClient";
@@ -735,24 +736,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const fallbackSkillPrompt =
     allAvailableSkills.length === 0 ? await getAgentRuntimeSkillPrompt() : "";
-  const historyFileContent = getFileContentFromHistory({
-    histories: contextMessages,
-  });
-  const baseAgentMessages = await toAgentMessages(contextMessages);
-  const systemPrompts: ChatCompletionMessageParam[] = [
+  const buildCoreSystemPrompts = (): ChatCompletionMessageParam[] => [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: toolRoutingPrompt },
-    ...(historyFileContent
-      ? [
-          {
-            role: "system",
-            content: [
-              "以下是用户历史上传文件的可用正文，请在回答中结合这些文件内容：",
-              historyFileContent,
-            ].join("\n\n"),
-          } as ChatCompletionMessageParam,
-        ]
-      : []),
     ...(selectedRuntimeSkill
       ? [
           {
@@ -784,7 +770,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? [{ role: "system", content: fallbackSkillPrompt } as ChatCompletionMessageParam]
       : []),
   ];
+  const buildHistoryFilePrompt = (historyFileContent: string): ChatCompletionMessageParam[] =>
+    historyFileContent
+      ? [
+          {
+            role: "system",
+            content: [
+              "以下是用户历史上传文件的可用正文，请在回答中结合这些文件内容：",
+              historyFileContent,
+            ].join("\n\n"),
+          } as ChatCompletionMessageParam,
+        ]
+      : [];
+  const historyFileContent = getFileContentFromHistory({
+    histories: contextMessages,
+  });
+  const historyOnlyFileContent = getFileContentFromHistory({
+    histories: historyPayload.histories,
+  });
+  const baseAgentMessages = await toAgentMessages(contextMessages);
+  const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
+  const coreSystemPrompts = buildCoreSystemPrompts();
+  const historyFilePrompts = buildHistoryFilePrompt(historyFileContent);
+  const historyOnlyFilePrompts = buildHistoryFilePrompt(historyOnlyFileContent);
+  const systemPrompts = [...coreSystemPrompts, ...historyFilePrompts];
+  const historySystemPrompts = [...coreSystemPrompts, ...historyOnlyFilePrompts];
   let agentMessages = [...systemPrompts, ...baseAgentMessages] as ChatCompletionMessageParam[];
+  const backgroundAgentMessages = [
+    ...historySystemPrompts,
+    ...historyBaseAgentMessages,
+  ] as ChatCompletionMessageParam[];
   const selectedModelInfo = getLLMModel(selectedModel);
   const calcContextUsage = async (messages: ChatCompletionMessageParam[]) => {
     const usedTokens = await countGptMessagesTokens(messages).catch(() => 0);
@@ -824,14 +839,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
   const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
+  const backgroundUsedTokens = await countGptMessagesTokens(backgroundAgentMessages, tools).catch(() => 0);
+  const systemAndSkillsTokens = await countGptMessagesTokens(coreSystemPrompts).catch(() => 0);
+  const historyTokens = await countGptMessagesTokens(historyBaseAgentMessages).catch(() => 0);
+  const historyFileTokens = await countGptMessagesTokens(historyOnlyFilePrompts).catch(() => 0);
+  const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
+  const reservedOutputTokens = computedMaxToken({
+    model: selectedModelInfo,
+    min: 100,
+  });
   const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
-  const promptUsedPercent = Math.min(100, Math.max(0, (promptUsedTokens / promptMaxContext) * 100));
+  const promptUsedPercent = Math.min(100, Math.max(0, (backgroundUsedTokens / promptMaxContext) * 100));
+  const currentInputTokens = Math.max(0, promptUsedTokens - backgroundUsedTokens);
   const contextWindowUsage = {
     model: selectedModel,
-    usedTokens: promptUsedTokens,
+    totalPromptTokens: promptUsedTokens,
+    currentInputTokens,
+    usedTokens: backgroundUsedTokens,
     maxContext: promptMaxContext,
-    remainingTokens: Math.max(0, promptMaxContext - promptUsedTokens),
+    remainingTokens: Math.max(0, promptMaxContext - backgroundUsedTokens),
     usedPercent: Number(promptUsedPercent.toFixed(2)),
+    budget: {
+      systemAndSkillsTokens,
+      historyTokens,
+      historyFileTokens,
+      toolsSchemaTokens,
+      backgroundTokens: backgroundUsedTokens,
+      currentInputTokens,
+      totalPromptTokens: promptUsedTokens,
+      reservedOutputTokens,
+    },
   };
   if (stream) {
     startStream();

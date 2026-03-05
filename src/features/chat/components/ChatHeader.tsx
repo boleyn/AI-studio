@@ -50,7 +50,7 @@ const ChatHeader = ({
   const usedPercent = Math.min(100, Math.max(0, contextUsage?.usedPercent || 0));
   const usedPercentText = usedPercent.toFixed(1);
   const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
-  const tooltipLabel = contextUsage
+  const tooltipWithInput = contextUsage
     ? `背景信息窗口：\n${usedPercentText}% 已用（剩余 ${remainingPercentText}%）\n已用 ${contextUsage.usedTokens.toLocaleString()} 标记，共 ${contextUsage.maxContext.toLocaleString()}`
     : "背景信息窗口：计算中...";
 
@@ -75,7 +75,7 @@ const ChatHeader = ({
       </Box>
 
       <Flex align="center" gap={2}>
-        <MyTooltip label={tooltipLabel}>
+        <MyTooltip label={tooltipWithInput}>
           <Box alignItems="center" display="flex" h="28px" justifyContent="center" w="28px">
             <CircularProgress
               color={usedPercent >= 90 ? "red.400" : usedPercent >= 70 ? "orange.400" : "gray.300"}

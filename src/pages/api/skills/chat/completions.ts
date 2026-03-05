@@ -1,6 +1,7 @@
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "@aistudio/ai/compat/global/core/ai/type";
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { getLLMModel } from "@aistudio/ai/model";
+import { computedMaxToken } from "@aistudio/ai/utils";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
@@ -12,6 +13,7 @@ import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
 import { getChatModelCatalog } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
+import { toToolMemoryMessages } from "@server/chat/completions/toolMemory";
 import {
   appendConversationMessages,
   getConversation,
@@ -71,6 +73,35 @@ const toConversationMessages = (messages: ChatCompletionMessageParam[]): Convers
     content: typeof message.content === "string" ? message.content : extractText(message.content),
     id: createDataId(),
   }));
+
+const toAgentMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] => {
+  const output: ChatCompletionMessageParam[] = [];
+
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      const toolMemoryMessages = toToolMemoryMessages(message);
+      if (toolMemoryMessages.length > 0) {
+        output.push(...toolMemoryMessages);
+      }
+
+      const assistantText = extractText(message.content).trim();
+      if (assistantText) {
+        output.push({
+          role: "assistant",
+          content: assistantText,
+        } as ChatCompletionMessageParam);
+      }
+      continue;
+    }
+
+    output.push({
+      role: message.role,
+      content: extractText(message.content),
+    } as ChatCompletionMessageParam);
+  }
+
+  return output;
+};
 
 const getConversationId = (req: NextApiRequest) =>
   typeof req.body?.conversation_id === "string"
@@ -290,15 +321,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             : []),
         ].join("\n")
       : "";
-  const historyMessages = conversationId
-    ? ((await getConversation(conversationToken, conversationId))?.messages ?? []).map((message) => ({
-        role: message.role,
-        content: extractText(message.content),
-      }))
+  const historyConversationMessages = conversationId
+    ? (await getConversation(conversationToken, conversationId))?.messages ?? []
     : [];
   const newConversationMessages = toConversationMessages(incomingMessages);
-  const contextMessages: ChatCompletionMessageParam[] = [...historyMessages, ...incomingMessages];
-  const messages: ChatCompletionMessageParam[] = [
+  const contextConversationMessages: ConversationMessage[] = [
+    ...historyConversationMessages,
+    ...newConversationMessages,
+  ];
+  const historyOnlyConversationMessages: ConversationMessage[] = [...historyConversationMessages];
+  const contextMessages: ChatCompletionMessageParam[] = toAgentMessages(contextConversationMessages);
+  const historyOnlyMessages: ChatCompletionMessageParam[] = toAgentMessages(historyOnlyConversationMessages);
+  const systemMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: STUDIO_PROMPT },
     ...(skillsCatalogPrompt
@@ -314,18 +348,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           content: [`Loaded project skill: ${item.name}`, item.body].join("\n\n"),
         } as ChatCompletionMessageParam)
     ),
+  ];
+  const messages: ChatCompletionMessageParam[] = [
+    ...systemMessages,
     ...contextMessages,
+  ];
+  const backgroundMessages: ChatCompletionMessageParam[] = [
+    ...systemMessages,
+    ...historyOnlyMessages,
   ];
   const selectedModelInfo = getLLMModel(selectedModel);
   const promptUsedTokens = await countGptMessagesTokens(messages, tools).catch(() => 0);
+  const backgroundUsedTokens = await countGptMessagesTokens(backgroundMessages, tools).catch(() => 0);
+  const systemAndSkillsTokens = await countGptMessagesTokens(systemMessages).catch(() => 0);
+  const historyTokens = await countGptMessagesTokens(historyOnlyMessages).catch(() => 0);
+  const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
+  const reservedOutputTokens = computedMaxToken({
+    model: selectedModelInfo,
+    min: 100,
+  });
   const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
-  const promptUsedPercent = Math.min(100, Math.max(0, (promptUsedTokens / promptMaxContext) * 100));
+  const promptUsedPercent = Math.min(100, Math.max(0, (backgroundUsedTokens / promptMaxContext) * 100));
+  const currentInputTokens = Math.max(0, promptUsedTokens - backgroundUsedTokens);
   const contextWindowUsage = {
     model: selectedModel,
-    usedTokens: promptUsedTokens,
+    totalPromptTokens: promptUsedTokens,
+    currentInputTokens,
+    usedTokens: backgroundUsedTokens,
     maxContext: promptMaxContext,
-    remainingTokens: Math.max(0, promptMaxContext - promptUsedTokens),
+    remainingTokens: Math.max(0, promptMaxContext - backgroundUsedTokens),
     usedPercent: Number(promptUsedPercent.toFixed(2)),
+    budget: {
+      systemAndSkillsTokens,
+      historyTokens,
+      historyFileTokens: 0,
+      toolsSchemaTokens,
+      backgroundTokens: backgroundUsedTokens,
+      currentInputTokens,
+      totalPromptTokens: promptUsedTokens,
+      reservedOutputTokens,
+    },
   };
 
   try {
