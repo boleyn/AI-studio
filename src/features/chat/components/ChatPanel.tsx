@@ -105,11 +105,107 @@ const buildUserBubbleContent = ({
           .join(" ")
       : "";
   const imageMarkdown = files
-    .filter((file) => (file.type || "").startsWith("image/") && file.previewUrl)
-    .map((file) => `![${file.name || "image"}](${file.previewUrl})`)
+    .filter((file) => (file.type || "").startsWith("image/") && (file.publicUrl || file.previewUrl))
+    .map((file) => `![${file.name || "image"}](${file.publicUrl || file.previewUrl || ""})`)
     .join("\n\n");
 
   return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
+};
+
+const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");
+
+const toStableChatFileViewUrl = ({
+  storagePath,
+  token,
+  chatId,
+}: {
+  storagePath?: string;
+  token: string;
+  chatId: string;
+}) => {
+  if (!storagePath) return "";
+  const params = new URLSearchParams({
+    storagePath,
+  });
+  if (token) params.set("token", token);
+  if (chatId) params.set("chatId", chatId);
+  return `/api/core/chat/files/view?${params.toString()}`;
+};
+
+const hydrateHistoryUserMessage = ({
+  message,
+  token,
+  chatId,
+}: {
+  message: ConversationMessage;
+  token: string;
+  chatId: string;
+}): ConversationMessage => {
+  if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") {
+    return message;
+  }
+
+  const artifact = message.artifact as { files?: unknown };
+  const files = Array.isArray(artifact.files)
+    ? (artifact.files as UploadedFileArtifact[])
+    : [];
+  if (files.length === 0) return message;
+
+  const hydratedFiles = files.map((file) => {
+    if (!isImageArtifact(file)) return file;
+    const stablePreviewUrl =
+      file.publicUrl || toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) || file.previewUrl;
+    if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
+    return {
+      ...file,
+      previewUrl: stablePreviewUrl,
+    };
+  });
+
+  const imageFiles = hydratedFiles.filter((file) => isImageArtifact(file));
+  if (imageFiles.length === 0) {
+    return {
+      ...message,
+      artifact: {
+        ...artifact,
+        files: hydratedFiles,
+      },
+    };
+  }
+
+  const imageByName = new Map<string, string>();
+  const imageQueue: string[] = [];
+  imageFiles.forEach((file) => {
+    const nextUrl = file.previewUrl || file.publicUrl || "";
+    if (!nextUrl) return;
+    if (file.name) {
+      imageByName.set(file.name, nextUrl);
+    }
+    imageQueue.push(nextUrl);
+  });
+
+  let queueIndex = 0;
+  const originalContent = extractText(message.content);
+  const rewrittenContent = originalContent.replace(
+    /!\[([^\]]*)\]\(([^)]+)\)/g,
+    (full, alt: string) => {
+      const byName = imageByName.get(alt);
+      const byOrder = imageQueue[queueIndex];
+      if (byOrder) queueIndex += 1;
+      const nextUrl = byName || byOrder;
+      if (!nextUrl) return full;
+      return `![${alt}](${nextUrl})`;
+    }
+  );
+
+  return {
+    ...message,
+    content: rewrittenContent,
+    artifact: {
+      ...artifact,
+      files: hydratedFiles,
+    },
+  };
 };
 
 const hydrateArtifactsMarkdown = async ({
@@ -347,10 +443,21 @@ const ChatPanel = ({
 
   useEffect(() => {
     const nextMessages = activeConversation?.messages ?? [];
-    setMessages(nextMessages);
+    const chatId = activeConversation?.id || "";
+    const hydratedMessages =
+      chatId && nextMessages.length > 0
+        ? nextMessages.map((message) =>
+            hydrateHistoryUserMessage({
+              message,
+              token,
+              chatId,
+            })
+          )
+        : nextMessages;
+    setMessages(hydratedMessages);
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
-      for (const message of nextMessages) {
+      for (const message of hydratedMessages) {
         if (!message.id) continue;
         const feedback = getMessageFeedback(message);
         if (feedback) {
@@ -360,7 +467,7 @@ const ChatPanel = ({
       return next;
     });
     shouldAutoScrollRef.current = true;
-  }, [activeConversation?.id, activeConversation?.messages]);
+  }, [activeConversation?.id, activeConversation?.messages, token]);
 
   useEffect(() => {
     let active = true;

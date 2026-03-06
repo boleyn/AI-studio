@@ -1,4 +1,5 @@
 import { requireAuth } from "@server/auth/session";
+import { CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS } from "@server/chat/presign";
 import { createGetObjectPresignedUrl, normalizeStorageKey } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -53,7 +54,7 @@ export default async function handler(
     const { url } = await createGetObjectPresignedUrl({
       key,
       bucketType: "private",
-      expiresIn: 3600,
+      expiresIn: CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS,
     });
     res.status(200).json(url);
   } catch (error) {

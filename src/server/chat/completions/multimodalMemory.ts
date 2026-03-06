@@ -1,4 +1,5 @@
 import { createGetObjectPresignedUrl } from "@server/storage/s3";
+import { CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS } from "@server/chat/presign";
 
 export type ImageInputPart = { type: "image_url"; image_url: { url: string }; key?: string };
 export type FileInputPart = { type: "file_url"; name: string; url: string; key?: string };
@@ -78,7 +79,7 @@ export const resolveSignedFileUrl = async ({
     const signed = await createGetObjectPresignedUrl({
       key: normalizedKey,
       bucketType: "private",
-      expiresIn: 3600,
+      expiresIn: CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS,
     });
     cache.set(normalizedKey, signed.url);
     return signed.url;

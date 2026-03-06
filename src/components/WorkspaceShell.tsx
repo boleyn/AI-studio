@@ -61,15 +61,17 @@ const WorkspaceShell = ({
   const [isCompileBadgeHovered, setIsCompileBadgeHovered] = useState(false);
   const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
   const [openTabs, setOpenTabs] = useState<string[]>(() => (sandpack.activeFile ? [sandpack.activeFile] : []));
+  const [showEmptyEditorState, setShowEmptyEditorState] = useState(false);
 
   useEffect(() => {
     const active = sandpack.activeFile;
-    if (!active) return;
+    if (!active || showEmptyEditorState) return;
     setOpenTabs((prev) => (prev.includes(active) ? prev : [...prev, active]));
-  }, [sandpack.activeFile]);
+  }, [sandpack.activeFile, showEmptyEditorState]);
 
   const handleOpenFile = (filePath: string) => {
     if (!filePath) return;
+    setShowEmptyEditorState(false);
     sandpack.setActiveFile(filePath);
     setOpenTabs((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
   };
@@ -78,9 +80,12 @@ const WorkspaceShell = ({
     setOpenTabs((prev) => {
       const nextTabs = prev.filter((item) => item !== filePath);
       if (sandpack.activeFile === filePath) {
-        const fallback = nextTabs[nextTabs.length - 1] || Object.keys(sandpack.files || {})[0] || "";
+        const fallback = nextTabs[nextTabs.length - 1] || "";
         if (fallback) {
+          setShowEmptyEditorState(false);
           sandpack.setActiveFile(fallback);
+        } else {
+          setShowEmptyEditorState(true);
         }
       }
       return nextTabs;
@@ -131,7 +136,7 @@ const WorkspaceShell = ({
     activeView === "code" &&
     compileErrorMessages.length > 0 &&
     (isCompileBadgeHovered || isCompilePanelPinned);
-  const activeFile = sandpack.activeFile || "";
+  const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const previewable = isPreviewableFile(activeFile);
   const rawFileEntry = (sandpack.files as Record<string, unknown>)[activeFile];
   const activeFileCode =

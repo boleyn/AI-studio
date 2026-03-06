@@ -17,6 +17,21 @@ body {
   box-sizing: border-box;
 }
 
+@keyframes editorEmptyRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.editor-empty-state {
+  animation: editorEmptyRiseIn 0.42s cubic-bezier(0.2, 0.72, 0.2, 1) both;
+}
+
 /* Sandpack FileTabs overrides (high-specificity to beat injected Sandpack styles) */
 .sp-wrapper .sp-tabs {
   border-bottom: none !important;
