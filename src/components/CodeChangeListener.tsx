@@ -14,6 +14,7 @@ type CodeChangeListenerProps = {
   dependencies?: Record<string, string>;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onFilesChange?: (files: Record<string, { code: string }>) => void;
+  onPersistFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   autoSaveDelay?: number; // 防抖延迟（毫秒）
 };
 
@@ -45,6 +46,7 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   dependencies = {},
   onSaveStatusChange,
   onFilesChange,
+  onPersistFiles,
   autoSaveDelay = 2000, // 默认2秒延迟
 }, ref) => {
   const { sandpack } = useSandpack();
@@ -59,6 +61,12 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
     onSaveStatusChange?.("saving");
 
     try {
+      if (onPersistFiles) {
+        await onPersistFiles(sandpack.files);
+        onSaveStatusChange?.("saved");
+        return;
+      }
+
       // 只传文件内容，不传template和dependencies
       const response = await fetch(`/api/code?token=${encodeURIComponent(token)}&action=files`, {
         method: "PUT",
@@ -80,7 +88,7 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
       console.error("Failed to save project:", error);
       onSaveStatusChange?.("error");
     }
-  }, [token, sandpack.files, onSaveStatusChange]);
+  }, [onPersistFiles, token, sandpack.files, onSaveStatusChange]);
 
   // 暴露手动保存方法
   useImperativeHandle(ref, () => ({

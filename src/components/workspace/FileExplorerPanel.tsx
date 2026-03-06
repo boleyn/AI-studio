@@ -120,9 +120,20 @@ const readZipEntryAsWorkspaceCode = async (
 type FileExplorerPanelProps = {
   token: string;
   onOpenFile: (filePath: string) => void;
+  onPersistFiles?: (files: SandpackFilesPayload) => Promise<void>;
+  filePathFilter?: (path: string) => boolean;
+  defaultFolderPath?: string;
+  workspaceMode?: "project" | "skills";
 };
 
-const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
+const FileExplorerPanel = ({
+  token,
+  onOpenFile,
+  onPersistFiles,
+  filePathFilter,
+  defaultFolderPath = "/",
+  workspaceMode = "project",
+}: FileExplorerPanelProps) => {
   const { sandpack } = useSandpack();
   const toast = useToast();
   const styles = useFileExplorerTheme();
@@ -130,7 +141,11 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [selectedPath, setSelectedPath] = useState<string>(sandpack.activeFile || "/");
+  const [selectedPath, setSelectedPath] = useState<string>(
+    sandpack.activeFile && (!filePathFilter || filePathFilter(sandpack.activeFile))
+      ? sandpack.activeFile
+      : defaultFolderPath
+  );
   const [selectedType, setSelectedType] = useState<"file" | "folder">("file");
 
   const [createMode, setCreateMode] = useState<CreateMode>(null);
@@ -140,14 +155,18 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
   const [renameTarget, setRenameTarget] = useState<RenameTarget>(null);
   const [renameDraftName, setRenameDraftName] = useState("");
 
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["/"]));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([defaultFolderPath, "/"]));
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null);
   const zipUploadInputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  const files = sandpack.files as SandpackFilesPayload;
+  const allFiles = sandpack.files as SandpackFilesPayload;
+  const files = useMemo(() => {
+    if (!filePathFilter) return allFiles;
+    return Object.fromEntries(Object.entries(allFiles).filter(([path]) => filePathFilter(path)));
+  }, [allFiles, filePathFilter]);
   const treeRoot = useMemo(() => buildTree(files), [files]);
   const folderByPath = useMemo(() => buildFolderMap(treeRoot), [treeRoot]);
   const fileByPath = useMemo(() => buildFileMap(treeRoot), [treeRoot]);
@@ -164,6 +183,13 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
     () => allFolderPaths.filter((path) => path !== "/"),
     [allFolderPaths]
   );
+
+  useEffect(() => {
+    if (selectedType === "file" && selectedPath && !files[selectedPath]) {
+      setSelectedType("folder");
+      setSelectedPath(defaultFolderPath);
+    }
+  }, [defaultFolderPath, files, selectedPath, selectedType]);
   const allExpanded = useMemo(
     () =>
       expandableFolderPaths.length > 0 &&
@@ -187,6 +213,11 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
 
   const persistFullFiles = useCallback(
     async (nextFiles: SandpackFilesPayload) => {
+      if (onPersistFiles) {
+        await onPersistFiles(nextFiles);
+        return;
+      }
+
       const response = await fetch(`/api/code?token=${encodeURIComponent(token)}&action=files`, {
         method: "PUT",
         headers: {
@@ -200,7 +231,7 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
         throw new Error(`保存失败: ${response.status}`);
       }
     },
-    [token]
+    [onPersistFiles, token]
   );
 
   const syncLocalFiles = useCallback(
@@ -243,10 +274,16 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
       ensureFolderExpanded(parentPath);
       setCreateMode(mode);
       setCreateParentPath(parentPath);
-      setCreateDraftName(mode === "file" ? "untitled.tsx" : "new-folder");
+      if (mode === "file") {
+        const defaultFileName =
+          workspaceMode === "skills" && /^\/skills\/[^/]+$/i.test(parentPath) ? "SKILL.md" : "untitled.tsx";
+        setCreateDraftName(defaultFileName);
+      } else {
+        setCreateDraftName("new-folder");
+      }
       setRenameTarget(null);
     },
-    [ensureFolderExpanded]
+    [ensureFolderExpanded, workspaceMode]
   );
 
   const openCreateFromSelection = useCallback(
@@ -493,6 +530,30 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
     });
   }, []);
 
+  const handleCreateSkill = useCallback(async () => {
+    const skillBaseFolder =
+      selectedType === "folder" && /^\/skills(\/.*)?$/i.test(selectedPath)
+        ? selectedPath
+        : defaultFolderPath;
+    const nextSkillFolder = joinPath(skillBaseFolder, "new-skill");
+    if (!nextSkillFolder) return;
+    const skillFilePath = `${nextSkillFolder}/SKILL.md`;
+
+    const nextFiles: SandpackFilesPayload = { ...files };
+    let suffix = 1;
+    let candidateFolder = nextSkillFolder;
+    let candidateFile = skillFilePath;
+    while (nextFiles[candidateFile]) {
+      suffix += 1;
+      candidateFolder = `${nextSkillFolder}-${suffix}`;
+      candidateFile = `${candidateFolder}/SKILL.md`;
+    }
+
+    nextFiles[candidateFile] = { code: buildInitialFileCode(candidateFile) };
+    ensureFolderExpanded(candidateFolder);
+    await applyFullFiles(nextFiles, candidateFile);
+  }, [applyFullFiles, defaultFolderPath, ensureFolderExpanded, files, selectedPath, selectedType]);
+
   useEffect(() => {
     if (!sandpack.activeFile) return;
     setSelectedType("file");
@@ -587,6 +648,9 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
               _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             />
             <MenuList minW={styles.sizes.createMenuListW}>
+              {workspaceMode === "skills" ? (
+                <MenuItem onClick={() => void handleCreateSkill()}>新建 Skill</MenuItem>
+              ) : null}
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
               <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
               <MenuItem onClick={() => fileUploadInputRef.current?.click()}>上传文件</MenuItem>

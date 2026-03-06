@@ -1,57 +1,95 @@
-import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
-import { withAuthHeaders } from "@features/auth/client/authClient";
-import ChatPanel from "@features/chat/components/ChatPanel";
-import SkillsEditorPanel from "@features/skills-studio/components/SkillsEditorPanel";
-import SkillsFileTreePanel from "@features/skills-studio/components/SkillsFileTreePanel";
-import SkillsPageHeader from "@features/skills-studio/components/SkillsPageHeader";
-import SkillsStudioTopBar from "@features/skills-studio/components/SkillsStudioTopBar";
-import { buildTree } from "@components/workspace/fileExplorer/utils";
-import type { SandpackFilesPayload } from "@components/workspace/fileExplorer/types";
+import { Box, Button, Flex, Spinner, Text, useToast } from "@chakra-ui/react";
+import { SandpackProvider, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
+import { githubLight } from "@codesandbox/sandpack-themes";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
-import type { MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getAuthUserFromRequest } from "@server/auth/ssr";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeListener";
+import WorkspaceShell from "@/components/WorkspaceShell";
 import VectorBackground from "@/components/auth/VectorBackground";
+import { BackIcon } from "@/components/common/Icon";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+import ChatPanel from "@features/chat/components/ChatPanel";
+import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
+import { getAuthUserFromRequest } from "@server/auth/ssr";
 
 type FileMap = Record<string, { code: string }>;
 
+type ActiveView = "preview" | "code";
+
+const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
+const SKILL_ROOT = "/skills";
+const isSkillPath = (path: string) => path === SKILL_ROOT || path.startsWith(`${SKILL_ROOT}/`);
+
+const fallbackSkillFiles: FileMap = {
+  "/skills/README.md": {
+    code: "# Skills\\n\\nStore project-bound skills here, for example:\\n- /skills/my-skill/SKILL.md\\n",
+  },
+};
+
+const normalizeSkillFiles = (rawFiles: unknown): FileMap => {
+  if (!rawFiles || typeof rawFiles !== "object") return {};
+
+  const next: FileMap = {};
+  Object.entries(rawFiles as Record<string, unknown>).forEach(([path, value]) => {
+    if (!isSkillPath(path)) return;
+
+    if (typeof value === "string") {
+      next[path] = { code: value };
+      return;
+    }
+
+    if (value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string") {
+      next[path] = { code: (value as { code: string }).code };
+    }
+  });
+
+  return next;
+};
+
 const SkillCreatePage = () => {
   const router = useRouter();
+  const toast = useToast();
+
   const [workspaceId, setWorkspaceId] = useState("");
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [bootstrapError, setBootstrapError] = useState("");
-  const [activeView, setActiveView] = useState<"preview" | "code">("code");
   const [files, setFiles] = useState<FileMap>({});
-  const [selectedFile, setSelectedFile] = useState("");
-  const [openedFiles, setOpenedFiles] = useState<string[]>([]);
-  const [draftCode, setDraftCode] = useState("");
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [fileTreeWidth, setFileTreeWidth] = useState(280);
-  const [isResizingTree, setIsResizingTree] = useState(false);
-  const contentAreaRef = useRef<HTMLDivElement | null>(null);
-  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const bootstrapKeyRef = useRef<string>("");
+  const [activeView, setActiveView] = useState<ActiveView>("code");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [isValidatingSkills, setIsValidatingSkills] = useState(false);
+  const [skillsValidationIssueCount, setSkillsValidationIssueCount] = useState(0);
+  const [skillsValidationMessage, setSkillsValidationMessage] = useState("");
+
+  const latestFilesRef = useRef<FileMap>({});
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const [workspaceHeight, setWorkspaceHeight] = useState("100%");
+  const [chatWidth, setChatWidth] = useState(546);
+  const resizingRef = useRef(false);
+
+  const projectToken = useMemo(
+    () => (typeof router.query.projectToken === "string" ? router.query.projectToken.trim() : ""),
+    [router.query.projectToken]
+  );
+  const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
 
   useEffect(() => {
     if (!router.isReady) return;
-    const projectToken =
-      typeof router.query.projectToken === "string" ? router.query.projectToken.trim() : "";
     if (!projectToken) {
       setBootstrapError("缺少 projectToken，无法绑定项目");
       setIsBootstrapping(false);
       return;
     }
-    if (bootstrapKeyRef.current === projectToken) return;
-    bootstrapKeyRef.current = projectToken;
 
     let cancelled = false;
 
     const bootstrap = async () => {
       setIsBootstrapping(true);
       setBootstrapError("");
+
       try {
         const res = await fetch("/api/skills/workspaces/create", {
           method: "POST",
@@ -68,34 +106,201 @@ const SkillCreatePage = () => {
         }
         if (cancelled) return;
 
-        const id = typeof payload.workspaceId === "string" ? payload.workspaceId : "";
-        const nextFiles = payload.files && typeof payload.files === "object" ? (payload.files as FileMap) : {};
-        setWorkspaceId(id);
-        setFiles(nextFiles);
+        const nextWorkspaceId =
+          typeof payload.workspaceId === "string" && payload.workspaceId.trim()
+            ? payload.workspaceId.trim()
+            : projectToken;
+        const nextFiles = normalizeSkillFiles(payload.files);
 
-        const firstFile = Object.keys(nextFiles).sort((a, b) => a.localeCompare(b))[0] || "";
-        setSelectedFile(firstFile);
-        setOpenedFiles(firstFile ? [firstFile] : []);
+        setWorkspaceId(nextWorkspaceId);
+        setFiles(nextFiles);
+        latestFilesRef.current = nextFiles;
       } catch (error) {
-        if (cancelled) return;
-        setBootstrapError(error instanceof Error ? error.message : "初始化失败");
+        if (!cancelled) {
+          setBootstrapError(error instanceof Error ? error.message : "初始化失败");
+        }
       } finally {
         if (!cancelled) setIsBootstrapping(false);
       }
     };
 
     void bootstrap();
+
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, router.query.projectToken]);
+  }, [projectToken, router.isReady]);
 
-  const fileList = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
-  const fileMap = useMemo<SandpackFilesPayload>(() => files as SandpackFilesPayload, [files]);
-  const fileTreeRoot = useMemo(() => buildTree(fileMap), [fileMap]);
-  const activeFile = selectedFile && files[selectedFile] ? selectedFile : fileList[0] || "";
-  const selectedCode = activeFile ? files[activeFile]?.code || "" : "";
-  const isMarkdownFile = /\.md$/i.test(activeFile);
+  const persistSkillFiles = useCallback(
+    async (nextFiles: FileMap) => {
+      if (!workspaceId) {
+        throw new Error("workspace 尚未初始化");
+      }
+
+      const normalized = normalizeSkillFiles(nextFiles);
+      const query = projectToken ? `?projectToken=${encodeURIComponent(projectToken)}` : "";
+      const response = await fetch(
+        `/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files${query}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...withAuthHeaders(),
+          },
+          body: JSON.stringify({
+            projectToken,
+            files: normalized,
+          }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
+      }
+
+      const persistedFiles = normalizeSkillFiles(payload.files);
+      latestFilesRef.current = persistedFiles;
+      setFiles(persistedFiles);
+    },
+    [projectToken, workspaceId]
+  );
+
+  const handleAgentFilesUpdated = useCallback((updated: FileMap) => {
+    const normalized = normalizeSkillFiles(updated);
+    if (Object.keys(normalized).length === 0) return;
+
+    const merged: FileMap = {
+      ...latestFilesRef.current,
+      ...normalized,
+    };
+    latestFilesRef.current = merged;
+    setFiles(merged);
+  }, []);
+
+  const handleValidateSkills = useCallback(async (silent = false) => {
+    setIsValidatingSkills(true);
+    try {
+      const response = await fetch("/api/agent/skills/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...withAuthHeaders(),
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === "string" ? payload.error : "校验失败");
+      }
+
+      const issueCount = Array.isArray(payload?.issues) ? payload.issues.length : 0;
+      setSkillsValidationIssueCount(issueCount);
+      if (issueCount === 0) {
+        setSkillsValidationMessage("校验通过");
+        if (!silent) {
+          toast({
+            status: "success",
+            title: "Skills 校验通过",
+            description: "frontmatter 与目录规范都通过了。",
+            duration: 2600,
+            isClosable: true,
+          });
+        }
+        return;
+      }
+
+      const firstIssue = payload.issues?.[0];
+      const firstMessage =
+        typeof firstIssue?.message === "string" && firstIssue.message
+          ? firstIssue.message
+          : "请检查 SKILL.md 的 frontmatter 与目录命名。";
+      setSkillsValidationMessage(firstMessage);
+      toast({
+        status: "error",
+        title: `发现 ${issueCount} 个规范问题`,
+        description: firstMessage,
+        duration: 4200,
+        isClosable: true,
+      });
+    } catch (error) {
+      setSkillsValidationIssueCount(1);
+      setSkillsValidationMessage(error instanceof Error ? error.message : "请稍后重试");
+      toast({
+        status: "error",
+        title: "Skills 校验失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        duration: 3200,
+        isClosable: true,
+      });
+    } finally {
+      setIsValidatingSkills(false);
+    }
+  }, [toast]);
+
+  const saveStatusRef = useRef<SaveStatus>("idle");
+  useEffect(() => {
+    const prev = saveStatusRef.current;
+    saveStatusRef.current = saveStatus;
+    if (prev !== "saved" && saveStatus === "saved" && isWorkspaceReady) {
+      void handleValidateSkills(true);
+    }
+  }, [handleValidateSkills, isWorkspaceReady, saveStatus]);
+
+  useEffect(() => {
+    if (!isWorkspaceReady) return;
+    void handleValidateSkills(true);
+  }, [handleValidateSkills, isWorkspaceReady]);
+
+  useEffect(() => {
+    const handleMove = (event: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const containerLeft = containerRef.current?.getBoundingClientRect().left || 0;
+      const next = Math.min(728, Math.max(300, event.clientX - containerLeft));
+      setChatWidth(next);
+    };
+
+    const handleUp = () => {
+      resizingRef.current = false;
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const main = mainRef.current;
+    if (!container || !main) return;
+
+    const updateHeight = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const mainTop = main.getBoundingClientRect().top;
+      const containerStyles = getComputedStyle(container);
+      const paddingBottom = parseFloat(containerStyles.paddingBottom || "0") || 0;
+      const borderBottom = parseFloat(containerStyles.borderBottomWidth || "0") || 0;
+      const nextHeight = Math.max(0, viewportHeight - mainTop - paddingBottom - borderBottom);
+      setWorkspaceHeight(`${nextHeight}px`);
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(() => updateHeight());
+    observer.observe(container);
+    observer.observe(main);
+    window.addEventListener("resize", updateHeight);
+    window.visualViewport?.addEventListener("resize", updateHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateHeight);
+      window.visualViewport?.removeEventListener("resize", updateHeight);
+    };
+  }, []);
+
   const workspaceStatus: "idle" | "loading" | "ready" | "error" = isBootstrapping
     ? "loading"
     : bootstrapError
@@ -104,182 +309,20 @@ const SkillCreatePage = () => {
     ? "ready"
     : "idle";
 
-  useEffect(() => {
-    if (!selectedFile && fileList.length > 0) {
-      setSelectedFile(fileList[0]);
-      return;
-    }
-    if (selectedFile && !files[selectedFile]) {
-      setSelectedFile(fileList[0] || "");
-    }
-  }, [fileList, files, selectedFile]);
-
-  useEffect(() => {
-    setOpenedFiles((prev) => prev.filter((path) => Boolean(files[path])));
+  const sandpackFiles = useMemo<FileMap>(() => {
+    if (Object.keys(files).length > 0) return files;
+    return fallbackSkillFiles;
   }, [files]);
 
-  useEffect(() => {
-    setDraftCode(selectedCode);
-    setIsDirty(false);
-    setSaveError("");
-  }, [activeFile, selectedCode]);
-
-  const handleSelectFile = (filePath: string) => {
-    if (filePath === activeFile) return;
-    if (isDirty && typeof window !== "undefined") {
-      const ok = window.confirm("当前文件有未保存修改，是否放弃修改并切换文件？");
-      if (!ok) return;
-    }
-    setSelectedFile(filePath);
-    setOpenedFiles((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
-  };
-
-  const handleSaveFile = async () => {
-    if (!workspaceId || !activeFile || isSaving) return;
-    setIsSaving(true);
-    setSaveError("");
-
-    try {
-      const res = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...withAuthHeaders(),
-        },
-        body: JSON.stringify({
-          projectToken: typeof router.query.projectToken === "string" ? router.query.projectToken : "",
-          path: activeFile,
-          content: draftCode,
-        }),
-      });
-
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
-      }
-
-      const nextFiles = payload.files && typeof payload.files === "object" ? (payload.files as FileMap) : null;
-      if (nextFiles) {
-        setFiles(nextFiles);
-      } else {
-        setFiles((prev) => ({
-          ...prev,
-          [activeFile]: { code: draftCode },
-        }));
-      }
-      setIsDirty(false);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "保存失败");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const applyWorkspaceFiles = async (nextFilesMap: FileMap, nextActiveFile?: string) => {
-    if (!workspaceId) return;
-    const res = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...withAuthHeaders(),
-      },
-      body: JSON.stringify({
-        projectToken: typeof router.query.projectToken === "string" ? router.query.projectToken : "",
-        files: nextFilesMap,
-      }),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(typeof payload?.error === "string" ? payload.error : "写入失败");
-    }
-    const persistedFiles = payload.files && typeof payload.files === "object" ? (payload.files as FileMap) : null;
-    if (persistedFiles) {
-      setFiles(persistedFiles);
-    } else {
-      setFiles(nextFilesMap);
-    }
-    if (nextActiveFile) {
-      setSelectedFile(nextActiveFile);
-      setOpenedFiles((prev) => (prev.includes(nextActiveFile) ? prev : [...prev, nextActiveFile]));
-    } else if (selectedFile && !(persistedFiles || nextFilesMap)[selectedFile]) {
-      const fallback = Object.keys(persistedFiles || nextFilesMap).sort((a, b) => a.localeCompare(b))[0] || "";
-      setSelectedFile(fallback);
-    }
-  };
-
-  const handleStartResizeTree = (event: ReactMouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    resizeStartRef.current = {
-      startX: event.clientX,
-      startWidth: fileTreeWidth,
-    };
-    setIsResizingTree(true);
-  };
-
-  useEffect(() => {
-    if (!isResizingTree) return;
-
-    const handleMouseMove = (event: MouseEvent) => {
-      const resizeStart = resizeStartRef.current;
-      const contentEl = contentAreaRef.current;
-      if (!resizeStart || !contentEl) return;
-
-      const deltaX = event.clientX - resizeStart.startX;
-      const containerWidth = contentEl.clientWidth;
-      const minWidth = 220;
-      const maxWidth = Math.min(520, Math.floor(containerWidth * 0.55));
-      const nextWidth = Math.max(minWidth, Math.min(maxWidth, resizeStart.startWidth + deltaX));
-      setFileTreeWidth(nextWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingTree(false);
-      resizeStartRef.current = null;
-    };
-
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isResizingTree]);
-
-  const handleCloseFileTab = (filePath: string) => {
-    if (!openedFiles.includes(filePath)) return;
-    if (filePath === activeFile && isDirty && typeof window !== "undefined") {
-      const ok = window.confirm("当前文件有未保存修改，关闭标签会丢失修改，是否继续？");
-      if (!ok) return;
-    }
-
-    let nextActiveFile = activeFile;
-    setOpenedFiles((prev) => {
-      const index = prev.indexOf(filePath);
-      const next = prev.filter((path) => path !== filePath);
-      if (filePath === activeFile) {
-        const fallback = next[index] || next[index - 1] || next[0] || "";
-        nextActiveFile = fallback;
-      }
-      return next;
-    });
-
-    if (filePath === activeFile) {
-      setSelectedFile(nextActiveFile);
-    }
-  };
+  const customSetup = useMemo(() => buildSandpackCustomSetup({}), []);
 
   return (
-    <Box position="relative" minH="100vh" h="100vh" overflow="hidden">
+    <Box position="relative" minH="100vh" overflow="hidden">
       <VectorBackground />
       <Flex
+        ref={containerRef}
         direction="column"
-        minH="100%"
-        h="100%"
+        minH="100vh"
         align="stretch"
         justify="flex-start"
         px={{ base: 4, md: 8, xl: 10 }}
@@ -290,170 +333,172 @@ const SkillCreatePage = () => {
         overflow="hidden"
         boxSizing="border-box"
       >
-        <Box>
-          <SkillsPageHeader
-            onBack={() => {
-              if (window.history.length > 1) {
-                router.back();
-                return;
-              }
-              void router.push("/");
-            }}
-          />
-        </Box>
-        <Flex as="main" align="stretch" gap={0} flex="1" minH="0">
-          <Box flex="0 0 auto" minW="320px" maxW="728px" w="560px" alignSelf="stretch" minH={0}>
-            {isBootstrapping ? (
-              <Flex
-                h="100%"
-                align="center"
-                justify="center"
-                border="1px solid"
-                borderColor="rgba(203,213,225,0.85)"
-                borderBottomLeftRadius="xl"
-                borderTopLeftRadius="xl"
-                backdropFilter="blur(10px)"
-                bg="rgba(255,255,255,0.9)"
-              >
-                <Flex align="center" color="myGray.500" gap={2}>
-                  <Spinner size="sm" />
-                  <Text fontSize="sm">正在初始化技能工作区...</Text>
-                </Flex>
-              </Flex>
-            ) : (
-              <ChatPanel
-                key={workspaceId}
-                token={`skill-studio:${workspaceId}`}
-                height="100%"
-                completionsPath="/api/skills/chat/completions"
-                completionsStream
-                completionsExtraBody={{
-                  workspaceId,
-                  projectToken: typeof router.query.projectToken === "string" ? router.query.projectToken : "",
-                }}
-                hideSkillsManager
-                autoCreateInitialConversation={false}
-                roundTop
-                defaultHeaderTitle="技能助手"
-                emptyStateTitle="创建你的第一个技能"
-                emptyStateDescription="先用一句话描述能力目标，我会生成 SKILL.md 并同步到右侧文件。"
-                defaultSelectedSkill="skill-creator"
-                fileOptions={fileList}
-                skillsProjectToken={
-                  typeof router.query.projectToken === "string" ? router.query.projectToken : undefined
+        <Flex
+          as="header"
+          align="center"
+          justify="space-between"
+          border="1px solid rgba(255,255,255,0.7)"
+          bg="rgba(255,255,255,0.75)"
+          backdropFilter="blur(18px)"
+          borderRadius="2xl"
+          px={4}
+          py={3}
+          boxShadow="0 18px 40px -24px rgba(15, 23, 42, 0.25)"
+        >
+          <Flex align="center" gap={3} minW={0}>
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={<BackIcon />}
+              onClick={() => {
+                if (window.history.length > 1) {
+                  router.back();
+                  return;
                 }
-                onFilesUpdated={(nextFiles) => setFiles(nextFiles)}
-              />
-            )}
-          </Box>
+                void router.push("/");
+              }}
+            >
+              返回
+            </Button>
+            <Text fontSize="md" fontWeight="700" color="myGray.800" noOfLines={1}>
+              技能工作区
+            </Text>
+            <Text fontSize="sm" color="myGray.500" noOfLines={1}>
+              统一编辑器视图
+            </Text>
+          </Flex>
 
-          <Box
-            w="10px"
-            bg="transparent"
-            position="relative"
-            _before={{
-              content: '\"\"',
-              position: "absolute",
-              left: "50%",
-              top: "20%",
-              transform: "translateX(-50%)",
-              width: "2px",
-              height: "60%",
-              borderRadius: "999px",
-              background: "rgba(148,163,184,0.35)",
+          <Text fontSize="xs" color={saveStatus === "error" ? "red.500" : "myGray.500"}>
+            {saveStatus === "saving"
+              ? "保存中..."
+              : saveStatus === "saved"
+              ? "已保存"
+              : saveStatus === "error"
+              ? "保存失败"
+              : "自动保存"}
+          </Text>
+        </Flex>
+
+        <SandpackProvider
+          template={DEFAULT_TEMPLATE}
+          files={sandpackFiles}
+          customSetup={customSetup}
+          theme={githubLight}
+          options={{ autorun: false }}
+        >
+          <CodeChangeListener
+            token={workspaceId}
+            template={DEFAULT_TEMPLATE}
+            onSaveStatusChange={setSaveStatus}
+            onFilesChange={(nextFiles) => {
+              latestFilesRef.current = normalizeSkillFiles(nextFiles);
             }}
+            onPersistFiles={persistSkillFiles}
           />
 
-          <Flex
-            as="section"
-            direction="column"
-            flex="1"
-            minH="0"
-            border="1px solid rgba(255,255,255,0.75)"
-            borderTopLeftRadius={0}
-            borderBottomLeftRadius={0}
-            borderTopRightRadius="2xl"
-            borderBottomRightRadius="2xl"
-            bg="rgba(255,255,255,0.75)"
-            backdropFilter="blur(22px)"
-            boxShadow="0 24px 42px -28px rgba(15, 23, 42, 0.35)"
-            overflow="hidden"
-          >
-            <SkillsStudioTopBar
-              activeView={activeView}
-              onChangeView={setActiveView}
-              openedFiles={openedFiles}
-              activeFile={activeFile}
-              onSelectFileTab={handleSelectFile}
-              onCloseFileTab={handleCloseFileTab}
-              status={workspaceStatus}
-              error={bootstrapError}
+          <Flex ref={mainRef} as="main" align="stretch" gap={0} flex="1" minH="0" h={workspaceHeight}>
+            <Box
+              flex="0 0 auto"
+              minW="300px"
+              maxW="728px"
+              w={`${chatWidth}px`}
+              alignSelf="stretch"
+              h="100%"
+              minH="0"
+            >
+              {isBootstrapping ? (
+                <Flex
+                  h="100%"
+                  align="center"
+                  justify="center"
+                  border="1px solid"
+                  borderColor="rgba(203,213,225,0.85)"
+                  borderBottomLeftRadius="xl"
+                  borderTopLeftRadius="xl"
+                  backdropFilter="blur(10px)"
+                  bg="rgba(255,255,255,0.9)"
+                >
+                  <Flex align="center" color="myGray.500" gap={2}>
+                    <Spinner size="sm" />
+                    <Text fontSize="sm">正在初始化技能工作区...</Text>
+                  </Flex>
+                </Flex>
+              ) : (
+                <ChatPanel
+                  key={workspaceId}
+                  token={`skill-studio:${workspaceId}`}
+                  height="100%"
+                  completionsPath="/api/skills/chat/completions"
+                  completionsStream
+                  completionsExtraBody={{
+                    workspaceId,
+                    projectToken,
+                  }}
+                  hideSkillsManager
+                  autoCreateInitialConversation={false}
+                  roundTop
+                  defaultHeaderTitle="技能助手"
+                  emptyStateTitle="创建你的第一个技能"
+                  emptyStateDescription="先用一句话描述能力目标，我会生成 SKILL.md 并同步到右侧文件。"
+                  defaultSelectedSkill="skill-creator"
+                  fileOptions={Object.keys(sandpackFiles).sort((a, b) => a.localeCompare(b))}
+                  skillsProjectToken={projectToken || undefined}
+                  onFilesUpdated={handleAgentFilesUpdated}
+                />
+              )}
+            </Box>
+
+            <Box
+              w="10px"
+              cursor="col-resize"
+              bg="transparent"
+              position="relative"
+              _before={{
+                content: '\"\"',
+                position: "absolute",
+                left: "50%",
+                top: "20%",
+                transform: "translateX(-50%)",
+                width: "2px",
+                height: "60%",
+                borderRadius: "999px",
+                background: "rgba(148,163,184,0.35)",
+              }}
+              _hover={{
+                bg: "rgba(148,163,184,0.12)",
+                _before: { background: "rgba(71,85,105,0.5)" },
+              }}
+              onMouseDown={() => {
+                resizingRef.current = true;
+              }}
             />
 
-            <Flex
-              ref={contentAreaRef}
-              position="relative"
-              flex="1"
-              minH="0"
-              overflow="hidden"
-              bg="rgba(248,250,252,0.65)"
-            >
-              <Box w={`${fileTreeWidth}px`} flexShrink={0} minH={0} h="100%">
-                <SkillsFileTreePanel
-                  root={fileTreeRoot}
-                  files={fileMap}
-                  activeFile={activeFile}
-                  onSelectFile={handleSelectFile}
-                  onApplyFiles={async (nextFiles, nextActiveFile) => {
-                    await applyWorkspaceFiles(nextFiles as FileMap, nextActiveFile);
-                  }}
-                />
-              </Box>
-
-              <Box
-                w="8px"
-                flexShrink={0}
-                cursor="col-resize"
-                onMouseDown={handleStartResizeTree}
-                position="relative"
-                bg={isResizingTree ? "rgba(148,163,184,0.16)" : "transparent"}
-                _hover={{ bg: "rgba(148,163,184,0.16)" }}
-                _before={{
-                  content: '""',
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "2px",
-                  height: "42px",
-                  borderRadius: "999px",
-                  background: "rgba(148,163,184,0.5)",
-                }}
-              />
-
-              <Box flex="1" minH={0} h="100%" overflow="hidden">
-                <SkillsEditorPanel
-                  activeView={activeView}
-                  activeFile={activeFile}
-                  isMarkdownFile={isMarkdownFile}
-                  selectedCode={selectedCode}
-                  draftCode={draftCode}
-                  isDirty={isDirty}
-                  isSaving={isSaving}
-                  saveError={saveError}
-                  onChangeDraft={(next) => {
-                    setDraftCode(next);
-                    setIsDirty(next !== selectedCode);
-                    setSaveError("");
-                  }}
-                  onSave={() => {
-                    void handleSaveFile();
-                  }}
-                />
-              </Box>
-            </Flex>
+            <WorkspaceShell
+              token={workspaceId || projectToken}
+              status={workspaceStatus}
+              error={bootstrapError}
+              activeView={activeView}
+              onChangeView={setActiveView}
+              workspaceMode="skills"
+              onPersistFiles={persistSkillFiles}
+              filePathFilter={isSkillPath}
+              defaultFolderPath={SKILL_ROOT}
+              customStatusBadge={{
+                text: isValidatingSkills
+                  ? "校验中"
+                  : skillsValidationIssueCount > 0
+                  ? `校验失败 ${skillsValidationIssueCount}`
+                  : "校验 Skills",
+                colorScheme: isValidatingSkills ? "orange" : skillsValidationIssueCount > 0 ? "red" : "green",
+                title: skillsValidationMessage || "点击立即校验 Skills",
+                clickable: !isValidatingSkills,
+                onClick: () => {
+                  void handleValidateSkills(false);
+                },
+              }}
+            />
           </Flex>
-        </Flex>
+        </SandpackProvider>
       </Flex>
     </Box>
   );

@@ -13,6 +13,14 @@ type WorkspaceHeaderProps = {
   activeFile: string;
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
+  hideStatusBadge?: boolean;
+  customStatusBadge?: {
+    text: string;
+    colorScheme: string;
+    title?: string;
+    clickable?: boolean;
+    onClick?: () => void;
+  };
 };
 
 const WorkspaceHeader = ({
@@ -28,6 +36,8 @@ const WorkspaceHeader = ({
   activeFile,
   onSelectTab,
   onCloseTab,
+  hideStatusBadge = false,
+  customStatusBadge,
 }: WorkspaceHeaderProps) => {
   const theme = useTheme() as Record<string, any>;
   const headerTheme = theme.workspace?.header ?? {
@@ -223,21 +233,38 @@ const WorkspaceHeader = ({
         </Flex>
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
-        <Badge
-          colorScheme={badgeColorScheme}
-          variant="subtle"
-          cursor={hasCompileErrors ? "pointer" : "default"}
-          userSelect="none"
-          title={hasCompileErrors ? "悬停可展开下方编译错误" : undefined}
-          onMouseEnter={() => onCompileBadgeHoverChange(true)}
-          onMouseLeave={() => onCompileBadgeHoverChange(false)}
-          onClick={() => {
-            if (!hasCompileErrors) return;
-            onCompileBadgeToggle();
-          }}
-        >
-          {badgeText}
-        </Badge>
+        {!hideStatusBadge ? (
+          <Badge
+            colorScheme={badgeColorScheme}
+            variant="subtle"
+            cursor={hasCompileErrors ? "pointer" : "default"}
+            userSelect="none"
+            title={hasCompileErrors ? "悬停可展开下方编译错误" : undefined}
+            onMouseEnter={() => onCompileBadgeHoverChange(true)}
+            onMouseLeave={() => onCompileBadgeHoverChange(false)}
+            onClick={() => {
+              if (!hasCompileErrors) return;
+              onCompileBadgeToggle();
+            }}
+          >
+            {badgeText}
+          </Badge>
+        ) : null}
+        {customStatusBadge ? (
+          <Badge
+            colorScheme={customStatusBadge.colorScheme}
+            variant="subtle"
+            cursor={customStatusBadge.clickable ? "pointer" : "default"}
+            userSelect="none"
+            title={customStatusBadge.title}
+            onClick={() => {
+              if (!customStatusBadge.clickable) return;
+              customStatusBadge.onClick?.();
+            }}
+          >
+            {customStatusBadge.text}
+          </Badge>
+        ) : null}
         {error ? (
           <Text fontSize={headerTheme.error.fontSize} color={headerTheme.error.color}>
             {error}
