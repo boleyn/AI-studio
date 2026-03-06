@@ -43,7 +43,13 @@ type MonacoSandpackEditorProps = {
 const MonacoSandpackEditor = ({ activeFile, code, onChangeCode }: MonacoSandpackEditorProps) => {
   return (
     <Box display="flex" flexDirection="column" flex="1" minH="0">
-      <Box flex="1" minH="0" bg="white">
+      <Box
+        flex="1"
+        minH="0"
+        bg="var(--ws-surface-strong)"
+        borderTop="1px solid"
+        borderColor="var(--ws-border)"
+      >
         {!activeFile ? (
           <Flex
             height="100%"
@@ -128,23 +134,25 @@ const MonacoSandpackEditor = ({ activeFile, code, onChangeCode }: MonacoSandpack
             </Flex>
           </Flex>
         ) : (
-          <MonacoEditor
-            path={activeFile}
-            value={code}
-            language={getEditorLanguage(activeFile)}
-            onChange={(value) => onChangeCode(value ?? "")}
-            theme="vs"
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: "on",
-              wordWrap: "on",
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-            }}
-            width="100%"
-            height="100%"
-          />
+          <Box h="100%" bg="rgba(255,255,255,0.94)">
+            <MonacoEditor
+              path={activeFile}
+              value={code}
+              language={getEditorLanguage(activeFile)}
+              onChange={(value) => onChangeCode(value ?? "")}
+              theme="vs"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: "on",
+                wordWrap: "on",
+                automaticLayout: true,
+                scrollBeyondLastLine: false,
+              }}
+              width="100%"
+              height="100%"
+            />
+          </Box>
         )}
       </Box>
     </Box>

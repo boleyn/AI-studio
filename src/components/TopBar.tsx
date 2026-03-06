@@ -10,6 +10,7 @@ import { BackIcon, CheckIcon, CloseIcon, EditIcon } from "./common/Icon";
 type TopBarProps = {
   projectName?: string;
   saveStatus?: SaveStatus;
+  onPreview?: () => void;
   onSave?: () => void;
   onDownload?: () => void;
   onCopy?: () => void;
@@ -22,6 +23,7 @@ type TopBarProps = {
 const TopBar = ({
   projectName = "未命名项目",
   saveStatus,
+  onPreview,
   onSave,
   onDownload,
   onCopy,
@@ -204,6 +206,7 @@ const TopBar = ({
       
       <TopBarActions
         saveStatus={saveStatus}
+        onPreview={onPreview}
         onSave={async () => {
           if (isEditing) {
             const ok = await handleEditSubmit();

@@ -116,7 +116,10 @@ const FileTree = ({
         py={styles.spacing.rowY}
         borderRadius={styles.spacing.rowRadius}
         bg={isSelected ? styles.colors.rowSelectedBg : "transparent"}
-        _hover={{ bg: styles.colors.rowHoverBg }}
+        border="1px solid"
+        borderColor={isSelected ? "rgba(59,130,246,0.45)" : "transparent"}
+        transition="background-color 0.16s ease, border-color 0.16s ease"
+        _hover={{ bg: styles.colors.rowHoverBg, borderColor: "rgba(148,163,184,0.26)" }}
         onClick={() => onSelectFile(fileNode.path)}
       >
         <HStack spacing={2.5} minW={0} flex={1}>
@@ -166,10 +169,11 @@ const FileTree = ({
             aria-label="行操作"
             icon={<Text lineHeight="1" fontSize={styles.sizes.rowActionIcon}>⋮</Text>}
             opacity={isSelected ? 1 : 0}
+            borderRadius="8px"
             _groupHover={{ opacity: 1 }}
             onClick={(event) => event.stopPropagation()}
           />
-          <MenuList minW={styles.sizes.menuListW}>
+          <MenuList minW={styles.sizes.menuListW} borderColor="var(--ws-border)" bg="var(--ws-surface-strong)">
             <MenuItem onClick={() => onSelectFile(fileNode.path)}>在编辑器中打开</MenuItem>
             <MenuItem onClick={() => onStartRename(fileNode.path, "file")}>重命名</MenuItem>
             <MenuItem onClick={() => void onDeleteFile(fileNode.path)}>删除</MenuItem>
@@ -198,7 +202,10 @@ const FileTree = ({
         py={styles.spacing.rowY}
         borderRadius={styles.spacing.rowRadius}
         bg={isSelected ? styles.colors.rowSelectedBg : "transparent"}
-        _hover={{ bg: styles.colors.rowHoverBg }}
+        border="1px solid"
+        borderColor={isSelected ? "rgba(59,130,246,0.45)" : "transparent"}
+        transition="background-color 0.16s ease, border-color 0.16s ease"
+        _hover={{ bg: styles.colors.rowHoverBg, borderColor: "rgba(148,163,184,0.26)" }}
         onClick={() => {
           onSelectFolder(folder.path);
           onToggleFolder(folder.path);
@@ -252,10 +259,11 @@ const FileTree = ({
             aria-label="行操作"
             icon={<Text lineHeight="1" fontSize={styles.sizes.rowActionIcon}>⋮</Text>}
             opacity={isSelected ? 1 : 0}
+            borderRadius="8px"
             _groupHover={{ opacity: 1 }}
             onClick={(event) => event.stopPropagation()}
           />
-          <MenuList minW={styles.sizes.menuListW}>
+          <MenuList minW={styles.sizes.menuListW} borderColor="var(--ws-border)" bg="var(--ws-surface-strong)">
             <MenuItem onClick={() => onOpenCreateAt("file", folder.path)}>新建文件</MenuItem>
             <MenuItem onClick={() => onOpenCreateAt("folder", folder.path)}>新建文件夹</MenuItem>
             <MenuItem onClick={() => onStartRename(folder.path, "folder")}>重命名</MenuItem>

@@ -6,6 +6,8 @@ export { default as RefreshIcon } from "./icons/refresh.svg";
 export { default as DownloadIcon } from "./icons/download.svg";
 export { default as ShareIcon } from "./icons/share.svg";
 export { default as SplitViewIcon } from "./icons/split-view.svg";
+export { default as FullscreenEnterIcon } from "./icons/fullscreen-enter.svg";
+export { default as FullscreenExitIcon } from "./icons/fullscreen-exit.svg";
 export { default as SettingsIcon } from "./icons/settings.svg";
 export { default as SaveIcon } from "./icons/save.svg";
 export { default as SearchIcon } from "./icons/search.svg";

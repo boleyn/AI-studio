@@ -8,13 +8,15 @@ import {
   useSandpackConsole,
   useLoadingOverlayState,
 } from "@codesandbox/sandpack-react";
-import { Box, Flex } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { Box, Flex, IconButton } from "@chakra-ui/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
 import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPanel";
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
 import WorkspaceHeader from "./workspace/WorkspaceHeader";
+import MyTooltip from "./ui/MyTooltip";
+import { FullscreenEnterIcon, FullscreenExitIcon } from "./common/Icon";
 
 type ActiveView = "preview" | "code";
 
@@ -62,6 +64,8 @@ const WorkspaceShell = ({
   const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
   const [openTabs, setOpenTabs] = useState<string[]>(() => (sandpack.activeFile ? [sandpack.activeFile] : []));
   const [showEmptyEditorState, setShowEmptyEditorState] = useState(false);
+  const previewLayerRef = useRef<HTMLDivElement | null>(null);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
 
   useEffect(() => {
     const active = sandpack.activeFile;
@@ -124,6 +128,34 @@ const WorkspaceShell = ({
       setIsCompilePanelPinned(false);
     }
   }, [compileErrorMessages.length]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!previewLayerRef.current) {
+        setIsPreviewFullscreen(false);
+        return;
+      }
+      setIsPreviewFullscreen(document.fullscreenElement === previewLayerRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  const handleTogglePreviewFullscreen = useCallback(async () => {
+    const target = previewLayerRef.current;
+    if (!target) return;
+    try {
+      if (document.fullscreenElement === target) {
+        await document.exitFullscreen();
+      } else {
+        await target.requestFullscreen();
+      }
+    } catch {
+      // ignore fullscreen API errors
+    }
+  }, []);
 
   const compileStatus: "ready" | "compiling" | "error" =
     compileErrorMessages.length > 0
@@ -189,7 +221,7 @@ const WorkspaceShell = ({
           minH="0"
           display="flex"
           overflow="hidden"
-          bg="rgba(248,250,252,0.65)"
+          bg="var(--ws-surface-muted)"
         >
           <SandpackLayout
             style={{
@@ -253,16 +285,38 @@ const WorkspaceShell = ({
             </Box>
           </SandpackLayout>
           <Box
+            ref={previewLayerRef}
             style={{
               flex: 1,
               minWidth: 0,
               position: "relative",
               display: activeView === "preview" ? "flex" : "none",
             }}
-          >
-            <SandpackStack
-              style={{
-                position: "absolute",
+            >
+              <Box position="absolute" top={3} right={3} zIndex={4} pointerEvents="auto">
+                <MyTooltip
+                  label={isPreviewFullscreen ? "最小化预览" : "全屏预览"}
+                  placement="left"
+                  portalProps={{ containerRef: previewLayerRef }}
+                >
+                  <IconButton
+                    aria-label={isPreviewFullscreen ? "最小化预览" : "全屏预览"}
+                    icon={isPreviewFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+                    size="sm"
+                    variant="ghost"
+                    color="var(--ws-text-main)"
+                    bg="rgba(255,255,255,0.94)"
+                    border="1px solid rgba(148,163,184,0.52)"
+                    boxShadow="0 8px 18px -12px rgba(15,23,42,0.45)"
+                    borderRadius="10px"
+                    _hover={{ bg: "rgba(255,255,255,1)" }}
+                    onClick={handleTogglePreviewFullscreen}
+                  />
+                </MyTooltip>
+              </Box>
+              <SandpackStack
+                style={{
+                  position: "absolute",
                 inset: 0,
                 display: "flex",
                 minHeight: 0,

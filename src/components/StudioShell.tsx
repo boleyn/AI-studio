@@ -485,6 +485,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
           <TopBar
             projectName={projectName}
             saveStatus={saveStatus}
+            onPreview={() => setActiveView("preview")}
             onSave={handleManualSave}
             onDownload={handleDownload}
             onShare={handleOpenShareModal}

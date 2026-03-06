@@ -527,6 +527,7 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
       borderColor={styles.panel.borderColor}
       minH="0"
       bg={styles.panel.bg}
+      backdropFilter="blur(16px)"
     >
       <input
         ref={fileUploadInputRef}
@@ -550,6 +551,7 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
         py={styles.spacing.headerY}
         borderBottom="1px solid"
         borderColor={styles.panel.borderColor}
+        bg="var(--ws-surface-strong)"
       >
         <Text
           fontSize={styles.typography.title}
@@ -564,6 +566,9 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
             size="sm"
             variant="ghost"
             icon={<SearchIcon />}
+            borderRadius="10px"
+            color="var(--ws-text-subtle)"
+            _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             onClick={() => setSearchOpen((prev) => !prev)}
           />
           <Menu placement="bottom-end" isLazy>
@@ -573,6 +578,9 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
               size="sm"
               variant="ghost"
               icon={<AddIcon />}
+              borderRadius="10px"
+              color="var(--ws-text-subtle)"
+              _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             />
             <MenuList minW={styles.sizes.createMenuListW}>
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
@@ -585,6 +593,9 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
             aria-label={allExpanded ? "折叠全部文件夹" : "展开全部文件夹"}
             size="sm"
             variant="ghost"
+            borderRadius="10px"
+            color="var(--ws-text-subtle)"
+            _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             icon={
               <Box
                 as="span"
@@ -611,11 +622,16 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
           py={styles.spacing.searchContainerY}
           borderBottom="1px solid"
           borderColor={styles.panel.borderColor}
+          bg="var(--ws-surface-muted)"
         >
           <Input
             size="sm"
             placeholder="Search files"
             value={searchQuery}
+            bg="var(--ws-surface-strong)"
+            borderColor="var(--ws-border)"
+            borderRadius="10px"
+            _focusVisible={{ borderColor: "var(--ws-border-strong)", boxShadow: "0 0 0 1px var(--ws-border-strong)" }}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
           {searchQuery.trim() ? (

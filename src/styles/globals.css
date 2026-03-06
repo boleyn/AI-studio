@@ -17,6 +17,19 @@ body {
   box-sizing: border-box;
 }
 
+:root {
+  --ws-surface: rgba(255, 255, 255, 0.84);
+  --ws-surface-strong: rgba(255, 255, 255, 0.94);
+  --ws-surface-muted: rgba(248, 251, 255, 0.7);
+  --ws-border: rgba(148, 163, 184, 0.34);
+  --ws-border-strong: rgba(100, 116, 139, 0.44);
+  --ws-text-main: #0f172a;
+  --ws-text-subtle: #475569;
+  --ws-accent: #1d4ed8;
+  --ws-accent-soft: rgba(29, 78, 216, 0.14);
+  --ws-tab-active-bg: linear-gradient(132deg, rgba(191, 219, 254, 0.84) 0%, rgba(219, 234, 254, 0.94) 100%);
+}
+
 @keyframes editorEmptyRiseIn {
   from {
     opacity: 0;

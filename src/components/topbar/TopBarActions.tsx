@@ -14,6 +14,7 @@ import {
 
 type TopBarActionsProps = {
   saveStatus?: SaveStatus;
+  onPreview?: () => void;
   onSave?: () => void;
   onDownload?: () => void;
   onCopy?: () => void;
@@ -24,6 +25,7 @@ type TopBarActionsProps = {
 
 const TopBarActions = ({
   saveStatus = "idle",
+  onPreview,
   onSave,
   onDownload,
   onCopy,
@@ -70,12 +72,13 @@ const TopBarActions = ({
 
   return (
     <Flex gap={1} align="center">
-      <MyTooltip label="运行">
+      <MyTooltip label="预览">
         <IconButton
-          aria-label="运行"
+          aria-label="预览"
           size="sm"
           variant="ghost"
           icon={<RunIcon />}
+          onClick={onPreview}
         />
       </MyTooltip>
       <MyTooltip label="复制链接">

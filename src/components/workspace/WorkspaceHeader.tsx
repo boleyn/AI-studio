@@ -32,19 +32,19 @@ const WorkspaceHeader = ({
   const theme = useTheme() as Record<string, any>;
   const headerTheme = theme.workspace?.header ?? {
     container: {
-      borderColor: "myGray.200",
-      bg: "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.75) 100%)",
+      borderColor: "var(--ws-border)",
+      bg: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,251,255,0.82) 100%)",
     },
     divider: {
       bg: "myGray.300",
     },
     viewButton: {
-      borderColor: "myGray.200",
-      activeBorderColor: "blue.300",
-      bg: "rgba(255,255,255,0.92)",
-      activeBg: "linear-gradient(135deg, rgba(51,112,255,0.14) 0%, rgba(14,165,233,0.12) 100%)",
-      color: "myGray.800",
-      activeColor: "blue.700",
+      borderColor: "var(--ws-border)",
+      activeBorderColor: "rgba(37,99,235,0.6)",
+      bg: "var(--ws-surface-strong)",
+      activeBg: "linear-gradient(135deg, rgba(59,130,246,0.2) 0%, rgba(14,165,233,0.16) 100%)",
+      color: "var(--ws-text-subtle)",
+      activeColor: "var(--ws-accent)",
       fontSize: "xs",
       fontWeight: "700",
       px: "12px",
@@ -86,12 +86,13 @@ const WorkspaceHeader = ({
   return (
     <Flex
       align="center"
-      gap={2}
+      gap={2.5}
       borderBottom="1px solid"
       borderColor={headerTheme.container.borderColor}
       px={4}
-      py={1.5}
+      py={2}
       bg={headerTheme.container.bg}
+      backdropFilter="blur(14px)"
       flexShrink={0}
     >
       <Flex gap={2} align="center">
@@ -139,7 +140,18 @@ const WorkspaceHeader = ({
         mx={1}
       />
       <Flex flex="1" minW="0" align="stretch" display={activeView === "code" ? "flex" : "none"}>
-        <Flex minW="0" align="center" gap={2} overflowX="auto" py={1}>
+        <Flex
+          minW="0"
+          align="center"
+          gap={2}
+          overflowX="auto"
+          py={1}
+          px={1.5}
+          border="1px solid"
+          borderColor="var(--ws-border)"
+          borderRadius="14px"
+          bg="rgba(255,255,255,0.5)"
+        >
           {tabs.map((filePath) => {
             const active = activeFile === filePath;
             const label = filePath.split("/").pop() || filePath;
@@ -148,15 +160,20 @@ const WorkspaceHeader = ({
                 key={filePath}
                 align="center"
                 border="1px solid"
-                borderColor={active ? "#93c5fd" : "transparent"}
-                bg={active ? "#dbeafe" : "transparent"}
-                color={active ? "#1e3a8a" : "#8b95a5"}
+                borderColor={active ? "rgba(37,99,235,0.5)" : "transparent"}
+                bg={active ? "var(--ws-tab-active-bg)" : "transparent"}
+                color={active ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
                 borderRadius="12px"
-                px={2}
-                py={1}
+                px={2.5}
+                py={1.5}
                 gap={2}
                 maxW="260px"
                 flexShrink={0}
+                transition="background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease"
+                _hover={{
+                  bg: active ? "var(--ws-tab-active-bg)" : "rgba(148,163,184,0.16)",
+                  color: active ? "var(--ws-accent)" : "var(--ws-text-main)",
+                }}
               >
                 <Box
                   as="button"
@@ -188,7 +205,7 @@ const WorkspaceHeader = ({
                   title={`关闭 ${label}`}
                   style={{
                     border: "none",
-                    background: "transparent",
+                    background: "rgba(15,23,42,0.05)",
                     color: "inherit",
                     fontSize: "14px",
                     lineHeight: 1,
