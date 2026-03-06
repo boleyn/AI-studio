@@ -265,6 +265,7 @@ export const theme = extendTheme({
       panel: {
         minW: "220px",
         maxW: "360px",
+        w: "272px",
         bg: "white",
         borderColor: "myGray.200",
       },

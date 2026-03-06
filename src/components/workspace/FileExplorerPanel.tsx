@@ -523,11 +523,15 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
       direction="column"
       minW={styles.panel.minW}
       maxW={styles.panel.maxW}
+      w={styles.panel.w || styles.panel.minW}
+      flex={`0 0 ${styles.panel.w || styles.panel.minW}`}
+      flexShrink={0}
       borderRight="1px solid"
       borderColor={styles.panel.borderColor}
       minH="0"
       bg={styles.panel.bg}
       backdropFilter="blur(16px)"
+      overflow="hidden"
     >
       <input
         ref={fileUploadInputRef}
@@ -679,8 +683,10 @@ const FileExplorerPanel = ({ token, onOpenFile }: FileExplorerPanelProps) => {
         flex="1"
         minH="0"
         overflowY="auto"
+        overflowX="hidden"
         px={styles.spacing.treeX}
         py={styles.spacing.treeY}
+        style={{ scrollbarGutter: "stable both-edges" }}
       >
         <FileTree
           root={treeRoot}

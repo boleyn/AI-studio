@@ -1,8 +1,11 @@
-import { Box, Flex, HStack, IconButton, Input, Menu, MenuButton, MenuItem, MenuList, Text } from "@chakra-ui/react";
+import { Box, Flex, HStack, Text } from "@chakra-ui/react";
 import type { ReactNode, RefObject } from "react";
 
+import MyTooltip from "../../ui/MyTooltip";
 import { FileGlyph, FolderGlyph } from "./icons";
 import { getTreeIndent, useFileExplorerTheme } from "./styleTokens";
+import TreeInlineInput from "./TreeInlineInput";
+import TreeRowActionMenu from "./TreeRowActionMenu";
 import type { CreateMode, FileNode, FolderNode, RenameTarget, SandpackFilesPayload } from "./types";
 
 type FileTreeProps = {
@@ -71,31 +74,15 @@ const FileTree = ({
 
     return (
       <HStack spacing={2} pl={getTreeIndent(depth)} pr={2} py={styles.spacing.createRowY} align="center">
-        {createMode === "folder" ? <FolderGlyph /> : <FileGlyph name={createDraftName} />}
-        <Input
-          ref={createInputRef}
-          size="sm"
-          variant="unstyled"
+        {createMode === "folder" ? <FolderGlyph expanded={false} /> : <FileGlyph name={createDraftName} />}
+        <TreeInlineInput
+          inputRef={createInputRef}
           value={createDraftName}
-          px={2}
-          py={1}
           borderRadius={styles.spacing.rowRadius}
-          border="1px solid"
           borderColor={styles.colors.inputFocusBorder}
-          onChange={(event) => onCreateDraftNameChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void onConfirmCreate();
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onCancelCreate();
-            }
-          }}
-          onBlur={() => {
-            void onConfirmCreate();
-          }}
+          onValueChange={onCreateDraftNameChange}
+          onConfirm={onConfirmCreate}
+          onCancel={onCancelCreate}
         />
       </HStack>
     );
@@ -120,67 +107,47 @@ const FileTree = ({
         borderColor={isSelected ? "rgba(59,130,246,0.45)" : "transparent"}
         transition="background-color 0.16s ease, border-color 0.16s ease"
         _hover={{ bg: styles.colors.rowHoverBg, borderColor: "rgba(148,163,184,0.26)" }}
+        overflow="hidden"
+        cursor="pointer"
         onClick={() => onSelectFile(fileNode.path)}
       >
         <HStack spacing={2.5} minW={0} flex={1}>
           <FileGlyph name={fileNode.name} />
           {isRenaming ? (
-            <Input
-              ref={renameInputRef}
-              size="sm"
-              variant="unstyled"
+            <TreeInlineInput
+              inputRef={renameInputRef}
               value={renameDraftName}
-              px={2}
-              py={1}
               borderRadius={styles.spacing.rowRadius}
-              border="1px solid"
               borderColor={styles.colors.inputFocusBorder}
-              onChange={(event) => onRenameDraftNameChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void onConfirmRename();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  onCancelRename();
-                }
-              }}
-              onBlur={() => {
-                void onConfirmRename();
-              }}
+              onValueChange={onRenameDraftNameChange}
+              onConfirm={onConfirmRename}
+              onCancel={onCancelRename}
             />
           ) : (
-            <Text
-              fontSize={styles.typography.row}
-              fontWeight={styles.typography.rowWeight}
-              color={styles.colors.rowText}
-              noOfLines={1}
-            >
-              {fileNode.name}
-            </Text>
+            <MyTooltip label={fileNode.name} placement="top-start" openDelay={220}>
+              <Text
+                fontSize={styles.typography.row}
+                fontWeight={styles.typography.rowWeight}
+                color={styles.colors.rowText}
+                noOfLines={1}
+              >
+                {fileNode.name}
+              </Text>
+            </MyTooltip>
           )}
         </HStack>
-        <Menu placement="bottom-end" isLazy>
-          <MenuButton
-            as={IconButton}
-            size="xs"
-            variant="ghost"
-            aria-label="行操作"
-            icon={<Text lineHeight="1" fontSize={styles.sizes.rowActionIcon}>⋮</Text>}
-            opacity={isSelected ? 1 : 0}
-            borderRadius="8px"
-            _groupHover={{ opacity: 1 }}
-            onClick={(event) => event.stopPropagation()}
-          />
-          <MenuList minW={styles.sizes.menuListW} borderColor="var(--ws-border)" bg="var(--ws-surface-strong)">
-            <MenuItem onClick={() => onSelectFile(fileNode.path)}>在编辑器中打开</MenuItem>
-            <MenuItem onClick={() => onStartRename(fileNode.path, "file")}>重命名</MenuItem>
-            <MenuItem onClick={() => void onDeleteFile(fileNode.path)}>删除</MenuItem>
-            <MenuItem onClick={() => onCopyPath(fileNode.path)}>复制路径</MenuItem>
-            <MenuItem onClick={() => onDownloadFile(fileNode.path, fileNode.name)}>下载</MenuItem>
-          </MenuList>
-        </Menu>
+        <TreeRowActionMenu
+          isVisible={isSelected}
+          iconSize={styles.sizes.rowActionIcon}
+          menuWidth={styles.sizes.menuListW}
+          actions={[
+            { label: "在编辑器中打开", onClick: () => onSelectFile(fileNode.path) },
+            { label: "重命名", onClick: () => onStartRename(fileNode.path, "file") },
+            { label: "删除", onClick: () => void onDeleteFile(fileNode.path) },
+            { label: "复制路径", onClick: () => onCopyPath(fileNode.path) },
+            { label: "下载", onClick: () => onDownloadFile(fileNode.path, fileNode.name) },
+          ]}
+        />
       </Flex>
     );
   };
@@ -206,71 +173,50 @@ const FileTree = ({
         borderColor={isSelected ? "rgba(59,130,246,0.45)" : "transparent"}
         transition="background-color 0.16s ease, border-color 0.16s ease"
         _hover={{ bg: styles.colors.rowHoverBg, borderColor: "rgba(148,163,184,0.26)" }}
+        overflow="hidden"
+        cursor="pointer"
         onClick={() => {
           onSelectFolder(folder.path);
           onToggleFolder(folder.path);
         }}
       >
-          <HStack spacing={2.5} minW={0} flex={1}>
-            <FolderGlyph />
-            {isRenaming ? (
-            <Input
-              ref={renameInputRef}
-              size="sm"
-              variant="unstyled"
+        <HStack spacing={2.5} minW={0} flex={1}>
+          <FolderGlyph expanded={isExpanded} />
+          {isRenaming ? (
+            <TreeInlineInput
+              inputRef={renameInputRef}
               value={renameDraftName}
-              px={2}
-              py={1}
               borderRadius={styles.spacing.rowRadius}
-              border="1px solid"
               borderColor={styles.colors.inputFocusBorder}
-              onChange={(event) => onRenameDraftNameChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void onConfirmRename();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  onCancelRename();
-                }
-              }}
-              onBlur={() => {
-                void onConfirmRename();
-              }}
+              onValueChange={onRenameDraftNameChange}
+              onConfirm={onConfirmRename}
+              onCancel={onCancelRename}
             />
           ) : (
-            <Text
-              fontSize={styles.typography.row}
-              fontWeight={styles.typography.rowWeight}
-              color={styles.colors.rowText}
-              noOfLines={1}
-            >
-              {folder.name}
-            </Text>
+            <MyTooltip label={folder.name} placement="top-start" openDelay={220}>
+              <Text
+                fontSize={styles.typography.row}
+                fontWeight={styles.typography.rowWeight}
+                color={styles.colors.rowText}
+                noOfLines={1}
+              >
+                {folder.name}
+              </Text>
+            </MyTooltip>
           )}
         </HStack>
-
-        <Menu placement="bottom-end" isLazy>
-          <MenuButton
-            as={IconButton}
-            size="xs"
-            variant="ghost"
-            aria-label="行操作"
-            icon={<Text lineHeight="1" fontSize={styles.sizes.rowActionIcon}>⋮</Text>}
-            opacity={isSelected ? 1 : 0}
-            borderRadius="8px"
-            _groupHover={{ opacity: 1 }}
-            onClick={(event) => event.stopPropagation()}
-          />
-          <MenuList minW={styles.sizes.menuListW} borderColor="var(--ws-border)" bg="var(--ws-surface-strong)">
-            <MenuItem onClick={() => onOpenCreateAt("file", folder.path)}>新建文件</MenuItem>
-            <MenuItem onClick={() => onOpenCreateAt("folder", folder.path)}>新建文件夹</MenuItem>
-            <MenuItem onClick={() => onStartRename(folder.path, "folder")}>重命名</MenuItem>
-            <MenuItem onClick={() => void onDeleteFolder(folder.path)}>删除</MenuItem>
-            <MenuItem onClick={() => onCopyPath(folder.path)}>复制路径</MenuItem>
-          </MenuList>
-        </Menu>
+        <TreeRowActionMenu
+          isVisible={isSelected}
+          iconSize={styles.sizes.rowActionIcon}
+          menuWidth={styles.sizes.menuListW}
+          actions={[
+            { label: "新建文件", onClick: () => onOpenCreateAt("file", folder.path) },
+            { label: "新建文件夹", onClick: () => onOpenCreateAt("folder", folder.path) },
+            { label: "重命名", onClick: () => onStartRename(folder.path, "folder") },
+            { label: "删除", onClick: () => void onDeleteFolder(folder.path) },
+            { label: "复制路径", onClick: () => onCopyPath(folder.path) },
+          ]}
+        />
       </Flex>
     );
 

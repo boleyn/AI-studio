@@ -16,6 +16,7 @@ export const useFileExplorerTheme = () => {
       panel: {
         minW: "236px",
         maxW: "372px",
+        w: "272px",
         bg: "var(--ws-surface)",
         borderColor: "var(--ws-border)",
       },
