@@ -67,15 +67,37 @@ export async function deleteAllConversations(token: string): Promise<number> {
 
 export async function getConversation(
   token: string,
-  id: string
+  id: string,
+  options?: { model?: string }
 ): Promise<Conversation | null> {
   try {
     const [initPayload, recordsPayload] = await Promise.all([
       getConversationInit({ token, chatId: id }),
-      getConversationRecordsV2({ token, chatId: id, pageSize: 2000 }),
+      getConversationRecordsV2({ token, chatId: id, pageSize: 2000, ...(options?.model ? { model: options.model } : {}) }),
     ]);
 
-    const messages = Array.isArray(recordsPayload.list) ? recordsPayload.list : [];
+    const messages = Array.isArray(recordsPayload.list) ? [...recordsPayload.list] : [];
+    const contextWindow =
+      recordsPayload.contextWindow && typeof recordsPayload.contextWindow === "object"
+        ? recordsPayload.contextWindow
+        : null;
+    if (contextWindow && messages.length > 0) {
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        if (messages[i].role !== "assistant") continue;
+        const kwargs =
+          messages[i].additional_kwargs && typeof messages[i].additional_kwargs === "object"
+            ? messages[i].additional_kwargs
+            : {};
+        messages[i] = {
+          ...messages[i],
+          additional_kwargs: {
+            ...kwargs,
+            contextWindow,
+          },
+        };
+        break;
+      }
+    }
     const now = new Date().toISOString();
     return {
       id,

@@ -517,6 +517,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             responseData: result.flowResponses,
             durationSeconds,
             timeline,
+            contextWindow: contextWindowUsage,
           },
         },
       ]);

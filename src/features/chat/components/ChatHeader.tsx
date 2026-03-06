@@ -32,6 +32,7 @@ interface ChatHeaderProps {
   onNewConversation?: () => void;
   onOpenSkills?: () => void;
   contextUsage?: ContextWindowUsage | null;
+  contextStatus?: "idle" | "pending" | "ready";
 }
 
 const ChatHeader = ({
@@ -46,13 +47,18 @@ const ChatHeader = ({
   onNewConversation,
   onOpenSkills,
   contextUsage,
+  contextStatus = "idle",
 }: ChatHeaderProps) => {
-  const usedPercent = Math.min(100, Math.max(0, contextUsage?.usedPercent || 0));
+  const isReady = contextStatus === "ready" && !!contextUsage;
+  const isPending = contextStatus === "pending";
+  const usedPercent = Math.min(100, Math.max(0, isReady ? contextUsage.usedPercent || 0 : 0));
   const usedPercentText = usedPercent.toFixed(1);
   const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
-  const tooltipWithInput = contextUsage
-    ? `背景信息窗口：\n${usedPercentText}% 已用（剩余 ${remainingPercentText}%）\n已用 ${contextUsage.usedTokens.toLocaleString()} 标记，共 ${contextUsage.maxContext.toLocaleString()}`
-    : "背景信息窗口：计算中...";
+  const tooltipWithInput = isReady
+    ? `背景信息窗口（已计算）：\n${usedPercentText}% 已用（剩余 ${remainingPercentText}%）\n已用 ${contextUsage.usedTokens.toLocaleString()} 标记，共 ${contextUsage.maxContext.toLocaleString()}`
+    : isPending
+    ? "背景信息窗口：计算中...\n正在分析当前对话上下文。"
+    : "背景信息窗口：暂未获得统计\n继续提问后会自动更新。";
 
   return (
     <Flex
@@ -78,7 +84,16 @@ const ChatHeader = ({
         <MyTooltip label={tooltipWithInput}>
           <Box alignItems="center" display="flex" h="28px" justifyContent="center" w="28px">
             <CircularProgress
-              color={usedPercent >= 90 ? "red.400" : usedPercent >= 70 ? "orange.400" : "gray.300"}
+              color={
+                isPending
+                  ? "blue.400"
+                  : usedPercent >= 90
+                  ? "red.400"
+                  : usedPercent >= 70
+                  ? "orange.400"
+                  : "gray.300"
+              }
+              isIndeterminate={isPending}
               size="18px"
               thickness="14px"
               trackColor="gray.100"

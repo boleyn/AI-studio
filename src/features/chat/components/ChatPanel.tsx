@@ -19,7 +19,7 @@ import {
 import { updateMessageFeedback } from "../services/feedback";
 import { getChatModels } from "../services/models";
 import type { ChatModelCatalog } from "../services/models";
-import { replaceConversationMessages } from "../services/conversations";
+import { getConversation as getConversationById, replaceConversationMessages } from "../services/conversations";
 import { listSkills } from "../services/skills";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
@@ -300,6 +300,66 @@ const toUpdatedFilesMap = (value: unknown): Record<string, { code: string }> | n
   return Object.keys(normalized).length > 0 ? normalized : null;
 };
 
+const toContextWindowUsage = (
+  value: unknown,
+  fallbackModel?: string
+): ContextWindowUsage | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const usedTokens = candidate.usedTokens;
+  const maxContext = candidate.maxContext;
+  const remainingTokens = candidate.remainingTokens;
+  const usedPercent = candidate.usedPercent;
+  if (
+    typeof usedTokens !== "number" ||
+    !Number.isFinite(usedTokens) ||
+    typeof maxContext !== "number" ||
+    !Number.isFinite(maxContext) ||
+    typeof remainingTokens !== "number" ||
+    !Number.isFinite(remainingTokens) ||
+    typeof usedPercent !== "number" ||
+    !Number.isFinite(usedPercent)
+  ) {
+    return null;
+  }
+
+  return {
+    model: typeof candidate.model === "string" && candidate.model ? candidate.model : fallbackModel || "agent",
+    usedTokens,
+    maxContext,
+    remainingTokens,
+    usedPercent,
+    totalPromptTokens:
+      typeof candidate.totalPromptTokens === "number" && Number.isFinite(candidate.totalPromptTokens)
+        ? candidate.totalPromptTokens
+        : undefined,
+    currentInputTokens:
+      typeof candidate.currentInputTokens === "number" && Number.isFinite(candidate.currentInputTokens)
+        ? candidate.currentInputTokens
+        : undefined,
+    budget:
+      candidate.budget && typeof candidate.budget === "object" && !Array.isArray(candidate.budget)
+        ? (candidate.budget as ContextWindowUsage["budget"])
+        : undefined,
+  };
+};
+
+const getLatestContextUsageFromMessages = (
+  conversationMessages: ConversationMessage[],
+  fallbackModel?: string
+): ContextWindowUsage | null => {
+  for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
+    const message = conversationMessages[i];
+    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") continue;
+    const kwargs = message.additional_kwargs as Record<string, unknown>;
+    const fromPrimary = toContextWindowUsage(kwargs.contextWindow, fallbackModel);
+    if (fromPrimary) return fromPrimary;
+    const fromLegacy = toContextWindowUsage(kwargs.contextWindowUsage, fallbackModel);
+    if (fromLegacy) return fromLegacy;
+  }
+  return null;
+};
+
 const ChatPanel = ({
   token,
   onFilesUpdated,
@@ -367,6 +427,9 @@ const ChatPanel = ({
   ]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
   const [contextUsage, setContextUsage] = useState<ContextWindowUsage | null>(null);
+  const [contextStatus, setContextStatus] = useState<"idle" | "pending" | "ready">("idle");
+  const contextUsageRef = useRef<ContextWindowUsage | null>(null);
+  const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
@@ -416,6 +479,22 @@ const ChatPanel = ({
       )
     );
   }, []);
+
+  const setContextUsageSnapshot = useCallback(
+    (next: ContextWindowUsage | null, conversationId?: string | null) => {
+      contextUsageRef.current = next;
+      setContextUsage(next);
+      if (next) {
+        if (conversationId) {
+          contextUsageCacheRef.current[conversationId] = next;
+        }
+        setContextStatus("ready");
+        return;
+      }
+      setContextStatus("idle");
+    },
+    []
+  );
 
   const scheduleAssistantTextFlush = useCallback(
     (assistantMessageId: string) => {
@@ -467,7 +546,11 @@ const ChatPanel = ({
       return next;
     });
     shouldAutoScrollRef.current = true;
-  }, [activeConversation?.id, activeConversation?.messages, token]);
+    const activeId = activeConversation?.id || "";
+    const cachedUsage = activeId ? contextUsageCacheRef.current[activeId] : null;
+    const recoveredUsage = getLatestContextUsageFromMessages(hydratedMessages, model);
+    setContextUsageSnapshot(cachedUsage || recoveredUsage || null, activeId || null);
+  }, [activeConversation?.id, activeConversation?.messages, model, setContextUsageSnapshot, token]);
 
   useEffect(() => {
     let active = true;
@@ -745,6 +828,7 @@ const ChatPanel = ({
         );
       }
       setIsSending(true);
+      setContextStatus("pending");
 
       const requestMessage: ConversationMessage = {
         ...userMessage,
@@ -934,7 +1018,23 @@ const ChatPanel = ({
               ? (responsePayload.contextWindow as ContextWindowUsage)
               : null;
           if (contextWindowPayload) {
-            setContextUsage(contextWindowPayload);
+            setContextUsageSnapshot(contextWindowPayload, conversationId || null);
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id !== assistantMessageId) return msg;
+                const kwargs =
+                  msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                    ? msg.additional_kwargs
+                    : {};
+                return {
+                  ...msg,
+                  additional_kwargs: {
+                    ...kwargs,
+                    contextWindow: contextWindowPayload,
+                  },
+                };
+              })
+            );
           }
           const assistantText =
             typeof responsePayload?.assistant?.content === "string"
@@ -1079,13 +1179,23 @@ const ChatPanel = ({
                 ) {
                   return;
                 }
-                setContextUsage({
+                setContextUsageSnapshot({
                   model: typeof streamPayload.model === "string" ? streamPayload.model : model,
                   usedTokens: streamPayload.usedTokens,
                   maxContext: streamPayload.maxContext,
                   remainingTokens: streamPayload.remainingTokens,
                   usedPercent: streamPayload.usedPercent,
-                });
+                }, conversationId || null);
+                updateAssistantMetadata((current) => ({
+                  ...current,
+                  contextWindow: {
+                    model: typeof streamPayload.model === "string" ? streamPayload.model : model,
+                    usedTokens: streamPayload.usedTokens,
+                    maxContext: streamPayload.maxContext,
+                    remainingTokens: streamPayload.remainingTokens,
+                    usedPercent: streamPayload.usedPercent,
+                  },
+                }));
               }
             },
           });
@@ -1120,8 +1230,21 @@ const ChatPanel = ({
           streamAbortRef.current = null;
           streamingConversationIdRef.current = null;
         }
+        if (conversationId && !contextUsageRef.current) {
+          const latestConversation = await getConversationById(token, conversationId, { model }).catch(() => null);
+          const recoveredUsage = latestConversation
+            ? getLatestContextUsageFromMessages(latestConversation.messages || [], model)
+            : null;
+          if (recoveredUsage) {
+            setContextUsageSnapshot(recoveredUsage, conversationId);
+          }
+        }
         setStreamingMessageId(null);
         setIsSending(false);
+        setContextStatus((prev) => {
+          if (prev !== "pending") return prev;
+          return contextUsageRef.current ? "ready" : "idle";
+        });
       }
     },
     [
@@ -1137,6 +1260,7 @@ const ChatPanel = ({
       token,
       updateConversationTitle,
       scheduleAssistantReasoningFlush,
+      setContextUsageSnapshot,
     ]
   );
 
@@ -1329,6 +1453,7 @@ const ChatPanel = ({
         activeConversationId={activeConversation?.id}
         conversations={conversations}
         contextUsage={contextUsage}
+        contextStatus={contextStatus}
         messageCount={messages.length}
         model={model}
         modelLoading={modelLoading}

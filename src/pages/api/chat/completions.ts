@@ -1108,6 +1108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           toolDetails: existingToolDetails.length > 0 ? existingToolDetails : toolDetailsFromFlow,
           responseData: flowResponses,
           durationSeconds,
+          contextWindow: contextWindowUsage,
         },
       };
     } else if (resolvedFinalMessage) {
@@ -1120,6 +1121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           toolDetails: toolDetailsFromFlow,
           responseData: flowResponses,
           durationSeconds,
+          contextWindow: contextWindowUsage,
         },
       };
     }

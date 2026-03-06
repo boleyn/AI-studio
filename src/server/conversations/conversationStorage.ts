@@ -3,6 +3,9 @@ import { ObjectId } from "mongodb";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import type { ToolCall } from "../../types/conversation";
+import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
+import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
+import { getLLMModel } from "@aistudio/ai/model";
 
 import { getMongoDb } from "../db/mongo";
 
@@ -62,6 +65,78 @@ const ITEM_COLLECTION = "conversation_items";
 const MAX_LIST_CONVERSATIONS = 200;
 const MAX_RECORD_PAGE_SIZE = 2000;
 const VALID_CHAT_ID_FILTER = { $type: "string", $ne: "" };
+type ContextWindowUsage = {
+  model: string;
+  usedTokens: number;
+  maxContext: number;
+  remainingTokens: number;
+  usedPercent: number;
+};
+
+const toContextWindowUsage = (value: unknown): ContextWindowUsage | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.model !== "string" ||
+    typeof record.usedTokens !== "number" ||
+    typeof record.maxContext !== "number" ||
+    typeof record.remainingTokens !== "number" ||
+    typeof record.usedPercent !== "number"
+  ) {
+    return null;
+  }
+  return {
+    model: record.model,
+    usedTokens: record.usedTokens,
+    maxContext: record.maxContext,
+    remainingTokens: record.remainingTokens,
+    usedPercent: record.usedPercent,
+  };
+};
+
+const getLatestStoredContextWindow = (messages: ConversationMessage[]): ContextWindowUsage | null => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const kwargs = messages[i].additional_kwargs;
+    if (!kwargs || typeof kwargs !== "object") continue;
+    const value = toContextWindowUsage((kwargs as Record<string, unknown>).contextWindow);
+    if (value) return value;
+  }
+  return null;
+};
+
+const toTokenCountMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] =>
+  messages
+    .map((message) => ({
+      role: message.role,
+      content: extractText(message.content),
+    }))
+    .filter(
+      (
+        item
+      ): item is ChatCompletionMessageParam =>
+        (item.role === "user" || item.role === "assistant" || item.role === "system" || item.role === "tool") &&
+        typeof item.content === "string"
+    );
+
+const estimateContextWindow = async ({
+  messages,
+  model,
+}: {
+  messages: ConversationMessage[];
+  model?: string;
+}): Promise<ContextWindowUsage> => {
+  const resolvedModel = model?.trim() || "agent";
+  const modelInfo = getLLMModel(resolvedModel);
+  const maxContext = Math.max(1, modelInfo.maxContext || 16000);
+  const usedTokens = await countGptMessagesTokens(toTokenCountMessages(messages)).catch(() => 0);
+  return {
+    model: resolvedModel,
+    usedTokens,
+    maxContext,
+    remainingTokens: Math.max(0, maxContext - usedTokens),
+    usedPercent: Number(Math.min(100, Math.max(0, (usedTokens / maxContext) * 100)).toFixed(2)),
+  };
+};
 
 const getMetaCollection = async () => {
   const db = await getMongoDb();
@@ -429,6 +504,7 @@ export async function getConversationRecordsV2({
   prevId,
   nextId,
   includeDeleted = false,
+  model,
 }: {
   token: string;
   chatId: string;
@@ -437,11 +513,13 @@ export async function getConversationRecordsV2({
   prevId?: string;
   nextId?: string;
   includeDeleted?: boolean;
+  model?: string;
 }): Promise<{
   list: ConversationMessage[];
   total: number;
   hasMorePrev: boolean;
   hasMoreNext: boolean;
+  contextWindow?: ContextWindowUsage;
 }> {
   const meta = await getMetaByChatId(token, chatId, { includeDeleted });
   if (!meta?.chatId) {
@@ -456,6 +534,7 @@ export async function getConversationRecordsV2({
   if (total === 0) {
     return { list: [], total: 0, hasMorePrev: false, hasMoreNext: false };
   }
+  const allMessages = docs.map(docToMessage);
 
   const findIndex = (id?: string) => (id ? docs.findIndex((item) => item.dataId === id) : -1);
 
@@ -505,6 +584,12 @@ export async function getConversationRecordsV2({
     total,
     hasMorePrev,
     hasMoreNext,
+    contextWindow:
+      getLatestStoredContextWindow(allMessages) ||
+      (await estimateContextWindow({
+        messages: allMessages,
+        model,
+      })),
   };
 }
 

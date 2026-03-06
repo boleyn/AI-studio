@@ -42,6 +42,7 @@ export default async function handler(
   const prevId = typeof req.body?.prevId === "string" ? req.body.prevId : undefined;
   const nextId = typeof req.body?.nextId === "string" ? req.body.nextId : undefined;
   const includeDeleted = req.body?.includeDeleted === true;
+  const model = typeof req.body?.model === "string" ? req.body.model : undefined;
 
   const result = await getConversationRecordsV2({
     token,
@@ -51,6 +52,7 @@ export default async function handler(
     prevId,
     nextId,
     includeDeleted,
+    model,
   });
 
   res.setHeader("Cache-Control", "no-store");
@@ -59,5 +61,6 @@ export default async function handler(
     total: result.total,
     hasMorePrev: result.hasMorePrev,
     hasMoreNext: result.hasMoreNext,
+    ...(result.contextWindow ? { contextWindow: result.contextWindow } : {}),
   });
 }
