@@ -77,6 +77,8 @@ const TopBarActions = ({
           aria-label="预览"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<RunIcon />}
           onClick={onPreview}
         />
@@ -86,6 +88,8 @@ const TopBarActions = ({
           aria-label="复制链接"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<CopyIcon />}
           onClick={handleCopy}
         />
@@ -95,6 +99,8 @@ const TopBarActions = ({
           aria-label="在新标签页打开"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<OpenInNewIcon />}
           onClick={handleOpenInNew}
         />
@@ -104,6 +110,8 @@ const TopBarActions = ({
           aria-label="刷新"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<RefreshIcon />}
           onClick={handleRefresh}
         />
@@ -113,6 +121,8 @@ const TopBarActions = ({
           aria-label="下载项目"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<DownloadIcon />}
           onClick={handleDownload}
         />
@@ -122,6 +132,8 @@ const TopBarActions = ({
           aria-label="分享"
           size="sm"
           variant="ghost"
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           icon={<ShareIcon />}
           onClick={onShare}
         />
@@ -135,6 +147,8 @@ const TopBarActions = ({
           onClick={onSave}
           isLoading={saveStatus === "saving"}
           isDisabled={saveStatus === "saving"}
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
           colorScheme={
             saveStatus === "saved" ? "green" : saveStatus === "error" ? "red" : undefined
           }

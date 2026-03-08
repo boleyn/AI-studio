@@ -85,12 +85,12 @@ export default function ProjectList() {
           {/* 侧边栏 */}
           <Box
             w={{ base: "100%", lg: "300px" }}
-            bg="rgba(255,255,255,0.75)"
+            bg="var(--ws-surface)"
             borderTopLeftRadius="2xl"
             borderTopRightRadius={{ base: "2xl", lg: 0 }}
             borderBottomRightRadius={{ base: 0, lg: 0 }}
             borderBottomLeftRadius={{ base: 0, lg: "2xl" }}
-            border="1px solid rgba(255,255,255,0.7)"
+            border="1px solid var(--ws-border)"
             px={{ base: 5, md: 6 }}
             py={{ base: 6, md: 7 }}
             backdropFilter="blur(18px)"
@@ -159,7 +159,7 @@ export default function ProjectList() {
                   </Flex>
                 </Box>
 
-                <Divider borderColor="myGray.150" />
+                <Divider borderColor="var(--ws-border)" />
 
                 <Flex
                   mt="auto"
@@ -169,7 +169,7 @@ export default function ProjectList() {
                   borderRadius="lg"
                   cursor="pointer"
                   bg="rgba(255,255,255,0.7)"
-                  border="1px solid rgba(255,255,255,0.7)"
+                  border="1px solid var(--ws-border)"
                   _hover={{ boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
                   onClick={openAccountModal}
                 >
@@ -234,9 +234,9 @@ export default function ProjectList() {
             flex={1}
             px={{ base: 5, md: 8, lg: 10 }}
             py={{ base: 6, md: 8 }}
-            bg="rgba(255,255,255,0.65)"
-            border="1px solid rgba(255,255,255,0.7)"
-            borderLeft={{ base: "1px solid rgba(255,255,255,0.7)", lg: "none" }}
+            bg="var(--ws-surface)"
+            border="1px solid var(--ws-border)"
+            borderLeft={{ base: "1px solid var(--ws-border)", lg: "none" }}
             borderTopLeftRadius={{ base: 0, lg: 0 }}
             borderTopRightRadius={{ base: 0, lg: "2xl" }}
             borderBottomRightRadius="2xl"

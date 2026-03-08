@@ -120,7 +120,7 @@ const TopBar = ({
       gap={4}
       wrap="wrap"
       border="1px solid rgba(255,255,255,0.7)"
-      bg="rgba(255,255,255,0.75)"
+      bg="rgba(255,255,255,0.8)"
       backdropFilter="blur(18px)"
       borderRadius="2xl"
       px={4}
@@ -155,10 +155,10 @@ const TopBar = ({
               minW="0"
               bg="white"
               border="1px solid"
-              borderColor="gray.300"
+              borderColor="myGray.300"
               _focus={{
-                borderColor: "blue.500",
-                boxShadow: "0 0 0 1px var(--chakra-colors-blue-500)",
+                borderColor: "primary.500",
+                boxShadow: "0 0 0 3px rgba(51,112,255,0.15)",
               }}
             />
             <IconButton
@@ -184,7 +184,8 @@ const TopBar = ({
               borderRadius="md"
               fontSize="md"
               fontWeight="600"
-              _hover={{ bg: "gray.50" }}
+              color="myGray.800"
+              _hover={{ bg: "myGray.100" }}
               cursor="pointer"
               onClick={handleEditStart}
               flex="1"
