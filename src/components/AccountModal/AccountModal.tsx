@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Avatar,
   Box,
   Button,
   Flex,
@@ -25,8 +26,14 @@ type AccountModalProps = {
 
 export function AccountModal({ isOpen, onClose }: AccountModalProps) {
   const toast = useToast();
-  const { user, logout } = useAuth();
+  const { user, logout, loadUser } = useAuth();
   const [panel, setPanel] = useState<AccountPanelTab>("account");
+
+  useEffect(() => {
+    if (isOpen) {
+      setPanel("account");
+    }
+  }, [isOpen]);
 
   const handleLogoutConfirm = () => {
     onClose();
@@ -48,12 +55,13 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
       <ModalOverlay bg="blackAlpha.400" />
       <ModalContent
         position="relative"
-        maxW="720px"
-        borderRadius="xl"
-        border="1px solid rgba(255,255,255,0.65)"
+        maxW="860px"
+        borderRadius="2xl"
+        border="1px solid rgba(255,255,255,0.72)"
         bg="rgba(255,255,255,0.92)"
-        backdropFilter="blur(18px)"
-        boxShadow="0px 18px 40px -18px rgba(15, 23, 42, 0.35)"
+        backdropFilter="blur(22px)"
+        boxShadow="0 28px 56px -30px rgba(15, 23, 42, 0.42)"
+        overflow="hidden"
       >
         <IconButton
           aria-label="关闭账号弹窗"
@@ -63,68 +71,93 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
           position="absolute"
           top={3}
           right={3}
-          borderRadius="full"
+          borderRadius="12px"
           color="myGray.600"
-          _hover={{ bg: "myGray.100", color: "myGray.800" }}
+          border="1px solid transparent"
+          _hover={{ bg: "myGray.100", color: "myGray.800", borderColor: "myGray.200" }}
           _active={{ bg: "myGray.150" }}
           onClick={onClose}
         />
         <ModalBody p={0}>
-          <Flex minH="420px">
-            <Box
-              w="160px"
-              flexShrink={0}
-              bg="rgba(255,255,255,0.75)"
-              borderRight="1px solid rgba(255,255,255,0.7)"
-              py={5}
-              px={3}
-              borderTopLeftRadius="xl"
-              borderBottomLeftRadius="xl"
+          <Flex direction="column" minH="520px">
+            <Flex
+              px={6}
+              pt={6}
+              pb={5}
+              align="center"
+              justify="space-between"
+              borderBottom="1px solid rgba(148,163,184,0.22)"
+              bg="linear-gradient(135deg, rgba(225,234,255,0.72) 0%, rgba(247,250,255,0.86) 64%, rgba(235,252,243,0.64) 100%)"
             >
-              <Text fontSize="xs" color="myGray.500" mb={3} px={2} textTransform="uppercase" letterSpacing="wider">
-                账号
+              <Flex align="center" gap={3.5} minW={0}>
+                <Avatar
+                  size="md"
+                  name={user?.displayName || user?.username || "用户"}
+                  src={user?.avatar || "/icons/defaultAvatar.svg"}
+                />
+                <Box minW={0}>
+                  <Text fontSize="md" fontWeight="700" color="myGray.800" noOfLines={1}>
+                    {user?.displayName || user?.username || "未命名用户"}
+                  </Text>
+                  <Text fontSize="sm" color="myGray.500" noOfLines={1}>
+                    {user?.contact || "普通账户"}
+                  </Text>
+                </Box>
+              </Flex>
+              <Text fontSize="xs" color="blue.700" fontWeight="700" letterSpacing="0.06em">
+                PROFILE CONSOLE
               </Text>
-              <Flex direction="column" gap={1.5}>
-                {menuItems.map(({ key, label }) => (
+            </Flex>
+
+            <Flex px={6} py={4}>
+              <Flex
+                p={1}
+                borderRadius="999px"
+                border="1px solid rgba(148,163,184,0.3)"
+                bg="rgba(255,255,255,0.76)"
+                gap={1}
+              >
+              {menuItems.map(({ key, label }) => {
+                const isActive = panel === key;
+                return (
                   <Button
                     key={key}
-                    variant="ghost"
                     size="sm"
-                    justifyContent="flex-start"
-                    fontWeight="semibold"
-                    color="myGray.800"
-                    fontSize="sm"
-                    borderRadius="md"
-                    bg={panel === key ? "myGray.150" : "transparent"}
-                    _hover={{ bg: panel === key ? "myGray.150" : "myGray.100" }}
-                    _active={{ bg: "myGray.150" }}
+                    borderRadius="999px"
+                    border="1px solid transparent"
+                    bg={isActive ? "linear-gradient(135deg, rgba(225,234,255,0.96) 0%, rgba(197,215,255,0.86) 100%)" : "transparent"}
+                    color={isActive ? "blue.700" : "myGray.700"}
+                    fontWeight="700"
+                    _hover={{ bg: isActive ? "linear-gradient(135deg, rgba(225,234,255,0.96) 0%, rgba(197,215,255,0.86) 100%)" : "myGray.100" }}
                     onClick={() => setPanel(key)}
                   >
                     {label}
                   </Button>
-                ))}
+                );
+              })}
               </Flex>
-            </Box>
-            <Flex
-              flex={1}
-              align="center"
-              justify="center"
-              p={8}
-              bg="rgba(255,255,255,0.65)"
-              borderTopRightRadius="xl"
-              borderBottomRightRadius="xl"
-              minH="420px"
-            >
-              {panel === "account" && <AccountInfoPanel user={user} />}
-              {panel === "password" && (
-                <AccountPasswordPanel onSuccess={handlePasswordSuccess} />
-              )}
-              {panel === "logout" && (
-                <AccountLogoutConfirm
-                  onConfirm={handleLogoutConfirm}
-                  onCancel={() => setPanel("account")}
-                />
-              )}
+            </Flex>
+
+            <Flex flex={1} px={6} pb={6}>
+              <Box w="100%" p={1}>
+                {panel === "account" && (
+                  <AccountInfoPanel
+                    user={user}
+                    onSaved={async () => {
+                      await loadUser();
+                    }}
+                  />
+                )}
+                {panel === "password" && (
+                  <AccountPasswordPanel onSuccess={handlePasswordSuccess} />
+                )}
+                {panel === "logout" && (
+                  <AccountLogoutConfirm
+                    onConfirm={handleLogoutConfirm}
+                    onCancel={() => setPanel("account")}
+                  />
+                )}
+              </Box>
             </Flex>
           </Flex>
         </ModalBody>

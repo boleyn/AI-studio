@@ -65,7 +65,6 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
       >
         <FormControl isInvalid={!!error}>
           <Input
-            bg="myGray.50"
             size="lg"
             placeholder="邮箱 / 手机号 / 账号"
             value={form.username}
@@ -74,7 +73,6 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
         </FormControl>
         <FormControl mt={6} isInvalid={!!error}>
           <Input
-            bg="myGray.50"
             size="lg"
             type="password"
             placeholder="设置登录密码"
@@ -84,7 +82,6 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
         </FormControl>
         <FormControl mt={6} isInvalid={!!error}>
           <Input
-            bg="myGray.50"
             size="lg"
             type="password"
             placeholder="再次输入密码"
@@ -96,9 +93,11 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
         <Button
           mt={12}
           w="100%"
-          size="md"
-          rounded="md"
-          h={10}
+          size="lg"
+          h="48px"
+          minH="48px"
+          fontSize="md"
+          lineHeight="1"
           fontWeight="medium"
           variant="primary"
           isLoading={requesting}

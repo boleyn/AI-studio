@@ -114,10 +114,19 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
   return (
     <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.feishu}>
       <Box>
-        <Box w="full" textAlign="center" pt={6} fontWeight="medium">
+        <Box w="full" textAlign="center" pt={2} fontWeight="600" color="myGray.700">
           使用飞书扫码，快速进入工作台
         </Box>
-        <Box p={5} display="flex" w="full" justifyContent="center">
+        <Box
+          mt={4}
+          p={4}
+          borderRadius="16px"
+          border="1px solid rgba(148,163,184,0.24)"
+          bg="rgba(255,255,255,0.75)"
+          display="flex"
+          w="full"
+          justifyContent="center"
+        >
           <div ref={containerRef} id="feishu_login_container" style={{ width: "300px", height: "300px" }} />
         </Box>
       </Box>

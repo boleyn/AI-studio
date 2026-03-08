@@ -85,6 +85,8 @@ export const theme = extendTheme({
       baseStyle: {
         borderRadius: "12px",
         fontWeight: "600",
+        lineHeight: "1.1",
+        minH: "unset",
         transitionProperty: "common",
         transitionDuration: "normal",
       },
@@ -96,10 +98,6 @@ export const theme = extendTheme({
           boxShadow: "0 10px 22px -12px rgba(37, 99, 235, 0.62)",
           _hover: {
             bg: "primary.700",
-            transform: "translateY(-1px)",
-          },
-          _active: {
-            transform: "translateY(0)",
           },
           _disabled: { bg: "primary.7 !important" },
         },

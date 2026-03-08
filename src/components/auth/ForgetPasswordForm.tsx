@@ -14,7 +14,17 @@ const ForgetPasswordForm = ({ setPageType }: ForgetPasswordFormProps) => {
           若你无法登录，请联系管理员或支持人员重置密码。我们会在核验账号后为你处理。
         </Text>
         <Flex mt={10} gap={3}>
-          <Button w="100%" size="md" h={10} fontWeight="medium" variant="primary" onClick={() => setPageType(LoginPageTypeEnum.password)}>
+          <Button
+            w="100%"
+            size="lg"
+            h="48px"
+            minH="48px"
+            fontSize="md"
+            lineHeight="1"
+            fontWeight="medium"
+            variant="primary"
+            onClick={() => setPageType(LoginPageTypeEnum.password)}
+          >
             返回登录
           </Button>
         </Flex>

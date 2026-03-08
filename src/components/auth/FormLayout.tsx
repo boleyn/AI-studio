@@ -59,8 +59,8 @@ const FormLayout = ({
         <>
           <Box flex={1} />
           <Box position="relative" mt={6}>
-            <Box h="1px" bg="myGray.250" />
-            <AbsoluteCenter bg="white" px={3} color="myGray.500" fontSize="mini">
+            <Box h="1px" bg="rgba(148,163,184,0.32)" />
+            <AbsoluteCenter bg="rgba(255,255,255,0.88)" px={3} color="myGray.500" fontSize="mini">
               或
             </AbsoluteCenter>
           </Box>
@@ -70,8 +70,11 @@ const FormLayout = ({
                 <Button
                   variant="whitePrimary"
                   w="100%"
-                  h="40px"
-                  borderRadius="sm"
+                  h="44px"
+                  minH="44px"
+                  fontSize="sm"
+                  lineHeight="1"
+                  borderRadius="12px"
                   fontWeight="medium"
                   leftIcon={<Avatar src={item.icon} w="20px" />}
                   onClick={() => setPageType(item.pageType)}

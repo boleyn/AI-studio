@@ -22,6 +22,7 @@ const STORAGE_REGION = process.env.STORAGE_REGION?.trim() || "us-east-1";
 const STORAGE_ACCESS_KEY_ID = process.env.STORAGE_ACCESS_KEY_ID?.trim() || "";
 const STORAGE_SECRET_ACCESS_KEY = process.env.STORAGE_SECRET_ACCESS_KEY?.trim() || "";
 const STORAGE_S3_ENDPOINT = process.env.STORAGE_S3_ENDPOINT?.trim() || "";
+const STORAGE_PUBLIC_BASE_URL = process.env.STORAGE_PUBLIC_BASE_URL?.trim() || "";
 const STORAGE_S3_FORCE_PATH_STYLE = parseBoolean(process.env.STORAGE_S3_FORCE_PATH_STYLE, true);
 const STORAGE_S3_MAX_RETRIES = Number.parseInt(process.env.STORAGE_S3_MAX_RETRIES || "3", 10) || 3;
 const STORAGE_PUBLIC_BUCKET = process.env.STORAGE_PUBLIC_BUCKET?.trim() || "";
@@ -36,6 +37,8 @@ const getBucketName = (bucketType: StorageBucketType) => {
   }
   return bucket;
 };
+
+const trimSlash = (value: string) => value.replace(/\/+$/, "");
 
 export const getS3Client = () => {
   if (s3Client) return s3Client;
@@ -321,4 +324,31 @@ export const createGetObjectPresignedUrl = async ({
     key: storageKey,
     method: "GET" as const,
   };
+};
+
+export const buildPublicObjectUrl = ({
+  key,
+  bucketType = "public",
+}: {
+  key: string;
+  bucketType?: StorageBucketType;
+}) => {
+  const storageKey = normalizeStorageKey(key);
+  const bucket = getBucketName(bucketType);
+
+  if (STORAGE_PUBLIC_BASE_URL) {
+    return `${trimSlash(STORAGE_PUBLIC_BASE_URL)}/${storageKey}`;
+  }
+
+  if (STORAGE_S3_ENDPOINT) {
+    const endpoint = trimSlash(STORAGE_S3_ENDPOINT);
+    if (STORAGE_S3_FORCE_PATH_STYLE) {
+      return `${endpoint}/${bucket}/${storageKey}`;
+    }
+    const withoutProtocol = endpoint.replace(/^https?:\/\//i, "");
+    const protocol = endpoint.startsWith("http://") ? "http://" : "https://";
+    return `${protocol}${bucket}.${withoutProtocol}/${storageKey}`;
+  }
+
+  return `https://${bucket}.s3.${STORAGE_REGION}.amazonaws.com/${storageKey}`;
 };

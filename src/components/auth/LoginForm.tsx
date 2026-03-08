@@ -65,7 +65,6 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
       >
         <FormControl isInvalid={!!error}>
           <Input
-            bg="myGray.50"
             size="lg"
             placeholder="邮箱 / 手机号 / 账号"
             value={form.username}
@@ -74,7 +73,6 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
         </FormControl>
         <FormControl mt={7} isInvalid={!!error}>
           <Input
-            bg="myGray.50"
             size="lg"
             type="password"
             placeholder="输入密码"
@@ -87,8 +85,11 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
         <Button
           my={[5, 7]}
           w="100%"
-          size="md"
-          h={10}
+          size="lg"
+          h="48px"
+          minH="48px"
+          fontSize="md"
+          lineHeight="1"
           fontWeight="medium"
           variant="primary"
           isLoading={requesting}

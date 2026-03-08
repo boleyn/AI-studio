@@ -69,7 +69,6 @@ const Login = () => {
         zIndex={1}
         overflow="hidden"
         p={[4, 6]}
-        fontFamily="sans-serif"
       >
         <Box w="100%" maxW="1200px" h="85vh" maxH="800px" zIndex={10}>
           <Box
@@ -77,12 +76,32 @@ const Login = () => {
             h="full"
             borderRadius="2rem"
             overflow="hidden"
-            boxShadow="0 25px 50px -12px rgba(0,0,0,0.1)"
-            border="1px solid rgba(255,255,255,0.5)"
-            bg="rgba(255,255,255,0.6)"
-            backdropFilter="blur(24px)"
+            boxShadow="0 28px 64px -36px rgba(15, 23, 42, 0.42)"
+            border="1px solid rgba(255,255,255,0.68)"
+            bg="rgba(255,255,255,0.62)"
+            backdropFilter="blur(28px)"
             position="relative"
           >
+            <Box
+              position="absolute"
+              top="-100px"
+              left="-80px"
+              w="280px"
+              h="280px"
+              borderRadius="full"
+              bg="radial-gradient(circle at center, rgba(51,112,255,0.25), rgba(51,112,255,0))"
+              pointerEvents="none"
+            />
+            <Box
+              position="absolute"
+              bottom="-120px"
+              right="-100px"
+              w="320px"
+              h="320px"
+              borderRadius="full"
+              bg="radial-gradient(circle at center, rgba(18,183,106,0.2), rgba(18,183,106,0))"
+              pointerEvents="none"
+            />
             <Grid templateColumns={['1fr', '1fr', 'repeat(12, 1fr)']} h="full">
               <GridItem
                 colSpan={[12, 12, 7]}
@@ -90,7 +109,7 @@ const Login = () => {
                 flexDirection="column"
                 p={12}
                 position="relative"
-                bg="transparent"
+                bg="rgba(255,255,255,0.25)"
               >
                 <Flex direction="column" h="full" justify="space-between">
                   <VStack align="start" spacing={8} w="full">
@@ -99,6 +118,22 @@ const Login = () => {
                     </Box>
 
                     <Box>
+                      <Text
+                        display="inline-flex"
+                        px={3}
+                        py={1}
+                        mb={4}
+                        borderRadius="full"
+                        bg="rgba(255,255,255,0.6)"
+                        border="1px solid rgba(148,163,184,0.35)"
+                        color="blue.700"
+                        fontSize="xs"
+                        fontWeight="700"
+                        letterSpacing="0.08em"
+                        textTransform="uppercase"
+                      >
+                        Creative Engineering Console
+                      </Text>
                       <Heading
                         size="2xl"
                         fontWeight="extrabold"
@@ -140,10 +175,10 @@ const Login = () => {
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
-                bg="rgba(255,255,255,0.7)"
+                bg="rgba(255,255,255,0.78)"
                 backdropFilter="blur(40px)"
-                borderLeft="1px solid rgba(255,255,255,0.6)"
-                boxShadow="-10px 0 30px rgba(0,0,0,0.02)"
+                borderLeft="1px solid rgba(255,255,255,0.72)"
+                boxShadow="-12px 0 40px rgba(15,23,42,0.06)"
               >
                 <Box position="absolute" top={8} left={8} display={['block', 'block', 'none']}>
                   <AsiaInfoLogo width="120px" height="30px" titleText={brandTitle} subtitleText={brandSubtitle} />
