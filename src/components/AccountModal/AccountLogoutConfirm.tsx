@@ -1,4 +1,4 @@
-import { Box, Button, Flex, HStack, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, VStack, Text } from "@chakra-ui/react";
 
 type AccountLogoutConfirmProps = {
   onConfirm: () => void;
@@ -7,44 +7,63 @@ type AccountLogoutConfirmProps = {
 
 export function AccountLogoutConfirm({ onConfirm, onCancel }: AccountLogoutConfirmProps) {
   return (
-    <Flex direction="column" align="center" gap={5} textAlign="center" py={6}>
+    <Flex h="100%" direction="column" justify="center" align="center" textAlign="center" pb={10}>
       <Box
-        w="64px"
-        h="64px"
+        w="72px"
+        h="72px"
         borderRadius="full"
         display="flex"
         alignItems="center"
         justifyContent="center"
-        bg="radial-gradient(circle at center, rgba(240,68,56,0.22) 0%, rgba(240,68,56,0.1) 56%, rgba(240,68,56,0.02) 100%)"
-        border="1px solid rgba(240,68,56,0.28)"
+        bg="rgba(240,68,56,0.06)"
+        border="1px solid rgba(240,68,56,0.18)"
+        mb={8}
+        boxShadow="0 0 40px rgba(240,68,56,0.1)"
       >
-        <Text color="red.600" fontSize="28px" lineHeight="1">!</Text>
+        <Text color="red.500" fontSize="32px" lineHeight="1" pb={1} fontWeight="300">
+          ✕
+        </Text>
       </Box>
-      <Text fontSize="xs" textTransform="uppercase" letterSpacing="0.08em" color="myGray.500">
-        Session Exit
+
+      <Text fontSize="xs" textTransform="uppercase" letterSpacing="0.1em" color="myGray.400" fontWeight="700">
+        Exit Studio Session
       </Text>
-      <Text fontSize="xl" fontWeight="700" color="myGray.800">
+      
+      <Text mt={4} fontSize="3xl" fontWeight="700" color="myGray.800" maxW="400px" lineHeight="1.2">
         确定要退出登录吗？
       </Text>
-      <Text fontSize="sm" color="myGray.500" maxW="480px">
-        退出后你需要重新登录才能继续使用工作台，当前未保存内容可能会丢失。
+      
+      <Text mt={4} fontSize="md" color="myGray.500" maxW="380px" lineHeight="1.6">
+        退出后你需要重新登录才能继续使用工作台。任何当前未保存的内容可能会丢失。
       </Text>
-      <HStack spacing={3} w="100%" justify="center" pt={1}>
-        <Button variant="whitePrimary" minW="120px" onClick={onCancel}>
+
+      <Flex mt={12} gap={4}>
+        <Button 
+          variant="ghost" 
+          size="lg" 
+          borderRadius="xl" 
+          w="140px" 
+          onClick={onCancel}
+          _hover={{ bg: "myGray.100" }}
+          color="myGray.600"
+        >
           取消
         </Button>
         <Button
-          minW="220px"
+          size="lg"
+          w="180px"
           bg="red.500"
           color="white"
-          borderRadius="12px"
-          boxShadow="0 12px 28px -18px rgba(240,68,56,0.8)"
-          _hover={{ bg: "red.600" }}
+          borderRadius="xl"
+          boxShadow="0 8px 20px -8px rgba(240,68,56,0.6)"
+          _hover={{ bg: "red.600", transform: "translateY(-1px)" }}
+          _active={{ bg: "red.700", transform: "translateY(0)" }}
+          transition="all 0.2s"
           onClick={onConfirm}
         >
           确定退出
         </Button>
-      </HStack>
+      </Flex>
     </Flex>
   );
 }

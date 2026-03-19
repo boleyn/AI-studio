@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   Avatar,
-  Badge,
   Box,
   Button,
   Flex,
@@ -10,6 +9,7 @@ import {
   Input,
   Text,
   useToast,
+  Divider,
 } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { AuthUser } from "../../types/auth";
@@ -21,36 +21,32 @@ type AccountInfoPanelProps = {
 
 const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
 
+function normalizeAvatar(value?: string) {
+  const raw = (value || "").trim();
+  if (!raw) return DEFAULT_AVATAR;
+  if (/^data:image\//i.test(raw)) return DEFAULT_AVATAR;
+  return raw;
+}
+
 export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [avatar, setAvatar] = useState(DEFAULT_AVATAR);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  const normalizeAvatar = (value?: string) => {
-    const raw = (value || "").trim();
-    if (!raw) return DEFAULT_AVATAR;
-    if (/^data:image\//i.test(raw)) return DEFAULT_AVATAR;
-    return raw;
-  };
-
   useEffect(() => {
     setDisplayName(user?.displayName || user?.username || "");
     setAvatar(normalizeAvatar(user?.avatar));
-    setIsEditing(false);
   }, [user?.avatar, user?.displayName, user?.username]);
 
   const username = user?.username || "";
-  const contact = user?.contact || "普通账户";
-  const provider = user?.provider || "password";
   const hasChanged = useMemo(() => {
     const nextName = displayName.trim();
-    const nextAvatar = avatar.trim() || DEFAULT_AVATAR;
+    const nextAvatar = normalizeAvatar(avatar);
     const currName = (user?.displayName || user?.username || "").trim();
-    const currAvatar = (user?.avatar || DEFAULT_AVATAR).trim();
+    const currAvatar = normalizeAvatar(user?.avatar);
     return nextName !== currName || nextAvatar !== currAvatar;
   }, [avatar, displayName, user?.avatar, user?.displayName, user?.username]);
 
@@ -61,7 +57,8 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
 
   const handleSave = async () => {
     const name = displayName.trim();
-    const avatarValue = avatar.trim() || DEFAULT_AVATAR;
+    const avatarValue = normalizeAvatar(avatar);
+
     if (!name) {
       toast({ status: "warning", title: "名称不能为空", duration: 2000 });
       return;
@@ -80,7 +77,6 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
         return;
       }
       await onSaved?.();
-      setIsEditing(false);
       toast({ status: "success", title: "资料已更新", duration: 1800 });
     } finally {
       setSaving(false);
@@ -103,6 +99,7 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
       toast({ status: "warning", title: "图片请控制在 8MB 以内", duration: 2000 });
       return;
     }
+
     setUploadingAvatar(true);
     try {
       const presignRes = await fetch("/api/auth/avatar/presign-upload", {
@@ -140,184 +137,136 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
   };
 
   return (
-    <Flex gap={5} direction="column">
-      {!isEditing ? (
-        <>
-          <Flex
-            align="center"
-            justify="space-between"
-            p={4}
-            borderRadius="16px"
-            border="1px solid rgba(148,163,184,0.26)"
-            bg="linear-gradient(135deg, rgba(225,234,255,0.7) 0%, rgba(246,250,255,0.82) 56%, rgba(236,252,243,0.62) 100%)"
-          >
-            <Flex align="center" gap={4} minW={0}>
-              <Avatar size="lg" name={displayName || username || "用户"} src={avatar || DEFAULT_AVATAR} />
-              <Box minW={0}>
-                <Text fontSize="lg" fontWeight="700" color="myGray.800" noOfLines={1}>
-                  {displayName || "未命名用户"}
-                </Text>
-                <Text fontSize="sm" color="myGray.500" mt={1} noOfLines={1}>
-                  @{username || "user"}
-                </Text>
-              </Box>
-            </Flex>
-            <Badge colorScheme="green" variant="subtle">
-              ACTIVE
-            </Badge>
-          </Flex>
+    <Flex h="100%" direction="column">
+      <Box mb={8}>
+        <Text fontSize="2xl" fontWeight="700" color="myGray.800" pb={1}>
+          个人资料设置
+        </Text>
+        <Text fontSize="sm" color="myGray.500">
+          管理您在这里的基础身份信息，名称将对外展示。
+        </Text>
+      </Box>
 
-          <Box
-            borderRadius="14px"
-            border="1px solid rgba(148,163,184,0.24)"
-            bg="rgba(255,255,255,0.74)"
-            p={4}
-          >
-            <Text fontSize="xs" textTransform="uppercase" letterSpacing="0.08em" color="myGray.500" mb={2}>
-              Profile Meta
-            </Text>
-            <Flex align="center" justify="space-between" gap={3}>
-              <Text fontSize="sm" color="myGray.700">联系方式</Text>
-              <Text fontSize="sm" color="myGray.800" fontWeight="600">
-                {contact}
-              </Text>
-            </Flex>
-            <Flex align="center" justify="space-between" gap={3} mt={2.5}>
-              <Text fontSize="sm" color="myGray.700">认证方式</Text>
-              <Text fontSize="sm" fontWeight="600" color="myGray.800">
-                {provider}
-              </Text>
-            </Flex>
-          </Box>
-
-          <Flex justify="flex-end">
-            <Button variant="primary" onClick={() => setIsEditing(true)}>
-              编辑资料
-            </Button>
-          </Flex>
-        </>
-      ) : (
-        <>
-          <Flex
-            align="center"
-            justify="space-between"
-            p={4}
-            borderRadius="16px"
-            border="1px solid rgba(148,163,184,0.26)"
-            bg="linear-gradient(135deg, rgba(225,234,255,0.7) 0%, rgba(246,250,255,0.82) 56%, rgba(236,252,243,0.62) 100%)"
-          >
-            <Flex align="center" gap={4} minW={0}>
-              <Box position="relative">
-                <Avatar size="lg" name={displayName || username || "用户"} src={avatar || DEFAULT_AVATAR} />
-                <Button
-                  size="xs"
-                  h="24px"
-                  minW="24px"
-                  px={2}
-                  position="absolute"
-                  right="-8px"
-                  bottom="-8px"
-                  borderRadius="999px"
-                  variant="whitePrimary"
-                  onClick={handlePickAvatar}
-                  isDisabled={uploadingAvatar}
-                >
-                  {uploadingAvatar ? "..." : "改"}
-                </Button>
-              </Box>
-              <Box minW={0}>
-                <Text fontSize="lg" fontWeight="700" color="myGray.800" noOfLines={1}>
-                  {displayName || "未命名用户"}
-                </Text>
-                <Text fontSize="sm" color="myGray.500" mt={1} noOfLines={1}>
-                  @{username || "user"}
-                </Text>
-              </Box>
-            </Flex>
-            <Badge colorScheme="blue" variant="subtle">
-              EDITING
-            </Badge>
-          </Flex>
-
-          <Flex gap={3} direction={{ base: "column", md: "row" }}>
-            <Box
-              flex="1"
-              p={4}
-              borderRadius="14px"
-              border="1px solid rgba(148,163,184,0.24)"
-              bg="rgba(255,255,255,0.74)"
-            >
-              <FormControl>
-                <FormLabel fontSize="sm" color="myGray.700" mb={1.5}>
-                  显示名称
-                </FormLabel>
-                <Input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="输入显示名称"
-                />
-              </FormControl>
-            </Box>
-            <Box
-              flex="1.3"
-              p={4}
-              borderRadius="14px"
-              border="1px solid rgba(148,163,184,0.24)"
-              bg="rgba(255,255,255,0.74)"
-            >
-              <FormControl>
-                <FormLabel fontSize="sm" color="myGray.700" mb={1.5}>
-                  头像地址
-                </FormLabel>
-                <Input
-                  value={avatar}
-                  onChange={(e) => setAvatar(e.target.value)}
-                  placeholder="https://... 或 /icons/defaultAvatar.svg"
-                />
-              </FormControl>
-              <Flex mt={2.5} align="center" gap={2}>
-                <Button size="sm" variant="whitePrimary" onClick={handlePickAvatar} isDisabled={uploadingAvatar}>
-                  {uploadingAvatar ? "上传中..." : "上传头像"}
-                </Button>
-                <Text fontSize="xs" color="myGray.500">
-                  支持 png/jpg/webp/gif，最大 8MB
-                </Text>
-              </Flex>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleFileChange}
+      {/* 移除了导致“框中框”的背景和边框 */}
+      <Box w="100%">
+        <Flex gap={8} direction={{ base: "column", md: "row" }} align="flex-start">
+          <Flex direction="column" align="center" gap={3}>
+            <Box position="relative" role="group">
+              <Avatar
+                size="2xl"
+                name={displayName || username || "用户"}
+                src={avatar || DEFAULT_AVATAR}
+                border="3px solid white"
+                boxShadow="var(--ws-glow-soft)"
+                transition="all 0.2s"
               />
+              <Button
+                size="sm"
+                position="absolute"
+                bottom="-6px"
+                left="50%"
+                transform="translateX(-50%)"
+                borderRadius="full"
+                variant="whitePrimary"
+                border="1px solid var(--ws-border)"
+                boxShadow="md"
+                onClick={handlePickAvatar}
+                isDisabled={uploadingAvatar}
+                opacity="0"
+                _groupHover={{ opacity: 1, bottom: "-2px" }}
+                transition="all 0.2s"
+              >
+                {uploadingAvatar ? "上传中" : "更换头像"}
+              </Button>
             </Box>
+            <Text fontSize="11px" color="myGray.400" textAlign="center">
+              PNG, JPG, Max 8MB
+            </Text>
           </Flex>
 
-          <Flex justify="flex-end" gap={2.5}>
-            <Button
-              variant="whitePrimary"
-              onClick={() => {
-                resetForm();
-                setIsEditing(false);
-              }}
-              isDisabled={saving}
-            >
-              取消
-            </Button>
-            <Button variant="whitePrimary" onClick={resetForm} isDisabled={saving || !hasChanged}>
-              重置
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              isLoading={saving}
-              isDisabled={!hasChanged || uploadingAvatar}
-            >
-              保存资料
-            </Button>
-          </Flex>
-        </>
-      )}
+          <Divider orientation="vertical" borderColor="var(--ws-border)" h="120px" display={{ base: "none", md: "block" }} />
+
+          <Box flex={1} w="100%">
+            <FormControl>
+              <FormLabel fontSize="sm" fontWeight="600" color="myGray.700" mb={2}>
+                显示名称
+              </FormLabel>
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="输入你的显示名称"
+                maxLength={40}
+                size="lg"
+                bg="white"
+                border="1px solid var(--ws-border)"
+                borderRadius="xl"
+                fontSize="md"
+                _hover={{ borderColor: "myGray.300" }}
+                _focus={{ borderColor: "green.400", boxShadow: "0 0 0 1px #32D583" }}
+              />
+            </FormControl>
+
+            <FormControl mt={6}>
+              <FormLabel fontSize="sm" fontWeight="600" color="myGray.700" mb={2}>
+                当前账号 (Username)
+              </FormLabel>
+              <Input
+                value={username}
+                isReadOnly
+                size="lg"
+                bg="rgba(17, 24, 36, 0.02)"
+                border="1px solid transparent"
+                borderRadius="xl"
+                color="myGray.500"
+                fontSize="md"
+              />
+            </FormControl>
+          </Box>
+        </Flex>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
+      </Box>
+
+      <Flex flex={1} />
+      
+      <Flex mt={8} pt={6} borderTop="1px solid var(--ws-border)" justify="space-between" align="center">
+        <Text fontSize="sm" color="myGray.500">
+          如果您未遇到问题，建议不要轻易修改你的基本信息。
+        </Text>
+        <Flex gap={3}>
+          <Button
+            variant="ghost"
+            onClick={resetForm}
+            isDisabled={saving || uploadingAvatar || !hasChanged}
+            size="md"
+            borderRadius="xl"
+            px={6}
+          >
+            撤销更改
+          </Button>
+          <Button
+            onClick={handleSave}
+            isLoading={saving}
+            isDisabled={!hasChanged || uploadingAvatar}
+            size="md"
+            borderRadius="xl"
+            px={8}
+            bg="green.500"
+            color="white"
+            _hover={{ bg: "green.600" }}
+            _active={{ bg: "green.700" }}
+            boxShadow="0 4px 12px -4px rgba(18, 183, 106, 0.4)"
+          >
+            保存设置
+          </Button>
+        </Flex>
+      </Flex>
     </Flex>
   );
 }
