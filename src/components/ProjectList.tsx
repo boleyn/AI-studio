@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Avatar,
   Badge,
   Box,
   Button,
@@ -24,8 +23,8 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { AddIcon, LogoIcon } from "./common/Icon";
-import { AccountModal } from "./AccountModal";
 import { ProjectCard } from "./ProjectCard";
+import { UserAccountMenu } from "./UserAccountMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useProjects } from "../hooks/useProjects";
 import VectorBackground from "./auth/VectorBackground";
@@ -42,7 +41,6 @@ export default function ProjectList() {
     deleteProject,
     formatDate,
   } = useProjects();
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
 
@@ -56,10 +54,6 @@ export default function ProjectList() {
     if (!name) return;
     await createProject(name);
     handleCloseCreateModal();
-  };
-
-  const openAccountModal = () => {
-    setAccountModalOpen(true);
   };
 
   return (
@@ -161,33 +155,7 @@ export default function ProjectList() {
 
                 <Divider borderColor="var(--ws-border)" />
 
-                <Flex
-                  mt="auto"
-                  align="center"
-                  gap={3}
-                  p={2.5}
-                  borderRadius="lg"
-                  cursor="pointer"
-                  bg="rgba(255,255,255,0.7)"
-                  border="1px solid var(--ws-border)"
-                  _hover={{ boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
-                  onClick={openAccountModal}
-                >
-                  <Avatar size="sm" name={user?.displayName || user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
-                  <Box flex="1" minW={0}>
-                    <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
-                      {loadingUser ? "加载中..." : user?.displayName || user?.username || "未命名用户"}
-                    </Text>
-                    <Text fontSize="xs" color="myGray.500" noOfLines={1}>
-                      {user?.contact || "普通账户"}
-                    </Text>
-                  </Box>
-                </Flex>
-
-                <AccountModal
-                  isOpen={accountModalOpen}
-                  onClose={() => setAccountModalOpen(false)}
-                />
+                <UserAccountMenu user={user} loadingUser={loadingUser} />
 
                 <Modal isOpen={createModalOpen} onClose={handleCloseCreateModal} isCentered size="md">
                   <ModalOverlay bg="blackAlpha.400" />

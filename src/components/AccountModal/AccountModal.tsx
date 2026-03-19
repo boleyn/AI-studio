@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   Avatar,
   Box,
-  Button,
   Flex,
   IconButton,
   Modal,
@@ -22,18 +21,19 @@ export type AccountPanelTab = "account" | "password" | "logout";
 type AccountModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  panel?: AccountPanelTab;
 };
 
-export function AccountModal({ isOpen, onClose }: AccountModalProps) {
+export function AccountModal({ isOpen, onClose, panel: initialPanel = "account" }: AccountModalProps) {
   const toast = useToast();
   const { user, logout, loadUser } = useAuth();
   const [panel, setPanel] = useState<AccountPanelTab>("account");
 
   useEffect(() => {
     if (isOpen) {
-      setPanel("account");
+      setPanel(initialPanel);
     }
-  }, [isOpen]);
+  }, [initialPanel, isOpen]);
 
   const handleLogoutConfirm = () => {
     onClose();
@@ -43,12 +43,6 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
   const handlePasswordSuccess = () => {
     toast({ title: "密码已修改", status: "success", duration: 2000 });
   };
-
-  const menuItems: { key: AccountPanelTab; label: string }[] = [
-    { key: "account", label: "账号管理" },
-    { key: "password", label: "修改密码" },
-    { key: "logout", label: "退出登录" },
-  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
@@ -109,35 +103,6 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
               </Text>
             </Flex>
 
-            <Flex px={6} py={4}>
-              <Flex
-                p={1}
-                borderRadius="999px"
-                border="1px solid rgba(148,163,184,0.3)"
-                bg="rgba(255,255,255,0.76)"
-                gap={1}
-              >
-              {menuItems.map(({ key, label }) => {
-                const isActive = panel === key;
-                return (
-                  <Button
-                    key={key}
-                    size="sm"
-                    borderRadius="999px"
-                    border="1px solid transparent"
-                    bg={isActive ? "linear-gradient(135deg, rgba(225,234,255,0.96) 0%, rgba(197,215,255,0.86) 100%)" : "transparent"}
-                    color={isActive ? "blue.700" : "myGray.700"}
-                    fontWeight="700"
-                    _hover={{ bg: isActive ? "linear-gradient(135deg, rgba(225,234,255,0.96) 0%, rgba(197,215,255,0.86) 100%)" : "myGray.100" }}
-                    onClick={() => setPanel(key)}
-                  >
-                    {label}
-                  </Button>
-                );
-              })}
-              </Flex>
-            </Flex>
-
             <Flex flex={1} px={6} pb={6}>
               <Box w="100%" p={1}>
                 {panel === "account" && (
@@ -154,7 +119,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
                 {panel === "logout" && (
                   <AccountLogoutConfirm
                     onConfirm={handleLogoutConfirm}
-                    onCancel={() => setPanel("account")}
+                    onCancel={onClose}
                   />
                 )}
               </Box>
