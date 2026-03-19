@@ -13,7 +13,7 @@ const ForgetPasswordForm = ({ setPageType }: ForgetPasswordFormProps) => {
         <Text fontSize="sm" color="myGray.600" lineHeight="1.7">
           若你无法登录，请联系管理员或支持人员重置密码。我们会在核验账号后为你处理。
         </Text>
-        <Flex mt={10} gap={3}>
+        <Flex mt={8} gap={3}>
           <Button
             w="100%"
             size="lg"

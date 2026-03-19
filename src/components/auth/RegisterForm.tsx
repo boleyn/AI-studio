@@ -1,9 +1,11 @@
 import { type Dispatch, useState } from "react";
-import { FormControl, Box, Input, Button, FormErrorMessage, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import FormLayout from "./FormLayout";
 import { LoginPageTypeEnum } from "./constants";
 import { useToast } from "@chakra-ui/react";
 import type { AuthSuccessPayload } from "./LoginForm";
+import { LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import AuthInputField from "./AuthInputField";
 
 interface Props {
   onSuccess: (e: AuthSuccessPayload) => void;
@@ -63,35 +65,39 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
           }
         }}
       >
-        <FormControl isInvalid={!!error}>
-          <Input
-            size="lg"
-            placeholder="邮箱 / 手机号 / 账号"
-            value={form.username}
-            onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-          />
-        </FormControl>
-        <FormControl mt={6} isInvalid={!!error}>
-          <Input
-            size="lg"
+        <AuthInputField
+          icon={<UserRound size={16} />}
+          isInvalid={!!error}
+          placeholder="邮箱 / 手机号 / 账号"
+          value={form.username}
+          onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+        />
+        <Box mt={5}>
+          <AuthInputField
+            icon={<LockKeyhole size={16} />}
+            isInvalid={!!error}
             type="password"
             placeholder="设置登录密码"
             value={form.password}
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
           />
-        </FormControl>
-        <FormControl mt={6} isInvalid={!!error}>
-          <Input
-            size="lg"
+        </Box>
+        <Box mt={5}>
+          <AuthInputField
+            icon={<ShieldCheck size={16} />}
+            isInvalid={!!error}
             type="password"
             placeholder="再次输入密码"
             value={form.password2}
             onChange={(e) => setForm((prev) => ({ ...prev, password2: e.target.value }))}
+            error={error}
           />
-          {error && <FormErrorMessage>{error}</FormErrorMessage>}
-        </FormControl>
+        </Box>
+        <Text mt={2} color="myGray.400" fontSize="mini">
+          建议使用 8 位以上，包含字母与数字的组合密码。
+        </Text>
         <Button
-          mt={12}
+          mt={6}
           w="100%"
           size="lg"
           h="48px"
@@ -105,7 +111,7 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
         >
           创建账号
         </Button>
-        <Flex justify="flex-end" align="center" gap={3} mt={3} fontSize="mini" fontWeight="medium" color="primary.700">
+        <Flex justify="flex-end" align="center" gap={3} mt={4} fontSize="mini" fontWeight="medium" color="primary.700">
           <Box
             cursor="pointer"
             _hover={{ textDecoration: "underline" }}

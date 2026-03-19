@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Box } from "@chakra-ui/react";
+import { Box, Text } from "@chakra-ui/react";
 import { useToast } from "@chakra-ui/react";
 import { LoginPageTypeEnum } from "./constants";
 import FormLayout from "./FormLayout";
 import { getFeishuRuntimeConfig } from "@features/auth/client/feishuConfigClient";
+import { motion } from "framer-motion";
 
 const FEISHU_SDK_URL =
   "https://lf-package-cn.feishucdn.com/obj/feishu-static/lark/passport/qrcode/LarkSSOSDKWebQRCode-1.0.3.js";
@@ -113,16 +114,20 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
 
   return (
     <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.feishu}>
-      <Box>
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: "easeOut" }}>
+      <Box mt={6}>
         <Box w="full" textAlign="center" pt={2} fontWeight="600" color="myGray.700">
           使用飞书扫码，快速进入工作台
         </Box>
+        <Text mt={1} textAlign="center" fontSize="mini" color="myGray.500">
+          扫码后将自动完成身份验证并返回当前页面
+        </Text>
         <Box
           mt={4}
           p={4}
           borderRadius="16px"
-          border="1px solid rgba(148,163,184,0.24)"
-          bg="rgba(255,255,255,0.75)"
+          border="1px solid rgba(148,163,184,0.3)"
+          bg="rgba(255,255,255,0.88)"
           display="flex"
           w="full"
           justifyContent="center"
@@ -130,6 +135,7 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
           <div ref={containerRef} id="feishu_login_container" style={{ width: "300px", height: "300px" }} />
         </Box>
       </Box>
+      </motion.div>
     </FormLayout>
   );
 };

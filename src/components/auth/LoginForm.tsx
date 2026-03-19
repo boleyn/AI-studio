@@ -1,8 +1,10 @@
 import { type Dispatch, useState } from "react";
-import { FormControl, Flex, Input, Button, Box, FormErrorMessage } from "@chakra-ui/react";
+import { Flex, Button, Box, Text } from "@chakra-ui/react";
 import FormLayout from "./FormLayout";
 import { LoginPageTypeEnum } from "./constants";
 import { useToast } from "@chakra-ui/react";
+import { LockKeyhole, UserRound } from "lucide-react";
+import AuthInputField from "./AuthInputField";
 
 export type AuthSuccessPayload = {
   token: string;
@@ -63,27 +65,30 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
           }
         }}
       >
-        <FormControl isInvalid={!!error}>
-          <Input
-            size="lg"
-            placeholder="邮箱 / 手机号 / 账号"
-            value={form.username}
-            onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-          />
-        </FormControl>
-        <FormControl mt={7} isInvalid={!!error}>
-          <Input
-            size="lg"
+        <AuthInputField
+          icon={<UserRound size={16} />}
+          isInvalid={!!error}
+          placeholder="邮箱 / 手机号 / 账号"
+          value={form.username}
+          onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+        />
+        <Box mt={5}>
+          <AuthInputField
+            icon={<LockKeyhole size={16} />}
+            isInvalid={!!error}
             type="password"
             placeholder="输入密码"
             value={form.password}
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+            error={error}
           />
-          {error && <FormErrorMessage>{error}</FormErrorMessage>}
-        </FormControl>
+        </Box>
+        <Text mt={2} color="myGray.400" fontSize="mini">
+          你的账号凭证将被安全加密，仅用于身份验证。
+        </Text>
 
         <Button
-          my={[5, 7]}
+          mt={6}
           w="100%"
           size="lg"
           h="48px"
@@ -98,7 +103,7 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
           进入工作台
         </Button>
 
-        <Flex align="center" justifyContent={["flex-end", "center"]} color="primary.700" fontWeight="medium">
+        <Flex align="center" justifyContent={["flex-end", "center"]} color="primary.700" fontWeight="medium" mt={4}>
           <Box
             cursor="pointer"
             _hover={{ textDecoration: "underline" }}
