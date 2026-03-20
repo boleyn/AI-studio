@@ -29,6 +29,7 @@ type IncomingMessage = {
   role?: string;
   content?: unknown;
 };
+type SupportedRole = ConversationMessage["role"];
 type TimelineItem = {
   type: "reasoning" | "answer" | "tool";
   text?: string;
@@ -51,28 +52,23 @@ const STUDIO_PROMPT = [
   "The frontmatter name must match the parent folder name exactly.",
 ].join("\n");
 
-const toMessages = (messages: unknown): ChatCompletionMessageParam[] => {
+const toMessages = (messages: unknown): ConversationMessage[] => {
   if (!Array.isArray(messages)) return [];
   return messages
     .map((item) => {
       const msg = item as IncomingMessage;
-      const role = msg?.role;
+      const role = msg?.role as SupportedRole | undefined;
       if (!role || !["user", "assistant", "system", "tool"].includes(role)) return null;
       const content =
         typeof msg.content === "string" ? msg.content : extractText(msg.content).trim();
       return {
         role,
         content: content || "",
-      } as ChatCompletionMessageParam;
+        id: createDataId(),
+      } as ConversationMessage;
     })
-    .filter((item): item is ChatCompletionMessageParam => Boolean(item));
+    .filter((item): item is ConversationMessage => Boolean(item));
 };
-const toConversationMessages = (messages: ChatCompletionMessageParam[]): ConversationMessage[] =>
-  messages.map((message) => ({
-    role: message.role,
-    content: typeof message.content === "string" ? message.content : extractText(message.content),
-    id: createDataId(),
-  }));
 
 const toAgentMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] => {
   const output: ChatCompletionMessageParam[] = [];
@@ -114,7 +110,8 @@ const getConversationToken = (req: NextApiRequest, projectToken: string, workspa
   if (bodyToken.startsWith("skill-studio:")) {
     return bodyToken;
   }
-  return `skill-studio:${projectToken}:${workspaceId}`;
+  const scope = projectToken || "global";
+  return `skill-studio:${scope}:${workspaceId}`;
 };
 
 const toStringValue = (value: unknown) => {
@@ -138,6 +135,13 @@ const getProjectToken = (req: NextApiRequest) => {
   const fromBody = typeof req.body?.projectToken === "string" ? req.body.projectToken : "";
   if (fromBody) return fromBody;
   const fromQuery = req.query.projectToken;
+  if (Array.isArray(fromQuery)) return fromQuery[0] || "";
+  return typeof fromQuery === "string" ? fromQuery : "";
+};
+const getSkillId = (req: NextApiRequest) => {
+  const fromBody = typeof req.body?.skillId === "string" ? req.body.skillId : "";
+  if (fromBody) return fromBody;
+  const fromQuery = req.query.skillId;
   if (Array.isArray(fromQuery)) return fromQuery[0] || "";
   return typeof fromQuery === "string" ? fromQuery : "";
 };
@@ -187,15 +191,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workspaceId = getWorkspaceId(req).trim();
   const projectToken = getProjectToken(req).trim();
-  if (!projectToken) {
-    res.status(400).json({ error: "缺少 projectToken" });
+  const skillId = getSkillId(req).trim();
+  const resolvedWorkspaceId = workspaceId || skillId || projectToken;
+  if (!resolvedWorkspaceId) {
+    res.status(400).json({ error: "缺少 workspaceId/skillId/projectToken" });
     return;
   }
-  const resolvedWorkspaceId = workspaceId || projectToken;
 
   let workspace: Awaited<ReturnType<typeof getSkillWorkspace>>;
   try {
-    workspace = await getSkillWorkspace(resolvedWorkspaceId, userId, projectToken);
+    workspace = await getSkillWorkspace(
+      resolvedWorkspaceId,
+      userId,
+      projectToken || undefined,
+      skillId || undefined
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "workspace 不可用";
     res.status(403).json({ error: message });
@@ -209,7 +219,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const stream = req.body?.stream !== false;
   const conversationId = getConversationId(req);
-  const conversationToken = getConversationToken(req, projectToken, resolvedWorkspaceId);
+  const conversationToken = getConversationToken(
+    req,
+    workspace.projectToken || projectToken,
+    workspace.id
+  );
   const created = Math.floor(Date.now() / 1000);
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
   let streamStarted = false;
@@ -247,12 +261,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const workspaceTools = createSkillWorkspaceTools(workspaceId);
+  const workspaceTools = createSkillWorkspaceTools({
+    workspaceId: workspace.id,
+    userId,
+    projectToken: workspace.projectToken,
+    skillId: workspace.skillId,
+  });
   const runtimeSkills = await getRuntimeSkills();
-  const projectSkillsParsed = collectProjectRuntimeSkills(
-    workspace.files || {},
-    `project:${projectToken}`
-  );
+  const projectSkillsParsed =
+    workspace.source === "project" && workspace.projectToken
+      ? collectProjectRuntimeSkills(workspace.files || {}, `project:${workspace.projectToken}`)
+      : { entries: [], skills: [], duplicateNames: {} };
   const mergedSkillByName = new Map<string, (typeof runtimeSkills)[number]>();
   for (const skill of runtimeSkills) mergedSkillByName.set(skill.name, skill);
   for (const skill of projectSkillsParsed.skills) mergedSkillByName.set(skill.name, skill);
@@ -324,7 +343,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const historyConversationMessages = conversationId
     ? (await getConversation(conversationToken, conversationId))?.messages ?? []
     : [];
-  const newConversationMessages = toConversationMessages(incomingMessages);
+  const newConversationMessages = incomingMessages;
   const contextConversationMessages: ConversationMessage[] = [
     ...historyConversationMessages,
     ...newConversationMessages,
@@ -560,7 +579,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contextWindow: contextWindowUsage,
       toolResponses: result.flowResponses,
       files: workspace.files,
-      workspaceId,
+      workspaceId: workspace.id,
       model: selectedModel,
     });
   } catch (error) {

@@ -74,15 +74,14 @@ const SkillCreatePage = () => {
     () => (typeof router.query.projectToken === "string" ? router.query.projectToken.trim() : ""),
     [router.query.projectToken]
   );
+  const skillId = useMemo(
+    () => (typeof router.query.skillId === "string" ? router.query.skillId.trim() : ""),
+    [router.query.skillId]
+  );
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
 
   useEffect(() => {
     if (!router.isReady) return;
-    if (!projectToken) {
-      setBootstrapError("缺少 projectToken，无法绑定项目");
-      setIsBootstrapping(false);
-      return;
-    }
 
     let cancelled = false;
 
@@ -97,7 +96,10 @@ const SkillCreatePage = () => {
             "Content-Type": "application/json",
             ...withAuthHeaders(),
           },
-          body: JSON.stringify({ projectToken }),
+          body: JSON.stringify({
+            projectToken: projectToken || undefined,
+            skillId: skillId || undefined,
+          }),
         });
 
         const payload = await res.json().catch(() => ({}));
@@ -109,7 +111,7 @@ const SkillCreatePage = () => {
         const nextWorkspaceId =
           typeof payload.workspaceId === "string" && payload.workspaceId.trim()
             ? payload.workspaceId.trim()
-            : projectToken;
+            : skillId || projectToken;
         const nextFiles = normalizeSkillFiles(payload.files);
 
         setWorkspaceId(nextWorkspaceId);
@@ -129,7 +131,7 @@ const SkillCreatePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [projectToken, router.isReady]);
+  }, [projectToken, router.isReady, skillId]);
 
   const persistSkillFiles = useCallback(
     async (nextFiles: FileMap) => {
@@ -138,7 +140,10 @@ const SkillCreatePage = () => {
       }
 
       const normalized = normalizeSkillFiles(nextFiles);
-      const query = projectToken ? `?projectToken=${encodeURIComponent(projectToken)}` : "";
+      const queryParams = new URLSearchParams();
+      if (projectToken) queryParams.set("projectToken", projectToken);
+      if (skillId) queryParams.set("skillId", skillId);
+      const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
       const response = await fetch(
         `/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files${query}`,
         {
@@ -149,6 +154,7 @@ const SkillCreatePage = () => {
           },
           body: JSON.stringify({
             projectToken,
+            skillId,
             files: normalized,
           }),
         }
@@ -163,7 +169,7 @@ const SkillCreatePage = () => {
       latestFilesRef.current = persistedFiles;
       setFiles(persistedFiles);
     },
-    [projectToken, workspaceId]
+    [projectToken, skillId, workspaceId]
   );
 
   const handleAgentFilesUpdated = useCallback((updated: FileMap) => {
@@ -433,6 +439,7 @@ const SkillCreatePage = () => {
                   completionsExtraBody={{
                     workspaceId,
                     projectToken,
+                    skillId,
                   }}
                   hideSkillsManager
                   autoCreateInitialConversation={false}

@@ -127,6 +127,51 @@ export function useProjects() {
     [loadProjects, toast]
   );
 
+  const duplicateProject = useCallback(
+    async (token: string) => {
+      try {
+        const sourceRes = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
+          method: "GET",
+          headers: withAuthHeaders(),
+        });
+        const sourcePayload = await sourceRes.json().catch(() => ({}));
+        if (!sourceRes.ok) {
+          throw new Error(sourcePayload.error || "读取源项目失败");
+        }
+
+        const sourceName =
+          typeof sourcePayload.name === "string" && sourcePayload.name.trim()
+            ? sourcePayload.name.trim()
+            : "未命名项目";
+        const createRes = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...withAuthHeaders() },
+          body: JSON.stringify({
+            name: `${sourceName}-副本`,
+            template: sourcePayload.template,
+            files: sourcePayload.files,
+            dependencies: sourcePayload.dependencies || {},
+          }),
+        });
+        const createPayload = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) {
+          throw new Error(createPayload.error || "复制项目失败");
+        }
+        await loadProjects();
+        toast({ title: "项目已复制", status: "success", duration: 1800 });
+      } catch (error) {
+        toast({
+          title: "复制失败",
+          description: error instanceof Error ? error.message : "未知错误",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    },
+    [loadProjects, toast]
+  );
+
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -151,6 +196,7 @@ export function useProjects() {
     openProject,
     renameProject,
     deleteProject,
+    duplicateProject,
     formatDate,
   };
 }

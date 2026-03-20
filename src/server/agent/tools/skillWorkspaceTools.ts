@@ -59,8 +59,27 @@ const safeParse = <T>(schema: z.ZodTypeAny, input: unknown): { ok: true; data: T
   return { ok: true, data: parsed.data as T };
 };
 
-export const createSkillWorkspaceTools = (workspaceId: string): AgentToolDefinition[] => {
-  const run = (input: WorkspaceActionInput) => runWorkspaceAction(workspaceId, input);
+export const createSkillWorkspaceTools = ({
+  workspaceId,
+  userId,
+  projectToken,
+  skillId,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+}): AgentToolDefinition[] => {
+  const run = (input: WorkspaceActionInput) =>
+    runWorkspaceAction(
+      {
+        workspaceId,
+        userId,
+        projectToken,
+        skillId,
+      },
+      input
+    );
 
   return [
     {
