@@ -110,6 +110,38 @@ export function useSkills() {
     [buildSkillEditorRoute, router]
   );
 
+  const updateSkill = useCallback(
+    async (token: string, name: string, description?: string) => {
+      try {
+        const response = await fetch(`/api/skills/${encodeURIComponent(token)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...withAuthHeaders(),
+          },
+          body: JSON.stringify({
+            name: name.trim() || undefined,
+            description: description?.trim() || "",
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "更新失败");
+        }
+        await loadSkills();
+        toast({ title: "Skill 已更新", status: "success", duration: 1600 });
+      } catch (error) {
+        toast({
+          title: "更新失败",
+          description: error instanceof Error ? error.message : "未知错误",
+          status: "error",
+          duration: 2600,
+        });
+      }
+    },
+    [loadSkills, toast]
+  );
+
   const deleteSkill = useCallback(
     async (token: string) => {
       try {
@@ -179,6 +211,7 @@ export function useSkills() {
     loadSkills,
     createSkill,
     openSkill,
+    updateSkill,
     deleteSkill,
     duplicateSkill,
     templateOptions,

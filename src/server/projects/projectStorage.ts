@@ -19,6 +19,7 @@ export type ProjectFile = {
 export type ProjectMeta = {
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   dependencies?: Record<string, string>;
@@ -30,6 +31,7 @@ export type ProjectMeta = {
 export type ProjectData = {
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   files: Record<string, ProjectFile>;
@@ -42,12 +44,14 @@ export type ProjectData = {
 export type ProjectListItem = {
   token: string;
   name: string;
+  description?: string;
   updatedAt: string;
 };
 
 export type ProjectOverviewItem = {
   token: string;
   name: string;
+  description?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -56,6 +60,7 @@ type ProjectDoc = {
   _id: ObjectId;
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   dependencies?: Record<string, string>;
@@ -431,6 +436,7 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
   return {
     token: doc.token,
     name: doc.name,
+    description: doc.description,
     template: doc.template,
     userId: doc.userId,
     files,
@@ -470,7 +476,7 @@ export async function hasProjectFilesDir(token: string): Promise<boolean> {
  */
 export async function updateProjectMeta(
   token: string,
-  updates: Partial<Pick<ProjectMeta, "name" | "template" | "dependencies" | "sandpackCompileInfo">>
+  updates: Partial<Pick<ProjectMeta, "name" | "description" | "template" | "dependencies" | "sandpackCompileInfo">>
 ): Promise<void> {
   const coll = await getCollection();
   const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
@@ -481,6 +487,7 @@ export async function updateProjectMeta(
     updatedAt: now,
   };
   if (updates.name !== undefined) set.name = updates.name;
+  if (updates.description !== undefined) set.description = updates.description;
   if (updates.template !== undefined) set.template = updates.template;
   if (updates.dependencies !== undefined) set.dependencies = updates.dependencies;
   if (updates.sandpackCompileInfo !== undefined) set.sandpackCompileInfo = updates.sandpackCompileInfo;
@@ -593,6 +600,7 @@ export async function saveProject(project: ProjectData): Promise<void> {
   const doc: Omit<ProjectDoc, "_id"> = {
     token: project.token,
     name: project.name,
+    description: project.description,
     template: project.template,
     userId: project.userId,
     dependencies: project.dependencies ?? {},
@@ -614,12 +622,13 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, updatedAt: 1 })
     .toArray();
 
   return docs.map((d) => ({
     token: d.token,
     name: d.name,
+    description: d.description,
     updatedAt: d.updatedAt,
   }));
 }
@@ -634,12 +643,13 @@ export async function listProjectOverviewItems(userId: string): Promise<ProjectO
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, createdAt: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
   return docs.map((d) => ({
     token: d.token,
     name: d.name,
+    description: d.description,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   }));

@@ -43,6 +43,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === "PATCH") {
     const body = (req.body || {}) as UpdateSkillBody;
+    if (typeof body.name === "string" && body.name.trim() !== "") {
+      if (!/^[\w\-\s]+$/.test(body.name)) {
+        res.status(400).json({ error: "Skill 名称仅支持英文字母、数字、空格、横线（-）和下划线（_）" });
+        return;
+      }
+    }
     try {
       const skill = await updateUserSkill({
         token: id,

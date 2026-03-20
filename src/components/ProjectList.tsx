@@ -11,6 +11,7 @@ import {
   Divider,
   Flex,
   FormControl,
+  FormErrorMessage,
   FormLabel,
   Grid,
   Heading,
@@ -28,6 +29,7 @@ import {
   TabList,
   Tabs,
   Text,
+  Textarea,
 } from "@chakra-ui/react";
 
 import { AddIcon, EmptyIcon, LogoIcon, SearchIcon } from "./common/Icon";
@@ -61,6 +63,7 @@ export default function ProjectList() {
     creating: creatingSkill,
     createSkill,
     openSkill,
+    updateSkill,
     deleteSkill,
     duplicateSkill,
   } = useSkills();
@@ -127,7 +130,7 @@ export default function ProjectList() {
     if (!name) return;
 
     if (createType === "project") {
-      await createProject(name);
+      await createProject(name, descriptionInput.trim() || undefined);
       handleCloseCreateModal();
       return;
     }
@@ -160,6 +163,8 @@ export default function ProjectList() {
     color: "myGray.700",
     fontWeight: "medium",
   } as const;
+
+  const isNameInvalid = createType === "skill" && nameInput.trim() !== "" && !/^[\w\-\s]+$/.test(nameInput);
 
   return (
     <Box position="relative" minH="100vh" overflow="hidden">
@@ -523,13 +528,16 @@ export default function ProjectList() {
                       key={project.token}
                       index={index}
                       title={project.name}
-                      description="继续编辑项目代码与相关对话"
+                      description={project.description || "继续编辑项目代码与相关对话"}
                       meta={`更新于 ${formatDate(project.updatedAt)}`}
                       onOpen={() => openProject(project.token)}
-                      onRename={(nextName) => renameProject(project.token, nextName)}
-                      renameDialogTitle="修改项目名称"
+                      onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
+                      renameDialogTitle="修改项目"
                       renameFieldLabel="项目名称"
                       renamePlaceholder="输入项目名称"
+                      renameDescLabel="项目描述（非必填）"
+                      renameDescPlaceholder="简单描述这个项目的作用..."
+                      initialDescription={project.description}
                       onDelete={() => deleteProject(project.token)}
                       onDuplicate={() => duplicateProject(project.token)}
                       deleteDialogTitle="删除项目"
@@ -582,6 +590,17 @@ export default function ProjectList() {
                     onOpen={() => {
                       void openSkill(skill.token);
                     }}
+                    onRename={async (nextName, nextDesc) => {
+                      await updateSkill(skill.token, nextName, nextDesc);
+                    }}
+                    renameDialogTitle="修改 Skill"
+                    renameFieldLabel="Skill 名称"
+                    renamePlaceholder="输入 skill 名称"
+                    renameDescLabel="触发描述（非必填）"
+                    renameDescPlaceholder="描述这个 skill 适合在什么场景触发"
+                    renameNameRegex={/^[\w\-\s]+$/}
+                    renameNameErrorMsg="Skill 名称仅支持英文字母、数字、空格、横线（-）和下划线（_）"
+                    initialDescription={skill.description}
                     onDuplicate={async () => {
                       await duplicateSkill(skill.token);
                     }}
@@ -611,13 +630,17 @@ export default function ProjectList() {
               </Select>
             </FormControl>
 
-            <FormControl isRequired mb={createType === "project" ? 0 : 4}>
+            <FormControl isRequired isInvalid={isNameInvalid} mb={4}>
               <FormLabel color="myGray.700">{createType === "project" ? "项目名称" : "Skill 名称"}</FormLabel>
               <Input
                 placeholder={createType === "project" ? "输入项目名称" : "输入 skill 名称"}
                 value={nameInput}
                 onChange={(event) => setNameInput(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && void handleCreate()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !isNameInvalid) {
+                    void handleCreate();
+                  }
+                }}
                 autoFocus
                 bg="myWhite.100"
                 borderColor="myGray.200"
@@ -626,24 +649,26 @@ export default function ProjectList() {
                 name="new_entity_name"
                 autoComplete="off"
               />
+              <FormErrorMessage>Skill 名称仅支持英文字母、数字、空格、横线（-）和下划线（_）</FormErrorMessage>
             </FormControl>
 
-            {createType === "skill" ? (
-              <FormControl mb={0}>
-                <FormLabel color="myGray.700">触发描述</FormLabel>
-                <Input
-                  placeholder="描述这个 skill 适合在什么场景触发"
-                  value={descriptionInput}
-                  onChange={(event) => setDescriptionInput(event.target.value)}
-                  bg="myWhite.100"
-                  borderColor="myGray.200"
-                  _hover={{ borderColor: "myGray.300" }}
-                  _focusVisible={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
-                  name="new_entity_desc"
-                  autoComplete="off"
-                />
-              </FormControl>
-            ) : null}
+            <FormControl mb={0}>
+              <FormLabel color="myGray.700">
+                {createType === "project" ? "项目描述（非必填）" : "触发描述（非必填）"}
+              </FormLabel>
+              <Textarea
+                placeholder={createType === "project" ? "简单描述这个项目的作用..." : "描述这个 skill 适合在什么场景触发"}
+                value={descriptionInput}
+                onChange={(event) => setDescriptionInput(event.target.value)}
+                bg="myWhite.100"
+                borderColor="myGray.200"
+                _hover={{ borderColor: "myGray.300" }}
+                _focusVisible={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
+                name="new_entity_desc"
+                rows={3}
+                resize="vertical"
+              />
+            </FormControl>
           </ModalBody>
           <ModalFooter gap={2}>
             <Button variant="ghost" onClick={handleCloseCreateModal}>
@@ -655,7 +680,7 @@ export default function ProjectList() {
                 void handleCreate();
               }}
               isLoading={creating}
-              isDisabled={!nameInput.trim()}
+              isDisabled={!nameInput.trim() || isNameInvalid}
             >
               创建
             </Button>

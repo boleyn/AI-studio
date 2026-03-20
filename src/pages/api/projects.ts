@@ -19,6 +19,7 @@ type ProjectListItem = {
 
 type CreateProjectRequest = {
   name?: string;
+  description?: string;
   template?: SandpackPredefinedTemplate;
   files?: Record<string, { code: string }>;
   dependencies?: Record<string, string>;
@@ -165,6 +166,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       const project: ProjectData = {
         token,
         name,
+        description: body.description?.trim() || undefined,
         template: body.template || DEFAULT_TEMPLATE,
         userId,
         files: hasNonEmptyFiles(body.files) ? body.files : DEFAULT_FILES,
@@ -178,6 +180,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       res.status(201).json({
         token: project.token,
         name: project.name,
+        description: project.description,
         template: project.template,
         files: project.files,
         dependencies: project.dependencies,

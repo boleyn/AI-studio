@@ -15,6 +15,7 @@ import { requireAuth } from "@server/auth/session";
 
 type PatchProjectRequest = {
   name?: string;
+  description?: string;
   template?: SandpackPredefinedTemplate;
   dependencies?: Record<string, string>;
   sandpackCompileInfo?: SandpackCompileInfo;
@@ -158,6 +159,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         dependencies: project.dependencies || {},
         sandpackCompileInfo: project.sandpackCompileInfo || null,
         name: project.name,
+        description: project.description,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       });
@@ -183,6 +185,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       const body = req.body as PatchProjectRequest;
       await updateProjectMeta(token, {
         name: body.name,
+        description: body.description,
         template: body.template,
         dependencies: body.dependencies,
         sandpackCompileInfo: body.sandpackCompileInfo,
@@ -192,6 +195,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       res.status(200).json({
         token: updatedProject!.token,
         name: updatedProject!.name,
+        description: updatedProject!.description,
         template: updatedProject!.template,
         dependencies: updatedProject!.dependencies,
         sandpackCompileInfo: updatedProject!.sandpackCompileInfo,

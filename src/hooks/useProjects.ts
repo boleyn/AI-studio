@@ -36,13 +36,13 @@ export function useProjects() {
   }, [loadProjects]);
 
   const createProject = useCallback(
-    async (name: string) => {
+    async (name: string, description?: string) => {
       try {
         setCreating(true);
         const response = await fetch("/api/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...withAuthHeaders() },
-          body: JSON.stringify({ name: name.trim() }),
+          body: JSON.stringify({ name: name.trim(), description: description?.trim() }),
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
@@ -73,14 +73,14 @@ export function useProjects() {
   );
 
   const renameProject = useCallback(
-    async (token: string, name: string) => {
+    async (token: string, name: string, description?: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
       try {
         const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...withAuthHeaders() },
-          body: JSON.stringify({ name: trimmed }),
+          body: JSON.stringify({ name: trimmed, description: description?.trim() }),
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
@@ -148,6 +148,7 @@ export function useProjects() {
           headers: { "Content-Type": "application/json", ...withAuthHeaders() },
           body: JSON.stringify({
             name: `${sourceName}-副本`,
+            description: sourcePayload.description,
             template: sourcePayload.template,
             files: sourcePayload.files,
             dependencies: sourcePayload.dependencies || {},

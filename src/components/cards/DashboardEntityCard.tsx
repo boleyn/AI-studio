@@ -9,6 +9,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormErrorMessage,
   FormLabel,
   IconButton,
   Input,
@@ -18,6 +19,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
+  Textarea,
   Tooltip,
   useDisclosure,
 } from "@chakra-ui/react";
@@ -35,10 +37,15 @@ type DashboardEntityCardProps = {
   onDelete: () => Promise<void>;
   deleteDialogTitle: string;
   deleteDialogBody: string;
-  onRename?: (nextName: string) => Promise<void>;
+  onRename?: (nextName: string, nextDescription?: string) => Promise<void>;
   renameDialogTitle?: string;
   renameFieldLabel?: string;
   renamePlaceholder?: string;
+  renameDescLabel?: string;
+  renameDescPlaceholder?: string;
+  renameNameRegex?: RegExp;
+  renameNameErrorMsg?: string;
+  initialDescription?: string;
   onDuplicate?: () => Promise<void>;
 };
 
@@ -56,13 +63,21 @@ export default function DashboardEntityCard({
   renameDialogTitle,
   renameFieldLabel,
   renamePlaceholder,
+  renameDescLabel,
+  renameDescPlaceholder,
+  renameNameRegex,
+  renameNameErrorMsg,
+  initialDescription,
   onDuplicate,
 }: DashboardEntityCardProps) {
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [renameValue, setRenameValue] = useState(title);
+  const [renameDescValue, setRenameDescValue] = useState(initialDescription || (typeof description === "string" ? description : ""));
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+
+  const isRenameInvalid = renameNameRegex && renameValue.trim() !== "" ? !renameNameRegex.test(renameValue) : false;
 
   const {
     isOpen: isRenameOpen,
@@ -77,19 +92,23 @@ export default function DashboardEntityCard({
 
   const handleRenameOpen = () => {
     setRenameValue(title);
+    setRenameDescValue(initialDescription || (typeof description === "string" ? description : ""));
     onRenameOpen();
   };
 
   const handleRenameSubmit = async () => {
     if (!onRename) return;
     const name = renameValue.trim();
-    if (!name || name === title) {
+    const desc = renameDescValue.trim();
+    const initialDescTrimmed = (initialDescription || (typeof description === "string" ? description : "")).trim();
+    
+    if ((!name || name === title) && desc === initialDescTrimmed) {
       onRenameClose();
       return;
     }
     setRenaming(true);
     try {
-      await onRename(name);
+      await onRename(name, desc);
       onRenameClose();
     } finally {
       setRenaming(false);
@@ -186,14 +205,24 @@ export default function DashboardEntityCard({
           >
             <ModalHeader color="myGray.800">{renameDialogTitle || "重命名"}</ModalHeader>
             <ModalBody>
-              <FormControl>
+              <FormControl mb={4} isInvalid={isRenameInvalid}>
                 <FormLabel color="myGray.700">{renameFieldLabel || "名称"}</FormLabel>
                 <Input
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && void handleRenameSubmit()}
                   placeholder={renamePlaceholder || "输入名称"}
                   autoFocus
+                />
+                <FormErrorMessage>{renameNameErrorMsg}</FormErrorMessage>
+              </FormControl>
+              <FormControl>
+                <FormLabel color="myGray.700">{renameDescLabel || "描述（非必填）"}</FormLabel>
+                <Textarea
+                  value={renameDescValue}
+                  onChange={(e) => setRenameDescValue(e.target.value)}
+                  placeholder={renameDescPlaceholder || "输入描述"}
+                  rows={3}
+                  resize="vertical"
                 />
               </FormControl>
             </ModalBody>
@@ -207,7 +236,12 @@ export default function DashboardEntityCard({
                   void handleRenameSubmit();
                 }}
                 isLoading={renaming}
-                isDisabled={!renameValue.trim() || renameValue.trim() === title}
+                isDisabled={
+                  !renameValue.trim() ||
+                  isRenameInvalid ||
+                  (renameValue.trim() === title &&
+                    renameDescValue.trim() === (initialDescription || (typeof description === "string" ? description : "")).trim())
+                }
               >
                 保存
               </Button>
