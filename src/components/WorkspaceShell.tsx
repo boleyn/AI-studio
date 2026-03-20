@@ -14,11 +14,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
 import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPanel";
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
+import SkillDetailPreview from "./workspace/SkillDetailPreview";
 import SkillMarkdownEditor from "./workspace/SkillMarkdownEditor";
 import WorkspaceHeader from "./workspace/WorkspaceHeader";
 import MyTooltip from "./ui/MyTooltip";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "./common/Icon";
-import Markdown from "./Markdown";
 
 type ActiveView = "preview" | "code";
 
@@ -209,7 +209,6 @@ const WorkspaceShell = ({
     (isCompileBadgeHovered || isCompilePanelPinned);
   const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
-  const isMarkdownFile = /\.md$/i.test(activeFile);
   const previewable = isPreviewableFile(activeFile);
   const rawFileEntry = (sandpack.files as Record<string, unknown>)[activeFile];
   const activeFileCode =
@@ -218,10 +217,6 @@ const WorkspaceShell = ({
       : rawFileEntry && typeof rawFileEntry === "object" && "code" in rawFileEntry
       ? String((rawFileEntry as { code?: unknown }).code ?? "")
       : "";
-  const previewMarkdownContent = isSkillMarkdown
-    ? activeFileCode.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "")
-    : activeFileCode;
-
   return (
     <Flex
       as="section"
@@ -388,58 +383,11 @@ const WorkspaceShell = ({
               }}
             >
               {isSkillsMode ? (
-                <Box
-                  h="100%"
-                  overflow="auto"
-                  bg="var(--ws-surface-strong)"
-                  p={0}
-                >
-                  {!activeFile ? (
-                    <Flex h="100%" align="center" justify="center">
-                      <Box
-                        px={5}
-                        py={4}
-                        borderRadius="12px"
-                        border="1px solid rgba(203,213,225,0.95)"
-                        bg="white"
-                        fontSize="sm"
-                        color="var(--ws-text-subtle)"
-                      >
-                        先在左侧选择一个 SKILL.md 文件进行预览
-                      </Box>
-                    </Flex>
-                  ) : isMarkdownFile ? (
-                    <Box
-                      h="100%"
-                      w="100%"
-                      px={{ base: 4, md: 5 }}
-                      py={{ base: 3, md: 4 }}
-                      overflow="auto"
-                    >
-                      {previewMarkdownContent.trim() ? (
-                        <Markdown source={previewMarkdownContent} />
-                      ) : (
-                        <Box fontSize="sm" color="var(--ws-text-subtle)">
-                          当前 Markdown 内容为空
-                        </Box>
-                      )}
-                    </Box>
-                  ) : (
-                    <Flex h="100%" align="center" justify="center">
-                      <Box
-                        px={5}
-                        py={4}
-                        borderRadius="12px"
-                        border="1px solid rgba(203,213,225,0.95)"
-                        bg="white"
-                      >
-                        <Box fontSize="sm" color="var(--ws-text-subtle)">
-                          技能模式预览仅支持 Markdown 文件
-                        </Box>
-                      </Box>
-                    </Flex>
-                  )}
-                </Box>
+                <SkillDetailPreview
+                  files={sandpack.files as Record<string, string | { code?: unknown }>}
+                  activeFile={activeFile}
+                  onSelectFile={handleOpenFile}
+                />
               ) : (
                 <SandpackPreview
                   showOpenInCodeSandbox={false}

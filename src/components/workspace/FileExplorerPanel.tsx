@@ -117,6 +117,23 @@ const readZipEntryAsWorkspaceCode = async (
   return toDataUrl(base64, inferMimeFromPath(filePath));
 };
 
+const isSkillsRootPath = (path: string) => /^\/skills(\/|$)/i.test(path);
+
+const toSkillsScopedPath = (path: string, baseSkillFolder: string) => {
+  if (isSkillsRootPath(path)) return path;
+  const normalized = path.replace(/^\/+/, "");
+  if (!normalized) return null;
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.length === 0) return null;
+
+  // zip 根目录只有文件时，落在当前技能目录；有一级目录时，映射到 /skills/<dir>/...
+  if (segments.length === 1) {
+    return `${baseSkillFolder}/${segments[0]}`.replace(/\/{2,}/g, "/");
+  }
+  const [root, ...rest] = segments;
+  return `/skills/${[root, ...rest].join("/")}`.replace(/\/{2,}/g, "/");
+};
+
 type FileExplorerPanelProps = {
   token: string;
   onOpenFile: (filePath: string) => void;
@@ -451,16 +468,28 @@ const FileExplorerPanel = ({
       if (selectedFiles.length === 0) return;
 
       const nextFiles: SandpackFilesPayload = { ...files };
+      const selectedParent =
+        selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath);
+      const baseSkillFolder = /^\/skills\/[^/]+$/i.test(selectedParent)
+        ? selectedParent
+        : "/skills/imported-skill";
       for (const file of selectedFiles) {
-        const path = toSandpackPath(file.webkitRelativePath || file.name);
+        const rawPath = toSandpackPath(file.webkitRelativePath || file.name);
+        if (!rawPath) continue;
+        const path =
+          workspaceMode === "skills" ? toSkillsScopedPath(rawPath, baseSkillFolder) : rawPath;
         if (!path) continue;
         nextFiles[path] = { code: await readBrowserFileAsWorkspaceCode(file, path) };
       }
 
-      const firstPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name) || undefined;
+      const firstRawPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name);
+      const firstPath =
+        firstRawPath && workspaceMode === "skills"
+          ? toSkillsScopedPath(firstRawPath, baseSkillFolder) || undefined
+          : firstRawPath || undefined;
       await applyFullFiles(nextFiles, firstPath);
     },
-    [applyFullFiles, files]
+    [applyFullFiles, defaultFolderPath, files, selectedPath, selectedType, workspaceMode]
   );
 
   const handleUploadZip = useCallback(
@@ -474,10 +503,18 @@ const FileExplorerPanel = ({
         const zip = await JSZip.loadAsync(zipBuffer);
         const nextFiles: SandpackFilesPayload = { ...files };
         let firstImportedPath: string | undefined;
+        const selectedParent =
+          selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath);
+        const baseSkillFolder = /^\/skills\/[^/]+$/i.test(selectedParent)
+          ? selectedParent
+          : "/skills/imported-skill";
 
         const entries = Object.values(zip.files).filter((entry) => !entry.dir);
         for (const entry of entries) {
-          const path = toSandpackPath(entry.name);
+          const rawPath = toSandpackPath(entry.name);
+          if (!rawPath) continue;
+          const path =
+            workspaceMode === "skills" ? toSkillsScopedPath(rawPath, baseSkillFolder) : rawPath;
           if (!path) continue;
           nextFiles[path] = { code: await readZipEntryAsWorkspaceCode(entry, path) };
           if (!firstImportedPath) firstImportedPath = path;
@@ -489,7 +526,7 @@ const FileExplorerPanel = ({
         toast({ status: "error", title: "Zip 导入失败", description: "请确认压缩包格式正确" });
       }
     },
-    [applyFullFiles, files, toast]
+    [applyFullFiles, defaultFolderPath, files, selectedPath, selectedType, toast, workspaceMode]
   );
 
   const handleToggleExpandAll = useCallback(() => {
