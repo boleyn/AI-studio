@@ -7,8 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeListener";
 import WorkspaceShell from "@/components/WorkspaceShell";
+import TopBar from "@/components/TopBar";
 import VectorBackground from "@/components/auth/VectorBackground";
-import { BackIcon } from "@/components/common/Icon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
@@ -58,6 +58,7 @@ const SkillCreatePage = () => {
   const [files, setFiles] = useState<FileMap>({});
   const [activeView, setActiveView] = useState<ActiveView>("code");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [skillName, setSkillName] = useState("未命名技能");
   const [isValidatingSkills, setIsValidatingSkills] = useState(false);
   const [skillsValidationIssueCount, setSkillsValidationIssueCount] = useState(0);
   const [skillsValidationMessage, setSkillsValidationMessage] = useState("");
@@ -82,6 +83,13 @@ const SkillCreatePage = () => {
     () => (typeof router.query.returnTo === "string" ? router.query.returnTo.trim() : ""),
     [router.query.returnTo]
   );
+
+  useEffect(() => {
+    if (skillId) {
+      setSkillName(skillId);
+    }
+  }, [skillId]);
+
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
 
   useEffect(() => {
@@ -176,76 +184,107 @@ const SkillCreatePage = () => {
     [projectToken, skillId, workspaceId]
   );
 
-  const handleAgentFilesUpdated = useCallback((updated: FileMap) => {
-    const normalized = normalizeSkillFiles(updated);
-    if (Object.keys(normalized).length === 0) return;
-
-    const merged: FileMap = {
-      ...latestFilesRef.current,
-      ...normalized,
-    };
-    latestFilesRef.current = merged;
-    setFiles(merged);
+  const getSkillNameFromFiles = useCallback((currentFiles: FileMap) => {
+    // 优先从 SKILL.md 的 frontmatter 中拉取 name
+    const skillMdEntry = Object.entries(currentFiles).find(([path]) => path.endsWith("SKILL.md"));
+    if (skillMdEntry) {
+      const code = skillMdEntry[1].code;
+      // 匹配 name: "xxx" 或 name: xxx
+      const nameMatch = code.match(/name:\s*["']?([^"'\n]+)["']?/i);
+      if (nameMatch?.[1]) {
+        return nameMatch[1].trim();
+      }
+      // 如果没有 name，尝试匹配一级标题
+      const h1Match = code.match(/^#\s+(.+)$/m);
+      if (h1Match?.[1]) {
+        return h1Match[1].trim();
+      }
+    }
+    return "";
   }, []);
 
-  const handleValidateSkills = useCallback(async (silent = false) => {
-    setIsValidatingSkills(true);
-    try {
-      const response = await fetch("/api/agent/skills/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...withAuthHeaders(),
-        },
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof payload?.error === "string" ? payload.error : "校验失败");
-      }
+  const handleAgentFilesUpdated = useCallback(
+    (updated: FileMap) => {
+      const normalized = normalizeSkillFiles(updated);
+      if (Object.keys(normalized).length === 0) return;
 
-      const issueCount = Array.isArray(payload?.issues) ? payload.issues.length : 0;
-      setSkillsValidationIssueCount(issueCount);
-      if (issueCount === 0) {
-        setSkillsValidationMessage("校验通过");
-        if (!silent) {
-          toast({
-            status: "success",
-            title: "Skills 校验通过",
-            description: "frontmatter 与目录规范都通过了。",
-            duration: 2600,
-            isClosable: true,
-          });
+      const merged: FileMap = {
+        ...latestFilesRef.current,
+        ...normalized,
+      };
+      latestFilesRef.current = merged;
+      setFiles(merged);
+
+      // 当机器人更新文件时，也尝试同步解析一下名字（比如机器人刚写完 SKILL.md）
+      const nameInFiles = getSkillNameFromFiles(merged);
+      if (nameInFiles) {
+        setSkillName(nameInFiles);
+      }
+    },
+    [getSkillNameFromFiles]
+  );
+
+  const handleValidateSkills = useCallback(
+    async (silent = false) => {
+      setIsValidatingSkills(true);
+      try {
+        const response = await fetch("/api/agent/skills/validate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...withAuthHeaders(),
+          },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.error === "string" ? payload.error : "校验失败");
         }
-        return;
-      }
 
-      const firstIssue = payload.issues?.[0];
-      const firstMessage =
-        typeof firstIssue?.message === "string" && firstIssue.message
-          ? firstIssue.message
-          : "请检查 SKILL.md 的 frontmatter 与目录命名。";
-      setSkillsValidationMessage(firstMessage);
-      toast({
-        status: "error",
-        title: `发现 ${issueCount} 个规范问题`,
-        description: firstMessage,
-        duration: 4200,
-        isClosable: true,
-      });
-    } catch (error) {
-      setSkillsValidationIssueCount(1);
-      setSkillsValidationMessage(error instanceof Error ? error.message : "请稍后重试");
-      toast({
-        status: "error",
-        title: "Skills 校验失败",
-        description: error instanceof Error ? error.message : "请稍后重试",
-        duration: 3200,
-        isClosable: true,
-      });
-    } finally {
-      setIsValidatingSkills(false);
-    }
-  }, [toast]);
+        const issueCount = Array.isArray(payload?.issues) ? payload.issues.length : 0;
+        setSkillsValidationIssueCount(issueCount);
+        if (issueCount === 0) {
+          setSkillsValidationMessage("校验通过");
+          if (!silent) {
+            toast({
+              status: "success",
+              title: "Skills 校验通过",
+              description: "frontmatter 与目录规范都通过了。",
+              duration: 2600,
+              isClosable: true,
+            });
+          }
+          return;
+        }
+
+        const firstIssue = payload.issues?.[0];
+        const firstMessage =
+          typeof firstIssue?.message === "string" && firstIssue.message
+            ? firstIssue.message
+            : "请检查 SKILL.md 的 frontmatter 与目录命名。";
+        setSkillsValidationMessage(firstMessage);
+        toast({
+          status: "error",
+          title: `发现 ${issueCount} 个规范问题`,
+          description: firstMessage,
+          duration: 4200,
+          isClosable: true,
+        });
+      } catch (error) {
+        setSkillsValidationIssueCount(1);
+        setSkillsValidationMessage(error instanceof Error ? error.message : "请稍后重试");
+        toast({
+          status: "error",
+          title: "Skills 校验失败",
+          description: error instanceof Error ? error.message : "请稍后重试",
+          duration: 3200,
+          isClosable: true,
+        });
+      } finally {
+        setIsValidatingSkills(false);
+      }
+    },
+    [toast]
+  );
 
   const saveStatusRef = useRef<SaveStatus>("idle");
   useEffect(() => {
@@ -253,13 +292,25 @@ const SkillCreatePage = () => {
     saveStatusRef.current = saveStatus;
     if (prev !== "saved" && saveStatus === "saved" && isWorkspaceReady) {
       void handleValidateSkills(true);
+
+      // 保存成功后尝试从文件中重新解析一次名字
+      const nameInFiles = getSkillNameFromFiles(latestFilesRef.current);
+      if (nameInFiles && nameInFiles !== skillName) {
+        setSkillName(nameInFiles);
+      }
     }
-  }, [handleValidateSkills, isWorkspaceReady, saveStatus]);
+  }, [getSkillNameFromFiles, handleValidateSkills, isWorkspaceReady, saveStatus, skillName]);
 
   useEffect(() => {
     if (!isWorkspaceReady) return;
     void handleValidateSkills(true);
-  }, [handleValidateSkills, isWorkspaceReady]);
+
+    // 初始化准备好后也尝试拉取一次名字
+    const nameInFiles = getSkillNameFromFiles(latestFilesRef.current);
+    if (nameInFiles) {
+      setSkillName(nameInFiles);
+    }
+  }, [getSkillNameFromFiles, handleValidateSkills, isWorkspaceReady]);
 
   useEffect(() => {
     const handleMove = (event: MouseEvent) => {
@@ -343,51 +394,25 @@ const SkillCreatePage = () => {
         overflow="hidden"
         boxSizing="border-box"
       >
-        <Flex
-          as="header"
-          align="center"
-          justify="space-between"
-          border="1px solid rgba(255,255,255,0.7)"
-          bg="rgba(255,255,255,0.75)"
-          backdropFilter="blur(18px)"
-          borderRadius="2xl"
-          px={4}
-          py={3}
-          boxShadow="0 18px 40px -24px rgba(15, 23, 42, 0.25)"
-        >
-          <Flex align="center" gap={3} minW={0}>
-            <Button
-              size="sm"
-              variant="ghost"
-              leftIcon={<BackIcon />}
-              onClick={() => {
-                if (returnTo.startsWith("/")) {
-                  window.location.assign(returnTo);
-                  return;
-                }
-                window.location.assign("/");
-              }}
-            >
-              返回
-            </Button>
-            <Text fontSize="md" fontWeight="700" color="myGray.800" noOfLines={1}>
-              技能工作区
-            </Text>
-            <Text fontSize="sm" color="myGray.500" noOfLines={1}>
-              统一编辑器视图
-            </Text>
-          </Flex>
-
-          <Text fontSize="xs" color={saveStatus === "error" ? "red.500" : "myGray.500"}>
-            {saveStatus === "saving"
-              ? "保存中..."
-              : saveStatus === "saved"
-              ? "已保存"
-              : saveStatus === "error"
-              ? "保存失败"
-              : "自动保存"}
-          </Text>
-        </Flex>
+        <Box>
+          <TopBar
+            projectName={skillName}
+            onProjectNameChange={(v) => { setSkillName(v); }}
+            backUrl={returnTo}
+            saveStatus={saveStatus}
+            onSave={() => {
+              if (isWorkspaceReady && latestFilesRef.current) {
+                void persistSkillFiles(latestFilesRef.current);
+                toast({
+                  title: "已保存技能文件",
+                  status: "success",
+                  duration: 2000,
+                });
+              }
+            }}
+            onPreview={() => setActiveView("preview")}
+          />
+        </Box>
 
         <SandpackProvider
           template={DEFAULT_TEMPLATE}

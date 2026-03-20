@@ -6,6 +6,8 @@ import TopBarActions from "./topbar/TopBarActions";
 import MyTooltip from "./ui/MyTooltip";
 import type { SaveStatus } from "./CodeChangeListener";
 import { BackIcon, CheckIcon, CloseIcon, EditIcon } from "./common/Icon";
+import AsiaInfoLogo from "./auth/AsiaInfoLogo";
+import { Text } from "@chakra-ui/react";
 
 type TopBarProps = {
   projectName?: string;
@@ -18,6 +20,11 @@ type TopBarProps = {
   onRefresh?: () => void;
   onOpenInNew?: () => void;
   onProjectNameChange?: (name: string) => void;
+  isReadOnlyName?: boolean;
+  subtitle?: string;
+  backUrl?: string;
+  hideActions?: boolean;
+  rightElement?: React.ReactNode;
 };
 
 const TopBar = ({
@@ -31,6 +38,11 @@ const TopBar = ({
   onRefresh,
   onOpenInNew,
   onProjectNameChange,
+  isReadOnlyName = false,
+  subtitle,
+  backUrl,
+  hideActions = false,
+  rightElement,
 }: TopBarProps) => {
   const router = useRouter();
   const toast = useToast();
@@ -46,7 +58,15 @@ const TopBar = ({
   }, [projectName, isEditing]);
 
   const handleBack = () => {
-    router.push("/");
+    if (backUrl) {
+      if (backUrl.startsWith("/")) {
+        window.location.assign(backUrl);
+      } else {
+        window.location.assign("/");
+      }
+    } else {
+      router.push("/");
+    }
   };
 
   const handleEditStart = () => {
@@ -126,7 +146,11 @@ const TopBar = ({
       px={4}
       py={3}
       boxShadow="0 18px 40px -24px rgba(15, 23, 42, 0.25)"
+      position="relative"
     >
+      <Flex position="absolute" left="50%" top="50%" transform="translate(-50%, -50%)" zIndex={10}>
+        <AsiaInfoLogo showText={false} w="28px" />
+      </Flex>
       <Flex align="center" gap={3} flex="1" minW="0">
         <MyTooltip label="返回列表">
           <IconButton
@@ -138,7 +162,18 @@ const TopBar = ({
           />
         </MyTooltip>
         
-        {isEditing ? (
+        {isReadOnlyName ? (
+          <Flex align="center" gap={3} flex="1" minW="0">
+            <Text fontSize="md" fontWeight="700" color="myGray.800" noOfLines={1}>
+              {projectName}
+            </Text>
+            {subtitle && (
+               <Text fontSize="sm" color="myGray.500" noOfLines={1}>
+                 {subtitle}
+               </Text>
+            )}
+          </Flex>
+        ) : isEditing ? (
           <Flex align="center" gap={2} flex="1" minW="0">
             <Input
               value={editValue}
@@ -205,24 +240,28 @@ const TopBar = ({
         )}
       </Flex>
       
-      <TopBarActions
-        saveStatus={saveStatus}
-        onPreview={onPreview}
-        onSave={async () => {
-          if (isEditing) {
-            const ok = await handleEditSubmit();
-            if (!ok) {
-              return;
+      {hideActions ? (
+        rightElement
+      ) : (
+        <TopBarActions
+          saveStatus={saveStatus}
+          onPreview={onPreview}
+          onSave={async () => {
+            if (isEditing) {
+              const ok = await handleEditSubmit();
+              if (!ok) {
+                return;
+              }
             }
-          }
-          onSave?.();
-        }}
-        onDownload={onDownload}
-        onCopy={onCopy}
-        onShare={onShare}
-        onRefresh={onRefresh}
-        onOpenInNew={onOpenInNew}
-      />
+            onSave?.();
+          }}
+          onDownload={onDownload}
+          onCopy={onCopy}
+          onShare={onShare}
+          onRefresh={onRefresh}
+          onOpenInNew={onOpenInNew}
+        />
+      )}
     </Flex>
   );
 };

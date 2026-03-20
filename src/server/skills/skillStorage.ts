@@ -144,6 +144,44 @@ const readFrontmatter = (content: string) => {
   }
 };
 
+const writeFrontmatter = (
+  content: string,
+  data: { name?: string; description?: string }
+) => {
+  const trimmed = content.trimStart();
+  let head = "";
+  let body = content;
+
+  const yamlOptions = { indent: 2, lineWidth: -1, noRefs: true };
+
+  if (trimmed.startsWith("---")) {
+    const match = trimmed.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+    if (match) {
+      head = match[1];
+      body = trimmed.slice(match[0].length);
+    }
+  }
+
+  try {
+    const parsed = (head ? yaml.load(head) : {}) as Record<string, any>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      // 如果解析失败，强制从头构造
+      const nextHead = yaml.dump(data, yamlOptions).trim();
+      return `---\n${nextHead}\n---\n\n${content.trimStart()}`;
+    }
+
+    if (data.name) parsed.name = data.name;
+    if (data.description) parsed.description = data.description;
+
+    const nextHead = yaml.dump(parsed, yamlOptions).trim();
+    return `---\n${nextHead}\n---\n\n${body.trimStart()}`;
+  } catch {
+    // 兜底：直接构造新的 FM 并拼上原内容
+    const nextHead = yaml.dump(data, yamlOptions).trim();
+    return `---\n${nextHead}\n---\n\n${content.trimStart()}`;
+  }
+};
+
 const buildDefaultContent = (name: string, description: string, body?: string) => {
   const safeName = toKebab(name);
   const safeDescription = (description || DEFAULT_DESCRIPTION).trim();
@@ -305,7 +343,7 @@ export const updateUserSkill = async ({
   const current = await findSkillDocForUser(safeToken, safeUserId);
   if (!current) return null;
 
-  const nextContent =
+  let nextContent =
     typeof updates.content === "string" ? updates.content : current.content;
   const parsed = readFrontmatter(nextContent || "");
 
@@ -315,6 +353,12 @@ export const updateUserSkill = async ({
   const nextDescription = ensureDescription(
     updates.description || parsed.description || current.description
   );
+
+  // 关键修复：如果 name/description 发生了主动更新（通常来自外部重命名），需要强制同步到 content 内容里的 FM 中
+  // 否则之后打开编辑器会因为从 content 重新解析 FM 而发生“名称回弹”
+  if (updates.name || updates.description) {
+    nextContent = writeFrontmatter(nextContent, { name: nextName, description: nextDescription });
+  }
 
   const now = new Date().toISOString();
   const coll = await getCollection();
