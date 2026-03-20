@@ -38,8 +38,8 @@ export default function UnifiedEntityCard({
       cursor="pointer"
       position="relative"
       borderRadius="2xl"
-      border="1px solid rgba(148,163,184,0.45)"
-      bg="rgba(255,255,255,0.86)"
+      border="1px solid rgba(148,163,184,0.38)"
+      bg="rgba(255,255,255,0.92)"
       backdropFilter="blur(14px)"
       boxShadow="none"
       overflow="hidden"
@@ -47,38 +47,13 @@ export default function UnifiedEntityCard({
       animation={`${cardFadeIn} 0.35s ease-out both`}
       style={{ animationDelay: `${Math.min(index * 0.06, 0.36)}s` }}
       _hover={{
-        borderColor: "rgba(126, 171, 255, 0.85)",
-        boxShadow: "0 6px 16px -10px rgba(15, 23, 42, 0.22)",
+        borderColor: "rgba(126, 171, 255, 0.72)",
+        bg: "rgba(255,255,255,0.98)",
+        boxShadow: "0 3px 12px -10px rgba(15, 23, 42, 0.2)",
         transform: "translateY(-2px)",
       }}
       onClick={onClick}
     >
-      <Box
-        position="absolute"
-        top="-20px"
-        right="-18px"
-        w="92px"
-        h="92px"
-        borderRadius="full"
-        pointerEvents="none"
-        bgGradient="radial(circle at center, rgba(51,112,255,0.12), rgba(51,112,255,0))"
-        transition="transform 0.25s ease"
-        _groupHover={{ transform: "scale(1.04) translate(-2px, 2px)" }}
-      />
-      <Box
-        position="absolute"
-        bottom="-36px"
-        left="-22px"
-        w="110px"
-        h="110px"
-        borderRadius="full"
-        pointerEvents="none"
-        bgGradient="radial(circle at center, rgba(18,183,106,0.12), rgba(18,183,106,0))"
-        transition="opacity 0.25s ease"
-        opacity={0.7}
-        _groupHover={{ opacity: 1 }}
-      />
-
       <CardBody p={5}>
         <Flex justify="space-between" align="flex-start" gap={3}>
           <Box flex={1} minW={0}>

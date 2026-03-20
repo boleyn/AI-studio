@@ -1427,10 +1427,12 @@ const ChatPanel = ({
 
   const handleCreateSkillViaChat = useCallback(() => {
     const projectToken = token.startsWith("skill-studio:") ? "" : token;
+    const params = new URLSearchParams();
+    const currentPath = typeof router.asPath === "string" ? router.asPath : "";
+    if (projectToken) params.set("projectToken", projectToken);
+    if (currentPath.startsWith("/")) params.set("returnTo", currentPath);
     void router.push(
-      projectToken
-        ? `/skills/create?projectToken=${encodeURIComponent(projectToken)}`
-        : "/skills/create"
+      params.toString() ? `/skills/create?${params.toString()}` : "/skills/create"
     );
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;

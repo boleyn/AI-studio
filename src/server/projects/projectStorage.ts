@@ -45,6 +45,13 @@ export type ProjectListItem = {
   updatedAt: string;
 };
 
+export type ProjectOverviewItem = {
+  token: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ProjectDoc = {
   _id: ObjectId;
   token: string;
@@ -613,6 +620,27 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   return docs.map((d) => ({
     token: d.token,
     name: d.name,
+    updatedAt: d.updatedAt,
+  }));
+}
+
+/**
+ * 获取指定用户的项目概览数据（含 createdAt，用于首页统计）
+ */
+export async function listProjectOverviewItems(userId: string): Promise<ProjectOverviewItem[]> {
+  if (!userId || typeof userId !== "string") return [];
+
+  const coll = await getCollection();
+  const docs = await coll
+    .find({ userId })
+    .sort({ updatedAt: -1 })
+    .project({ token: 1, name: 1, createdAt: 1, updatedAt: 1 })
+    .toArray();
+
+  return docs.map((d) => ({
+    token: d.token,
+    name: d.name,
+    createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   }));
 }

@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
+import { Rocket, Sparkles, Wand2 } from "lucide-react";
 import {
   Badge,
   Box,
   Button,
   Card,
   CardBody,
+  CircularProgress,
+  CircularProgressLabel,
   Divider,
   Flex,
   FormControl,
@@ -25,16 +28,16 @@ import {
   TabList,
   Tabs,
   Text,
-  Tag,
 } from "@chakra-ui/react";
 
-import { AddIcon, LogoIcon, SearchIcon } from "./common/Icon";
+import { AddIcon, EmptyIcon, LogoIcon, SearchIcon } from "./common/Icon";
 import DashboardEntityCard from "./cards/DashboardEntityCard";
 import { UserAccountMenu } from "./UserAccountMenu";
 import VectorBackground from "./auth/VectorBackground";
 import { useAuth } from "../contexts/AuthContext";
 import { useProjects } from "../hooks/useProjects";
 import { useSkills } from "../hooks/useSkills";
+import { useDashboardOverview } from "../hooks/useDashboardOverview";
 
 type HomeTab = "projects" | "skills";
 type CreateType = "project" | "skill";
@@ -61,6 +64,7 @@ export default function ProjectList() {
     deleteSkill,
     duplicateSkill,
   } = useSkills();
+  const { overview } = useDashboardOverview();
 
   const [activeTab, setActiveTab] = useState<HomeTab>("projects");
   const [searchValue, setSearchValue] = useState("");
@@ -85,6 +89,23 @@ export default function ProjectList() {
   }, [keyword, skills]);
 
   const creating = creatingProject || creatingSkill;
+  const projectTotal = overview.projects.total;
+  const projectAddedThisMonth = overview.projects.addedThisMonth;
+  const publishedSkills = overview.skills.published;
+  const pendingSkills = overview.skills.pending;
+  const publishedRate = overview.skills.publishedRate;
+  const totalSessions = overview.sessions.totalSessions;
+  const totalMessages = overview.sessions.totalMessages;
+  const avgMessagesPerSession = overview.sessions.avgMessagesPerSession;
+
+  const formatCompactNumber = (value: number) => {
+    if (!Number.isFinite(value)) return "0";
+    if (value >= 1000) {
+      const formatted = (value / 1000).toFixed(value % 1000 === 0 ? 0 : 1);
+      return `${formatted}k`;
+    }
+    return value.toLocaleString("zh-CN");
+  };
 
   const resetCreateModal = () => {
     setNameInput("");
@@ -199,7 +220,7 @@ export default function ProjectList() {
                     _hover={{ bg: "myGray.150", borderColor: "rgba(148,163,184,0.5)" }}
                     onClick={() => setActiveTab("projects")}
                   >
-                    我的历史项目
+                    我的项目
                   </Button>
                   <Button
                     variant="ghost"
@@ -209,7 +230,7 @@ export default function ProjectList() {
                     _hover={{ bg: "myGray.150", borderColor: "rgba(148,163,184,0.5)" }}
                     onClick={() => setActiveTab("skills")}
                   >
-                    全局 Skills
+                     SKILLS
                   </Button>
                   <Button
                     variant="ghost"
@@ -271,6 +292,11 @@ export default function ProjectList() {
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
                     bg="myWhite.100"
+                    borderColor="myGray.200"
+                    _hover={{ borderColor: "myGray.300" }}
+                    _focusVisible={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
+                    name="project_search_keyword"
+                    autoComplete="off"
                   />
                 </Box>
                 <Button
@@ -284,12 +310,174 @@ export default function ProjectList() {
               </HStack>
             </Flex>
 
-            <Tabs index={isProjectsTab ? 0 : 1} onChange={(index) => setActiveTab(index === 0 ? "projects" : "skills")} mb={6}>
-              <TabList>
-                <Tab>项目 ({projects.length})</Tab>
-                <Tab>Skills ({skills.length})</Tab>
-              </TabList>
-            </Tabs>
+            <Box mb={8}>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(3, minmax(0, 1fr))" }} gap={5}>
+                {/* 1. 活跃指标 */}
+                <Card
+                  borderRadius="2xl"
+                  border="1px solid var(--ws-border)"
+                  bg="var(--ws-surface)"
+                  boxShadow="sm"
+                  h={{ base: "auto", lg: "145px" }}
+                  overflow="hidden"
+                  position="relative"
+                >
+                  <CardBody py={4} px={5} h="full" display="flex" flexDirection="column" justifyContent="space-between">
+                    <Flex justify="space-between" align="center" mb={2}>
+                      <Text fontSize="14px" color="myGray.800" fontWeight="bold">
+                        项目活跃指数
+                      </Text>
+                      <Badge bg="primary.50" color="primary.600" px={2} py={1} borderRadius="md" fontSize="10px" border="1px solid" borderColor="primary.200">
+                        本月新增 {projectAddedThisMonth}
+                      </Badge>
+                    </Flex>
+                    <Flex align="flex-end" justify="space-between" gap={3} mt="auto">
+                      <Box minW={0}>
+                        <Text fontSize="12px" color="myGray.500" mb={1}>总项目数</Text>
+                        <Heading fontSize={{ base: "44px", lg: "48px" }} color="primary.500" lineHeight="1" letterSpacing="-0.02em">
+                          {projectTotal.toLocaleString("zh-CN")}
+                        </Heading>
+                      </Box>
+                      <Flex w="46px" h="46px" borderRadius="xl" bg="primary.50" align="center" justify="center" mb={1} border="1px solid" borderColor="primary.100" color="primary.500">
+                        <Sparkles size={24} strokeWidth={1.5} />
+                      </Flex>
+                    </Flex>
+                  </CardBody>
+                </Card>
+
+                {/* 2. 技能发布 */}
+                <Card
+                  borderRadius="2xl"
+                  border="1px solid var(--ws-border)"
+                  bg="var(--ws-surface)"
+                  boxShadow="sm"
+                  h={{ base: "auto", lg: "145px" }}
+                  overflow="hidden"
+                >
+                  <CardBody py={4} px={5} h="full" display="flex" flexDirection="column" justifyContent="space-between">
+                    <Text fontSize="14px" color="myGray.800" fontWeight="bold" mb={2}>
+                      技能发布统计
+                    </Text>
+                    <Flex align="center" justify="space-between" gap={4} flex="1">
+                      <CircularProgress
+                        value={publishedRate}
+                        color="primary.400"
+                        size="68px"
+                        thickness="10px"
+                        trackColor="myGray.100"
+                      >
+                        <CircularProgressLabel>
+                          <Text fontWeight="bold" fontSize="md">
+                            {publishedRate}%
+                          </Text>
+                        </CircularProgressLabel>
+                      </CircularProgress>
+                      <Flex direction="column" justify="center" gap={3} flex="1">
+                        <Flex justify="space-between" align="center">
+                          <HStack spacing={2}>
+                            <Box w={2.5} h={2.5} borderRadius="sm" bg="primary.400" />
+                            <Text fontSize="12px" color="myGray.600">已发布</Text>
+                          </HStack>
+                          <Text fontSize="16px" fontWeight="bold" color="myGray.800">
+                            {publishedSkills.toLocaleString("zh-CN")}
+                          </Text>
+                        </Flex>
+                        <Flex justify="space-between" align="center">
+                          <HStack spacing={2}>
+                            <Box w={2.5} h={2.5} borderRadius="sm" bg="myGray.200" />
+                            <Text fontSize="12px" color="myGray.600">待发布</Text>
+                          </HStack>
+                          <Text fontSize="16px" fontWeight="bold" color="myGray.600">
+                            {pendingSkills.toLocaleString("zh-CN")}
+                          </Text>
+                        </Flex>
+                      </Flex>
+                    </Flex>
+                  </CardBody>
+                </Card>
+
+                {/* 3. 交互会话 */}
+                <Card
+                  borderRadius="2xl"
+                  border="1px solid var(--ws-border)"
+                  bg="var(--ws-surface)"
+                  boxShadow="sm"
+                  h={{ base: "auto", lg: "145px" }}
+                  overflow="hidden"
+                  position="relative"
+                >
+                  <CardBody py={4} px={5} h="full" display="flex" flexDirection="column" justifyContent="space-between">
+                    <Flex justify="space-between" align="center" mb={1}>
+                      <Text fontSize="14px" color="myGray.800" fontWeight="bold">
+                        交互会话概览
+                      </Text>
+                      <Badge bg="primary.50" color="primary.600" px={2} py={1} borderRadius="md" fontSize="10px" border="1px solid" borderColor="primary.200">
+                        {Number.isFinite(avgMessagesPerSession) ? avgMessagesPerSession.toFixed(1) : "0.0"} / 会话
+                      </Badge>
+                    </Flex>
+                    <Grid templateColumns="1fr 1fr" gap={4} mt={3}>
+                      <Box p={3} bg="myGray.50" borderRadius="xl" border="1px solid" borderColor="myGray.100" transition="all 0.2s" _hover={{ bg: "myGray.100" }}>
+                        <Text fontSize="11px" color="myGray.500" mb={1}>
+                          总会话数
+                        </Text>
+                        <Text fontSize={{ base: "20px", lg: "22px" }} lineHeight="1" fontWeight="bold" color="myGray.800">
+                          {totalSessions.toLocaleString("zh-CN")}
+                        </Text>
+                      </Box>
+                      <Box p={3} bg="myGray.50" borderRadius="xl" border="1px solid" borderColor="myGray.100" transition="all 0.2s" _hover={{ bg: "myGray.100" }}>
+                        <Text fontSize="11px" color="myGray.500" mb={1}>
+                          消息总量
+                        </Text>
+                        <Text fontSize={{ base: "20px", lg: "22px" }} lineHeight="1" fontWeight="bold" color="myGray.800">
+                          {formatCompactNumber(totalMessages)}
+                        </Text>
+                      </Box>
+                    </Grid>
+                  </CardBody>
+                </Card>
+              </Grid>
+            </Box>
+
+            <Box mb={6} maxW="max-content">
+              <Tabs variant="unstyled" index={isProjectsTab ? 0 : 1} onChange={(index) => setActiveTab(index === 0 ? "projects" : "skills")}>
+                <TabList bg="myGray.50" p={1.5} borderRadius="14px" border="1px solid" borderColor="myGray.150" gap={1}>
+                  <Tab
+                    fontWeight="600"
+                    fontSize="sm"
+                    color="myGray.500"
+                    borderRadius="10px"
+                    px={5}
+                    py={1.5}
+                    _selected={{ color: "primary.600", bg: "white", boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.08)", borderColor: "myGray.200" }}
+                    _hover={{ color: !isProjectsTab ? "myGray.800" : undefined }}
+                    border="1px solid transparent"
+                    transition="all 0.2s"
+                  >
+                    项目
+                    <Box as="span" ml={1.5} opacity={0.8} fontWeight="normal">
+                      ({projects.length})
+                    </Box>
+                  </Tab>
+                  <Tab
+                    fontWeight="600"
+                    fontSize="sm"
+                    color="myGray.500"
+                    borderRadius="10px"
+                    px={5}
+                    py={1.5}
+                    _selected={{ color: "primary.600", bg: "white", boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.08)", borderColor: "myGray.200" }}
+                    _hover={{ color: isProjectsTab ? "myGray.800" : undefined }}
+                    border="1px solid transparent"
+                    transition="all 0.2s"
+                  >
+                    Skills
+                    <Box as="span" ml={1.5} opacity={0.8} fontWeight="normal">
+                      ({skills.length})
+                    </Box>
+                  </Tab>
+                </TabList>
+              </Tabs>
+            </Box>
 
             {currentLoading ? (
               <Flex justify="center" align="center" minH="320px">
@@ -297,22 +485,37 @@ export default function ProjectList() {
               </Flex>
             ) : isProjectsTab ? (
               filteredProjects.length === 0 ? (
-                <Card
+                <Flex
+                  direction="column"
+                  align="center"
+                  justify="center"
+                  py={{ base: 16, lg: 20 }}
+                  bg="var(--ws-surface)"
                   borderRadius="2xl"
-                  border="1px solid rgba(255,255,255,0.7)"
-                  bg="rgba(255,255,255,0.8)"
-                  backdropFilter="blur(16px)"
-                  boxShadow="0 2px 8px -6px rgba(15, 23, 42, 0.15)"
+                  border="1px solid"
+                  borderColor="myGray.200"
+                  boxShadow="sm"
                 >
-                  <CardBody textAlign="center" py={12}>
-                    <Text fontSize="lg" color="myGray.600" mb={4}>
-                      没有匹配的项目
-                    </Text>
-                    <Button variant="whitePrimary" onClick={handleOpenCreateModal} isLoading={creating} leftIcon={<Box as={AddIcon} w={4} h={4} />}>
-                      新建项目
-                    </Button>
-                  </CardBody>
-                </Card>
+                  <Box mb={6}>
+                    <Box as={EmptyIcon} w="184px" h="152px" />
+                  </Box>
+                  <Heading size="md" color="myGray.800" mb={3}>
+                    {searchValue ? "没有匹配的项目" : "启动你的第一个项目"}
+                  </Heading>
+                  <Text color="myGray.500" mb={8} maxW="md" textAlign="center" fontSize="sm">
+                    {searchValue ? "未发现匹配该搜索词的项目。尝试换一个词或者新建项目。" : "在这里管理你的所有 AI 探索与应用开发。创建一个新项目，开始与模型进行深度对话。"}
+                  </Text>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handleOpenCreateModal}
+                    isLoading={creating}
+                    leftIcon={<Box as={AddIcon} w={5} h={5} />}
+                    transition="all 0.2s"
+                  >
+                    新建项目
+                  </Button>
+                </Flex>
               ) : (
                 <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={5}>
                   {filteredProjects.map((project, index) => (
@@ -320,18 +523,8 @@ export default function ProjectList() {
                       key={project.token}
                       index={index}
                       title={project.name}
-                      topBadges={
-                        <>
-                          <Tag size="sm" borderRadius="full" colorScheme="teal" variant="subtle">
-                            PROJECT
-                          </Tag>
-                          <Badge colorScheme="teal" variant="solid">
-                            历史项目
-                          </Badge>
-                        </>
-                      }
-                      description={`项目描述：${project.name}`}
-                      meta={`最近更新：${formatDate(project.updatedAt)}`}
+                      description="继续编辑项目代码与相关对话"
+                      meta={`更新于 ${formatDate(project.updatedAt)}`}
                       onOpen={() => openProject(project.token)}
                       onRename={(nextName) => renameProject(project.token, nextName)}
                       renameDialogTitle="修改项目名称"
@@ -346,22 +539,37 @@ export default function ProjectList() {
                 </Grid>
               )
             ) : filteredSkills.length === 0 ? (
-              <Card
+              <Flex
+                direction="column"
+                align="center"
+                justify="center"
+                py={{ base: 16, lg: 20 }}
+                bg="var(--ws-surface)"
                 borderRadius="2xl"
-                border="1px solid rgba(167,243,208,0.75)"
-                bg="rgba(240,253,250,0.85)"
-                backdropFilter="blur(16px)"
-                boxShadow="0 2px 8px -6px rgba(13, 148, 136, 0.15)"
+                border="1px solid"
+                borderColor="myGray.200"
+                boxShadow="sm"
               >
-                <CardBody textAlign="center" py={12}>
-                  <Text fontSize="lg" color="teal.700" mb={4}>
-                    没有匹配的 Skill
-                  </Text>
-                  <Button variant="whitePrimary" onClick={handleOpenCreateModal} isLoading={creating} leftIcon={<Box as={AddIcon} w={4} h={4} />}>
-                    新建 Skill
-                  </Button>
-                </CardBody>
-              </Card>
+                <Box mb={6}>
+                  <Box as={EmptyIcon} w="184px" h="152px" />
+                </Box>
+                <Heading size="md" color="myGray.800" mb={3}>
+                  {searchValue ? "没有匹配的 Skill" : "沉淀你的专属 Skill"}
+                </Heading>
+                <Text color="myGray.500" mb={8} maxW="md" textAlign="center" fontSize="sm">
+                  {searchValue ? "未发现匹配该搜索词的 Skill。尝试换一个词或者新建 Skill。" : "尚未发现任何满足条件的 Skill。你可以将常用的 Prompt 封装成 Skill，在任意项目中复用。"}
+                </Text>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleOpenCreateModal}
+                  isLoading={creating}
+                  leftIcon={<Box as={AddIcon} w={5} h={5} />}
+                  transition="all 0.2s"
+                >
+                  新建 Skill
+                </Button>
+              </Flex>
             ) : (
               <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={5}>
                 {filteredSkills.map((skill, index) => (
@@ -369,18 +577,8 @@ export default function ProjectList() {
                     key={skill.token}
                     index={index}
                     title={skill.name}
-                    topBadges={
-                      <>
-                        <Tag size="sm" borderRadius="full" colorScheme="teal" variant="subtle">
-                          SKILL
-                        </Tag>
-                        <Badge colorScheme={skill.sourceType === "template" ? "cyan" : "teal"} variant="solid">
-                          {skill.sourceType === "template" ? "模板" : "自定义"}
-                        </Badge>
-                      </>
-                    }
-                    description={`触发描述：${skill.description || "无描述"}`}
-                    meta={`最近更新：${formatDate(skill.updatedAt)}`}
+                    description={skill.description || "暂无描述"}
+                    meta={`更新于 ${formatDate(skill.updatedAt)}`}
                     onOpen={() => {
                       void openSkill(skill.token);
                     }}
@@ -422,6 +620,11 @@ export default function ProjectList() {
                 onKeyDown={(event) => event.key === "Enter" && void handleCreate()}
                 autoFocus
                 bg="myWhite.100"
+                borderColor="myGray.200"
+                _hover={{ borderColor: "myGray.300" }}
+                _focusVisible={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
+                name="new_entity_name"
+                autoComplete="off"
               />
             </FormControl>
 
@@ -433,6 +636,11 @@ export default function ProjectList() {
                   value={descriptionInput}
                   onChange={(event) => setDescriptionInput(event.target.value)}
                   bg="myWhite.100"
+                  borderColor="myGray.200"
+                  _hover={{ borderColor: "myGray.300" }}
+                  _focusVisible={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
+                  name="new_entity_desc"
+                  autoComplete="off"
                 />
               </FormControl>
             ) : null}

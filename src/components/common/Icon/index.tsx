@@ -24,3 +24,4 @@ export { default as ChevronDownIcon } from "./icons/chevron-down.svg";
 export { default as DeleteIcon } from "./icons/delete.svg";
 export { default as ThumbUpIcon } from "./icons/thumb-up.svg";
 export { default as ThumbDownIcon } from "./icons/thumb-down.svg";
+export { default as EmptyIcon } from "./icons/empty.svg";

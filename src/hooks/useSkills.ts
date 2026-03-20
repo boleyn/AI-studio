@@ -54,6 +54,18 @@ export function useSkills() {
     void loadSkills();
   }, [loadSkills]);
 
+  const buildSkillEditorRoute = useCallback(
+    (token: string) => {
+      const params = new URLSearchParams({ skillId: token });
+      const currentPath = typeof router.asPath === "string" ? router.asPath : "";
+      if (currentPath.startsWith("/")) {
+        params.set("returnTo", currentPath);
+      }
+      return `/skills/create?${params.toString()}`;
+    },
+    [router.asPath]
+  );
+
   const createSkill = useCallback(
     async (input: CreateSkillInput) => {
       try {
@@ -73,7 +85,7 @@ export function useSkills() {
         const skill: SkillDetail | undefined = payload.skill;
         await loadSkills();
         if (skill?.token) {
-          await router.push(`/skills/${skill.token}`);
+          await router.push(buildSkillEditorRoute(skill.token));
         }
         return skill || null;
       } catch (error) {
@@ -88,14 +100,14 @@ export function useSkills() {
         setCreating(false);
       }
     },
-    [loadSkills, router, toast]
+    [buildSkillEditorRoute, loadSkills, router, toast]
   );
 
   const openSkill = useCallback(
     async (token: string) => {
-      await router.push(`/skills/${token}`);
+      await router.push(buildSkillEditorRoute(token));
     },
-    [router]
+    [buildSkillEditorRoute, router]
   );
 
   const deleteSkill = useCallback(

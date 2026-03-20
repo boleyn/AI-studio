@@ -78,6 +78,10 @@ const SkillCreatePage = () => {
     () => (typeof router.query.skillId === "string" ? router.query.skillId.trim() : ""),
     [router.query.skillId]
   );
+  const returnTo = useMemo(
+    () => (typeof router.query.returnTo === "string" ? router.query.returnTo.trim() : ""),
+    [router.query.returnTo]
+  );
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
 
   useEffect(() => {
@@ -357,11 +361,11 @@ const SkillCreatePage = () => {
               variant="ghost"
               leftIcon={<BackIcon />}
               onClick={() => {
-                if (window.history.length > 1) {
-                  router.back();
+                if (returnTo.startsWith("/")) {
+                  window.location.assign(returnTo);
                   return;
                 }
-                void router.push("/");
+                window.location.assign("/");
               }}
             >
               返回
