@@ -12,6 +12,7 @@ type SkillDoc = {
   name: string;
   description: string;
   content: string;
+  files?: Record<string, { code: string }>;
   sourceType: SkillSourceType;
   templateKey?: string;
   createdAt: string;
@@ -23,6 +24,7 @@ type CreateSkillInput = {
   name?: string;
   description?: string;
   content?: string;
+  files?: Record<string, { code: string }>;
   sourceType?: SkillSourceType;
   templateKey?: string;
   sourceSkillId?: string;
@@ -32,10 +34,13 @@ type UpdateSkillInput = {
   name?: string;
   description?: string;
   content?: string;
+  files?: Record<string, { code: string }>;
 };
 
 const COLLECTION = "skills";
 const DEFAULT_DESCRIPTION = "Describe what this skill does and when to use it.";
+const SKILLS_ROOT = "/skills";
+const SKILL_FILE_PATTERN = /^\/skills\/[^/]+\/SKILL\.md$/i;
 
 const TEMPLATE_PRESETS: Record<
   string,
@@ -115,6 +120,7 @@ const toListItem = (doc: SkillDoc): SkillListItem => ({
 const toDetail = (doc: SkillDoc): SkillDetail => ({
   ...toListItem(doc),
   content: doc.content,
+  files: doc.files ? normalizeSkillFiles(doc.files) : undefined,
 });
 
 const toKebab = (value: string) =>
@@ -231,6 +237,51 @@ const ensureDescription = (description?: string) => {
   return text;
 };
 
+const normalizeSkillPath = (input: string) => {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  if (withSlash.includes("\\") || withSlash.includes("\0") || withSlash.includes("..")) {
+    return null;
+  }
+  if (!withSlash.startsWith(SKILLS_ROOT)) {
+    return null;
+  }
+  return withSlash;
+};
+
+const normalizeSkillFiles = (files: unknown): Record<string, { code: string }> => {
+  if (!files || typeof files !== "object" || Array.isArray(files)) return {};
+  const next: Record<string, { code: string }> = {};
+  Object.entries(files as Record<string, unknown>).forEach(([path, value]) => {
+    const normalizedPath = normalizeSkillPath(path);
+    if (!normalizedPath) return;
+    const code =
+      value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string"
+        ? (value as { code: string }).code
+        : typeof value === "string"
+          ? value
+          : "";
+    next[normalizedPath] = { code };
+  });
+  return Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
+};
+
+const buildFilesFromContent = (name: string, content: string): Record<string, { code: string }> => ({
+  [`/skills/${name}/SKILL.md`]: { code: content },
+});
+
+const findSkillFilePath = (
+  files: Record<string, { code: string }>,
+  preferredName?: string
+) => {
+  if (preferredName) {
+    const preferredPath = `/skills/${preferredName}/SKILL.md`;
+    if (files[preferredPath]) return preferredPath;
+  }
+  return Object.keys(files).find((path) => SKILL_FILE_PATTERN.test(path));
+};
+
 const findSkillDocForUser = async (token: string, userId: string) => {
   const coll = await getCollection();
   const doc = await coll.findOne({ token, userId });
@@ -283,6 +334,7 @@ export const createUserSkill = async (input: CreateSkillInput): Promise<SkillDet
   let name = ensureName(input.name);
   let description = ensureDescription(input.description);
   let content = (input.content || "").trim();
+  let files = normalizeSkillFiles(input.files);
 
   if (input.sourceSkillId?.trim()) {
     const source = await findSkillDocForUser(input.sourceSkillId.trim(), safeUserId);
@@ -292,6 +344,7 @@ export const createUserSkill = async (input: CreateSkillInput): Promise<SkillDet
     name = ensureName(`${source.name}-copy`);
     description = source.description;
     content = source.content;
+    files = normalizeSkillFiles(source.files);
   } else if (sourceType === "template") {
     const preset = resolveTemplate(templateKey);
     if (!preset) throw new Error("模板不存在");
@@ -302,6 +355,18 @@ export const createUserSkill = async (input: CreateSkillInput): Promise<SkillDet
 
   if (!content) {
     content = buildDefaultContent(name, description);
+  }
+
+  if (Object.keys(files).length === 0) {
+    files = buildFilesFromContent(name, content);
+  }
+
+  const skillFilePath = findSkillFilePath(files, name);
+  if (skillFilePath) {
+    content = files[skillFilePath]?.code || content;
+  } else {
+    const fallbackPath = `/skills/${name}/SKILL.md`;
+    files[fallbackPath] = { code: content };
   }
 
   const parsed = readFrontmatter(content);
@@ -319,6 +384,7 @@ export const createUserSkill = async (input: CreateSkillInput): Promise<SkillDet
     name,
     description,
     content,
+    files: normalizeSkillFiles(files),
     sourceType,
     templateKey,
     createdAt: now,
@@ -343,21 +409,33 @@ export const updateUserSkill = async ({
   const current = await findSkillDocForUser(safeToken, safeUserId);
   if (!current) return null;
 
+  const hasIncomingFiles = updates.files && typeof updates.files === "object";
+  let nextFiles = hasIncomingFiles
+    ? normalizeSkillFiles(updates.files)
+    : normalizeSkillFiles(current.files);
+
+  if (!hasIncomingFiles && Object.keys(nextFiles).length === 0) {
+    nextFiles = buildFilesFromContent(current.name, current.content);
+  }
+
+  const skillFilePath = findSkillFilePath(nextFiles, current.name);
+  const fileBackedContent = skillFilePath ? nextFiles[skillFilePath]?.code : "";
   let nextContent =
-    typeof updates.content === "string" ? updates.content : current.content;
+    typeof updates.content === "string" ? updates.content : fileBackedContent || current.content;
+
+  if (typeof updates.content === "string" && skillFilePath) {
+    nextFiles[skillFilePath] = { code: updates.content };
+  }
+
   const parsed = readFrontmatter(nextContent || "");
+  const nextName = ensureName(updates.name || parsed.name || current.name);
+  const nextDescription = ensureDescription(updates.description || parsed.description || current.description);
 
-  const nextName = ensureName(
-    updates.name || parsed.name || current.name
-  );
-  const nextDescription = ensureDescription(
-    updates.description || parsed.description || current.description
-  );
-
-  // 关键修复：如果 name/description 发生了主动更新（通常来自外部重命名），需要强制同步到 content 内容里的 FM 中
-  // 否则之后打开编辑器会因为从 content 重新解析 FM 而发生“名称回弹”
   if (updates.name || updates.description) {
     nextContent = writeFrontmatter(nextContent, { name: nextName, description: nextDescription });
+    if (skillFilePath) {
+      nextFiles[skillFilePath] = { code: nextContent };
+    }
   }
 
   const now = new Date().toISOString();
@@ -369,6 +447,7 @@ export const updateUserSkill = async ({
         name: nextName,
         description: nextDescription,
         content: nextContent,
+        files: normalizeSkillFiles(nextFiles),
         updatedAt: now,
       },
     }
@@ -379,6 +458,7 @@ export const updateUserSkill = async ({
     name: nextName,
     description: nextDescription,
     content: nextContent,
+    files: normalizeSkillFiles(nextFiles),
     sourceType: current.sourceType,
     templateKey: current.templateKey,
     createdAt: current.createdAt,

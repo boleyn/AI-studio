@@ -123,15 +123,8 @@ const toSkillsScopedPath = (path: string, baseSkillFolder: string) => {
   if (isSkillsRootPath(path)) return path;
   const normalized = path.replace(/^\/+/, "");
   if (!normalized) return null;
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.length === 0) return null;
-
-  // zip 根目录只有文件时，落在当前技能目录；有一级目录时，映射到 /skills/<dir>/...
-  if (segments.length === 1) {
-    return `${baseSkillFolder}/${segments[0]}`.replace(/\/{2,}/g, "/");
-  }
-  const [root, ...rest] = segments;
-  return `/skills/${[root, ...rest].join("/")}`.replace(/\/{2,}/g, "/");
+  const base = baseSkillFolder.replace(/\/+$/, "") || "/skills/imported-skill";
+  return `${base}/${normalized}`.replace(/\/{2,}/g, "/");
 };
 
 type FileExplorerPanelProps = {
@@ -187,6 +180,26 @@ const FileExplorerPanel = ({
   const treeRoot = useMemo(() => buildTree(files), [files]);
   const folderByPath = useMemo(() => buildFolderMap(treeRoot), [treeRoot]);
   const fileByPath = useMemo(() => buildFileMap(treeRoot), [treeRoot]);
+  const skillsDisplayRootPath = useMemo(() => {
+    if (workspaceMode !== "skills") return null;
+    const roots = Array.from(
+      new Set(
+        Object.keys(files)
+          .map((path) => path.match(/^\/skills\/[^/]+/i)?.[0])
+          .filter((v): v is string => Boolean(v))
+      )
+    );
+    if (roots.length === 0) return null;
+    if (selectedPath) {
+      const fromSelected = roots.find((root) => selectedPath === root || selectedPath.startsWith(`${root}/`));
+      if (fromSelected) return fromSelected;
+    }
+    return roots[0];
+  }, [files, selectedPath, workspaceMode]);
+  const renderRoot = useMemo(
+    () => (skillsDisplayRootPath ? folderByPath.get(skillsDisplayRootPath) || treeRoot : treeRoot),
+    [folderByPath, skillsDisplayRootPath, treeRoot]
+  );
 
   const filePaths = useMemo(() => Object.keys(files), [files]);
   const filteredPaths = useMemo(() => {
@@ -195,7 +208,7 @@ const FileExplorerPanel = ({
     return filePaths.filter((path) => path.toLowerCase().includes(keyword)).slice(0, 20);
   }, [filePaths, searchQuery]);
 
-  const allFolderPaths = useMemo(() => collectFolderPaths(treeRoot), [treeRoot]);
+  const allFolderPaths = useMemo(() => collectFolderPaths(renderRoot), [renderRoot]);
   const expandableFolderPaths = useMemo(
     () => allFolderPaths.filter((path) => path !== "/"),
     [allFolderPaths]
@@ -790,7 +803,7 @@ const FileExplorerPanel = ({
         style={{ scrollbarGutter: "stable both-edges" }}
       >
         <FileTree
-          root={treeRoot}
+          root={renderRoot}
           files={files}
           expandedFolders={expandedFolders}
           selectedPath={selectedPath}

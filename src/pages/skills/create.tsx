@@ -22,11 +22,7 @@ const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
 const SKILL_ROOT = "/skills";
 const isSkillPath = (path: string) => path === SKILL_ROOT || path.startsWith(`${SKILL_ROOT}/`);
 
-const fallbackSkillFiles: FileMap = {
-  "/skills/README.md": {
-    code: "# Skills\\n\\nStore project-bound skills here, for example:\\n- /skills/my-skill/SKILL.md\\n",
-  },
-};
+const fallbackSkillFiles: FileMap = {};
 
 const normalizeSkillFiles = (rawFiles: unknown): FileMap => {
   if (!rawFiles || typeof rawFiles !== "object") return {};

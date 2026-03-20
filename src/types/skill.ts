@@ -12,4 +12,5 @@ export type SkillListItem = {
 
 export type SkillDetail = SkillListItem & {
   content: string;
+  files?: Record<string, { code: string }>;
 };

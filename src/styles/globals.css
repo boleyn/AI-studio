@@ -29,9 +29,10 @@ body {
   --ws-border-strong: rgba(100, 116, 139, 0.44);
   --ws-text-main: #0f172a;
   --ws-text-subtle: #475569;
-  --ws-accent: #1d4ed8;
-  --ws-accent-soft: rgba(51, 112, 255, 0.14);
-  --ws-tab-active-bg: linear-gradient(132deg, rgba(197, 215, 255, 0.85) 0%, rgba(225, 234, 255, 0.95) 100%);
+  --ws-accent: #28823b;
+  --ws-accent-soft: rgba(100, 218, 122, 0.14);
+  --ws-accent-border: rgba(100, 218, 122, 0.52);
+  --ws-tab-active-bg: linear-gradient(132deg, rgba(186, 238, 205, 0.86) 0%, rgba(221, 247, 229, 0.95) 100%);
   --ws-glow-soft: 0 20px 42px -26px rgba(15, 23, 42, 0.35);
 }
 

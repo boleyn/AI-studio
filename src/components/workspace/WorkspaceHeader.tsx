@@ -50,9 +50,9 @@ const WorkspaceHeader = ({
     },
     viewButton: {
       borderColor: "var(--ws-border)",
-      activeBorderColor: "rgba(37,99,235,0.6)",
+      activeBorderColor: "var(--ws-accent-border)",
       bg: "var(--ws-surface-strong)",
-      activeBg: "linear-gradient(135deg, rgba(59,130,246,0.2) 0%, rgba(14,165,233,0.16) 100%)",
+      activeBg: "var(--ws-tab-active-bg)",
       color: "var(--ws-text-subtle)",
       activeColor: "var(--ws-accent)",
       fontSize: "xs",
@@ -92,6 +92,9 @@ const WorkspaceHeader = ({
       : compileStatus === "compiling"
       ? "编译中"
       : "已就绪";
+  const visibleTabs = tabs.filter((filePath) => Boolean(filePath && filePath.trim()));
+  const headerMinH = "62px";
+  const tabSlotMinH = "40px";
 
   return (
     <Flex
@@ -101,6 +104,8 @@ const WorkspaceHeader = ({
       borderColor={headerTheme.container.borderColor}
       px={4}
       py={2}
+      minH={headerMinH}
+      boxSizing="border-box"
       bg={headerTheme.container.bg}
       backdropFilter="blur(14px)"
       flexShrink={0}
@@ -150,19 +155,18 @@ const WorkspaceHeader = ({
         mx={1}
       />
       <Flex flex="1" minW="0" align="stretch" display={activeView === "code" ? "flex" : "none"}>
-        <Flex
-          minW="0"
-          align="center"
-          gap={2}
-          overflowX="auto"
-          py={1}
-          px={1.5}
-          border="1px solid"
-          borderColor="var(--ws-border)"
-          borderRadius="14px"
-          bg="rgba(255,255,255,0.5)"
-        >
-          {tabs.map((filePath) => {
+        {visibleTabs.length > 0 ? (
+          <Flex
+            flex="1"
+            minW="0"
+            minH={tabSlotMinH}
+            align="center"
+            gap={2}
+            overflowX="auto"
+            py={1}
+            px={0.5}
+          >
+            {visibleTabs.map((filePath) => {
             const active = activeFile === filePath;
             const label = filePath.split("/").pop() || filePath;
             return (
@@ -170,7 +174,7 @@ const WorkspaceHeader = ({
                 key={filePath}
                 align="center"
                 border="1px solid"
-                borderColor={active ? "rgba(37,99,235,0.5)" : "transparent"}
+                borderColor={active ? "var(--ws-accent-border)" : "var(--ws-border)"}
                 bg={active ? "var(--ws-tab-active-bg)" : "transparent"}
                 color={active ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
                 borderRadius="12px"
@@ -181,8 +185,9 @@ const WorkspaceHeader = ({
                 flexShrink={0}
                 transition="background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease"
                 _hover={{
-                  bg: active ? "var(--ws-tab-active-bg)" : "rgba(148,163,184,0.16)",
+                  bg: active ? "var(--ws-tab-active-bg)" : "var(--ws-surface-muted)",
                   color: active ? "var(--ws-accent)" : "var(--ws-text-main)",
+                  borderColor: active ? "var(--ws-accent-border)" : "var(--ws-border-strong)",
                 }}
               >
                 <Box
@@ -215,7 +220,7 @@ const WorkspaceHeader = ({
                   title={`关闭 ${label}`}
                   style={{
                     border: "none",
-                    background: "rgba(15,23,42,0.05)",
+                    background: "var(--ws-surface-muted)",
                     color: "inherit",
                     fontSize: "14px",
                     lineHeight: 1,
@@ -229,8 +234,11 @@ const WorkspaceHeader = ({
                 </Box>
               </Flex>
             );
-          })}
-        </Flex>
+            })}
+          </Flex>
+        ) : (
+          <Box flex="1" minW="0" minH={tabSlotMinH} />
+        )}
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
         {!hideStatusBadge ? (
