@@ -45,6 +45,14 @@ Match the level of specificity to the task's fragility and variability:
 
 Think of Codex as exploring a path: a narrow bridge with cliffs needs specific guardrails (low freedom), while an open field allows many routes (high freedom).
 
+### Protect Validation Integrity
+
+You may use subagents during iteration to validate whether a skill works on realistic tasks or whether a suspected problem is real. This is most useful when you want an independent pass on the skill's behavior, outputs, or failure modes after a revision.  Only do this when it is possible to start new subagents.
+
+When using subagents for validation, treat that as an evaluation surface. The goal is to learn whether the skill generalizes, not whether another agent can reconstruct the answer from leaked context.
+
+Prefer raw artifacts such as example prompts, outputs, diffs, logs, or traces. Give the minimum task-local context needed to perform the validation. Avoid passing the intended answer, suspected bug, intended fix, or your prior conclusions unless the validation explicitly requires them.
+
 ### Anatomy of a Skill
 
 Every skill consists of a required SKILL.md file and optional bundled resources:
@@ -56,6 +64,10 @@ skill-name/
 │   │   ├── name: (required)
 │   │   └── description: (required)
 │   └── Markdown instructions (required)
+├── _meta.json (required)
+│   ├── slug: skill folder name
+│   ├── version: semantic version (X.Y.Z)
+│   └── publishedAt: unix timestamp in milliseconds
 ├── agents/ (recommended)
 │   └── openai.yaml - UI metadata for skill lists and chips
 └── Bundled Resources (optional)
@@ -221,7 +233,7 @@ Skill creation involves these steps:
 3. Initialize the skill (run init_skill.py)
 4. Edit the skill (implement resources and write SKILL.md)
 5. Validate the skill (run quick_validate.py)
-6. Iterate based on real usage
+6. Iterate based on real usage and forward-test complex skills.
 
 Follow these steps in order, skipping only if there is a clear reason why they are not applicable.
 
@@ -278,14 +290,14 @@ To establish the skill's contents, analyze each concrete example to create a lis
 
 At this point, it is time to actually create the skill.
 
-Skip this step only if the skill being developed already exists. In this case, continue to the next step.
+Skip this step only if the skill being developed already exists. In this case, continue to the next step, but still ensure `_meta.json` exists before validation and packaging.
 
 When creating a new skill from scratch, always run the `init_skill.py` script. The script conveniently generates a new template skill directory that automatically includes everything a skill requires, making the skill creation process much more efficient and reliable.
 
 Usage:
 
 ```bash
-scripts/init_skill.py <skill-name> --path <output-directory> [--resources scripts,references,assets] [--examples]
+scripts/init_skill.py <skill-name> --path <output-directory> [--resources scripts,references,assets] [--examples] [--version X.Y.Z]
 ```
 
 Examples:
@@ -294,12 +306,14 @@ Examples:
 scripts/init_skill.py my-skill --path skills/public
 scripts/init_skill.py my-skill --path skills/public --resources scripts,references
 scripts/init_skill.py my-skill --path skills/public --resources scripts --examples
+scripts/init_skill.py my-skill --path skills/public --version 1.0.0
 ```
 
 The script:
 
 - Creates the skill directory at the specified path
 - Generates a SKILL.md template with proper frontmatter and TODO placeholders
+- Creates `_meta.json` with `slug`, `version`, and `publishedAt`
 - Creates `agents/openai.yaml` using agent-generated `display_name`, `short_description`, and `default_prompt` passed via `--interface key=value`
 - Optionally creates resource directories based on `--resources`
 - Optionally adds example files when `--examples` is set
@@ -317,6 +331,8 @@ Only include other optional interface fields when the user explicitly provides t
 ### Step 4: Edit the Skill
 
 When editing the (newly-generated or existing) skill, remember that the skill is being created for another instance of Codex to use. Include information that would be beneficial and non-obvious to Codex. Consider what procedural knowledge, domain-specific details, or reusable assets would help another Codex instance execute these tasks more effectively.
+
+After substantial revisions, or if the skill is particularly tricky, you should use subagents to forward-test the skill on realistic tasks or artifacts. When doing so, pass the artifact under validation rather than your diagnosis of what is wrong, and keep the prompt generic enough that success depends on transferable reasoning rather than hidden ground truth.
 
 #### Start with Reusable Skill Contents
 
@@ -346,6 +362,29 @@ Do not include any other fields in YAML frontmatter.
 
 Write instructions for using the skill and its bundled resources.
 
+#### Update Versioned Metadata Files (Required)
+
+Before finishing an update to an existing skill, enumerate version-bearing files in the skill folder and keep them consistent.
+
+Minimum required files:
+
+- `_meta.json` (always required)
+- `SKILL.md` frontmatter (`name`, `description` must remain accurate)
+
+Common additional files (when present):
+
+- `package.json`
+- `pyproject.toml`
+- any build/release manifest used by that skill
+
+When SKILL behavior or content changes, always update `_meta.json`:
+
+- Keep `slug` equal to the skill folder name
+- Bump `version` using semantic versioning
+- Refresh `publishedAt` (milliseconds timestamp)
+
+If `_meta.json` is missing during update, create it immediately before validation.
+
 ### Step 5: Validate the Skill
 
 Once development of the skill is complete, validate the skill folder to catch basic issues early:
@@ -354,15 +393,71 @@ Once development of the skill is complete, validate the skill folder to catch ba
 scripts/quick_validate.py <path/to/skill-folder>
 ```
 
-The validation script checks YAML frontmatter format, required fields, and naming rules. If validation fails, fix the reported issues and run the command again.
+The validation script checks YAML frontmatter format, required fields, naming rules, and `_meta.json` integrity (`slug`, `version`, `publishedAt`). If validation fails, fix the reported issues and run the command again.
+
+For packaging workflows, use:
+
+```bash
+scripts/package_skill.py <path/to/skill-folder> [output-dir] [--version X.Y.Z]
+```
+
+`package_skill.py` should be treated as the final gate: it must ensure `_meta.json` exists (create if missing), and when `--version` is provided it must update `_meta.json` before building the archive.
 
 ### Step 6: Iterate
 
-After testing the skill, users may request improvements. Often this happens right after using the skill, with fresh context of how the skill performed.
+After testing the skill, you may detect the skill is complex enough that it requires forward-testing; or users may request improvements.
 
-**Iteration workflow:**
+User testing often this happens right after using the skill, with fresh context of how the skill performed.
+
+**Forward-testing and iteration workflow:**
 
 1. Use the skill on real tasks
 2. Notice struggles or inefficiencies
 3. Identify how SKILL.md or bundled resources should be updated
 4. Implement changes and test again
+5. Forward-test if it is reasonable and appropriate
+
+Each time SKILL content changes, update `_meta.json` version and refresh `publishedAt`. Use semantic versioning:
+
+- Patch (`x.y.Z`) for wording fixes or small behavior tweaks
+- Minor (`x.Y.z`) for meaningful additions without breaking behavior
+- Major (`X.y.z`) for incompatible behavior changes
+
+Release checklist (required):
+
+1. Enumerate files in the skill directory and locate all version fields.
+2. Update `_meta.json` (`slug`, `version`, `publishedAt`) and any other version files.
+3. Run `scripts/quick_validate.py`.
+4. Run `scripts/package_skill.py` (optionally with `--version`).
+
+## Forward-testing
+
+To forward-test, launch subagents as a way to stress test the skill with minimal context.
+Subagents should *not* know that they are being asked to test the skill.  They should be treated as
+an agent asked to perform a task by the user.  Prompts to subagents should look like:
+  `Use $skill-x at /path/to/skill-x to solve problem y`
+Not:
+  `Review the skill at /path/to/skill-x; pretend a user asks you to...`
+
+Decision rule for forward-testing:
+  - Err on the side of forward-testing
+  - Ask for approval if you think there's a risk that forward-testing would:
+    * take a long time,
+    * require additional approvals from the user, or
+    * modify live production systems
+
+  In these cases, show the user your proposed prompt and request (1) a yes/no decision, and
+  (2) any suggested modifictions.
+
+Considerations when forward-testing:
+   - use fresh threads for independent passes
+   - pass the skill, and a request in a similar way the user would.
+   - pass raw artifacts, not your conclusions
+   - avoid showing expected answers or intended fixes
+   - rebuild context from source artifacts after each iteration
+   - review the subagent's output and reasoning and emitted artifacts
+   - avoid leaving artifacts the agent can find on disk between iterations;
+     clean up subagents' artifacts to avoid additional contamination.
+
+If forward-testing only succeeds when subagents see leaked context, tighten the skill or the
+forward-testing setup before trusting the result.
