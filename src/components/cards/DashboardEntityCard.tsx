@@ -11,11 +11,14 @@ import {
   FormControl,
   FormErrorMessage,
   FormLabel,
+  Flex,
+  HStack,
   IconButton,
   Input,
   Modal,
   ModalBody,
   ModalContent,
+  Text,
   ModalFooter,
   ModalHeader,
   ModalOverlay,
@@ -26,6 +29,7 @@ import {
 
 import UnifiedEntityCard from "./UnifiedEntityCard";
 import { CloseIcon, CopyIcon, EditIcon } from "../common/Icon";
+import { CalendarDays, History } from "lucide-react";
 
 type DashboardEntityCardProps = {
   index: number;
@@ -33,6 +37,8 @@ type DashboardEntityCardProps = {
   topBadges?: React.ReactNode;
   description?: React.ReactNode;
   meta?: React.ReactNode;
+  createdMeta?: React.ReactNode;
+  fileCount?: number;
   onOpen: () => void;
   onDelete: () => Promise<void>;
   deleteDialogTitle: string;
@@ -55,6 +61,8 @@ export default function DashboardEntityCard({
   topBadges,
   description,
   meta,
+  createdMeta,
+  fileCount,
   onOpen,
   onDelete,
   deleteDialogTitle,
@@ -135,14 +143,65 @@ export default function DashboardEntityCard({
     }
   };
 
+  const actionBtnSx = {
+    variant: "ghost" as const,
+    boxSize: "36px",
+    minW: "36px",
+    borderRadius: "10px",
+    border: "1px solid",
+    borderColor: "myGray.250",
+    bg: "rgba(255,255,255,0.92)",
+    color: "myGray.500",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.92)",
+    transition: "all 0.22s cubic-bezier(0.2, 0.65, 0.2, 1)",
+    _hover: {
+      transform: "translateY(-1px)",
+      borderColor: "primary.300",
+      bg: "rgba(242,251,244,0.92)",
+      color: "primary.700",
+      boxShadow: "0 8px 16px -12px rgba(50,165,73,0.45)",
+    },
+    _active: {
+      transform: "translateY(0)",
+      boxShadow: "inset 0 1px 2px rgba(17,24,36,0.12)",
+    },
+  };
   return (
     <>
       <UnifiedEntityCard
         index={index}
         title={title}
+        titlePrefix={
+          <Box
+            w="10px"
+            h="10px"
+            borderRadius="full"
+            bg="primary.400"
+            boxShadow="0 0 0 5px rgba(100,218,122,0.16)"
+            flexShrink={0}
+          />
+        }
         topBadges={topBadges}
         description={description}
-        meta={meta}
+        footerLeft={
+          <HStack spacing={6} color="myGray.600" fontSize="sm" whiteSpace="nowrap" minW="fit-content">
+            <HStack spacing={2}>
+              <Box as={CalendarDays} w={4} h={4} />
+              <Text>创建于 {createdMeta || "--"}</Text>
+            </HStack>
+            <HStack spacing={2}>
+              <Box as={History} w={4} h={4} />
+              <Text>{meta || "更新于 --"}</Text>
+            </HStack>
+          </HStack>
+        }
+        footerRight={
+          <Flex align="center" h="100%">
+            <Text color="primary.600" fontSize="sm" fontWeight="500" whiteSpace="nowrap">
+              文件数 {typeof fileCount === "number" ? fileCount : "--"}
+            </Text>
+          </Flex>
+        }
         onClick={(event) => {
           if ((event.target as HTMLElement).closest("[data-card-actions]")) return;
           onOpen();
@@ -152,11 +211,7 @@ export default function DashboardEntityCard({
             <Tooltip label="编辑">
               <IconButton
                 aria-label="编辑"
-                variant="ghost"
-                size="sm"
-                borderRadius="md"
-                color="myGray.500"
-                _hover={{ bg: "myGray.100", color: "primary.600" }}
+                {...actionBtnSx}
                 icon={<Box as={EditIcon} w={4} h={4} />}
                 onClick={onRename ? handleRenameOpen : onOpen}
               />
@@ -165,11 +220,7 @@ export default function DashboardEntityCard({
               <Tooltip label="复制">
                 <IconButton
                   aria-label="复制"
-                  variant="ghost"
-                  size="sm"
-                  borderRadius="md"
-                  color="myGray.500"
-                  _hover={{ bg: "myGray.100", color: "primary.600" }}
+                  {...actionBtnSx}
                   icon={<Box as={CopyIcon} w={4} h={4} />}
                   onClick={() => {
                     void handleDuplicate();
@@ -181,11 +232,14 @@ export default function DashboardEntityCard({
             <Tooltip label="删除">
               <IconButton
                 aria-label="删除"
-                variant="ghost"
-                size="sm"
-                borderRadius="md"
-                color="myGray.500"
-                _hover={{ bg: "red.50", color: "red.500" }}
+                {...actionBtnSx}
+                _hover={{
+                  ...actionBtnSx._hover,
+                  borderColor: "red.300",
+                  bg: "rgba(254,243,242,0.92)",
+                  color: "red.600",
+                  boxShadow: "0 8px 16px -12px rgba(217,45,32,0.45)",
+                }}
                 icon={<Box as={CloseIcon} w={4} h={4} />}
                 onClick={onDeleteOpen}
               />

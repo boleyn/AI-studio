@@ -45,6 +45,7 @@ export type ProjectListItem = {
   token: string;
   name: string;
   description?: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -622,13 +623,14 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, description: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
   return docs.map((d) => ({
     token: d.token,
     name: d.name,
     description: d.description,
+    createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   }));
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Rocket, Sparkles, Wand2 } from "lucide-react";
 import {
   Badge,
@@ -75,6 +75,7 @@ export default function ProjectList() {
   const [createType, setCreateType] = useState<CreateType>("project");
   const [nameInput, setNameInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
+  const [projectFileCountMap, setProjectFileCountMap] = useState<Record<string, number>>({});
 
   const keyword = searchValue.trim().toLowerCase();
   const filteredProjects = useMemo(() => {
@@ -109,6 +110,54 @@ export default function ProjectList() {
     }
     return value.toLocaleString("zh-CN");
   };
+
+  const formatAbsoluteDate = (dateString?: string) => {
+    if (!dateString) return "--";
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "--";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  useEffect(() => {
+    const missingTokens = projects
+      .map((item) => item.token)
+      .filter((token) => projectFileCountMap[token] === undefined);
+    if (missingTokens.length === 0) return;
+
+    let cancelled = false;
+    const fetchFileCounts = async () => {
+      const pairs = await Promise.all(
+        missingTokens.map(async (token) => {
+          try {
+            const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`);
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload || typeof payload !== "object") return [token, 0] as const;
+            const files = (payload as { files?: Record<string, { code: string }> }).files;
+            const count = files && typeof files === "object" ? Object.keys(files).length : 0;
+            return [token, count] as const;
+          } catch {
+            return [token, 0] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      setProjectFileCountMap((prev) => {
+        const next = { ...prev };
+        pairs.forEach(([token, count]) => {
+          next[token] = count;
+        });
+        return next;
+      });
+    };
+    void fetchFileCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projects, projectFileCountMap]);
 
   const resetCreateModal = () => {
     setNameInput("");
@@ -522,14 +571,25 @@ export default function ProjectList() {
                   </Button>
                 </Flex>
               ) : (
-                <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={5}>
-                  {filteredProjects.map((project, index) => (
+                <Grid
+                  templateColumns={{
+                    base: "1fr",
+                    md: "repeat(2, minmax(0, 1fr))",
+                    xl: "repeat(3, minmax(0, 1fr))",
+                    "2xl": "repeat(4, minmax(0, 1fr))",
+                  }}
+                  gap={4}
+                >
+                  {filteredProjects.map((project, index) => {
+                    return (
                     <DashboardEntityCard
                       key={project.token}
                       index={index}
                       title={project.name}
                       description={project.description || "继续编辑项目代码与相关对话"}
+                      createdMeta={formatAbsoluteDate(project.createdAt)}
                       meta={`更新于 ${formatDate(project.updatedAt)}`}
+                      fileCount={projectFileCountMap[project.token]}
                       onOpen={() => openProject(project.token)}
                       onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
                       renameDialogTitle="修改项目"
@@ -543,7 +603,8 @@ export default function ProjectList() {
                       deleteDialogTitle="删除项目"
                       deleteDialogBody={`确定删除项目「${project.name}」吗？将同时删除该项目的所有对话记录和文件，此操作无法撤销。`}
                     />
-                  ))}
+                    );
+                  })}
                 </Grid>
               )
             ) : filteredSkills.length === 0 ? (
@@ -579,14 +640,25 @@ export default function ProjectList() {
                 </Button>
               </Flex>
             ) : (
-              <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={5}>
-                {filteredSkills.map((skill, index) => (
+              <Grid
+                templateColumns={{
+                  base: "1fr",
+                  md: "repeat(2, minmax(0, 1fr))",
+                  xl: "repeat(3, minmax(0, 1fr))",
+                  "2xl": "repeat(4, minmax(0, 1fr))",
+                }}
+                gap={4}
+              >
+                {filteredSkills.map((skill, index) => {
+                  return (
                   <DashboardEntityCard
                     key={skill.token}
                     index={index}
                     title={skill.name}
                     description={skill.description || "暂无描述"}
+                    createdMeta={formatAbsoluteDate(skill.createdAt)}
                     meta={`更新于 ${formatDate(skill.updatedAt)}`}
+                    fileCount={1}
                     onOpen={() => {
                       void openSkill(skill.token);
                     }}
@@ -610,7 +682,8 @@ export default function ProjectList() {
                     deleteDialogTitle="删除 Skill"
                     deleteDialogBody={`确定删除 Skill「${skill.name}」吗？该操作不可撤销。`}
                   />
-                ))}
+                  );
+                })}
               </Grid>
             )}
           </Box>

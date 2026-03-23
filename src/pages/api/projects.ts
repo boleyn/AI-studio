@@ -14,6 +14,7 @@ import { requireAuth } from "@server/auth/session";
 type ProjectListItem = {
   token: string;
   name: string;
+  createdAt: string;
   updatedAt: string;
 };
 
