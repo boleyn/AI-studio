@@ -12,6 +12,7 @@ type SkillDetailPreviewProps = {
   files: Record<string, SandpackFileEntry>;
   activeFile: string;
   onSelectFile?: (path: string) => void;
+  flat?: boolean;
 };
 
 type SkillFrontmatter = {
@@ -65,7 +66,7 @@ const extToLang = (path: string) => {
   return "text";
 };
 
-const SkillDetailPreview = ({ files, activeFile, onSelectFile }: SkillDetailPreviewProps) => {
+const SkillDetailPreview = ({ files, activeFile, onSelectFile, flat = false }: SkillDetailPreviewProps) => {
   const skillRoots = useMemo(() => {
     const roots = new Set<string>();
     Object.keys(files).forEach((path) => {
@@ -144,8 +145,8 @@ const SkillDetailPreview = ({ files, activeFile, onSelectFile }: SkillDetailPrev
   }
 
   return (
-    <div className={styles.previewRoot}>
-      <div className={styles.detailCard}>
+    <div className={`${styles.previewRoot}${flat ? ` ${styles.previewRootFlat}` : ""}`}>
+      <div className={`${styles.detailCard}${flat ? ` ${styles.detailCardFlat}` : ""}`}>
         <p className={styles.detailDesc}>{description}</p>
 
         <div className={styles.filePills}>

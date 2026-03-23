@@ -29,7 +29,7 @@ import {
 import { AccountModal } from "./AccountModal";
 import type { AccountPanelTab } from "./AccountModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { BackCustomIcon, EditCustomIcon, SearchIcon, SettingsCustomIcon } from "./common/Icon";
+import { AgentSkillsIcon, BackCustomIcon, EditCustomIcon, SearchIcon } from "./common/Icon";
 import AsiaInfoLogo from "./auth/AsiaInfoLogo";
 import MyTooltip from "./ui/MyTooltip";
 
@@ -119,6 +119,22 @@ const TopBar = ({
   }, [normalizedQuery, searchConversations]);
   const shouldShowSearchPanel =
     searchFocused && normalizedQuery.length > 0 && (matchedFiles.length > 0 || matchedConversations.length > 0);
+  const headerActionButtonProps = {
+    size: "sm" as const,
+    variant: "solid" as const,
+    boxSize: "34px",
+    minW: "34px",
+    h: "34px",
+    p: 0,
+    bg: "#eef3ef",
+    color: "#2f7a40",
+    borderRadius: "9999px",
+    border: "1px solid",
+    borderColor: "#c9d8ce",
+    transition: "all 0.18s ease",
+    _hover: { bg: "#32a549", borderColor: "#32a549", color: "white", transform: "translateY(-1px)" },
+    _active: { bg: "#2c9140", borderColor: "#2c9140", color: "white", transform: "translateY(0)" },
+  };
 
   const openAccountModal = (panel: AccountPanelTab = "account") => {
     setAccountPanel(panel);
@@ -174,9 +190,7 @@ const TopBar = ({
           <MyTooltip label="返回">
             <IconButton
               aria-label="返回"
-              size="sm"
-              variant="solid"
-              icon={<BackCustomIcon />}
+              icon={<Box as={BackCustomIcon} boxSize="15px" />}
               onClick={() => {
                 if (onBack) {
                   onBack();
@@ -186,39 +200,19 @@ const TopBar = ({
                   window.history.back();
                 }
               }}
-              boxSize="38px"
-              minW="38px"
-              h="38px"
-              p={0}
-              bg="rgba(50,165,73,0.18)"
-              color="primary.700"
-              borderRadius="9999px"
-              border="1px solid"
-              borderColor="rgba(50,165,73,0.26)"
-              _hover={{ bg: "primary.500", borderColor: "primary.500", color: "white" }}
+              {...headerActionButtonProps}
             />
           </MyTooltip>
           <AsiaInfoLogo showText={false} w="28px" />
-          <Text fontSize="24px" lineHeight="1" fontWeight="700" color="#1d2433" noOfLines={1}>
+          <Text fontSize="24px" lineHeight="1.2" fontWeight="700" color="#1d2433" noOfLines={1}>
             {projectName || "未命名项目"}
           </Text>
           <MyTooltip label="编辑项目信息">
             <IconButton
               aria-label="编辑项目信息"
-              size="sm"
-              variant="solid"
-              icon={<EditCustomIcon />}
+              icon={<Box as={EditCustomIcon} boxSize="15px" />}
               onClick={() => setMetaModalOpen(true)}
-              boxSize="38px"
-              minW="38px"
-              h="38px"
-              p={0}
-              bg="rgba(50,165,73,0.18)"
-              color="primary.700"
-              borderRadius="9999px"
-              border="1px solid"
-              borderColor="rgba(50,165,73,0.26)"
-              _hover={{ bg: "primary.500", borderColor: "primary.500", color: "white" }}
+              {...headerActionButtonProps}
             />
           </MyTooltip>
         </Flex>
@@ -349,13 +343,12 @@ const TopBar = ({
             ) : null}
           </Box>
 
-          <MyTooltip label="设置">
+          <MyTooltip label="agent skills">
             <IconButton
-              aria-label="设置"
-              size="sm"
-              variant="ghost"
-              icon={<SettingsCustomIcon />}
+              aria-label="agent skills"
+              icon={<Box as={AgentSkillsIcon} boxSize="15px" />}
               onClick={onOpenSettings}
+              {...headerActionButtonProps}
             />
           </MyTooltip>
 

@@ -1,16 +1,17 @@
 import {
   Badge,
+  Button,
   Box,
   Divider,
+  Drawer,
+  DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
+  DrawerHeader,
+  DrawerOverlay,
   Flex,
   IconButton,
   Input,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalHeader,
-  ModalOverlay,
   Spinner,
   Tag,
   Text,
@@ -18,11 +19,14 @@ import {
 } from "@chakra-ui/react";
 import {
   CheckIcon,
+  CollapseDetailIcon,
   EditCustomIcon,
   RefreshIcon,
   RunIcon,
 } from "@/components/common/Icon";
+import SkillDetailPreview from "@/components/workspace/SkillDetailPreview";
 import MyTooltip from "@/components/ui/MyTooltip";
+import yaml from "js-yaml";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getSkillDetail,
@@ -57,11 +61,11 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
     setIsLoading(true);
     try {
       const result = await listSkills();
-      setSkills(result.skills || []);
-      const firstLoadable = (result.skills || []).find((item) => item.name && item.isLoadable);
-      if (!selectedName && firstLoadable?.name) {
-        setSelectedName(firstLoadable.name);
-      }
+      const nextSkills = result.skills || [];
+      setSkills(nextSkills);
+      setSelectedName((current) =>
+        current && !nextSkills.some((item) => item.name === current) ? "" : current
+      );
     } catch (error) {
       toast({
         status: "error",
@@ -71,10 +75,12 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
     } finally {
       setIsLoading(false);
     }
-  }, [selectedName, toast]);
+  }, [toast]);
 
   useEffect(() => {
     if (!isOpen) return;
+    setSelectedName("");
+    setDetail(null);
     void loadSkills();
   }, [isOpen, loadSkills]);
 
@@ -120,6 +126,71 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
     () => skills.find((item) => item.name === selectedName),
     [selectedName, skills]
   );
+  const detailPreview = useMemo(() => {
+    if (!detail) {
+      return {
+        files: {} as Record<string, string | { code?: unknown }>,
+        activeFile: "",
+      };
+    }
+
+    const rawPath = detail.relativeLocation?.trim() || `/skills/${detail.name}/SKILL.md`;
+    const normalizedPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+    const frontmatter = yaml
+      .dump(
+        {
+          name: detail.name,
+          description: detail.description || "",
+          ...(detail.license ? { license: detail.license } : {}),
+          ...(detail.compatibility ? { compatibility: detail.compatibility } : {}),
+        },
+        { lineWidth: 1000, noRefs: true }
+      )
+      .trimEnd();
+    const skillCode = `---\n${frontmatter}\n---\n\n${detail.body || ""}`;
+
+    return {
+      files: {
+        [normalizedPath]: { code: skillCode },
+      } as Record<string, string | { code?: unknown }>,
+      activeFile: normalizedPath,
+    };
+  }, [detail]);
+  const isDetailOpen = Boolean(selectedName);
+  const drawerMaxW = isDetailOpen
+    ? ({ base: "100vw", lg: "clamp(960px, 60vw, 1320px)" } as const)
+    : ({ base: "100vw", lg: "clamp(420px, 30vw, 640px)" } as const);
+  const headerActionButtonProps = {
+    size: "sm" as const,
+    borderRadius: "9999px",
+    boxSize: "34px",
+    minW: "34px",
+    h: "34px",
+    p: 0,
+  };
+  const neutralActionButtonProps = {
+    variant: "solid" as const,
+    bg: "myGray.50",
+    color: "myGray.700",
+    border: "1px solid",
+    borderColor: "myGray.250",
+    _hover: { bg: "myGray.100", borderColor: "myGray.300", color: "myGray.800" },
+    _active: { bg: "myGray.150", borderColor: "myGray.300", color: "myGray.800" },
+  };
+  const accentActionButtonProps = {
+    bg: "primary.600",
+    color: "white",
+    border: "1px solid",
+    borderColor: "primary.600",
+    _hover: { bg: "primary.700", borderColor: "primary.700" },
+    _active: { bg: "primary.800", borderColor: "primary.800" },
+    _disabled: {
+      bg: "gray.100",
+      borderColor: "gray.200",
+      color: "gray.400",
+      cursor: "not-allowed",
+    },
+  };
 
   const handleReload = async () => {
     setIsReloading(true);
@@ -184,16 +255,37 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="6xl" isCentered>
-      <ModalOverlay bg="blackAlpha.400" />
-      <ModalContent borderRadius="16px" maxH="80vh" overflow="hidden">
-        <ModalHeader borderBottom="1px solid" borderColor="myGray.200" fontSize="md">
-          Skills 管理
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody p={0}>
-          <Flex h="72vh" minH="520px">
-            <Box borderRight="1px solid" borderColor="myGray.200" p={3} w="42%">
+    <Drawer isOpen={isOpen} onClose={onClose} placement="right">
+      <DrawerOverlay bg="blackAlpha.400" />
+      <DrawerContent
+        borderTopLeftRadius="16px"
+        borderBottomLeftRadius="16px"
+        maxW={drawerMaxW}
+        transition="max-width 0.24s ease"
+        overflow="hidden"
+      >
+        <DrawerHeader borderBottom="1px solid" borderColor="myGray.200" fontSize="md" pr={14}>
+          <Flex align="center" justify="space-between" gap={2}>
+            <Text fontSize="md" fontWeight={700}>
+              Skills 管理
+            </Text>
+            {isDetailOpen ? (
+              <Button size="xs" variant="ghost" onClick={() => setSelectedName("")}>
+                返回列表
+              </Button>
+            ) : null}
+          </Flex>
+        </DrawerHeader>
+        <DrawerCloseButton />
+        <DrawerBody p={0}>
+          <Flex h="100%" minH="560px">
+            <Box
+              borderRight={isDetailOpen ? "1px solid" : "none"}
+              borderColor="myGray.200"
+              p={3}
+              w={isDetailOpen ? "420px" : "100%"}
+              flexShrink={0}
+            >
               <Flex align="center" gap={2} mb={3}>
                 <Input
                   placeholder="搜索技能名称或描述"
@@ -204,41 +296,36 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
                 <MyTooltip label="校验 skills">
                   <IconButton
                     aria-label="校验 skills"
-                    size="sm"
-                    variant="outline"
-                    icon={<CheckIcon />}
+                    icon={<Box as={CheckIcon} boxSize="15px" />}
                     onClick={handleValidate}
                     isLoading={isValidating}
+                    {...headerActionButtonProps}
+                    {...neutralActionButtonProps}
                   />
                 </MyTooltip>
                 <MyTooltip label="重扫 skills 目录">
                   <IconButton
                     aria-label="重扫 skills 目录"
-                    size="sm"
-                    variant="outline"
-                    icon={<RefreshIcon />}
+                    icon={<Box as={RefreshIcon} boxSize="15px" />}
                     onClick={handleReload}
                     isLoading={isReloading}
+                    {...headerActionButtonProps}
+                    {...neutralActionButtonProps}
                   />
                 </MyTooltip>
                 <MyTooltip label="通过对话创建 skill">
                   <IconButton
                     aria-label="通过对话创建 skill"
-                    bg="blue.500"
-                    border="1px solid"
-                    borderColor="blue.500"
-                    color="white"
-                    size="sm"
-                    icon={<EditCustomIcon />}
-                    _hover={{ bg: "blue.600", borderColor: "blue.600" }}
-                    _active={{ bg: "blue.700", borderColor: "blue.700" }}
+                    icon={<Box as={EditCustomIcon} boxSize="15px" />}
                     onClick={handleCreateInChat}
                     isLoading={isInstallingCreator}
+                    {...headerActionButtonProps}
+                    {...accentActionButtonProps}
                   />
                 </MyTooltip>
               </Flex>
               <Divider mb={2} />
-              <Box h="calc(72vh - 86px)" minH="320px" overflowY="auto">
+              <Box h="calc(100% - 52px)" minH="320px" overflowY="auto">
                 {isLoading ? (
                   <Flex align="center" color="myGray.500" gap={2} justify="center" pt={8}>
                     <Spinner size="sm" />
@@ -255,9 +342,9 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
                       return (
                         <Box
                           key={`${item.relativeLocation}-${item.name || "unknown"}`}
-                          bg={isActive ? "blue.50" : "white"}
+                          bg={isActive ? "primary.50" : "white"}
                           border="1px solid"
-                          borderColor={isActive ? "blue.200" : "myGray.200"}
+                          borderColor={isActive ? "primary.200" : "myGray.200"}
                           borderRadius="10px"
                           cursor={item.name ? "pointer" : "default"}
                           onClick={() => {
@@ -299,54 +386,47 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
               </Box>
             </Box>
 
-            <Box p={4} w="58%">
-              {!selectedName ? (
-                <Text color="myGray.500" fontSize="sm">
-                  请选择一个 skill 查看详情。
-                </Text>
-              ) : detailLoading ? (
-                <Flex align="center" color="myGray.500" gap={2} h="full" justify="center">
-                  <Spinner size="sm" />
-                  <Text fontSize="sm">加载详情...</Text>
-                </Flex>
-              ) : !detail ? (
-                <Text color="myGray.500" fontSize="sm">
-                  暂无详情。
-                </Text>
-              ) : (
-                <Flex direction="column" gap={3} h="full">
-                  <Flex align="flex-start" justify="space-between">
-                    <Box minW={0}>
-                      <Text fontSize="md" fontWeight={800} noOfLines={1}>
-                        {detail.name}
-                      </Text>
-                      <Text color="myGray.600" fontSize="sm" mt={1}>
-                        {detail.description}
-                      </Text>
-                      <Text color="myGray.500" fontSize="11px" mt={1}>
-                        {detail.relativeLocation}
-                      </Text>
-                    </Box>
+            {isDetailOpen ? (
+              <Flex direction="column" flex="1" minW={0} minH={0}>
+                <Flex
+                  align="center"
+                  justify="space-between"
+                  gap={3}
+                  px={4}
+                  py={3}
+                  borderBottom="1px solid"
+                  borderColor="myGray.200"
+                >
+                  <Box minW={0}>
+                    <Text fontSize="sm" fontWeight={800} noOfLines={1}>
+                      {detail?.name || selectedName}
+                    </Text>
+                    <Text color="myGray.500" fontSize="11px" mt={0.5} noOfLines={1}>
+                      {detail?.relativeLocation || ""}
+                    </Text>
+                  </Box>
+                  <Flex align="center" gap={2}>
+                    <MyTooltip label="收起详情">
+                      <IconButton
+                        aria-label="收起详情"
+                        icon={<Box as={CollapseDetailIcon} boxSize="15px" />}
+                        onClick={() => setSelectedName("")}
+                        bg="red.50"
+                        color="red.600"
+                        border="1px solid"
+                        borderColor="red.200"
+                        _hover={{ bg: "red.100", borderColor: "red.300", color: "red.700" }}
+                        _active={{ bg: "red.100", borderColor: "red.300", color: "red.700" }}
+                        {...headerActionButtonProps}
+                      />
+                    </MyTooltip>
                     <MyTooltip label="用于当前对话">
                       <IconButton
                         aria-label="用于当前对话"
-                        bg="blue.500"
-                        border="1px solid"
-                        borderColor="blue.500"
-                        color="white"
-                        size="sm"
-                        icon={<RunIcon />}
-                        _hover={{ bg: "blue.600", borderColor: "blue.600" }}
-                        _active={{ bg: "blue.700", borderColor: "blue.700" }}
-                        _disabled={{
-                          bg: "gray.100",
-                          borderColor: "gray.200",
-                          color: "gray.400",
-                          cursor: "not-allowed",
-                        }}
-                        isDisabled={!selectedSkillMeta?.isLoadable}
+                        icon={<Box as={RunIcon} boxSize="15px" />}
+                        isDisabled={!selectedSkillMeta?.isLoadable || !detail}
                         onClick={() => {
-                          if (!selectedSkillMeta?.isLoadable) {
+                          if (!selectedSkillMeta?.isLoadable || !detail) {
                             toast({
                               status: "warning",
                               title: "该 skill 当前不可用，请先修复问题后再应用",
@@ -357,38 +437,38 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
                           onUseSkill?.(detail.name);
                           onClose();
                         }}
+                        {...headerActionButtonProps}
+                        {...accentActionButtonProps}
                       />
                     </MyTooltip>
                   </Flex>
-
-                  <Divider />
-
-                  <Box flex="1" minH={0}>
-                    <Text color="myGray.700" fontSize="xs" fontWeight={700} mb={1}>
-                      SKILL.md 正文预览
-                    </Text>
-                    <Box
-                      bg="gray.50"
-                      border="1px solid"
-                      borderColor="myGray.200"
-                      borderRadius="10px"
-                      h="full"
-                      minH="300px"
-                      overflowY="auto"
-                      p={3}
-                    >
-                      <Text fontFamily="mono" fontSize="12px" whiteSpace="pre-wrap">
-                        {detail.body || "(empty)"}
-                      </Text>
-                    </Box>
-                  </Box>
                 </Flex>
-              )}
-            </Box>
+                <Box flex="1" minH={0} overflow="hidden" px={4} pt={3} pb={4}>
+                  {detailLoading ? (
+                    <Flex align="center" color="myGray.500" gap={2} h="full" justify="center">
+                      <Spinner size="sm" />
+                      <Text fontSize="sm">加载详情...</Text>
+                    </Flex>
+                  ) : !detail ? (
+                    <Flex align="center" color="myGray.500" h="full" justify="center">
+                      <Text fontSize="sm">暂无详情。</Text>
+                    </Flex>
+                  ) : (
+                    <Box h="full" borderRadius="12px" bg="myGray.25" px={3} py={2}>
+                      <SkillDetailPreview
+                        files={detailPreview.files}
+                        activeFile={detailPreview.activeFile}
+                        flat
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </Flex>
+            ) : null}
           </Flex>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+        </DrawerBody>
+      </DrawerContent>
+    </Drawer>
   );
 };
 
