@@ -178,14 +178,6 @@ const FileExplorerPanel = ({
     );
   }, [files, isSearching, normalizedSearchQuery]);
 
-<<<<<<< HEAD
-=======
-  const allFiles = sandpack.files as SandpackFilesPayload;
-  const files = useMemo(() => {
-    if (!filePathFilter) return allFiles;
-    return Object.fromEntries(Object.entries(allFiles).filter(([path]) => filePathFilter(path)));
-  }, [allFiles, filePathFilter]);
->>>>>>> aiid/dev
   const treeRoot = useMemo(() => buildTree(files), [files]);
   const visibleTreeRoot = useMemo(() => buildTree(visibleFiles), [visibleFiles]);
   const folderByPath = useMemo(() => buildFolderMap(treeRoot), [treeRoot]);

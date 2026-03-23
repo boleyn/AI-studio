@@ -13,20 +13,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
 import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPanel";
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
-<<<<<<< HEAD
 import SkillDetailPreview from "./workspace/SkillDetailPreview";
 import SkillMarkdownEditor from "./workspace/SkillMarkdownEditor";
 import MyTooltip from "./ui/MyTooltip";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "./common/Icon";
 import { DownloadIcon, RunIcon, SaveIcon, ShareIcon } from "./common/Icon";
 import type { SaveStatus } from "./CodeChangeListener";
-=======
-import SkillMarkdownEditor from "./workspace/SkillMarkdownEditor";
-import WorkspaceHeader from "./workspace/WorkspaceHeader";
-import MyTooltip from "./ui/MyTooltip";
-import { FullscreenEnterIcon, FullscreenExitIcon } from "./common/Icon";
-import Markdown from "./Markdown";
->>>>>>> aiid/dev
 
 type ActiveView = "preview" | "code" | "logs";
 
@@ -36,16 +28,12 @@ type WorkspaceShellProps = {
   error: string;
   activeView: ActiveView;
   onChangeView: (view: ActiveView) => void;
-<<<<<<< HEAD
   openFileRequest?: string | null;
   onOpenFileRequestHandled?: () => void;
-=======
->>>>>>> aiid/dev
   workspaceMode?: "project" | "skills";
   onPersistFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   filePathFilter?: (path: string) => boolean;
   defaultFolderPath?: string;
-<<<<<<< HEAD
   saveStatus?: SaveStatus;
   onManualPreview?: () => void;
   onManualSave?: () => void;
@@ -53,8 +41,6 @@ type WorkspaceShellProps = {
   onManualShare?: () => void;
   shareLabel?: string;
   shareAriaLabel?: string;
-=======
->>>>>>> aiid/dev
   customStatusBadge?: {
     text: string;
     colorScheme: string;
@@ -130,16 +116,12 @@ const WorkspaceShell = ({
   error,
   activeView,
   onChangeView,
-<<<<<<< HEAD
   openFileRequest = null,
   onOpenFileRequestHandled,
-=======
->>>>>>> aiid/dev
   workspaceMode = "project",
   onPersistFiles,
   filePathFilter,
   defaultFolderPath,
-<<<<<<< HEAD
   saveStatus = "idle",
   onManualPreview,
   onManualSave,
@@ -147,8 +129,6 @@ const WorkspaceShell = ({
   onManualShare,
   shareLabel = "分享",
   shareAriaLabel = "分享",
-=======
->>>>>>> aiid/dev
   customStatusBadge,
 }: WorkspaceShellProps) => {
   const { sandpack, listen } = useSandpack();
@@ -156,11 +136,6 @@ const WorkspaceShell = ({
   const runtimeErrorMessage = useErrorMessage();
   const loadingState = useLoadingOverlayState();
 
-<<<<<<< HEAD
-=======
-  const [isCompileBadgeHovered, setIsCompileBadgeHovered] = useState(false);
-  const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
->>>>>>> aiid/dev
   const [openTabs, setOpenTabs] = useState<string[]>(() =>
     sandpack.activeFile && (!filePathFilter || filePathFilter(sandpack.activeFile))
       ? [sandpack.activeFile]
@@ -201,7 +176,6 @@ const WorkspaceShell = ({
       }
     }
   }, [filePathFilter, sandpack]);
-<<<<<<< HEAD
 
   useEffect(() => {
     const stopListening = listen((message) => {
@@ -260,8 +234,6 @@ const WorkspaceShell = ({
       message: text,
     });
   }, [pushRuntimeLog, sandpack.error]);
-=======
->>>>>>> aiid/dev
 
   const handleOpenFile = (filePath: string) => {
     if (!filePath) return;
@@ -369,20 +341,9 @@ const WorkspaceShell = ({
       : "ready";
 
   const isSkillsMode = workspaceMode === "skills";
-<<<<<<< HEAD
   const isLogsView = activeView === "logs";
   const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
-=======
-  const isCompilePanelOpen =
-    !isSkillsMode &&
-    activeView === "code" &&
-    compileErrorMessages.length > 0 &&
-    (isCompileBadgeHovered || isCompilePanelPinned);
-  const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
-  const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
-  const isMarkdownFile = /\.md$/i.test(activeFile);
->>>>>>> aiid/dev
   const previewable = isPreviewableFile(activeFile);
   const rawFileEntry = (sandpack.files as Record<string, unknown>)[activeFile];
   const activeFileCode =
@@ -391,7 +352,6 @@ const WorkspaceShell = ({
       : rawFileEntry && typeof rawFileEntry === "object" && "code" in rawFileEntry
       ? String((rawFileEntry as { code?: unknown }).code ?? "")
       : "";
-<<<<<<< HEAD
   const fileLanguageLabel = (() => {
     const ext = activeFile.split(".").pop()?.toLowerCase() || "";
     const map: Record<string, string> = {
@@ -491,12 +451,6 @@ const WorkspaceShell = ({
       ) : null}
     </Flex>
   );
-=======
-  const previewMarkdownContent = isSkillMarkdown
-    ? activeFileCode.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "")
-    : activeFileCode;
-
->>>>>>> aiid/dev
   return (
     <Flex
       as="section"
@@ -517,30 +471,6 @@ const WorkspaceShell = ({
       overflow="hidden"
     >
       <Flex direction="column" flex="1" minH="0" h="100%">
-<<<<<<< HEAD
-=======
-        <Box>
-          <WorkspaceHeader
-            activeView={activeView}
-            onChangeView={onChangeView}
-            status={status}
-            error={error}
-            compileStatus={status === "ready" ? compileStatus : "ready"}
-            compileErrorCount={compileErrorMessages.length}
-            onCompileBadgeHoverChange={setIsCompileBadgeHovered}
-            onCompileBadgeToggle={() => {
-              if (compileErrorMessages.length === 0) return;
-              setIsCompilePanelPinned((prev) => !prev);
-            }}
-            tabs={openTabs}
-            activeFile={activeFile}
-            onSelectTab={handleOpenFile}
-            onCloseTab={handleCloseTab}
-            hideStatusBadge={isSkillsMode}
-            customStatusBadge={customStatusBadge}
-          />
-        </Box>
->>>>>>> aiid/dev
         <Box
           position="relative"
           flex="1"
@@ -569,7 +499,6 @@ const WorkspaceShell = ({
               filePathFilter={filePathFilter}
               defaultFolderPath={defaultFolderPath}
             />
-<<<<<<< HEAD
             <Flex direction="column" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
               <Flex
                 align="center"
@@ -590,35 +519,6 @@ const WorkspaceShell = ({
                       Sandpack Console
                     </Text>
                   </Flex>
-=======
-            <Box style={{ flex: 1, minWidth: 0, position: "relative" }}>
-              <SandpackStack
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  minHeight: 0,
-                  width: "100%",
-                  height: "100%",
-                }}
-              >
-                {previewable ? (
-                  <FilePreviewPanel
-                    token={token}
-                    activeFile={activeFile}
-                    sourceCode={activeFileCode}
-                  />
-                ) : isSkillsMode && isSkillMarkdown ? (
-                  <SkillMarkdownEditor
-                    activeFile={activeFile}
-                    code={activeFileCode}
-                    onChangeCode={(nextCode) => {
-                      if (!activeFile) return;
-                      sandpack.updateFile(activeFile, nextCode, true);
-                    }}
-                  />
->>>>>>> aiid/dev
                 ) : (
                   <>
                     <Flex flex="1" minW="0" align="center" gap={2} overflowX="auto" py={1} px={0.5}>
@@ -901,7 +801,6 @@ const WorkspaceShell = ({
               }}
             >
               {isSkillsMode ? (
-<<<<<<< HEAD
                 <SkillDetailPreview
                   files={sandpack.files as Record<string, string | { code?: unknown }>}
                   activeFile={activeFile}
@@ -971,65 +870,6 @@ const WorkspaceShell = ({
                     style={{ width: "100%", height: "100%", overflow: "hidden" }}
                   />
                 </Box>
-=======
-                <Box
-                  h="100%"
-                  overflow="auto"
-                  bg="var(--ws-surface-strong)"
-                  p={0}
-                >
-                  {!activeFile ? (
-                    <Flex h="100%" align="center" justify="center">
-                      <Box
-                        px={5}
-                        py={4}
-                        borderRadius="12px"
-                        border="1px solid rgba(203,213,225,0.95)"
-                        bg="white"
-                        fontSize="sm"
-                        color="var(--ws-text-subtle)"
-                      >
-                        先在左侧选择一个 SKILL.md 文件进行预览
-                      </Box>
-                    </Flex>
-                  ) : isMarkdownFile ? (
-                    <Box
-                      h="100%"
-                      w="100%"
-                      px={{ base: 4, md: 5 }}
-                      py={{ base: 3, md: 4 }}
-                      overflow="auto"
-                    >
-                      {previewMarkdownContent.trim() ? (
-                        <Markdown source={previewMarkdownContent} />
-                      ) : (
-                        <Box fontSize="sm" color="var(--ws-text-subtle)">
-                          当前 Markdown 内容为空
-                        </Box>
-                      )}
-                    </Box>
-                  ) : (
-                    <Flex h="100%" align="center" justify="center">
-                      <Box
-                        px={5}
-                        py={4}
-                        borderRadius="12px"
-                        border="1px solid rgba(203,213,225,0.95)"
-                        bg="white"
-                      >
-                        <Box fontSize="sm" color="var(--ws-text-subtle)">
-                          技能模式预览仅支持 Markdown 文件
-                        </Box>
-                      </Box>
-                    </Flex>
-                  )}
-                </Box>
-              ) : (
-                <SandpackPreview
-                  showOpenInCodeSandbox={false}
-                  style={{ width: "100%", height: "100%", overflow: "hidden" }}
-                />
->>>>>>> aiid/dev
               )}
             </SandpackStack>
             <Box position="absolute" top={2.5} right={2.5} zIndex={3}>

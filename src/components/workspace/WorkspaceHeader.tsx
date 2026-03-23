@@ -14,11 +14,8 @@ type WorkspaceHeaderProps = {
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   hideStatusBadge?: boolean;
-<<<<<<< HEAD
   hideViewControls?: boolean;
   rightActions?: React.ReactNode;
-=======
->>>>>>> aiid/dev
   customStatusBadge?: {
     text: string;
     colorScheme: string;
@@ -42,11 +39,8 @@ const WorkspaceHeader = ({
   onSelectTab,
   onCloseTab,
   hideStatusBadge = false,
-<<<<<<< HEAD
   hideViewControls = false,
   rightActions,
-=======
->>>>>>> aiid/dev
   customStatusBadge,
 }: WorkspaceHeaderProps) => {
   const theme = useTheme() as Record<string, any>;
@@ -263,10 +257,7 @@ const WorkspaceHeader = ({
         )}
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
-<<<<<<< HEAD
         {rightActions}
-=======
->>>>>>> aiid/dev
         {!hideStatusBadge ? (
           <Badge
             colorScheme={badgeColorScheme}
