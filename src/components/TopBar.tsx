@@ -15,10 +15,9 @@ type TopBarProps = {
   onPreview?: () => void;
   onSave?: () => void;
   onDownload?: () => void;
-  onCopy?: () => void;
   onShare?: () => void;
-  onRefresh?: () => void;
-  onOpenInNew?: () => void;
+  shareLabel?: string;
+  shareAriaLabel?: string;
   onProjectNameChange?: (name: string) => void;
   isReadOnlyName?: boolean;
   subtitle?: string;
@@ -33,10 +32,9 @@ const TopBar = ({
   onPreview,
   onSave,
   onDownload,
-  onCopy,
   onShare,
-  onRefresh,
-  onOpenInNew,
+  shareLabel,
+  shareAriaLabel,
   onProjectNameChange,
   isReadOnlyName = false,
   subtitle,
@@ -256,10 +254,9 @@ const TopBar = ({
             onSave?.();
           }}
           onDownload={onDownload}
-          onCopy={onCopy}
           onShare={onShare}
-          onRefresh={onRefresh}
-          onOpenInNew={onOpenInNew}
+          shareLabel={shareLabel}
+          shareAriaLabel={shareAriaLabel}
         />
       )}
     </Flex>

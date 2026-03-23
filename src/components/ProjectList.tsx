@@ -410,7 +410,7 @@ export default function ProjectList() {
                 >
                   <CardBody py={4} px={5} h="full" display="flex" flexDirection="column" justifyContent="space-between">
                     <Text fontSize="14px" color="myGray.800" fontWeight="bold" mb={2}>
-                      技能发布统计
+                      SKILLS
                     </Text>
                     <Flex align="center" justify="space-between" gap={4} flex="1">
                       <CircularProgress

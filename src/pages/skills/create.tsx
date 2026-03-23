@@ -396,6 +396,15 @@ const SkillCreatePage = () => {
             onProjectNameChange={(v) => { setSkillName(v); }}
             backUrl={returnTo}
             saveStatus={saveStatus}
+            shareLabel="发布"
+            shareAriaLabel="发布"
+            onShare={() => {
+              toast({
+                title: "发布功能暂未实现",
+                status: "info",
+                duration: 1800,
+              });
+            }}
             onSave={() => {
               if (isWorkspaceReady && latestFilesRef.current) {
                 void persistSkillFiles(latestFilesRef.current);

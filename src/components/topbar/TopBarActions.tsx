@@ -3,10 +3,7 @@ import { Flex, IconButton } from "@chakra-ui/react";
 import MyTooltip from "../ui/MyTooltip";
 import type { SaveStatus } from "../CodeChangeListener";
 import {
-  CopyIcon,
   DownloadIcon,
-  OpenInNewIcon,
-  RefreshIcon,
   RunIcon,
   SaveIcon,
   ShareIcon,
@@ -17,10 +14,9 @@ type TopBarActionsProps = {
   onPreview?: () => void;
   onSave?: () => void;
   onDownload?: () => void;
-  onCopy?: () => void;
   onShare?: () => void;
-  onRefresh?: () => void;
-  onOpenInNew?: () => void;
+  shareLabel?: string;
+  shareAriaLabel?: string;
 };
 
 const TopBarActions = ({
@@ -28,32 +24,12 @@ const TopBarActions = ({
   onPreview,
   onSave,
   onDownload,
-  onCopy,
   onShare,
-  onRefresh,
-  onOpenInNew,
+  shareLabel = "分享",
+  shareAriaLabel = "分享",
 }: TopBarActionsProps) => {
-  const handleCopy = () => {
-    // 复制当前项目URL
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    onCopy?.();
-  };
-
   const handleDownload = () => {
     onDownload?.();
-  };
-
-  const handleRefresh = () => {
-    // 刷新预览
-    window.location.reload();
-    onRefresh?.();
-  };
-
-  const handleOpenInNew = () => {
-    // 在新标签页打开
-    window.open(window.location.href, "_blank");
-    onOpenInNew?.();
   };
 
 
@@ -83,39 +59,6 @@ const TopBarActions = ({
           onClick={onPreview}
         />
       </MyTooltip>
-      <MyTooltip label="复制链接">
-        <IconButton
-          aria-label="复制链接"
-          size="sm"
-          variant="ghost"
-          border="1px solid transparent"
-          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
-          icon={<CopyIcon />}
-          onClick={handleCopy}
-        />
-      </MyTooltip>
-      <MyTooltip label="在新标签页打开">
-        <IconButton
-          aria-label="在新标签页打开"
-          size="sm"
-          variant="ghost"
-          border="1px solid transparent"
-          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
-          icon={<OpenInNewIcon />}
-          onClick={handleOpenInNew}
-        />
-      </MyTooltip>
-      <MyTooltip label="刷新">
-        <IconButton
-          aria-label="刷新"
-          size="sm"
-          variant="ghost"
-          border="1px solid transparent"
-          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
-          icon={<RefreshIcon />}
-          onClick={handleRefresh}
-        />
-      </MyTooltip>
       <MyTooltip label="下载项目">
         <IconButton
           aria-label="下载项目"
@@ -127,9 +70,9 @@ const TopBarActions = ({
           onClick={handleDownload}
         />
       </MyTooltip>
-      <MyTooltip label="分享">
+      <MyTooltip label={shareLabel}>
         <IconButton
-          aria-label="分享"
+          aria-label={shareAriaLabel}
           size="sm"
           variant="ghost"
           border="1px solid transparent"
