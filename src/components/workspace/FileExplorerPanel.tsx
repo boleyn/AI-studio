@@ -6,6 +6,9 @@ import {
   HStack,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
   Menu,
   MenuButton,
   MenuItem,
@@ -14,11 +17,11 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { useSandpack } from "@codesandbox/sandpack-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 
-import { AddIcon, ChevronDownIcon, SearchIcon } from "../common/Icon";
+import { AddIcon, SearchIcon } from "../common/Icon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import FileTree from "./fileExplorer/FileTree";
-import { FileGlyph } from "./fileExplorer/icons";
 import { useFileExplorerTheme } from "./fileExplorer/styleTokens";
 import type { CreateMode, RenameTarget, SandpackFilesPayload } from "./fileExplorer/types";
 import {
@@ -106,17 +109,6 @@ const readBrowserFileAsWorkspaceCode = async (file: File, filePath: string) => {
   return toDataUrl(uint8ArrayToBase64(bytes), contentType);
 };
 
-const readZipEntryAsWorkspaceCode = async (
-  entry: { async: (type: "string" | "base64") => Promise<string> },
-  filePath: string
-) => {
-  if (isTextLikePath(filePath)) {
-    return entry.async("string");
-  }
-  const base64 = await entry.async("base64");
-  return toDataUrl(base64, inferMimeFromPath(filePath));
-};
-
 const isSkillsRootPath = (path: string) => /^\/skills(\/|$)/i.test(path);
 
 const toSkillsScopedPath = (path: string, baseSkillFolder: string) => {
@@ -168,17 +160,28 @@ const FileExplorerPanel = ({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([defaultFolderPath, "/"]));
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null);
-  const zipUploadInputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const allFiles = sandpack.files as SandpackFilesPayload;
   const files = useMemo(() => {
     if (!filePathFilter) return allFiles;
     return Object.fromEntries(Object.entries(allFiles).filter(([path]) => filePathFilter(path)));
   }, [allFiles, filePathFilter]);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+  const visibleFiles = useMemo(() => {
+    if (!isSearching) return files;
+    return Object.fromEntries(
+      Object.entries(files).filter(([path]) => path.toLowerCase().includes(normalizedSearchQuery))
+    );
+  }, [files, isSearching, normalizedSearchQuery]);
+
   const treeRoot = useMemo(() => buildTree(files), [files]);
+  const visibleTreeRoot = useMemo(() => buildTree(visibleFiles), [visibleFiles]);
   const folderByPath = useMemo(() => buildFolderMap(treeRoot), [treeRoot]);
+  const visibleFolderByPath = useMemo(() => buildFolderMap(visibleTreeRoot), [visibleTreeRoot]);
   const fileByPath = useMemo(() => buildFileMap(treeRoot), [treeRoot]);
   const skillsDisplayRootPath = useMemo(() => {
     if (workspaceMode !== "skills") return null;
@@ -197,16 +200,20 @@ const FileExplorerPanel = ({
     return roots[0];
   }, [files, selectedPath, workspaceMode]);
   const renderRoot = useMemo(
-    () => (skillsDisplayRootPath ? folderByPath.get(skillsDisplayRootPath) || treeRoot : treeRoot),
-    [folderByPath, skillsDisplayRootPath, treeRoot]
+    () =>
+      skillsDisplayRootPath
+        ? visibleFolderByPath.get(skillsDisplayRootPath) || visibleTreeRoot
+        : visibleTreeRoot,
+    [skillsDisplayRootPath, visibleFolderByPath, visibleTreeRoot]
   );
 
   const filePaths = useMemo(() => Object.keys(files), [files]);
-  const filteredPaths = useMemo(() => {
+  const matchedPaths = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     if (!keyword) return [];
     return filePaths.filter((path) => path.toLowerCase().includes(keyword)).slice(0, 20);
   }, [filePaths, searchQuery]);
+  const firstMatchedPath = matchedPaths[0];
 
   const allFolderPaths = useMemo(() => collectFolderPaths(renderRoot), [renderRoot]);
   const expandableFolderPaths = useMemo(
@@ -505,43 +512,6 @@ const FileExplorerPanel = ({
     [applyFullFiles, defaultFolderPath, files, selectedPath, selectedType, workspaceMode]
   );
 
-  const handleUploadZip = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.currentTarget.value = "";
-      if (!file) return;
-
-      try {
-        const [{ default: JSZip }, zipBuffer] = await Promise.all([import("jszip"), file.arrayBuffer()]);
-        const zip = await JSZip.loadAsync(zipBuffer);
-        const nextFiles: SandpackFilesPayload = { ...files };
-        let firstImportedPath: string | undefined;
-        const selectedParent =
-          selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath);
-        const baseSkillFolder = /^\/skills\/[^/]+$/i.test(selectedParent)
-          ? selectedParent
-          : "/skills/imported-skill";
-
-        const entries = Object.values(zip.files).filter((entry) => !entry.dir);
-        for (const entry of entries) {
-          const rawPath = toSandpackPath(entry.name);
-          if (!rawPath) continue;
-          const path =
-            workspaceMode === "skills" ? toSkillsScopedPath(rawPath, baseSkillFolder) : rawPath;
-          if (!path) continue;
-          nextFiles[path] = { code: await readZipEntryAsWorkspaceCode(entry, path) };
-          if (!firstImportedPath) firstImportedPath = path;
-        }
-
-        await applyFullFiles(nextFiles, firstImportedPath);
-      } catch (error) {
-        console.error("Failed to import zip:", error);
-        toast({ status: "error", title: "Zip 导入失败", description: "请确认压缩包格式正确" });
-      }
-    },
-    [applyFullFiles, defaultFolderPath, files, selectedPath, selectedType, toast, workspaceMode]
-  );
-
   const handleToggleExpandAll = useCallback(() => {
     if (allExpanded) {
       setExpandedFolders(new Set(["/"]));
@@ -629,6 +599,32 @@ const FileExplorerPanel = ({
     return () => window.clearTimeout(timer);
   }, [renameTarget]);
 
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const keyword = searchQuery.trim();
+    if (!searchOpen || !keyword || !firstMatchedPath) return;
+
+    ensureFolderExpanded(getParentPath(firstMatchedPath));
+    if (selectedType !== "file" || selectedPath !== firstMatchedPath) {
+      setSelectedType("file");
+      setSelectedPath(firstMatchedPath);
+      onOpenFile(firstMatchedPath);
+    }
+  }, [
+    ensureFolderExpanded,
+    firstMatchedPath,
+    onOpenFile,
+    searchOpen,
+    searchQuery,
+    selectedPath,
+    selectedType,
+  ]);
+
   return (
     <Flex
       direction="column"
@@ -650,13 +646,6 @@ const FileExplorerPanel = ({
         multiple
         style={{ display: "none" }}
         onChange={handleUploadFiles}
-      />
-      <input
-        ref={zipUploadInputRef}
-        type="file"
-        accept=".zip,application/zip"
-        style={{ display: "none" }}
-        onChange={handleUploadZip}
       />
 
       <Flex
@@ -685,7 +674,13 @@ const FileExplorerPanel = ({
             borderRadius="10px"
             color="var(--ws-text-subtle)"
             _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
-            onClick={() => setSearchOpen((prev) => !prev)}
+            onClick={() =>
+              setSearchOpen((prev) => {
+                const next = !prev;
+                if (!next) setSearchQuery("");
+                return next;
+              })
+            }
           />
           <Menu placement="bottom-end" isLazy>
             <MenuButton
@@ -705,7 +700,6 @@ const FileExplorerPanel = ({
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
               <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
               <MenuItem onClick={() => fileUploadInputRef.current?.click()}>上传文件</MenuItem>
-              <MenuItem onClick={() => zipUploadInputRef.current?.click()}>上传 zip 文件</MenuItem>
             </MenuList>
           </Menu>
           <IconButton
@@ -716,18 +710,8 @@ const FileExplorerPanel = ({
             color="var(--ws-text-subtle)"
             _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             icon={
-              <Box
-                as="span"
-                display="inline-flex"
-                alignItems="center"
-                justifyContent="center"
-                w="16px"
-                h="16px"
-                transform={allExpanded ? "rotate(180deg)" : "rotate(0deg)"}
-                transformOrigin="50% 50%"
-                transition={styles.motion.chevronTransition}
-              >
-                <ChevronDownIcon width="16px" height="16px" style={{ display: "block" }} />
+              <Box as="span" display="inline-flex" alignItems="center" justifyContent="center" w="16px" h="16px">
+                {allExpanded ? <ChevronUp size={16} strokeWidth={2.2} /> : <ChevronDown size={16} strokeWidth={2.2} />}
               </Box>
             }
             onClick={handleToggleExpandAll}
@@ -743,50 +727,51 @@ const FileExplorerPanel = ({
           borderColor={styles.panel.borderColor}
           bg="var(--ws-surface-muted)"
         >
-          <Input
-            size="sm"
-            placeholder="Search files"
-            value={searchQuery}
-            bg="var(--ws-surface-strong)"
-            borderColor="var(--ws-border)"
-            borderRadius="10px"
-            _focusVisible={{ borderColor: "var(--ws-border-strong)", boxShadow: "0 0 0 1px var(--ws-border-strong)" }}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
+          <InputGroup size="sm">
+            <InputLeftElement pointerEvents="none">
+              <Box as={SearchIcon} color="var(--ws-text-subtle)" boxSize="13px" />
+            </InputLeftElement>
+            <Input
+              ref={searchInputRef}
+              placeholder="输入文件名或路径，自动定位"
+              value={searchQuery}
+              bg="var(--ws-surface-strong)"
+              borderColor="var(--ws-border)"
+              borderRadius="10px"
+              pr="32px"
+              _focusVisible={{
+                borderColor: "var(--ws-border-strong)",
+                boxShadow: "0 0 0 1px var(--ws-border-strong)",
+              }}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setSearchQuery("");
+                  setSearchOpen(false);
+                }
+              }}
+            />
+            {searchQuery ? (
+              <InputRightElement>
+                <IconButton
+                  aria-label="清空搜索"
+                  size="xs"
+                  variant="ghost"
+                  icon={<X size={12} />}
+                  onClick={() => setSearchQuery("")}
+                />
+              </InputRightElement>
+            ) : null}
+          </InputGroup>
           {searchQuery.trim() ? (
-            <Box mt={2} maxH="160px" overflowY="auto">
-              {filteredPaths.length > 0 ? (
-                filteredPaths.map((filePath) => (
-                  <HStack
-                    key={filePath}
-                    px={styles.spacing.searchResultX}
-                    py={styles.spacing.searchResultY}
-                    borderRadius={styles.spacing.rowRadius}
-                    fontSize={styles.typography.meta}
-                    color={styles.colors.searchResultText}
-                    cursor="pointer"
-                    spacing={styles.spacing.searchResultGap}
-                    _hover={{ bg: styles.colors.searchResultHoverBg }}
-                    onClick={() => {
-                      onOpenFile(filePath);
-                      setSelectedType("file");
-                      setSelectedPath(filePath);
-                      ensureFolderExpanded(getParentPath(filePath));
-                      setSearchQuery("");
-                    }}
-                  >
-                    <FileGlyph name={filePath.split("/").pop()} />
-                    <Text fontSize={styles.typography.meta} noOfLines={1}>{filePath}</Text>
-                  </HStack>
-                ))
+            <Box mt={2} px={styles.spacing.searchResultX} py={styles.spacing.searchResultY}>
+              {firstMatchedPath ? (
+                <Text fontSize={styles.typography.meta} color={styles.colors.searchResultText} noOfLines={1}>
+                  共 {matchedPaths.length} 条
+                </Text>
               ) : (
-                <Text
-                  fontSize={styles.typography.meta}
-                  color={styles.colors.searchEmptyText}
-                  px={styles.spacing.searchResultEmptyX}
-                  py={styles.spacing.searchResultEmptyY}
-                >
-                  No matched files
+                <Text fontSize={styles.typography.meta} color={styles.colors.searchEmptyText}>
+                  未匹配到文件
                 </Text>
               )}
             </Box>
@@ -806,6 +791,7 @@ const FileExplorerPanel = ({
         <FileTree
           root={renderRoot}
           files={files}
+          searchActive={isSearching}
           expandedFolders={expandedFolders}
           selectedPath={selectedPath}
           selectedType={selectedType}

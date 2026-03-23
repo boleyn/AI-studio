@@ -11,6 +11,7 @@ import type { CreateMode, FileNode, FolderNode, RenameTarget, SandpackFilesPaylo
 type FileTreeProps = {
   root: FolderNode;
   files: SandpackFilesPayload;
+  searchActive?: boolean;
   expandedFolders: Set<string>;
   selectedPath: string;
   selectedType: "file" | "folder";
@@ -41,6 +42,7 @@ type FileTreeProps = {
 const FileTree = ({
   root,
   files,
+  searchActive = false,
   expandedFolders,
   selectedPath,
   selectedType,
@@ -153,7 +155,7 @@ const FileTree = ({
   };
 
   const renderFolder = (folder: FolderNode, depth: number): ReactNode => {
-    const isExpanded = expandedFolders.has(folder.path);
+    const isExpanded = searchActive ? true : expandedFolders.has(folder.path);
     const isSelected = selectedType === "folder" && selectedPath === folder.path;
     const isRenaming = renameTarget?.type === "folder" && renameTarget.path === folder.path;
     const showCreateInputHere = createMode && createParentPath === folder.path;

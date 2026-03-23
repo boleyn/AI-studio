@@ -1,5 +1,4 @@
 import {
-  SandpackConsole,
   SandpackLayout,
   SandpackPreview,
   SandpackStack,
@@ -69,6 +68,46 @@ const normalizeErrorLine = (value: string): string[] =>
     .map((line) => line.trim())
     .filter(Boolean);
 
+type RuntimeLogLevel = "info" | "warn" | "error";
+type RuntimeLogItem = {
+  id: string;
+  timestamp: string;
+  level: RuntimeLogLevel;
+  source: "bundler" | "console" | "runtime";
+  message: string;
+};
+
+const MAX_RUNTIME_LOGS = 300;
+
+const inferRuntimeLevel = (type: string, text: string): RuntimeLogLevel => {
+  const value = `${type} ${text}`.toLowerCase();
+  if (/error|failed|exception|crash|syntax/.test(value)) return "error";
+  if (/warn|warning/.test(value)) return "warn";
+  return "info";
+};
+
+const extractBundlerText = (message: unknown): { type: string; text: string } => {
+  if (!message || typeof message !== "object") {
+    const text = toLogText(message).trim();
+    return { type: "unknown", text };
+  }
+  const record = message as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "unknown";
+  const textCandidate = [
+    record.message,
+    record.title,
+    record.error,
+    record.reason,
+    record.details,
+    record.status,
+    record.event,
+  ]
+    .map((item) => toLogText(item).trim())
+    .find((item) => item.length > 0);
+
+  return { type, text: textCandidate || toLogText(message).trim() };
+};
+
 const WorkspaceShell = ({
   token,
   status,
@@ -88,8 +127,8 @@ const WorkspaceShell = ({
   shareAriaLabel = "分享",
   customStatusBadge,
 }: WorkspaceShellProps) => {
-  const { sandpack } = useSandpack();
-  const { logs } = useSandpackConsole({ resetOnPreviewRestart: true });
+  const { sandpack, listen } = useSandpack();
+  const { logs } = useSandpackConsole({ resetOnPreviewRestart: false });
   const runtimeErrorMessage = useErrorMessage();
   const loadingState = useLoadingOverlayState();
 
@@ -101,6 +140,18 @@ const WorkspaceShell = ({
   const [showEmptyEditorState, setShowEmptyEditorState] = useState(false);
   const previewLayerRef = useRef<HTMLDivElement | null>(null);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogItem[]>([]);
+  const lastConsoleCountRef = useRef(0);
+
+  const pushRuntimeLog = useCallback((item: Omit<RuntimeLogItem, "id" | "timestamp">) => {
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString("zh-CN", { hour12: false });
+    const id = `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
+    setRuntimeLogs((prev) => {
+      const next = [...prev, { ...item, id, timestamp }];
+      return next.length > MAX_RUNTIME_LOGS ? next.slice(next.length - MAX_RUNTIME_LOGS) : next;
+    });
+  }, []);
 
   useEffect(() => {
     const active = sandpack.activeFile;
@@ -121,6 +172,64 @@ const WorkspaceShell = ({
       }
     }
   }, [filePathFilter, sandpack]);
+
+  useEffect(() => {
+    const stopListening = listen((message) => {
+      const parsed = extractBundlerText(message);
+      if (!parsed.text) return;
+      pushRuntimeLog({
+        source: "bundler",
+        level: inferRuntimeLevel(parsed.type, parsed.text),
+        message: `[${parsed.type}] ${parsed.text}`,
+      });
+    });
+    return () => {
+      stopListening();
+    };
+  }, [listen, pushRuntimeLog]);
+
+  useEffect(() => {
+    const start = Math.min(lastConsoleCountRef.current, logs.length);
+    const nextLogs = logs.slice(start);
+    if (nextLogs.length === 0) return;
+    lastConsoleCountRef.current = logs.length;
+
+    nextLogs.forEach((entry) => {
+      const method = String((entry as { method?: unknown })?.method || "log").toLowerCase();
+      const data = Array.isArray((entry as { data?: unknown[] })?.data)
+        ? ((entry as { data?: unknown[] }).data as unknown[])
+        : [];
+      const text = data.map((item) => toLogText(item)).join(" ").trim();
+      if (!text) return;
+      pushRuntimeLog({
+        source: "console",
+        level: method.includes("error") ? "error" : method.includes("warn") ? "warn" : "info",
+        message: text,
+      });
+    });
+  }, [logs, pushRuntimeLog]);
+
+  useEffect(() => {
+    if (!runtimeErrorMessage) return;
+    pushRuntimeLog({
+      source: "runtime",
+      level: "error",
+      message: runtimeErrorMessage,
+    });
+  }, [pushRuntimeLog, runtimeErrorMessage]);
+
+  useEffect(() => {
+    if (!sandpack.error) return;
+    const text = [sandpack.error.title, sandpack.error.message, sandpack.error.path]
+      .filter(Boolean)
+      .join(" | ");
+    if (!text) return;
+    pushRuntimeLog({
+      source: "runtime",
+      level: "error",
+      message: text,
+    });
+  }, [pushRuntimeLog, sandpack.error]);
 
   const handleOpenFile = (filePath: string) => {
     if (!filePath) return;
@@ -187,6 +296,19 @@ const WorkspaceShell = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (activeView !== "preview") return;
+    const timer = window.setTimeout(() => {
+      const host = previewLayerRef.current;
+      if (!host) return;
+      const iframe = host.querySelector("iframe[title='Sandpack Preview']") as HTMLIFrameElement | null;
+      if (!iframe) return;
+      iframe.setAttribute("scrolling", "no");
+      iframe.style.overflow = "hidden";
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeView, sandpack.activeFile]);
+
   const handleTogglePreviewFullscreen = useCallback(async () => {
     const target = previewLayerRef.current;
     if (!target) return;
@@ -210,11 +332,6 @@ const WorkspaceShell = ({
 
   const isSkillsMode = workspaceMode === "skills";
   const isLogsView = activeView === "logs";
-  const isCompilePanelOpen =
-    !isSkillsMode &&
-    !isLogsView &&
-    activeView === "code" &&
-    compileErrorMessages.length > 0;
   const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
   const previewable = isPreviewableFile(activeFile);
@@ -383,145 +500,215 @@ const WorkspaceShell = ({
                 boxSizing="border-box"
                 flexShrink={0}
               >
-                <Flex flex="1" minW="0" align="center" gap={2} overflowX="auto" py={1} px={0.5}>
-                  {openTabs.map((filePath) => {
-                    const active = activeFile === filePath;
-                    const label = filePath.split("/").pop() || filePath;
-                    return (
-                      <Flex
-                        key={filePath}
-                        align="center"
-                        border="1px solid"
-                        borderColor={active ? "var(--ws-accent-border)" : "var(--ws-border)"}
-                        bg={active ? "var(--ws-tab-active-bg)" : "transparent"}
-                        color={active ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
-                        borderRadius="12px"
-                        px={2.5}
-                        py={1.5}
-                        gap={2}
-                        maxW="260px"
-                        flexShrink={0}
-                        transition="background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease"
-                        _hover={{
-                          bg: active ? "var(--ws-tab-active-bg)" : "var(--ws-surface-muted)",
-                          color: active ? "var(--ws-accent)" : "var(--ws-text-main)",
-                          borderColor: active ? "var(--ws-accent-border)" : "var(--ws-border-strong)",
-                        }}
-                      >
-                        <Box
-                          as="button"
-                          type="button"
-                          onClick={() => handleOpenFile(filePath)}
-                          title={filePath}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: "inherit",
-                            fontSize: "14px",
-                            lineHeight: 1.2,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            maxWidth: "180px",
-                          }}
-                        >
-                          {label}
-                        </Box>
-                        <Box
-                          as="button"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleCloseTab(filePath);
-                          }}
-                          title={`关闭 ${label}`}
-                          style={{
-                            border: "none",
-                            background: "var(--ws-surface-muted)",
-                            color: "inherit",
-                            fontSize: "14px",
-                            lineHeight: 1,
-                            cursor: "pointer",
-                            width: "18px",
-                            height: "18px",
-                            borderRadius: "999px",
-                          }}
-                        >
-                          ×
-                        </Box>
-                      </Flex>
-                    );
-                  })}
-                </Flex>
-                <Flex marginLeft="auto">{headerActions}</Flex>
+                {isLogsView ? (
+                  <Flex align="center" justify="space-between" w="100%" px={0.5}>
+                    <Text fontSize="sm" fontWeight="700" color="#1f2937">
+                      实时编译日志
+                    </Text>
+                    <Text fontSize="12px" color="#64748b">
+                      Sandpack Console
+                    </Text>
+                  </Flex>
+                ) : (
+                  <>
+                    <Flex flex="1" minW="0" align="center" gap={2} overflowX="auto" py={1} px={0.5}>
+                      {openTabs.map((filePath) => {
+                        const active = activeFile === filePath;
+                        const label = filePath.split("/").pop() || filePath;
+                        return (
+                          <Flex
+                            key={filePath}
+                            align="center"
+                            border="1px solid"
+                            borderColor={active ? "var(--ws-accent-border)" : "var(--ws-border)"}
+                            bg={active ? "var(--ws-tab-active-bg)" : "transparent"}
+                            color={active ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
+                            borderRadius="12px"
+                            px={2.5}
+                            py={1.5}
+                            gap={2}
+                            maxW="260px"
+                            flexShrink={0}
+                            transition="background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease"
+                            _hover={{
+                              bg: active ? "var(--ws-tab-active-bg)" : "var(--ws-surface-muted)",
+                              color: active ? "var(--ws-accent)" : "var(--ws-text-main)",
+                              borderColor: active ? "var(--ws-accent-border)" : "var(--ws-border-strong)",
+                            }}
+                          >
+                            <Box
+                              as="button"
+                              type="button"
+                              onClick={() => handleOpenFile(filePath)}
+                              title={filePath}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                color: "inherit",
+                                fontSize: "14px",
+                                lineHeight: 1.2,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "180px",
+                              }}
+                            >
+                              {label}
+                            </Box>
+                            <Box
+                              as="button"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleCloseTab(filePath);
+                              }}
+                              title={`关闭 ${label}`}
+                              style={{
+                                border: "none",
+                                background: "var(--ws-surface-muted)",
+                                color: "inherit",
+                                fontSize: "14px",
+                                lineHeight: 1,
+                                cursor: "pointer",
+                                width: "18px",
+                                height: "18px",
+                                borderRadius: "999px",
+                              }}
+                            >
+                              ×
+                            </Box>
+                          </Flex>
+                        );
+                      })}
+                    </Flex>
+                    <Flex marginLeft="auto">{headerActions}</Flex>
+                  </>
+                )}
               </Flex>
               <Box style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
-              <Box style={{ flex: 1, minHeight: 0, position: "relative", height: "100%" }}>
-                <SandpackStack
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    width: "100%",
-                    height: "100%",
-                  }}
-                >
-                {isLogsView ? (
-                  <SandpackConsole
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      maxHeight: "100%",
-                      overflow: "auto",
-                    }}
-                  />
-                ) : previewable ? (
-                  <FilePreviewPanel
-                    token={token}
-                    activeFile={activeFile}
-                    sourceCode={activeFileCode}
-                  />
-                ) : isSkillsMode && isSkillMarkdown ? (
-                  <SkillMarkdownEditor
-                    activeFile={activeFile}
-                    code={activeFileCode}
-                    onChangeCode={(nextCode) => {
-                      if (!activeFile) return;
-                      sandpack.updateFile(activeFile, nextCode, true);
-                    }}
-                  />
-                ) : (
-                  <MonacoSandpackEditor
-                    activeFile={activeFile}
-                    code={activeFileCode}
-                    onChangeCode={(nextCode) => {
-                      if (!activeFile) return;
-                      sandpack.updateFile(activeFile, nextCode, true);
-                    }}
-                  />
-                )}
-                <Box
-                  style={{
-                    maxHeight: isCompilePanelOpen ? "35%" : "0%",
-                    opacity: isCompilePanelOpen ? 1 : 0,
-                    overflow: "hidden",
-                    borderTop: isCompilePanelOpen ? "1px solid rgba(203,213,225,0.85)" : "0",
-                    transition: "max-height 0.2s ease, opacity 0.2s ease, border-color 0.2s ease",
-                    pointerEvents: isCompilePanelOpen ? "auto" : "none",
-                  }}
-                >
-                  <SandpackConsole
-                    style={{
-                      maxHeight: "100%",
-                      overflow: "auto",
-                    }}
-                  />
+                <Box style={{ flex: 1, minHeight: 0, position: "relative", height: "100%" }}>
+                  {isLogsView ? (
+                    <Box
+                      position="absolute"
+                      inset={0}
+                      bg="var(--ws-surface-strong)"
+                      overflow="auto"
+                      display="flex"
+                      flexDirection="column"
+                      px={3}
+                      py={2}
+                      gap={1.5}
+                    >
+                      {runtimeLogs.length === 0 ? (
+                        <Text fontSize="12px" color="#64748b">
+                          暂无日志，等待编译或运行输出...
+                        </Text>
+                      ) : (
+                        runtimeLogs.map((item) => (
+                          <Flex
+                            key={item.id}
+                            align="flex-start"
+                            gap={2}
+                            px={2}
+                            py={1.5}
+                            borderRadius="8px"
+                            bg={
+                              item.level === "error"
+                                ? "rgba(239,68,68,0.08)"
+                                : item.level === "warn"
+                                ? "rgba(245,158,11,0.1)"
+                                : "rgba(15,23,42,0.03)"
+                            }
+                            border="1px solid"
+                            borderColor={
+                              item.level === "error"
+                                ? "rgba(239,68,68,0.22)"
+                                : item.level === "warn"
+                                ? "rgba(245,158,11,0.26)"
+                                : "rgba(148,163,184,0.2)"
+                            }
+                          >
+                            <Text
+                              fontSize="11px"
+                              minW="58px"
+                              color="#64748b"
+                              fontFamily='"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace'
+                            >
+                              {item.timestamp}
+                            </Text>
+                            <Text
+                              fontSize="11px"
+                              minW="52px"
+                              fontWeight="700"
+                              color={
+                                item.level === "error"
+                                  ? "#b91c1c"
+                                  : item.level === "warn"
+                                  ? "#b45309"
+                                  : "#475569"
+                              }
+                            >
+                              {item.source}
+                            </Text>
+                            <Text
+                              flex={1}
+                              fontSize="12px"
+                              whiteSpace="pre-wrap"
+                              color={
+                                item.level === "error"
+                                  ? "#7f1d1d"
+                                  : item.level === "warn"
+                                  ? "#78350f"
+                                  : "#1f2937"
+                              }
+                            >
+                              {item.message}
+                            </Text>
+                          </Flex>
+                        ))
+                      )}
+                    </Box>
+                  ) : (
+                    <SandpackStack
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        minHeight: 0,
+                        width: "100%",
+                        height: "100%",
+                      }}
+                    >
+                      {previewable ? (
+                        <FilePreviewPanel
+                          token={token}
+                          activeFile={activeFile}
+                          sourceCode={activeFileCode}
+                        />
+                      ) : isSkillsMode && isSkillMarkdown ? (
+                        <SkillMarkdownEditor
+                          activeFile={activeFile}
+                          code={activeFileCode}
+                          onChangeCode={(nextCode) => {
+                            if (!activeFile) return;
+                            sandpack.updateFile(activeFile, nextCode, true);
+                          }}
+                        />
+                      ) : (
+                        <MonacoSandpackEditor
+                          activeFile={activeFile}
+                          code={activeFileCode}
+                          onChangeCode={(nextCode) => {
+                            if (!activeFile) return;
+                            sandpack.updateFile(activeFile, nextCode, true);
+                          }}
+                        />
+                      )}
+                    </SandpackStack>
+                  )}
                 </Box>
-                </SandpackStack>
-              </Box>
               </Box>
               <Flex
                 align="center"
@@ -539,8 +726,21 @@ const WorkspaceShell = ({
               >
                 <Flex align="center" gap={4} minW={0}>
                   <Flex align="center" gap={1.5}>
-                    <Box w="7px" h="7px" borderRadius="full" bg={compileStatus === "error" ? "#ef4444" : "#16a34a"} />
-                    <Text as="span">{compileStatus === "error" ? "错误" : "就绪"}</Text>
+                    <Box
+                      w="7px"
+                      h="7px"
+                      borderRadius="full"
+                      bg={
+                        compileStatus === "error"
+                          ? "#ef4444"
+                          : compileStatus === "compiling"
+                          ? "#f59e0b"
+                          : "#16a34a"
+                      }
+                    />
+                    <Text as="span">
+                      {compileStatus === "error" ? "错误" : compileStatus === "compiling" ? "构建中" : "就绪"}
+                    </Text>
                   </Flex>
                   <Text as="span">
                     {saveStatus === "saving" ? "保存中" : saveStatus === "error" ? "保存失败" : "已保存"}
@@ -549,29 +749,6 @@ const WorkspaceShell = ({
                 <Flex align="center" gap={5} color="#4b5563">
                   <Text as="span">UTF-8</Text>
                   <Text as="span">{fileLanguageLabel}</Text>
-                  {compileStatus === "compiling" ? (
-                    <Flex align="center" gap={1.5}>
-                      <Box w="6px" h="6px" borderRadius="full" bg="#32a549" />
-                      <Text as="span" color="#28823b">构建中</Text>
-                    </Flex>
-                  ) : null}
-                  {compileStatus === "error" ? (
-                    <Flex align="center" gap={1.5}>
-                      <Box w="6px" h="6px" borderRadius="full" bg="#ef4444" />
-                      <Text as="span" color="#b91c1c">编译错误</Text>
-                    </Flex>
-                  ) : null}
-                  <MyTooltip label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}>
-                    <IconButton
-                      aria-label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}
-                      icon={isPreviewFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-                      size="xs"
-                      variant="ghost"
-                      onClick={handleTogglePreviewFullscreen}
-                      isDisabled={activeView !== "preview"}
-                      opacity={activeView === "preview" ? 1 : 0.6}
-                    />
-                  </MyTooltip>
                 </Flex>
               </Flex>
             </Flex>
@@ -583,11 +760,17 @@ const WorkspaceShell = ({
               minWidth: 0,
               position: "relative",
               display: activeView === "preview" ? "flex" : "none",
+              overflow: "hidden",
+            }}
+            sx={{
+              "&, & > .sp-stack, & > .sp-stack > *": {
+                minHeight: "0 !important",
+              },
             }}
           >
-              <SandpackStack
-                style={{
-                  position: "absolute",
+            <SandpackStack
+              style={{
+                position: "absolute",
                 inset: 0,
                 display: "flex",
                 minHeight: 0,
@@ -603,12 +786,85 @@ const WorkspaceShell = ({
                   onSelectFile={handleOpenFile}
                 />
               ) : (
-                <SandpackPreview
-                  showOpenInCodeSandbox={false}
-                  style={{ width: "100%", height: "100%", overflow: "hidden" }}
-                />
+                <Box
+                  width="100%"
+                  height="100%"
+                  minH={0}
+                  overflow="hidden"
+                  sx={{
+                    "& [class*='preview']": {
+                      minHeight: "0 !important",
+                    },
+                    "& .sp-preview, & .preview": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      overflow: "hidden !important",
+                    },
+                    "& [class*='preview-container']": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      overflowX: "hidden !important",
+                      overflowY: "hidden !important",
+                    },
+                    "& .sp-preview-container, & .preview-container": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      overflow: "hidden !important",
+                    },
+                    "& [class*='preview-iframe']": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      maxHeight: "100% !important",
+                      flex: "1 1 auto !important",
+                      display: "block !important",
+                    },
+                    "& .sp-preview-iframe, & .preview-iframe": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      maxHeight: "100% !important",
+                      flex: "1 1 auto !important",
+                    },
+                    "& iframe[title='Sandpack Preview']": {
+                      width: "100% !important",
+                      height: "100% !important",
+                      minHeight: "0 !important",
+                      maxHeight: "100% !important",
+                      display: "block !important",
+                    },
+                    "& .sp-stack": {
+                      minHeight: "0 !important",
+                    },
+                  }}
+                >
+                  <SandpackPreview
+                    showNavigator={false}
+                    showRefreshButton={false}
+                    showRestartButton={false}
+                    showOpenInCodeSandbox={false}
+                    style={{ width: "100%", height: "100%", overflow: "hidden" }}
+                  />
+                </Box>
               )}
             </SandpackStack>
+            <Box position="absolute" top={2.5} right={2.5} zIndex={3}>
+              <MyTooltip label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}>
+                <IconButton
+                  aria-label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}
+                  icon={isPreviewFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+                  size="sm"
+                  variant="ghost"
+                  bg="rgba(255,255,255,0.84)"
+                  border="1px solid rgba(203,213,225,0.95)"
+                  _hover={{ bg: "white", borderColor: "rgba(148,163,184,0.95)" }}
+                  onClick={handleTogglePreviewFullscreen}
+                />
+              </MyTooltip>
+            </Box>
           </Box>
         </Box>
       </Flex>
