@@ -1,8 +1,8 @@
 import { Badge, Box, Flex, Text, useTheme } from "@chakra-ui/react";
 
 type WorkspaceHeaderProps = {
-  activeView: "preview" | "code";
-  onChangeView: (view: "preview" | "code") => void;
+  activeView: "preview" | "code" | "logs";
+  onChangeView: (view: "preview" | "code" | "logs") => void;
   status: "idle" | "loading" | "ready" | "error";
   error: string;
   compileStatus: "ready" | "compiling" | "error";
@@ -14,6 +14,8 @@ type WorkspaceHeaderProps = {
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   hideStatusBadge?: boolean;
+  hideViewControls?: boolean;
+  rightActions?: React.ReactNode;
   customStatusBadge?: {
     text: string;
     colorScheme: string;
@@ -37,6 +39,8 @@ const WorkspaceHeader = ({
   onSelectTab,
   onCloseTab,
   hideStatusBadge = false,
+  hideViewControls = false,
+  rightActions,
   customStatusBadge,
 }: WorkspaceHeaderProps) => {
   const theme = useTheme() as Record<string, any>;
@@ -110,50 +114,62 @@ const WorkspaceHeader = ({
       backdropFilter="blur(14px)"
       flexShrink={0}
     >
-      <Flex gap={2} align="center">
-        <Box
-          as="button"
-          border="1px solid"
-          borderColor={activeView === "preview" ? headerTheme.viewButton.activeBorderColor : headerTheme.viewButton.borderColor}
-          bg={activeView === "preview" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
-          color={activeView === "preview" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
-          borderRadius={headerTheme.viewButton.radius}
-          px={headerTheme.viewButton.px}
-          py={headerTheme.viewButton.py}
-          fontSize={headerTheme.viewButton.fontSize}
-          fontWeight={headerTheme.viewButton.fontWeight}
-          lineHeight="1"
-          type="button"
-          onClick={() => onChangeView("preview")}
-        >
-          预览
-        </Box>
-        <Box
-          as="button"
-          border="1px solid"
-          borderColor={activeView === "code" ? headerTheme.viewButton.activeBorderColor : headerTheme.viewButton.borderColor}
-          bg={activeView === "code" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
-          color={activeView === "code" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
-          borderRadius={headerTheme.viewButton.radius}
-          px={headerTheme.viewButton.px}
-          py={headerTheme.viewButton.py}
-          fontSize={headerTheme.viewButton.fontSize}
-          fontWeight={headerTheme.viewButton.fontWeight}
-          lineHeight="1"
-          type="button"
-          onClick={() => onChangeView("code")}
-        >
-          代码
-        </Box>
-      </Flex>
-      <Flex
-        aria-hidden="true"
-        width="1px"
-        height="28px"
-        bg={headerTheme.divider.bg}
-        borderRadius="full"
-        mx={1}
-      />
+      {!hideViewControls ? (
+        <>
+          <Flex gap={2} align="center">
+            <Box
+              as="button"
+              border="1px solid"
+              borderColor={
+                activeView === "preview"
+                  ? headerTheme.viewButton.activeBorderColor
+                  : headerTheme.viewButton.borderColor
+              }
+              bg={activeView === "preview" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
+              color={activeView === "preview" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
+              borderRadius={headerTheme.viewButton.radius}
+              px={headerTheme.viewButton.px}
+              py={headerTheme.viewButton.py}
+              fontSize={headerTheme.viewButton.fontSize}
+              fontWeight={headerTheme.viewButton.fontWeight}
+              lineHeight="1"
+              type="button"
+              onClick={() => onChangeView("preview")}
+            >
+              预览
+            </Box>
+            <Box
+              as="button"
+              border="1px solid"
+              borderColor={
+                activeView === "code"
+                  ? headerTheme.viewButton.activeBorderColor
+                  : headerTheme.viewButton.borderColor
+              }
+              bg={activeView === "code" ? headerTheme.viewButton.activeBg : headerTheme.viewButton.bg}
+              color={activeView === "code" ? headerTheme.viewButton.activeColor : headerTheme.viewButton.color}
+              borderRadius={headerTheme.viewButton.radius}
+              px={headerTheme.viewButton.px}
+              py={headerTheme.viewButton.py}
+              fontSize={headerTheme.viewButton.fontSize}
+              fontWeight={headerTheme.viewButton.fontWeight}
+              lineHeight="1"
+              type="button"
+              onClick={() => onChangeView("code")}
+            >
+              代码
+            </Box>
+          </Flex>
+          <Flex
+            aria-hidden="true"
+            width="1px"
+            height="28px"
+            bg={headerTheme.divider.bg}
+            borderRadius="full"
+            mx={1}
+          />
+        </>
+      ) : null}
       <Flex flex="1" minW="0" align="stretch" display={activeView === "code" ? "flex" : "none"}>
         {visibleTabs.length > 0 ? (
           <Flex
@@ -241,6 +257,7 @@ const WorkspaceHeader = ({
         )}
       </Flex>
       <Flex align="center" gap={2} flexWrap="wrap" marginLeft="auto">
+        {rightActions}
         {!hideStatusBadge ? (
           <Badge
             colorScheme={badgeColorScheme}

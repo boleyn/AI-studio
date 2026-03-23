@@ -8,7 +8,7 @@ import {
   useSandpackConsole,
   useLoadingOverlayState,
 } from "@codesandbox/sandpack-react";
-import { Box, Flex, IconButton } from "@chakra-ui/react";
+import { Box, Flex, IconButton, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
@@ -16,11 +16,12 @@ import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPane
 import MonacoSandpackEditor from "./workspace/MonacoSandpackEditor";
 import SkillDetailPreview from "./workspace/SkillDetailPreview";
 import SkillMarkdownEditor from "./workspace/SkillMarkdownEditor";
-import WorkspaceHeader from "./workspace/WorkspaceHeader";
 import MyTooltip from "./ui/MyTooltip";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "./common/Icon";
+import { DownloadIcon, RunIcon, SaveIcon, ShareIcon } from "./common/Icon";
+import type { SaveStatus } from "./CodeChangeListener";
 
-type ActiveView = "preview" | "code";
+type ActiveView = "preview" | "code" | "logs";
 
 type WorkspaceShellProps = {
   token: string;
@@ -32,6 +33,13 @@ type WorkspaceShellProps = {
   onPersistFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   filePathFilter?: (path: string) => boolean;
   defaultFolderPath?: string;
+  saveStatus?: SaveStatus;
+  onManualPreview?: () => void;
+  onManualSave?: () => void;
+  onManualDownload?: () => void;
+  onManualShare?: () => void;
+  shareLabel?: string;
+  shareAriaLabel?: string;
   customStatusBadge?: {
     text: string;
     colorScheme: string;
@@ -71,6 +79,13 @@ const WorkspaceShell = ({
   onPersistFiles,
   filePathFilter,
   defaultFolderPath,
+  saveStatus = "idle",
+  onManualPreview,
+  onManualSave,
+  onManualDownload,
+  onManualShare,
+  shareLabel = "分享",
+  shareAriaLabel = "分享",
   customStatusBadge,
 }: WorkspaceShellProps) => {
   const { sandpack } = useSandpack();
@@ -78,8 +93,6 @@ const WorkspaceShell = ({
   const runtimeErrorMessage = useErrorMessage();
   const loadingState = useLoadingOverlayState();
 
-  const [isCompileBadgeHovered, setIsCompileBadgeHovered] = useState(false);
-  const [isCompilePanelPinned, setIsCompilePanelPinned] = useState(false);
   const [openTabs, setOpenTabs] = useState<string[]>(() =>
     sandpack.activeFile && (!filePathFilter || filePathFilter(sandpack.activeFile))
       ? [sandpack.activeFile]
@@ -161,12 +174,6 @@ const WorkspaceShell = ({
   }, [logs, runtimeErrorMessage, sandpack.error]);
 
   useEffect(() => {
-    if (compileErrorMessages.length === 0) {
-      setIsCompilePanelPinned(false);
-    }
-  }, [compileErrorMessages.length]);
-
-  useEffect(() => {
     const onFullscreenChange = () => {
       if (!previewLayerRef.current) {
         setIsPreviewFullscreen(false);
@@ -202,11 +209,12 @@ const WorkspaceShell = ({
       : "ready";
 
   const isSkillsMode = workspaceMode === "skills";
+  const isLogsView = activeView === "logs";
   const isCompilePanelOpen =
     !isSkillsMode &&
+    !isLogsView &&
     activeView === "code" &&
-    compileErrorMessages.length > 0 &&
-    (isCompileBadgeHovered || isCompilePanelPinned);
+    compileErrorMessages.length > 0;
   const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
   const previewable = isPreviewableFile(activeFile);
@@ -217,6 +225,105 @@ const WorkspaceShell = ({
       : rawFileEntry && typeof rawFileEntry === "object" && "code" in rawFileEntry
       ? String((rawFileEntry as { code?: unknown }).code ?? "")
       : "";
+  const fileLanguageLabel = (() => {
+    const ext = activeFile.split(".").pop()?.toLowerCase() || "";
+    const map: Record<string, string> = {
+      js: "JavaScript",
+      jsx: "JavaScript JSX",
+      ts: "TypeScript",
+      tsx: "TypeScript JSX",
+      json: "JSON",
+      css: "CSS",
+      scss: "SCSS",
+      html: "HTML",
+      md: "Markdown",
+      yml: "YAML",
+      yaml: "YAML",
+      xml: "XML",
+      py: "Python",
+      go: "Go",
+      java: "Java",
+    };
+    return map[ext] || "Plain Text";
+  })();
+  const headerActions = (
+    <Flex align="center" gap={1.5} flexShrink={0}>
+      {!isSkillsMode ? (
+        <MyTooltip label="预览">
+          <IconButton
+            aria-label="预览"
+            size="sm"
+            variant="ghost"
+            icon={<RunIcon />}
+            onClick={() => {
+              onManualPreview?.();
+              onChangeView("preview");
+            }}
+          />
+        </MyTooltip>
+      ) : null}
+      <MyTooltip label="下载项目">
+        <IconButton
+          aria-label="下载项目"
+          size="sm"
+          variant="ghost"
+          icon={<DownloadIcon />}
+          onClick={onManualDownload}
+          isDisabled={!onManualDownload}
+        />
+      </MyTooltip>
+      <MyTooltip label={shareLabel}>
+        <IconButton
+          aria-label={shareAriaLabel}
+          size="sm"
+          variant="ghost"
+          icon={<ShareIcon />}
+          onClick={onManualShare}
+          isDisabled={!onManualShare}
+        />
+      </MyTooltip>
+      <MyTooltip
+        label={
+          saveStatus === "saving"
+            ? "保存中..."
+            : saveStatus === "saved"
+            ? "已保存"
+            : saveStatus === "error"
+            ? "保存失败"
+            : "保存"
+        }
+      >
+        <IconButton
+          aria-label="保存"
+          size="sm"
+          variant="ghost"
+          icon={<SaveIcon />}
+          onClick={onManualSave}
+          isLoading={saveStatus === "saving"}
+          isDisabled={saveStatus === "saving" || !onManualSave}
+        />
+      </MyTooltip>
+      {customStatusBadge ? (
+        <Box
+          as="button"
+          type="button"
+          onClick={() => {
+            if (!customStatusBadge.clickable) return;
+            customStatusBadge.onClick?.();
+          }}
+          px={2}
+          py={0.5}
+          borderRadius="999px"
+          bg="rgba(100,218,122,0.12)"
+          color="#28823b"
+          fontSize="12px"
+          fontWeight="700"
+        >
+          {customStatusBadge.text}
+        </Box>
+      ) : null}
+    </Flex>
+  );
   return (
     <Flex
       as="section"
@@ -225,51 +332,32 @@ const WorkspaceShell = ({
       h="100%"
       minH="0"
       border="1px solid rgba(255,255,255,0.75)"
+      borderTop="0"
+      borderLeft="0"
       borderTopLeftRadius={0}
       borderBottomLeftRadius={0}
-      borderTopRightRadius="2xl"
-      borderBottomRightRadius="2xl"
-      bg="rgba(255,255,255,0.75)"
-      backdropFilter="blur(22px)"
-      boxShadow="0 24px 42px -28px rgba(15, 23, 42, 0.35)"
+      borderTopRightRadius={0}
+      borderBottomRightRadius={0}
+      bg="#f7f8fc"
+      backdropFilter="none"
+      boxShadow="none"
       overflow="hidden"
     >
       <Flex direction="column" flex="1" minH="0" h="100%">
-        <Box>
-          <WorkspaceHeader
-            activeView={activeView}
-            onChangeView={onChangeView}
-            status={status}
-            error={error}
-            compileStatus={status === "ready" ? compileStatus : "ready"}
-            compileErrorCount={compileErrorMessages.length}
-            onCompileBadgeHoverChange={setIsCompileBadgeHovered}
-            onCompileBadgeToggle={() => {
-              if (compileErrorMessages.length === 0) return;
-              setIsCompilePanelPinned((prev) => !prev);
-            }}
-            tabs={openTabs}
-            activeFile={activeFile}
-            onSelectTab={handleOpenFile}
-            onCloseTab={handleCloseTab}
-            hideStatusBadge={isSkillsMode}
-            customStatusBadge={customStatusBadge}
-          />
-        </Box>
         <Box
           position="relative"
           flex="1"
           minH="0"
           display="flex"
           overflow="hidden"
-          bg="var(--ws-surface-muted)"
+          bg="#f7f8fc"
         >
           <SandpackLayout
             style={{
               width: "100%",
               height: "100%",
               minHeight: 0,
-              display: activeView === "code" ? "flex" : "none",
+              display: activeView === "preview" ? "none" : "flex",
               border: "none",
               borderRadius: 0,
               boxShadow: "none",
@@ -284,19 +372,113 @@ const WorkspaceShell = ({
               filePathFilter={filePathFilter}
               defaultFolderPath={defaultFolderPath}
             />
-            <Box style={{ flex: 1, minWidth: 0, position: "relative" }}>
-              <SandpackStack
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  minHeight: 0,
-                  width: "100%",
-                  height: "100%",
-                }}
+            <Flex direction="column" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+              <Flex
+                align="center"
+                borderBottom="1px solid #dbe2ec"
+                bg="#f6f8fc"
+                px={3}
+                py={2}
+                minH="62px"
+                boxSizing="border-box"
+                flexShrink={0}
               >
-                {previewable ? (
+                <Flex flex="1" minW="0" align="center" gap={2} overflowX="auto" py={1} px={0.5}>
+                  {openTabs.map((filePath) => {
+                    const active = activeFile === filePath;
+                    const label = filePath.split("/").pop() || filePath;
+                    return (
+                      <Flex
+                        key={filePath}
+                        align="center"
+                        border="1px solid"
+                        borderColor={active ? "var(--ws-accent-border)" : "var(--ws-border)"}
+                        bg={active ? "var(--ws-tab-active-bg)" : "transparent"}
+                        color={active ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
+                        borderRadius="12px"
+                        px={2.5}
+                        py={1.5}
+                        gap={2}
+                        maxW="260px"
+                        flexShrink={0}
+                        transition="background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease"
+                        _hover={{
+                          bg: active ? "var(--ws-tab-active-bg)" : "var(--ws-surface-muted)",
+                          color: active ? "var(--ws-accent)" : "var(--ws-text-main)",
+                          borderColor: active ? "var(--ws-accent-border)" : "var(--ws-border-strong)",
+                        }}
+                      >
+                        <Box
+                          as="button"
+                          type="button"
+                          onClick={() => handleOpenFile(filePath)}
+                          title={filePath}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: "inherit",
+                            fontSize: "14px",
+                            lineHeight: 1.2,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: "180px",
+                          }}
+                        >
+                          {label}
+                        </Box>
+                        <Box
+                          as="button"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCloseTab(filePath);
+                          }}
+                          title={`关闭 ${label}`}
+                          style={{
+                            border: "none",
+                            background: "var(--ws-surface-muted)",
+                            color: "inherit",
+                            fontSize: "14px",
+                            lineHeight: 1,
+                            cursor: "pointer",
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          ×
+                        </Box>
+                      </Flex>
+                    );
+                  })}
+                </Flex>
+                <Flex marginLeft="auto">{headerActions}</Flex>
+              </Flex>
+              <Box style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
+              <Box style={{ flex: 1, minHeight: 0, position: "relative", height: "100%" }}>
+                <SandpackStack
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                    width: "100%",
+                    height: "100%",
+                  }}
+                >
+                {isLogsView ? (
+                  <SandpackConsole
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      maxHeight: "100%",
+                      overflow: "auto",
+                    }}
+                  />
+                ) : previewable ? (
                   <FilePreviewPanel
                     token={token}
                     activeFile={activeFile}
@@ -326,7 +508,7 @@ const WorkspaceShell = ({
                     maxHeight: isCompilePanelOpen ? "35%" : "0%",
                     opacity: isCompilePanelOpen ? 1 : 0,
                     overflow: "hidden",
-                    borderTop: isCompilePanelOpen ? "1px solid rgba(203,213,225,0.85)" : "1px solid transparent",
+                    borderTop: isCompilePanelOpen ? "1px solid rgba(203,213,225,0.85)" : "0",
                     transition: "max-height 0.2s ease, opacity 0.2s ease, border-color 0.2s ease",
                     pointerEvents: isCompilePanelOpen ? "auto" : "none",
                   }}
@@ -338,8 +520,61 @@ const WorkspaceShell = ({
                     }}
                   />
                 </Box>
-              </SandpackStack>
-            </Box>
+                </SandpackStack>
+              </Box>
+              </Box>
+              <Flex
+                align="center"
+                justify="space-between"
+                gap={3}
+                px={4}
+                minH="36px"
+                borderTop="1px solid #dbe2ec"
+                bg="#f6f8fc"
+                color="#586579"
+                fontSize="12px"
+                fontFamily='"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace'
+                letterSpacing="0.01em"
+                flexShrink={0}
+              >
+                <Flex align="center" gap={4} minW={0}>
+                  <Flex align="center" gap={1.5}>
+                    <Box w="7px" h="7px" borderRadius="full" bg={compileStatus === "error" ? "#ef4444" : "#16a34a"} />
+                    <Text as="span">{compileStatus === "error" ? "错误" : "就绪"}</Text>
+                  </Flex>
+                  <Text as="span">
+                    {saveStatus === "saving" ? "保存中" : saveStatus === "error" ? "保存失败" : "已保存"}
+                  </Text>
+                </Flex>
+                <Flex align="center" gap={5} color="#4b5563">
+                  <Text as="span">UTF-8</Text>
+                  <Text as="span">{fileLanguageLabel}</Text>
+                  {compileStatus === "compiling" ? (
+                    <Flex align="center" gap={1.5}>
+                      <Box w="6px" h="6px" borderRadius="full" bg="#32a549" />
+                      <Text as="span" color="#28823b">构建中</Text>
+                    </Flex>
+                  ) : null}
+                  {compileStatus === "error" ? (
+                    <Flex align="center" gap={1.5}>
+                      <Box w="6px" h="6px" borderRadius="full" bg="#ef4444" />
+                      <Text as="span" color="#b91c1c">编译错误</Text>
+                    </Flex>
+                  ) : null}
+                  <MyTooltip label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}>
+                    <IconButton
+                      aria-label={isPreviewFullscreen ? "退出全屏" : "全屏预览"}
+                      icon={isPreviewFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleTogglePreviewFullscreen}
+                      isDisabled={activeView !== "preview"}
+                      opacity={activeView === "preview" ? 1 : 0.6}
+                    />
+                  </MyTooltip>
+                </Flex>
+              </Flex>
+            </Flex>
           </SandpackLayout>
           <Box
             ref={previewLayerRef}
@@ -349,28 +584,7 @@ const WorkspaceShell = ({
               position: "relative",
               display: activeView === "preview" ? "flex" : "none",
             }}
-            >
-              <Box position="absolute" top={3} right={3} zIndex={4} pointerEvents="auto">
-                <MyTooltip
-                  label={isPreviewFullscreen ? "最小化预览" : "全屏预览"}
-                  placement="left"
-                  portalProps={{ containerRef: previewLayerRef }}
-                >
-                  <IconButton
-                    aria-label={isPreviewFullscreen ? "最小化预览" : "全屏预览"}
-                    icon={isPreviewFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-                    size="sm"
-                    variant="ghost"
-                    color="var(--ws-text-main)"
-                    bg="rgba(255,255,255,0.94)"
-                    border="1px solid rgba(148,163,184,0.52)"
-                    boxShadow="0 8px 18px -12px rgba(15,23,42,0.45)"
-                    borderRadius="10px"
-                    _hover={{ bg: "rgba(255,255,255,1)" }}
-                    onClick={handleTogglePreviewFullscreen}
-                  />
-                </MyTooltip>
-              </Box>
+          >
               <SandpackStack
                 style={{
                   position: "absolute",

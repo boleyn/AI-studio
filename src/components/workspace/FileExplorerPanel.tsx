@@ -663,10 +663,11 @@ const FileExplorerPanel = ({
         align="center"
         justify="space-between"
         px={styles.spacing.headerX}
-        py={styles.spacing.headerY}
+        py={0}
+        minH="62px"
         borderBottom="1px solid"
         borderColor={styles.panel.borderColor}
-        bg="var(--ws-surface-strong)"
+        bg="#f6f8fc"
       >
         <Text
           fontSize={styles.typography.title}

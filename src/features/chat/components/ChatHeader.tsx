@@ -12,7 +12,7 @@ import {
 } from "@chakra-ui/react";
 import MyTooltip from "@/components/ui/MyTooltip";
 
-import { AddIcon, ClockIcon, CloseIcon, SettingsIcon } from "@/components/common/Icon";
+import { AddIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
 import type { ConversationSummary } from "@/types/conversation";
 import type { ContextWindowUsage } from "../types/contextWindow";
 
@@ -63,13 +63,14 @@ const ChatHeader = ({
   return (
     <Flex
       align="center"
-      bg="linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.7) 100%)"
+      bg="#f6f8fc"
       borderBottom="1px solid"
-      borderColor="rgba(226,232,240,0.95)"
+      borderColor="#dbe2ec"
       flexShrink={0}
       justify="space-between"
       px={4}
-      py={3}
+      py={0}
+      minH="62px"
     >
       <Box minW={0}>
         <Text color="myGray.800" fontSize="sm" fontWeight="800" maxW="230px" isTruncated>
@@ -103,18 +104,6 @@ const ChatHeader = ({
         </MyTooltip>
 
         <Flex gap={1}>
-        {onOpenSkills ? (
-          <IconButton
-            _hover={{ bg: "myGray.100" }}
-            aria-label="技能设置"
-            borderRadius="10px"
-            icon={<SettingsIcon />}
-            onClick={onOpenSkills}
-            size="sm"
-            variant="ghost"
-          />
-        ) : null}
-
         <Menu placement="bottom-end">
           <MenuButton
             _hover={{ bg: "myGray.100" }}

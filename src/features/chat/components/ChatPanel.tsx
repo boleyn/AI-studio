@@ -376,6 +376,7 @@ const ChatPanel = ({
   defaultSelectedSkill,
   fileOptions = [],
   skillsProjectToken,
+  openSkillsSignal = 0,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -392,6 +393,7 @@ const ChatPanel = ({
   defaultSelectedSkill?: string;
   fileOptions?: string[];
   skillsProjectToken?: string;
+  openSkillsSignal?: number;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -609,6 +611,12 @@ const ChatPanel = ({
       setChannel(selected.channel);
     }
   }, [channel, model, modelCatalog]);
+
+  useEffect(() => {
+    if (hideSkillsManager) return;
+    if (!openSkillsSignal) return;
+    setIsSkillsOpen(true);
+  }, [hideSkillsManager, openSkillsSignal]);
 
   useEffect(() => {
     let active = true;
@@ -1439,14 +1447,16 @@ const ChatPanel = ({
 
   return (
     <Flex
-      backdropFilter="blur(10px)"
-      bg="transparent"
+      backdropFilter="none"
+      bg="#f7f8fc"
       border="1px solid"
-      borderBottomLeftRadius="xl"
-      borderColor="rgba(203,213,225,0.85)"
+      borderTop={0}
+      borderBottom={0}
+      borderBottomLeftRadius={0}
+      borderColor="#dbe2ec"
       borderRight={0}
-      borderTopLeftRadius={roundTop ? "xl" : 0}
-      boxShadow="0 12px 30px -18px rgba(15,23,42,0.2)"
+      borderTopLeftRadius={0}
+      boxShadow="none"
       direction="column"
       h={height}
       overflow="hidden"
@@ -1464,7 +1474,7 @@ const ChatPanel = ({
         onDeleteAllConversations={() => deleteAllConversations()}
         onDeleteConversation={(id) => deleteConversation(id)}
         onNewConversation={() => createNewConversation()}
-        onOpenSkills={!hideSkillsManager ? () => setIsSkillsOpen(true) : undefined}
+        onOpenSkills={undefined}
         onSelectConversation={(id) => loadConversation(id)}
         title={activeConversationTitle}
       />
@@ -1472,7 +1482,7 @@ const ChatPanel = ({
       <Flex direction="column" flex="1" overflow="hidden">
         <Box
           ref={scrollRef}
-          bg="linear-gradient(180deg, rgba(248,250,252,0.82) 0%, rgba(241,245,249,0.78) 100%)"
+          bg="#f7f8fc"
           flex="1"
           overflowY="auto"
           px={4}

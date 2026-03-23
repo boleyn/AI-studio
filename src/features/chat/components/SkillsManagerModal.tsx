@@ -18,7 +18,7 @@ import {
 } from "@chakra-ui/react";
 import {
   CheckIcon,
-  EditIcon,
+  EditCustomIcon,
   RefreshIcon,
   RunIcon,
 } from "@/components/common/Icon";
@@ -229,7 +229,7 @@ const SkillsManagerModal = ({ isOpen, onClose, onUseSkill, onCreateViaChat }: Sk
                     borderColor="blue.500"
                     color="white"
                     size="sm"
-                    icon={<EditIcon />}
+                    icon={<EditCustomIcon />}
                     _hover={{ bg: "blue.600", borderColor: "blue.600" }}
                     _active={{ bg: "blue.700", borderColor: "blue.700" }}
                     onClick={handleCreateInChat}

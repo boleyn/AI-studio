@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeListener";
 import WorkspaceShell from "@/components/WorkspaceShell";
 import TopBar from "@/components/TopBar";
-import VectorBackground from "@/components/auth/VectorBackground";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
@@ -16,7 +15,7 @@ import { getAuthUserFromRequest } from "@server/auth/ssr";
 
 type FileMap = Record<string, { code: string }>;
 
-type ActiveView = "preview" | "code";
+type ActiveView = "preview" | "code" | "logs";
 
 const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
 const SKILL_ROOT = "/skills";
@@ -374,50 +373,50 @@ const SkillCreatePage = () => {
   const customSetup = useMemo(() => buildSandpackCustomSetup({}), []);
 
   return (
-    <Box position="relative" minH="100vh" overflow="hidden">
-      <VectorBackground />
+    <Box
+      position="relative"
+      minH="100dvh"
+      h="100dvh"
+      overflow="hidden"
+      bg="#0f131b"
+      backgroundImage="radial-gradient(circle at 1px 1px, rgba(173,184,203,0.22) 1px, transparent 0)"
+      backgroundSize="18px 18px"
+      p={0}
+    >
       <Flex
         ref={containerRef}
         direction="column"
-        minH="100vh"
+        minH="100dvh"
+        h="100dvh"
         align="stretch"
         justify="flex-start"
-        px={{ base: 4, md: 8, xl: 10 }}
-        py={{ base: 6, md: 8 }}
+        px={0}
+        py={0}
         position="relative"
         zIndex={1}
-        gap={{ base: 4, md: 5 }}
+        gap={0}
         overflow="hidden"
         boxSizing="border-box"
+        borderRadius={0}
+        border="none"
+        bg="#f3f4fa"
+        boxShadow="none"
       >
-        <Box>
-          <TopBar
-            projectName={skillName}
-            onProjectNameChange={(v) => { setSkillName(v); }}
-            backUrl={returnTo}
-            saveStatus={saveStatus}
-            shareLabel="发布"
-            shareAriaLabel="发布"
-            onShare={() => {
-              toast({
-                title: "发布功能暂未实现",
-                status: "info",
-                duration: 1800,
-              });
-            }}
-            onSave={() => {
-              if (isWorkspaceReady && latestFilesRef.current) {
-                void persistSkillFiles(latestFilesRef.current);
-                toast({
-                  title: "已保存技能文件",
-                  status: "success",
-                  duration: 2000,
-                });
-              }
-            }}
-            onPreview={() => setActiveView("preview")}
-          />
-        </Box>
+        <TopBar
+          projectName={skillName}
+          activeView={activeView}
+          onChangeView={setActiveView}
+          onOpenSettings={() => {
+            toast({
+              title: "技能工作区暂不支持技能管理弹窗",
+              status: "info",
+              duration: 1800,
+            });
+          }}
+          onProjectNameChange={(v) => {
+            setSkillName(v);
+          }}
+        />
 
         <SandpackProvider
           template={DEFAULT_TEMPLATE}
@@ -490,25 +489,21 @@ const SkillCreatePage = () => {
             </Box>
 
             <Box
-              w="10px"
+              w="0"
               cursor="col-resize"
               bg="transparent"
               position="relative"
+              flexShrink={0}
               _before={{
-                content: '\"\"',
+                content: '""',
                 position: "absolute",
-                left: "50%",
-                top: "20%",
-                transform: "translateX(-50%)",
-                width: "2px",
-                height: "60%",
-                borderRadius: "999px",
-                background: "rgba(148,163,184,0.35)",
+                left: "-5px",
+                top: 0,
+                width: "10px",
+                height: "100%",
+                cursor: "col-resize",
               }}
-              _hover={{
-                bg: "rgba(148,163,184,0.12)",
-                _before: { background: "rgba(71,85,105,0.5)" },
-              }}
+              _hover={{ bg: "transparent" }}
               onMouseDown={() => {
                 resizingRef.current = true;
               }}
@@ -521,6 +516,25 @@ const SkillCreatePage = () => {
               activeView={activeView}
               onChangeView={setActiveView}
               workspaceMode="skills"
+              saveStatus={saveStatus}
+              onManualPreview={() => setActiveView("preview")}
+              onManualSave={() => {
+                if (isWorkspaceReady && latestFilesRef.current) {
+                  void persistSkillFiles(latestFilesRef.current);
+                  toast({
+                    title: "已保存技能文件",
+                    status: "success",
+                    duration: 2000,
+                  });
+                }
+              }}
+              onManualShare={() => {
+                toast({
+                  title: "发布功能暂未实现",
+                  status: "info",
+                  duration: 1800,
+                });
+              }}
               onPersistFiles={persistSkillFiles}
               filePathFilter={isSkillPath}
               defaultFolderPath={SKILL_ROOT}

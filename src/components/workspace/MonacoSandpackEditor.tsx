@@ -47,8 +47,6 @@ const MonacoSandpackEditor = ({ activeFile, code, onChangeCode }: MonacoSandpack
         flex="1"
         minH="0"
         bg="var(--ws-surface-strong)"
-        borderTop="1px solid"
-        borderColor="var(--ws-border)"
       >
         {!activeFile ? (
           <Flex

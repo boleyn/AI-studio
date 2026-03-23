@@ -19,7 +19,6 @@ import { githubLight } from "@codesandbox/sandpack-themes";
 
 import TopBar from "./TopBar";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import VectorBackground from "./auth/VectorBackground";
 const ChatPanel = dynamic(() => import("../features/chat/components/ChatPanel"), {
   ssr: false,
 });
@@ -45,7 +44,7 @@ type StudioShellProps = {
   };
 };
 
-type ActiveView = "preview" | "code";
+type ActiveView = "preview" | "code" | "logs";
 type ShareMode = "editable" | "preview";
 
 const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
@@ -133,6 +132,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const [openSkillsSignal, setOpenSkillsSignal] = useState(0);
   const [shareLinks, setShareLinks] = useState<Record<ShareMode, string>>({
     editable: "",
     preview: "",
@@ -465,33 +465,42 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   }, []);
 
   return (
-    <Box position="relative" minH="100vh" overflow="hidden">
-      <VectorBackground />
+    <Box
+      position="relative"
+      minH="100dvh"
+      h="100dvh"
+      overflow="hidden"
+      bg="#0f131b"
+      backgroundImage="radial-gradient(circle at 1px 1px, rgba(173,184,203,0.22) 1px, transparent 0)"
+      backgroundSize="18px 18px"
+      p={0}
+    >
       <Flex
         ref={containerRef}
         direction="column"
-        minH="100vh"
+        minH="100dvh"
+        h="100dvh"
         align="stretch"
         justify="flex-start"
-        px={{ base: 4, md: 8, xl: 10 }}
-        py={{ base: 6, md: 8 }}
+        px={0}
+        py={0}
         position="relative"
         zIndex={1}
-        gap={{ base: 4, md: 5 }}
+        gap={0}
         overflow="hidden"
         boxSizing="border-box"
+        borderRadius={0}
+        border="none"
+        bg="#f3f4fa"
+        boxShadow="none"
       >
-        <Box>
-          <TopBar
-            projectName={projectName}
-            saveStatus={saveStatus}
-            onPreview={() => setActiveView("preview")}
-            onSave={handleManualSave}
-            onDownload={handleDownload}
-            onShare={handleOpenShareModal}
-            onProjectNameChange={handleProjectNameChange}
-          />
-        </Box>
+        <TopBar
+          projectName={projectName}
+          activeView={activeView}
+          onChangeView={setActiveView}
+          onOpenSettings={() => setOpenSkillsSignal((prev) => prev + 1)}
+          onProjectNameChange={handleProjectNameChange}
+        />
 
         <SandpackProvider
           template={template}
@@ -524,28 +533,25 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 token={token}
                 onFilesUpdated={handleAgentFilesUpdated}
                 height="100%"
+                openSkillsSignal={openSkillsSignal}
               />
             </Box>
             <Box
-              w="10px"
+              w="0"
               cursor="col-resize"
               bg="transparent"
               position="relative"
+              flexShrink={0}
               _before={{
                 content: '""',
                 position: "absolute",
-                left: "50%",
-                top: "20%",
-                transform: "translateX(-50%)",
-                width: "2px",
-                height: "60%",
-                borderRadius: "999px",
-                background: "rgba(148,163,184,0.35)",
+                left: "-5px",
+                top: 0,
+                width: "10px",
+                height: "100%",
+                cursor: "col-resize",
               }}
-              _hover={{
-                bg: "rgba(148,163,184,0.12)",
-                _before: { background: "rgba(71,85,105,0.5)" },
-              }}
+              _hover={{ bg: "transparent" }}
               onMouseDown={() => {
                 resizingRef.current = true;
               }}
@@ -556,6 +562,11 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
+              saveStatus={saveStatus}
+              onManualPreview={() => setActiveView("preview")}
+              onManualSave={handleManualSave}
+              onManualDownload={handleDownload}
+              onManualShare={handleOpenShareModal}
             />
           </Flex>
         </SandpackProvider>

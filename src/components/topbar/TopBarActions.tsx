@@ -17,6 +17,7 @@ type TopBarActionsProps = {
   onShare?: () => void;
   shareLabel?: string;
   shareAriaLabel?: string;
+  hidePreview?: boolean;
 };
 
 const TopBarActions = ({
@@ -27,6 +28,7 @@ const TopBarActions = ({
   onShare,
   shareLabel = "分享",
   shareAriaLabel = "分享",
+  hidePreview = false,
 }: TopBarActionsProps) => {
   const handleDownload = () => {
     onDownload?.();
@@ -48,17 +50,19 @@ const TopBarActions = ({
 
   return (
     <Flex gap={1} align="center">
-      <MyTooltip label="预览">
-        <IconButton
-          aria-label="预览"
-          size="sm"
-          variant="ghost"
-          border="1px solid transparent"
-          _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
-          icon={<RunIcon />}
-          onClick={onPreview}
-        />
-      </MyTooltip>
+      {!hidePreview ? (
+        <MyTooltip label="预览">
+          <IconButton
+            aria-label="预览"
+            size="sm"
+            variant="ghost"
+            border="1px solid transparent"
+            _hover={{ bg: "myGray.100", borderColor: "myGray.200" }}
+            icon={<RunIcon />}
+            onClick={onPreview}
+          />
+        </MyTooltip>
+      ) : null}
       <MyTooltip label="下载项目">
         <IconButton
           aria-label="下载项目"

@@ -28,7 +28,7 @@ import {
 } from "@chakra-ui/react";
 
 import UnifiedEntityCard from "./UnifiedEntityCard";
-import { CloseIcon, CopyIcon, EditIcon } from "../common/Icon";
+import { CloseIcon, CopyIcon, EditCustomIcon } from "../common/Icon";
 import { CalendarDays, History } from "lucide-react";
 
 type DashboardEntityCardProps = {
@@ -212,7 +212,7 @@ export default function DashboardEntityCard({
               <IconButton
                 aria-label="编辑"
                 {...actionBtnSx}
-                icon={<Box as={EditIcon} w={4} h={4} />}
+                icon={<Box as={EditCustomIcon} w={4} h={4} />}
                 onClick={onRename ? handleRenameOpen : onOpen}
               />
             </Tooltip>
