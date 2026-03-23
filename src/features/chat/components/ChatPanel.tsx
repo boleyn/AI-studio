@@ -1569,6 +1569,8 @@ const ChatPanel = ({
         <SkillsManagerModal
           isOpen={isSkillsOpen}
           onClose={() => setIsSkillsOpen(false)}
+          projectToken={token.startsWith("skill-studio:") ? "" : token}
+          onFilesApplied={onFilesUpdated}
           onCreateViaChat={handleCreateSkillViaChat}
           onUseSkill={handleUseSkill}
         />

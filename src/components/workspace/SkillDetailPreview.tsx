@@ -13,6 +13,8 @@ type SkillDetailPreviewProps = {
   activeFile: string;
   onSelectFile?: (path: string) => void;
   flat?: boolean;
+  topDescription?: string;
+  metaDescription?: string;
 };
 
 type SkillFrontmatter = {
@@ -54,19 +56,14 @@ const parseSkillFrontmatter = (content: string): SkillFrontmatter => {
   }
 };
 
-const extToLang = (path: string) => {
-  const ext = path.split(".").pop()?.toLowerCase() || "";
-  if (ext === "ts" || ext === "tsx") return "ts";
-  if (ext === "js" || ext === "jsx") return "js";
-  if (ext === "py") return "python";
-  if (ext === "json") return "json";
-  if (ext === "yml" || ext === "yaml") return "yaml";
-  if (ext === "sh") return "bash";
-  if (ext === "md") return "markdown";
-  return "text";
-};
-
-const SkillDetailPreview = ({ files, activeFile, onSelectFile, flat = false }: SkillDetailPreviewProps) => {
+const SkillDetailPreview = ({
+  files,
+  activeFile,
+  onSelectFile,
+  flat = false,
+  topDescription,
+  metaDescription,
+}: SkillDetailPreviewProps) => {
   const skillRoots = useMemo(() => {
     const roots = new Set<string>();
     Object.keys(files).forEach((path) => {
@@ -121,20 +118,21 @@ const SkillDetailPreview = ({ files, activeFile, onSelectFile, flat = false }: S
     [rootFiles, selectedPath]
   );
 
+  const isSelectedMarkdown = useMemo(() => /\.(md|markdown)$/i.test(selectedFile?.relPath || ""), [selectedFile]);
+
   const previewContent = useMemo(() => {
     if (!selectedFile) return "";
-    const isMarkdown = /\.(md|markdown)$/i.test(selectedFile.relPath);
-    if (isMarkdown) {
+    if (isSelectedMarkdown) {
       const body = /(^|\/)SKILL\.md$/i.test(selectedFile.relPath)
         ? stripFrontmatter(selectedFile.code)
         : selectedFile.code;
       return body;
     }
-    const lang = extToLang(selectedFile.relPath);
-    return `\`\`\`${lang}\n${selectedFile.code}\n\`\`\``;
-  }, [selectedFile]);
+    return selectedFile.code || "";
+  }, [isSelectedMarkdown, selectedFile]);
 
-  const description = frontmatter.description?.trim() || "暂无描述";
+  const description = topDescription?.trim() || frontmatter.description?.trim() || "暂无描述";
+  const descriptionForMetaLine = metaDescription?.trim() || frontmatter.description || "-";
 
   if (!currentRoot) {
     return (
@@ -171,30 +169,35 @@ const SkillDetailPreview = ({ files, activeFile, onSelectFile, flat = false }: S
           {/\bSKILL\.md$/i.test(selectedFile?.relPath || "") ? (
             <div className={styles.metaLine}>
               <strong>name:</strong> {frontmatter.name || "-"} <strong>description:</strong>{" "}
-              {frontmatter.description || "-"}
+              {descriptionForMetaLine}
             </div>
           ) : null}
           <div className={styles.markdown}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkBreaks]}
-              components={{
-                pre({ children }) {
-                  return <pre className={styles.codePre}>{children}</pre>;
-                },
-                code({ inline, children, ...props }) {
-                  if (inline) {
-                    return (
-                      <code className={styles.inlineCode} {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-                  return <code {...props}>{children}</code>;
-                },
-              }}
-            >
-              {previewContent || "(empty)"}
-            </ReactMarkdown>
+            {isSelectedMarkdown ? (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkBreaks]}
+                components={{
+                  pre({ children }) {
+                    return <pre className={styles.codePre}>{children}</pre>;
+                  },
+                  code({ children, className, ...props }) {
+                    const inline = !className;
+                    if (inline) {
+                      return (
+                        <code className={styles.inlineCode} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+                    return <code {...props}>{children}</code>;
+                  },
+                }}
+              >
+                {previewContent || "(empty)"}
+              </ReactMarkdown>
+            ) : (
+              <pre className={styles.codePre}>{previewContent || "(empty)"}</pre>
+            )}
           </div>
         </div>
       </div>

@@ -83,6 +83,61 @@ export type InstallSkillCreatorResponse = {
   sourceFile?: string;
 };
 
+export type ClawHubSort = "relevance" | "newest" | "updated" | "downloads" | "installs" | "stars" | "name";
+export type ClawHubSortDir = "asc" | "desc";
+
+export type ClawHubSkillItem = {
+  slug: string;
+  displayName: string;
+  summary: string;
+  ownerHandle: string;
+  downloads: number;
+  stars: number;
+  createdAt: number;
+  updatedAt: number;
+  highlighted: boolean;
+  suspicious: boolean;
+};
+
+export type ClawHubSkillsResponse = {
+  ok: boolean;
+  q: string;
+  sort: ClawHubSort;
+  dir: ClawHubSortDir;
+  highlighted: boolean;
+  nonSuspicious: boolean;
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  items: ClawHubSkillItem[];
+};
+
+export type ClawHubSkillDetailResponse = {
+  ok: boolean;
+  slug: string;
+  displayName: string;
+  summary: string;
+  ownerHandle: string;
+  ownerDisplayName: string;
+  downloads: number;
+  stars: number;
+  versions: number;
+  createdAt: number;
+  updatedAt: number;
+  highlighted: boolean;
+  suspicious: boolean;
+  latestVersion: {
+    version: string;
+    changelog: string;
+    readmePath: string;
+    readmeText: string;
+    fileCount: number;
+    files: string[];
+    fileContents: Record<string, string>;
+  };
+};
+
 export const listSkills = (projectToken?: string) =>
   httpGet<SkillListResponse>(
     `/agent/skills${
@@ -100,3 +155,16 @@ export const createSkill = (input: SkillCreateInput) =>
   httpPost<SkillCreateResponse>("/agent/skills/create", input);
 export const installSkillCreator = () =>
   httpPost<InstallSkillCreatorResponse>("/agent/skills/install-skill-creator");
+
+export const listClawHubSkills = (params: {
+  q?: string;
+  sort?: ClawHubSort;
+  dir?: ClawHubSortDir;
+  highlighted?: boolean;
+  nonSuspicious?: boolean;
+  offset?: number;
+  limit?: number;
+}) => httpGet<ClawHubSkillsResponse>("/agent/skills/hub", params);
+
+export const getClawHubSkillDetail = (slug: string) =>
+  httpGet<ClawHubSkillDetailResponse>(`/agent/skills/hub/${encodeURIComponent(slug)}`);
