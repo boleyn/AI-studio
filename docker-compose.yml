@@ -41,6 +41,9 @@ services:
       STORAGE_S3_FORCE_PATH_STYLE: "true"
       STORAGE_S3_MAX_RETRIES: "3"
 
+      SKILL_HUB=http://10.21.8.6:18790
+      SKILL_TOKEN=ch_81547e7a828f846d80511c4d5ac4a4eefd3f99b1597b293d
+
     volumes:
       - ./config:/app/config:ro
       - ./data/projects:/app/data/projects
