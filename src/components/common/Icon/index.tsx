@@ -15,6 +15,7 @@ export { default as SearchIcon } from "./icons/search.svg";
 export { default as AddIcon } from "./icons/add.svg";
 export { default as ClockIcon } from "./icons/clock.svg";
 export { default as BackIcon } from "./icons/back.svg";
+export { default as BackCustomIcon } from "./icons/back-custom.svg";
 export { default as CheckIcon } from "./icons/check.svg";
 export { default as CloseIcon } from "./icons/close.svg";
 export { default as EditIcon } from "./icons/edit.svg";

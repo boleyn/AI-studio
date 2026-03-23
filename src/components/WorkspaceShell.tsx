@@ -28,6 +28,8 @@ type WorkspaceShellProps = {
   error: string;
   activeView: ActiveView;
   onChangeView: (view: ActiveView) => void;
+  openFileRequest?: string | null;
+  onOpenFileRequestHandled?: () => void;
   workspaceMode?: "project" | "skills";
   onPersistFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   filePathFilter?: (path: string) => boolean;
@@ -114,6 +116,8 @@ const WorkspaceShell = ({
   error,
   activeView,
   onChangeView,
+  openFileRequest = null,
+  onOpenFileRequestHandled,
   workspaceMode = "project",
   onPersistFiles,
   filePathFilter,
@@ -238,6 +242,12 @@ const WorkspaceShell = ({
     sandpack.setActiveFile(filePath);
     setOpenTabs((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
   };
+
+  useEffect(() => {
+    if (!openFileRequest) return;
+    handleOpenFile(openFileRequest);
+    onOpenFileRequestHandled?.();
+  }, [handleOpenFile, onOpenFileRequestHandled, openFileRequest]);
 
   const handleCloseTab = (filePath: string) => {
     setOpenTabs((prev) => {
@@ -712,7 +722,6 @@ const WorkspaceShell = ({
               </Box>
               <Flex
                 align="center"
-                justify="space-between"
                 gap={3}
                 px={4}
                 minH="36px"
@@ -724,7 +733,7 @@ const WorkspaceShell = ({
                 letterSpacing="0.01em"
                 flexShrink={0}
               >
-                <Flex align="center" gap={4} minW={0}>
+                <Flex align="center" gap={4} minW={0} flex="1" justify="flex-start">
                   <Flex align="center" gap={1.5}>
                     <Box
                       w="7px"
@@ -746,7 +755,19 @@ const WorkspaceShell = ({
                     {saveStatus === "saving" ? "保存中" : saveStatus === "error" ? "保存失败" : "已保存"}
                   </Text>
                 </Flex>
-                <Flex align="center" gap={5} color="#4b5563">
+
+                <Text
+                  as="span"
+                  flex="1"
+                  textAlign="center"
+                  color="myGray.500"
+                  fontSize="10px"
+                  lineHeight="1"
+                >
+                  AI-STUDIO · AI EBOSS · AIID
+                </Text>
+
+                <Flex align="center" gap={5} color="#4b5563" flex="1" justify="flex-end">
                   <Text as="span">UTF-8</Text>
                   <Text as="span">{fileLanguageLabel}</Text>
                 </Flex>

@@ -16,6 +16,7 @@ import {
 import { SandpackProvider, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import dynamic from "next/dynamic";
 import { githubLight } from "@codesandbox/sandpack-themes";
+import { useRouter } from "next/router";
 
 import TopBar from "./TopBar";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -27,6 +28,7 @@ import type { SaveStatus } from "./CodeChangeListener";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
+import { listConversations } from "@features/chat/services/conversations";
 
 type SandpackFile = { code: string };
 export type SandpackFiles = Record<string, SandpackFile>;
@@ -108,6 +110,7 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 };
 
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
+  const router = useRouter();
   const toast = useToast();
   const [token, setToken] = useState(initialToken);
   const [status, setStatus] = useState<ProjectStatus>(() => {
@@ -133,6 +136,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [openSkillsSignal, setOpenSkillsSignal] = useState(0);
+  const [topSearchConversations, setTopSearchConversations] = useState<Array<{ id: string; title: string }>>([]);
+  const [topSearchOpenFilePath, setTopSearchOpenFilePath] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<Record<ShareMode, string>>({
     editable: "",
     preview: "",
@@ -202,6 +207,20 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     () => files || fallbackFiles,
     [files]
   );
+  const topSearchFilePaths = useMemo(() => Object.keys(sandpackFiles), [sandpackFiles]);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    (async () => {
+      const data = await listConversations(token);
+      if (!active) return;
+      setTopSearchConversations(data.map((item) => ({ id: item.id, title: item.title || "未命名对话" })));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token, openSkillsSignal]);
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(dependencies);
@@ -498,8 +517,31 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
           projectName={projectName}
           activeView={activeView}
           onChangeView={setActiveView}
+          onBack={() => {
+            if (window.history.length > 1) {
+              router.back();
+              return;
+            }
+            void router.push("/");
+          }}
           onOpenSettings={() => setOpenSkillsSignal((prev) => prev + 1)}
           onProjectNameChange={handleProjectNameChange}
+          searchFiles={topSearchFilePaths}
+          searchConversations={topSearchConversations}
+          onOpenFileFromSearch={(filePath) => {
+            setActiveView("code");
+            setTopSearchOpenFilePath(filePath);
+          }}
+          onOpenConversationFromSearch={(conversationId) => {
+            void router.replace(
+              {
+                pathname: router.pathname,
+                query: { ...router.query, conversation: conversationId },
+              },
+              undefined,
+              { shallow: true }
+            );
+          }}
         />
 
         <SandpackProvider
@@ -562,6 +604,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
+              openFileRequest={topSearchOpenFilePath}
+              onOpenFileRequestHandled={() => setTopSearchOpenFilePath(null)}
               saveStatus={saveStatus}
               onManualPreview={() => setActiveView("preview")}
               onManualSave={handleManualSave}

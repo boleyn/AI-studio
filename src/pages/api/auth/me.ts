@@ -2,8 +2,12 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 
 const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
-const sanitizeAvatar = (avatar?: string) =>
-  avatar && !/^data:image\//i.test(avatar) ? avatar : DEFAULT_AVATAR;
+const sanitizeAvatar = (avatar?: string) => {
+  const raw = (avatar || "").trim();
+  if (!raw) return DEFAULT_AVATAR;
+  if (/^data:image\//i.test(raw)) return DEFAULT_AVATAR;
+  return raw;
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {

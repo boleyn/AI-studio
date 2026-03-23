@@ -74,10 +74,6 @@ const SkillCreatePage = () => {
     () => (typeof router.query.skillId === "string" ? router.query.skillId.trim() : ""),
     [router.query.skillId]
   );
-  const returnTo = useMemo(
-    () => (typeof router.query.returnTo === "string" ? router.query.returnTo.trim() : ""),
-    [router.query.returnTo]
-  );
 
   useEffect(() => {
     if (skillId) {
@@ -406,6 +402,14 @@ const SkillCreatePage = () => {
           projectName={skillName}
           activeView={activeView}
           onChangeView={setActiveView}
+          onBack={() => {
+            const target = projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/";
+            if (typeof window !== "undefined") {
+              window.location.assign(target);
+              return;
+            }
+            void router.push(target);
+          }}
           onOpenSettings={() => {
             toast({
               title: "技能工作区暂不支持技能管理弹窗",

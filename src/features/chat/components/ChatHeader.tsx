@@ -10,7 +10,9 @@ import {
   MenuList,
   Text,
 } from "@chakra-ui/react";
+import { useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 import { AddIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
 import type { ConversationSummary } from "@/types/conversation";
@@ -49,6 +51,9 @@ const ChatHeader = ({
   contextUsage,
   contextStatus = "idle",
 }: ChatHeaderProps) => {
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [confirmClearAllOpen, setConfirmClearAllOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const isReady = contextStatus === "ready" && !!contextUsage;
   const isPending = contextStatus === "pending";
   const usedPercent = Math.min(100, Math.max(0, isReady ? contextUsage.usedPercent || 0 : 0));
@@ -60,18 +65,40 @@ const ChatHeader = ({
     ? "背景信息窗口：计算中...\n正在分析当前对话上下文。"
     : "背景信息窗口：暂未获得统计\n继续提问后会自动更新。";
 
+  const handleConfirmDeleteOne = async () => {
+    if (!pendingDeleteId) return;
+    setConfirmLoading(true);
+    try {
+      await Promise.resolve(onDeleteConversation?.(pendingDeleteId));
+      setPendingDeleteId(null);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleConfirmClearAll = async () => {
+    setConfirmLoading(true);
+    try {
+      await Promise.resolve(onDeleteAllConversations?.());
+      setConfirmClearAllOpen(false);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   return (
-    <Flex
-      align="center"
-      bg="#f6f8fc"
-      borderBottom="1px solid"
-      borderColor="#dbe2ec"
-      flexShrink={0}
-      justify="space-between"
-      px={4}
-      py={0}
-      minH="62px"
-    >
+    <>
+      <Flex
+        align="center"
+        bg="#f6f8fc"
+        borderBottom="1px solid"
+        borderColor="#dbe2ec"
+        flexShrink={0}
+        justify="space-between"
+        px={4}
+        py={0}
+        minH="62px"
+      >
       <Box minW={0}>
         <Text color="myGray.800" fontSize="sm" fontWeight="800" maxW="230px" isTruncated>
           {title || "代码助手"}
@@ -105,15 +132,17 @@ const ChatHeader = ({
 
         <Flex gap={1}>
         <Menu placement="bottom-end">
-          <MenuButton
-            _hover={{ bg: "myGray.100" }}
-            aria-label="对话历史"
-            as={IconButton}
-            borderRadius="10px"
-            icon={<ClockIcon />}
-            size="sm"
-            variant="ghost"
-          />
+          <MyTooltip label="历史对话">
+            <MenuButton
+              _hover={{ bg: "myGray.100" }}
+              aria-label="对话历史"
+              as={IconButton}
+              borderRadius="10px"
+              icon={<ClockIcon />}
+              size="sm"
+              variant="ghost"
+            />
+          </MyTooltip>
           <MenuList borderColor="myGray.200" maxH="320px" minW="260px" overflowY="auto" p={1}>
             {conversations.length === 0 ? (
               <MenuItem borderRadius="md" isDisabled>暂无历史对话</MenuItem>
@@ -129,19 +158,24 @@ const ChatHeader = ({
                     <Text fontWeight={conversation.id === activeConversationId ? "700" : "500"} maxW="184px" isTruncated>
                       {conversation.title || "未命名对话"}
                     </Text>
-                    <IconButton
-                      aria-label="删除对话"
-                      colorScheme="red"
-                      icon={<CloseIcon />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (window.confirm("确定要删除这条对话记录吗？")) {
-                          onDeleteConversation?.(conversation.id);
-                        }
-                      }}
-                      size="xs"
-                      variant="ghost"
-                    />
+                    <MyTooltip label="删除这条对话">
+                      <IconButton
+                        aria-label="删除对话"
+                        colorScheme="red"
+                        icon={<CloseIcon />}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setPendingDeleteId(conversation.id);
+                        }}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        size="xs"
+                        variant="ghost"
+                      />
+                    </MyTooltip>
                   </Flex>
                 </MenuItem>
               ))
@@ -154,9 +188,7 @@ const ChatHeader = ({
                   color="red.500"
                   fontWeight="700"
                   onClick={() => {
-                    if (window.confirm("确定要清空所有历史记录吗？")) {
-                      onDeleteAllConversations?.();
-                    }
+                    setConfirmClearAllOpen(true);
                   }}
                 >
                   清空所有历史记录
@@ -166,20 +198,45 @@ const ChatHeader = ({
           </MenuList>
         </Menu>
 
-        <IconButton
-          _hover={{ bg: "myGray.100" }}
-          aria-label="新建对话"
-          bg="white"
-          border="1px solid"
-          borderColor="myGray.200"
-          borderRadius="10px"
-          icon={<AddIcon />}
-          onClick={onNewConversation ?? onReset}
-          size="sm"
-        />
+        <MyTooltip label="新建对话">
+          <IconButton
+            _hover={{ bg: "myGray.100" }}
+            aria-label="新建对话"
+            bg="white"
+            border="1px solid"
+            borderColor="myGray.200"
+            borderRadius="10px"
+            icon={<AddIcon />}
+            onClick={onNewConversation ?? onReset}
+            size="sm"
+          />
+        </MyTooltip>
         </Flex>
       </Flex>
-    </Flex>
+      </Flex>
+      <ConfirmDialog
+        isOpen={Boolean(pendingDeleteId)}
+        onClose={() => setPendingDeleteId(null)}
+        title="删除对话"
+        description="确定要删除这条对话记录吗？此操作不可恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        colorScheme="red"
+        onConfirm={handleConfirmDeleteOne}
+        isLoading={confirmLoading}
+      />
+      <ConfirmDialog
+        isOpen={confirmClearAllOpen}
+        onClose={() => setConfirmClearAllOpen(false)}
+        title="清空历史记录"
+        description="确定要清空所有历史记录吗？此操作不可恢复。"
+        confirmText="清空"
+        cancelText="取消"
+        colorScheme="red"
+        onConfirm={handleConfirmClearAll}
+        isLoading={confirmLoading}
+      />
+    </>
   );
 };
 

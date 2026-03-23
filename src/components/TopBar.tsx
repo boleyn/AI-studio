@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar,
   Box,
@@ -29,11 +29,12 @@ import {
 import { AccountModal } from "./AccountModal";
 import type { AccountPanelTab } from "./AccountModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { EditCustomIcon, SearchIcon, SettingsCustomIcon } from "./common/Icon";
+import { BackCustomIcon, EditCustomIcon, SearchIcon, SettingsCustomIcon } from "./common/Icon";
 import AsiaInfoLogo from "./auth/AsiaInfoLogo";
 import MyTooltip from "./ui/MyTooltip";
 
 type WorkspaceView = "code" | "preview" | "logs";
+type SearchConversation = { id: string; title: string };
 
 type TopBarProps = {
   projectName?: string;
@@ -41,8 +42,21 @@ type TopBarProps = {
   onProjectNameChange?: (name: string) => Promise<boolean | void> | boolean | void;
   onProjectDescriptionChange?: (description: string) => Promise<boolean | void> | boolean | void;
   onOpenSettings?: () => void;
+  onBack?: () => void;
   activeView?: WorkspaceView;
   onChangeView?: (view: WorkspaceView) => void;
+  searchFiles?: string[];
+  searchConversations?: SearchConversation[];
+  onOpenFileFromSearch?: (filePath: string) => void;
+  onOpenConversationFromSearch?: (conversationId: string) => void;
+};
+
+const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
+const normalizeAvatar = (value?: string) => {
+  const raw = (value || "").trim();
+  if (!raw) return DEFAULT_AVATAR;
+  if (/^data:image\//i.test(raw)) return DEFAULT_AVATAR;
+  return raw;
 };
 
 const TopBar = ({
@@ -51,8 +65,13 @@ const TopBar = ({
   onProjectNameChange,
   onProjectDescriptionChange,
   onOpenSettings,
+  onBack,
   activeView = "code",
   onChangeView,
+  searchFiles = [],
+  searchConversations = [],
+  onOpenFileFromSearch,
+  onOpenConversationFromSearch,
 }: TopBarProps) => {
   const toast = useToast();
   const { user, loading: loadingUser } = useAuth();
@@ -63,6 +82,9 @@ const TopBar = ({
   const [draftName, setDraftName] = useState(projectName);
   const [draftDescription, setDraftDescription] = useState(projectDescription);
   const [isSavingMeta, setIsSavingMeta] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!metaModalOpen) {
@@ -70,6 +92,33 @@ const TopBar = ({
       setDraftDescription(projectDescription);
     }
   }, [metaModalOpen, projectDescription, projectName]);
+
+  useEffect(() => {
+    if (!searchFocused) return;
+    const onClickOutside = (event: MouseEvent) => {
+      if (!searchWrapRef.current) return;
+      if (searchWrapRef.current.contains(event.target as Node)) return;
+      setSearchFocused(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [searchFocused]);
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const matchedFiles = useMemo(() => {
+    if (!normalizedQuery) return [];
+    return searchFiles
+      .filter((path) => path.toLowerCase().includes(normalizedQuery))
+      .slice(0, 8);
+  }, [normalizedQuery, searchFiles]);
+  const matchedConversations = useMemo(() => {
+    if (!normalizedQuery) return [];
+    return searchConversations
+      .filter((item) => item.title.toLowerCase().includes(normalizedQuery))
+      .slice(0, 8);
+  }, [normalizedQuery, searchConversations]);
+  const shouldShowSearchPanel =
+    searchFocused && normalizedQuery.length > 0 && (matchedFiles.length > 0 || matchedConversations.length > 0);
 
   const openAccountModal = (panel: AccountPanelTab = "account") => {
     setAccountPanel(panel);
@@ -122,6 +171,33 @@ const TopBar = ({
     >
       <Grid templateColumns="minmax(0,1fr) auto minmax(0,1fr)" alignItems="center" w="100%" columnGap={4}>
         <Flex align="center" gap={3.5} minW={0} justifySelf="start">
+          <MyTooltip label="返回">
+            <IconButton
+              aria-label="返回"
+              size="sm"
+              variant="solid"
+              icon={<BackCustomIcon />}
+              onClick={() => {
+                if (onBack) {
+                  onBack();
+                  return;
+                }
+                if (typeof window !== "undefined") {
+                  window.history.back();
+                }
+              }}
+              boxSize="38px"
+              minW="38px"
+              h="38px"
+              p={0}
+              bg="rgba(50,165,73,0.18)"
+              color="primary.700"
+              borderRadius="9999px"
+              border="1px solid"
+              borderColor="rgba(50,165,73,0.26)"
+              _hover={{ bg: "primary.500", borderColor: "primary.500", color: "white" }}
+            />
+          </MyTooltip>
           <AsiaInfoLogo showText={false} w="28px" />
           <Text fontSize="24px" lineHeight="1" fontWeight="700" color="#1d2433" noOfLines={1}>
             {projectName || "未命名项目"}
@@ -133,11 +209,16 @@ const TopBar = ({
               variant="solid"
               icon={<EditCustomIcon />}
               onClick={() => setMetaModalOpen(true)}
-              bg="primary.500"
-              color="white"
-              borderRadius="999px"
-              minW="34px"
-              _hover={{ bg: "primary.600", color: "white" }}
+              boxSize="38px"
+              minW="38px"
+              h="38px"
+              p={0}
+              bg="rgba(50,165,73,0.18)"
+              color="primary.700"
+              borderRadius="9999px"
+              border="1px solid"
+              borderColor="rgba(50,165,73,0.26)"
+              _hover={{ bg: "primary.500", borderColor: "primary.500", color: "white" }}
             />
           </MyTooltip>
         </Flex>
@@ -173,22 +254,100 @@ const TopBar = ({
         </Flex>
 
         <Flex align="center" gap={2.5} minW={0} justifySelf="end">
-          <InputGroup maxW="340px">
-            <InputLeftElement pointerEvents="none">
-              <Box as={SearchIcon} color="myGray.400" boxSize="14px" />
-            </InputLeftElement>
-            <Input
-              placeholder="搜索资源..."
-              bg="#f1f3f7"
-              border="1px solid"
-              borderColor="#edf1f6"
-              _hover={{ borderColor: "myGray.300" }}
-              _focus={{ borderColor: "primary.400", boxShadow: "0 0 0 3px rgba(100,218,122,0.15)" }}
-              h="36px"
-              borderRadius="999px"
-              fontSize="13px"
-            />
-          </InputGroup>
+          <Box ref={searchWrapRef} position="relative" maxW="340px" w="100%">
+            <InputGroup>
+              <InputLeftElement pointerEvents="none">
+                <Box as={SearchIcon} color="myGray.400" boxSize="14px" />
+              </InputLeftElement>
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                placeholder="搜索文件 / 对话..."
+                bg="#f1f3f7"
+                border="1px solid"
+                borderColor="#edf1f6"
+                _hover={{ borderColor: "myGray.300" }}
+                _focus={{ borderColor: "primary.400", boxShadow: "0 0 0 3px rgba(100,218,122,0.15)" }}
+                h="36px"
+                borderRadius="999px"
+                fontSize="13px"
+              />
+            </InputGroup>
+            {shouldShowSearchPanel ? (
+              <Box
+                position="absolute"
+                top="calc(100% + 8px)"
+                left={0}
+                right={0}
+                bg="white"
+                border="1px solid #dbe2ec"
+                borderRadius="12px"
+                boxShadow="0 12px 24px -16px rgba(15,23,42,0.35)"
+                zIndex={20}
+                maxH="320px"
+                overflowY="auto"
+                p={2}
+              >
+                {matchedFiles.length > 0 ? (
+                  <Box mb={matchedConversations.length > 0 ? 2 : 0}>
+                    <Text fontSize="11px" fontWeight="700" color="#64748b" px={2} py={1}>
+                      文件
+                    </Text>
+                    {matchedFiles.map((path) => (
+                      <Box
+                        key={`file-${path}`}
+                        as="button"
+                        type="button"
+                        onClick={() => {
+                          onOpenFileFromSearch?.(path);
+                          setSearchFocused(false);
+                        }}
+                        w="100%"
+                        textAlign="left"
+                        px={2}
+                        py={1.5}
+                        borderRadius="8px"
+                        fontSize="13px"
+                        color="#1f2937"
+                        _hover={{ bg: "#eef4ff" }}
+                      >
+                        {path}
+                      </Box>
+                    ))}
+                  </Box>
+                ) : null}
+                {matchedConversations.length > 0 ? (
+                  <Box>
+                    <Text fontSize="11px" fontWeight="700" color="#64748b" px={2} py={1}>
+                      对话
+                    </Text>
+                    {matchedConversations.map((item) => (
+                      <Box
+                        key={`conv-${item.id}`}
+                        as="button"
+                        type="button"
+                        onClick={() => {
+                          onOpenConversationFromSearch?.(item.id);
+                          setSearchFocused(false);
+                        }}
+                        w="100%"
+                        textAlign="left"
+                        px={2}
+                        py={1.5}
+                        borderRadius="8px"
+                        fontSize="13px"
+                        color="#1f2937"
+                        _hover={{ bg: "#eef4ff" }}
+                      >
+                        {item.title || "未命名对话"}
+                      </Box>
+                    ))}
+                  </Box>
+                ) : null}
+              </Box>
+            ) : null}
+          </Box>
 
           <MyTooltip label="设置">
             <IconButton
@@ -212,7 +371,7 @@ const TopBar = ({
               <Avatar
                 size="sm"
                 name={user?.displayName || user?.username || "用户"}
-                src={user?.avatar || "/icons/defaultAvatar.svg"}
+                src={normalizeAvatar(user?.avatar)}
               />
             </MenuButton>
             <Portal>

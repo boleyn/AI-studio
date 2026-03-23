@@ -126,6 +126,7 @@ export function useConversations(
   const createNewConversation = useCallback(async (): Promise<Conversation | null> => {
     if (!token) return null;
     const now = new Date().toISOString();
+    const previousConversation = activeConversation;
     const conversation: Conversation = {
       id: createChatId(),
       title: "新对话",
@@ -136,23 +137,27 @@ export function useConversations(
 
     activeConversationIdRef.current = conversation.id;
     setActiveConversation(conversation);
-    if (autoCreateInitialConversation) {
-      setConversations((prev) => [conversation, ...prev.filter((item) => item.id !== conversation.id)]);
-
-      if (queryConversationId !== conversation.id) {
-        router.replace(
-          {
-            pathname: router.pathname,
-            query: { ...router.query, conversation: conversation.id },
-          },
-          undefined,
-          { shallow: true }
-        );
+    setConversations((prev) => {
+      // 若上一个对话为空且仅为本地草稿，切换到新对话时从历史列表中移除
+      if (previousConversation && previousConversation.messages.length === 0) {
+        return prev.filter((item) => item.id !== previousConversation.id && item.id !== conversation.id);
       }
+      return prev.filter((item) => item.id !== conversation.id);
+    });
+
+    if (queryConversationId !== conversation.id) {
+      router.replace(
+        {
+          pathname: router.pathname,
+          query: { ...router.query, conversation: conversation.id },
+        },
+        undefined,
+        { shallow: true }
+      );
     }
 
     return conversation;
-  }, [autoCreateInitialConversation, queryConversationId, router, token]);
+  }, [activeConversation, queryConversationId, router, token]);
 
   const ensureConversation = useCallback(async () => {
     if (activeConversation) return activeConversation;
@@ -160,23 +165,40 @@ export function useConversations(
   }, [activeConversation, createNewConversation]);
 
   const updateConversationTitle = useCallback((id: string, title: string) => {
-    setActiveConversation((prev) => (prev?.id === id ? { ...prev, title } : prev));
-    setConversations((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, title } : item))
-    );
+    const now = new Date().toISOString();
+    setActiveConversation((prev) => (prev?.id === id ? { ...prev, title, updatedAt: now } : prev));
+    setConversations((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = { ...next[index], title, updatedAt: now };
+        return next;
+      }
+      const active = activeConversationIdRef.current === id ? activeConversation : null;
+      return [
+        {
+          id,
+          title,
+          createdAt: active?.createdAt || now,
+          updatedAt: now,
+        },
+        ...prev,
+      ];
+    });
   }, []);
 
   const deleteConversation = useCallback(
     async (id: string) => {
-      if (!token) return;
-      const ok = await deleteConversationRequest(token, id);
-      if (!ok) return;
       let nextConversationId: string | null = null;
       setConversations((prev) => {
         const filtered = prev.filter((item) => item.id !== id);
         nextConversationId = filtered[0]?.id ?? null;
         return filtered;
       });
+      // 本地先删，后端失败也不回滚，避免出现“删不掉”
+      if (token) {
+        void deleteConversationRequest(token, id);
+      }
       if (activeConversationIdRef.current === id) {
         activeConversationIdRef.current = null;
         setActiveConversation(null);
@@ -191,11 +213,12 @@ export function useConversations(
   );
 
   const deleteAllConversations = useCallback(async () => {
-    if (!token) return;
-    await deleteAllConversationsRequest(token);
     setConversations([]);
     activeConversationIdRef.current = null;
     setActiveConversation(null);
+    if (token) {
+      void deleteAllConversationsRequest(token);
+    }
     if (autoCreateInitialConversation) {
       await createNewConversation();
     }

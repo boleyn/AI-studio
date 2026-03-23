@@ -19,6 +19,14 @@ type UserAccountMenuProps = {
   loadingUser: boolean;
 };
 
+const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
+const normalizeAvatar = (value?: string) => {
+  const raw = (value || "").trim();
+  if (!raw) return DEFAULT_AVATAR;
+  if (/^data:image\//i.test(raw)) return DEFAULT_AVATAR;
+  return raw;
+};
+
 export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState<AccountPanelTab>("account");
@@ -51,7 +59,12 @@ export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
             _hover={{ boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
             _active={{ transform: "scale(0.995)" }}
           >
-            <Avatar size="sm" flexShrink={0} name={user?.displayName || user?.username || "用户"} src={user?.avatar || "/icons/defaultAvatar.svg"} />
+            <Avatar
+              size="sm"
+              flexShrink={0}
+              name={user?.displayName || user?.username || "用户"}
+              src={normalizeAvatar(user?.avatar)}
+            />
             <Flex direction="column" align="flex-start" justify="center" flex="1" minW={0}>
               <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
                 {loadingUser ? "加载中..." : user?.displayName || user?.username || "未命名用户"}
