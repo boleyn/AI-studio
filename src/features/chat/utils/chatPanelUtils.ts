@@ -76,6 +76,21 @@ export const buildUserBubbleContent = ({
   return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
 };
 
+export const stripTagMarkersFromUserContent = (content: string): string => {
+  if (!content) return "";
+  const noSkillTags = content.replace(
+    /\[[^\]]+\]\(SKILLTAG:[^)]+\)/g,
+    ""
+  );
+  const noFileTags = noSkillTags.replace(
+    /\[[^\]]+\]\(FILETAG:[^)]+\)/g,
+    ""
+  );
+  return noFileTags
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
 export const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");
 
 export const toStableChatFileViewUrl = ({

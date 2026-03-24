@@ -2,7 +2,7 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from "@aistudio/a
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { getLLMModel } from "@aistudio/ai/model";
 import { computedMaxToken } from "@aistudio/ai/utils";
-import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
+import { SKILL_STUDIO_AGENT_PROMPT } from "@server/agent/prompts/skillStudioAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
@@ -20,7 +20,12 @@ import {
   getConversation,
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
+import {
+  registerActiveConversationRun,
+  unregisterActiveConversationRun,
+} from "@server/chat/activeRuns";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
+import { toWorkspacePublicFiles } from "@server/skills/workspaceStorage";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
@@ -44,6 +49,9 @@ const STUDIO_PROMPT = [
   "You are running in Skill Creator Studio.",
   "This studio is isolated from project files.",
   "Only edit files inside this workspace.",
+  "Reference resolution rule: if user says 'this skill/这个 skill/当前 skill' without naming one, they mean the current workspace skill files, not the built-in skill named skill-creator.",
+  "For that kind of question, inspect workspace files first (e.g. list_files + read_file for /<slug>/SKILL.md) and answer from those files.",
+  "After reading the relevant SKILL.md once, provide a direct answer. Do not call read_file repeatedly for the same path in one reply unless the user explicitly asks for re-check.",
   "Skill workspace uses foldered root paths. Keep the main definition at /<slug>/SKILL.md.",
   "When creating or updating /<slug>/SKILL.md, always include YAML frontmatter at the top.",
   "The frontmatter must start and end with --- and include at least:",
@@ -113,6 +121,10 @@ const getConversationToken = (req: NextApiRequest, projectToken: string, workspa
   }
   const scope = projectToken || "global";
   return `skill-studio:${scope}:${workspaceId}`;
+};
+const getRunToken = (req: NextApiRequest, fallback: string) => {
+  const bodyToken = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  return bodyToken || fallback;
 };
 
 const toStringValue = (value: unknown) => {
@@ -225,6 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     workspace.projectToken || projectToken,
     workspace.id
   );
+  const runToken = getRunToken(req, conversationToken);
   const created = Math.floor(Date.now() / 1000);
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
   let streamStarted = false;
@@ -295,7 +308,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const toolSessionId = conversationId || `skill-${workspace.id}-${userId}`;
   const skillRunScriptTool =
     allAvailableSkills.length > 0
-      ? await createSkillRunScriptTool({ skills: allAvailableSkills, sessionId: toolSessionId })
+      ? await createSkillRunScriptTool({
+          skills: allAvailableSkills,
+          sessionId: toolSessionId,
+          workspaceFiles: toWorkspacePublicFiles(workspace.files || {}),
+        })
       : null;
   const bashTool = createBashTool({ sessionId: toolSessionId });
   const allTools: AgentToolDefinition[] = [
@@ -364,7 +381,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const contextMessages: ChatCompletionMessageParam[] = toAgentMessages(contextConversationMessages);
   const historyOnlyMessages: ChatCompletionMessageParam[] = toAgentMessages(historyOnlyConversationMessages);
   const systemMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: BASE_CODING_AGENT_PROMPT },
+    { role: "system", content: SKILL_STUDIO_AGENT_PROMPT },
     { role: "system", content: STUDIO_PROMPT },
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
@@ -427,6 +444,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(contextWindowUsage));
     }
     const workflowStartAt = Date.now();
+    const workflowAbortController = new AbortController();
+    if (conversationId) {
+      registerActiveConversationRun({
+        token: runToken,
+        chatId: conversationId,
+        controller: workflowAbortController,
+      });
+    }
     const timeline: TimelineItem[] = [];
     const toolTimelineIndex = new Map<string, number>();
     const appendTimelineText = (type: "reasoning" | "answer", text: string) => {
@@ -468,63 +493,76 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
-    const result = await runSimpleAgentWorkflow({
-      selectedModel,
-      stream,
-      recursionLimit: runtimeConfig.recursionLimit || 6,
-      temperature: runtimeConfig.temperature,
-      messages,
-      toolChoice: tools.length > 0 ? "required" : "auto",
-      allTools,
-      tools,
-      onEvent: (event, data) => {
-        if (!stream) return;
-        if (event === SseResponseEventEnum.answer) {
-          const text = typeof data.text === "string" ? data.text : "";
-          if (text) {
-            appendTimelineText("answer", text);
-            emitAnswerChunk(selectedModel, text);
-          }
-          return;
-        }
-        if (event === SseResponseEventEnum.reasoning) {
-          const text = typeof data.text === "string" ? data.text : "";
-          if (text) {
-            appendTimelineText("reasoning", text);
-            emitAnswerChunk(selectedModel, "", text);
-          }
-          return;
-        }
-        if (event === SseResponseEventEnum.toolCall) {
-          upsertToolTimeline({
-            id: typeof data.id === "string" ? data.id : undefined,
-            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+    const result = await (async () => {
+      try {
+        return await runSimpleAgentWorkflow({
+          selectedModel,
+          stream,
+          recursionLimit: runtimeConfig.recursionLimit || 6,
+          temperature: runtimeConfig.temperature,
+          messages,
+          toolChoice: "auto",
+          allTools,
+          tools,
+          abortSignal: workflowAbortController.signal,
+          onEvent: (event, data) => {
+            if (!stream) return;
+            if (event === SseResponseEventEnum.answer) {
+              const text = typeof data.text === "string" ? data.text : "";
+              if (text) {
+                appendTimelineText("answer", text);
+                emitAnswerChunk(selectedModel, text);
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.reasoning) {
+              const text = typeof data.text === "string" ? data.text : "";
+              if (text) {
+                appendTimelineText("reasoning", text);
+                emitAnswerChunk(selectedModel, "", text);
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.toolCall) {
+              upsertToolTimeline({
+                id: typeof data.id === "string" ? data.id : undefined,
+                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+              });
+              sendSseEvent(res, event, JSON.stringify(data));
+              return;
+            }
+            if (event === SseResponseEventEnum.toolParams) {
+              upsertToolTimeline({
+                id: typeof data.id === "string" ? data.id : undefined,
+                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+                params: typeof data.params === "string" ? data.params : undefined,
+              });
+              sendSseEvent(res, event, JSON.stringify(data));
+              return;
+            }
+            if (event === SseResponseEventEnum.toolResponse) {
+              upsertToolTimeline({
+                id: typeof data.id === "string" ? data.id : undefined,
+                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+                params: typeof data.params === "string" ? data.params : undefined,
+                response: typeof data.response === "string" ? data.response : undefined,
+              });
+              sendSseEvent(res, event, JSON.stringify(data));
+              return;
+            }
+            sendSseEvent(res, event, JSON.stringify(data));
+          },
+        });
+      } finally {
+        if (conversationId) {
+          unregisterActiveConversationRun({
+            token: runToken,
+            chatId: conversationId,
+            controller: workflowAbortController,
           });
-          sendSseEvent(res, event, JSON.stringify(data));
-          return;
         }
-        if (event === SseResponseEventEnum.toolParams) {
-          upsertToolTimeline({
-            id: typeof data.id === "string" ? data.id : undefined,
-            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
-            params: typeof data.params === "string" ? data.params : undefined,
-          });
-          sendSseEvent(res, event, JSON.stringify(data));
-          return;
-        }
-        if (event === SseResponseEventEnum.toolResponse) {
-          upsertToolTimeline({
-            id: typeof data.id === "string" ? data.id : undefined,
-            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
-            params: typeof data.params === "string" ? data.params : undefined,
-            response: typeof data.response === "string" ? data.response : undefined,
-          });
-          sendSseEvent(res, event, JSON.stringify(data));
-          return;
-        }
-        sendSseEvent(res, event, JSON.stringify(data));
-      },
-    });
+      }
+    })();
 
     const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
     if (conversationId && newConversationMessages.length > 0) {

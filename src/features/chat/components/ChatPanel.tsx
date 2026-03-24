@@ -53,6 +53,7 @@ import {
   SKILL_TAG_MARKER_PREFIX,
   buildConversationTitle,
   buildUserBubbleContent,
+  stripTagMarkersFromUserContent,
   getLatestContextUsageFromMessages,
   getMessageFeedback,
   hydrateArtifactsMarkdown,
@@ -789,7 +790,7 @@ const ChatPanel = ({
     abortCtrl.abort(new Error("stop"));
 
     if (!chatId) return;
-    if (!completionsStream || completionsPath !== "/api/chat/completions") return;
+    if (!completionsStream) return;
 
     // 后端停止异步执行，避免网络慢导致前端停不下来
     const stopApiAbort = new AbortController();
@@ -809,7 +810,7 @@ const ChatPanel = ({
       .finally(() => {
         clearTimeout(timeout);
       });
-  }, [completionsPath, completionsStream, token]);
+  }, [completionsStream, token]);
 
   const handleRateMessage = useCallback(
     async (messageId: string, nextRating: MessageRating) => {
@@ -892,7 +893,7 @@ const ChatPanel = ({
       const userMessage = snapshot[userIndex];
       if (userMessage.role !== "user") return;
 
-      const text = extractText(userMessage.content).trim();
+      const text = stripTagMarkersFromUserContent(extractText(userMessage.content));
       if (!text) return;
 
       const conversationId = activeConversation?.id;
@@ -918,8 +919,8 @@ const ChatPanel = ({
         text,
         files: [],
         uploadedFiles: [],
-        selectedSkill: selectedSkills[0],
-        selectedSkills,
+        selectedSkill: Array.from(new Set(selectedSkills.filter(Boolean)))[0],
+        selectedSkills: Array.from(new Set(selectedSkills.filter(Boolean))),
         selectedFilePaths:
           userMessage.additional_kwargs &&
           typeof userMessage.additional_kwargs === "object" &&

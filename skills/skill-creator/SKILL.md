@@ -9,6 +9,30 @@ metadata:
 
 This skill provides guidance for creating effective skills.
 
+## Scope Resolution In Skill Creator Studio
+
+When running in Skill Creator Studio, interpret user references as follows:
+
+- "this skill / 这个 skill / 当前 skill" means the workspace skill currently being edited (for example `/<slug>/SKILL.md`).
+- Do not answer those questions by describing the built-in `skill-creator` skill.
+- First inspect workspace files (`list_files`, then `read_file` on target `SKILL.md`) and answer strictly from those files.
+- Only explain the built-in `skill-creator` skill when the user explicitly asks for `skill-creator` by name.
+
+### Mandatory Response Flow For "这个 skill 是干啥的"
+
+Use the following order strictly:
+
+1. Resolve target as current workspace skill (default path pattern: `/<slug>/SKILL.md`).
+2. Read workspace files first (`list_files` if needed, then `read_file` for target `SKILL.md`).
+3. Answer directly from file content: purpose, trigger/use cases, and any key constraints.
+4. If file is missing or unreadable, report that explicitly and ask for the target file path.
+
+Do not do the following:
+
+- Do not default to explaining built-in `skill-creator`.
+- Do not repeatedly call `read_file` for the same path in one response after content is already available.
+- Do not keep calling tools without giving a user-facing conclusion.
+
 ## About Skills
 
 Skills are modular, self-contained folders that extend Codex's capabilities by providing

@@ -94,6 +94,7 @@ export const createSkillRunScriptTool = async (
   options?: {
     skills?: RuntimeSkill[];
     sessionId?: string;
+    workspaceFiles?: Record<string, { code: string }>;
   }
 ): Promise<AgentToolDefinition | null> => {
   const skills = options?.skills && options.skills.length > 0 ? options.skills : await getRuntimeSkills();
@@ -129,6 +130,7 @@ export const createSkillRunScriptTool = async (
         cwd,
         timeoutMs,
         sessionId: options?.sessionId,
+        workspaceFiles: options?.workspaceFiles,
       });
 
       return {

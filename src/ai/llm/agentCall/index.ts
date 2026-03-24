@@ -251,7 +251,7 @@ export const runAgentCall = async ({
         max_tokens: maxTokens,
         model,
         messages: requestMessages,
-        tool_choice: 'auto',
+        tool_choice: body.tool_choice ?? 'auto',
         toolCallMode: 'toolChoice',
         tools,
         parallel_tool_calls: true
