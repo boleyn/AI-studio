@@ -7,7 +7,8 @@ import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntime
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
-import { createSkillLoadTool } from "@server/agent/skills/tool";
+import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
+import { createBashTool } from "@server/agent/tools/bashTool";
 import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceTools";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
@@ -291,7 +292,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
   );
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
-  const allTools: AgentToolDefinition[] = [...workspaceTools, ...(skillLoadTool ? [skillLoadTool] : [])];
+  const skillRunScriptTool =
+    allAvailableSkills.length > 0 ? await createSkillRunScriptTool({ skills: allAvailableSkills }) : null;
+  const bashTool = createBashTool();
+  const allTools: AgentToolDefinition[] = [
+    ...workspaceTools,
+    ...(skillLoadTool ? [skillLoadTool] : []),
+    ...(skillRunScriptTool ? [skillRunScriptTool] : []),
+    bashTool,
+  ];
 
   const tools: ChatCompletionTool[] = allTools.map((tool) => ({
     type: "function",

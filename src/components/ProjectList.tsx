@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Rocket, Sparkles, Wand2 } from "lucide-react";
 import {
   Badge,
@@ -75,7 +75,6 @@ export default function ProjectList() {
   const [createType, setCreateType] = useState<CreateType>("project");
   const [nameInput, setNameInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
-  const [projectFileCountMap, setProjectFileCountMap] = useState<Record<string, number>>({});
 
   const keyword = searchValue.trim().toLowerCase();
   const filteredProjects = useMemo(() => {
@@ -120,44 +119,6 @@ export default function ProjectList() {
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
-
-  useEffect(() => {
-    const missingTokens = projects
-      .map((item) => item.token)
-      .filter((token) => projectFileCountMap[token] === undefined);
-    if (missingTokens.length === 0) return;
-
-    let cancelled = false;
-    const fetchFileCounts = async () => {
-      const pairs = await Promise.all(
-        missingTokens.map(async (token) => {
-          try {
-            const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`);
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok || !payload || typeof payload !== "object") return [token, 0] as const;
-            const files = (payload as { files?: Record<string, { code: string }> }).files;
-            const count = files && typeof files === "object" ? Object.keys(files).length : 0;
-            return [token, count] as const;
-          } catch {
-            return [token, 0] as const;
-          }
-        })
-      );
-      if (cancelled) return;
-      setProjectFileCountMap((prev) => {
-        const next = { ...prev };
-        pairs.forEach(([token, count]) => {
-          next[token] = count;
-        });
-        return next;
-      });
-    };
-    void fetchFileCounts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projects, projectFileCountMap]);
 
   const resetCreateModal = () => {
     setNameInput("");
@@ -589,7 +550,7 @@ export default function ProjectList() {
                       description={project.description || "继续编辑项目代码与相关对话"}
                       createdMeta={formatAbsoluteDate(project.createdAt)}
                       meta={`更新于 ${formatDate(project.updatedAt)}`}
-                      fileCount={projectFileCountMap[project.token]}
+                      fileCount={project.fileCount}
                       onOpen={() => openProject(project.token)}
                       onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
                       renameDialogTitle="修改项目"
@@ -658,7 +619,7 @@ export default function ProjectList() {
                     description={skill.description || "暂无描述"}
                     createdMeta={formatAbsoluteDate(skill.createdAt)}
                     meta={`更新于 ${formatDate(skill.updatedAt)}`}
-                    fileCount={1}
+                    fileCount={skill.fileCount}
                     onOpen={() => {
                       void openSkill(skill.token);
                     }}

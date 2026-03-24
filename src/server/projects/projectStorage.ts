@@ -45,6 +45,7 @@ export type ProjectListItem = {
   token: string;
   name: string;
   description?: string;
+  fileCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -68,6 +69,7 @@ type ProjectDoc = {
   sandpackCompileInfo?: SandpackCompileInfo;
   filesPath?: string;
   files?: Record<string, ProjectFile>;
+  fileCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -301,6 +303,11 @@ async function listProjectStorageKeys(token: string): Promise<string[]> {
   });
 }
 
+async function countProjectStorageFiles(token: string): Promise<number> {
+  const keys = await listProjectStorageKeys(token);
+  return keys.length;
+}
+
 async function deleteProjectStorageFilesByKeys(keys: string[]): Promise<void> {
   await deleteStorageObjects({
     keys,
@@ -395,7 +402,11 @@ async function migrateLegacyFilesIfNeeded(doc: ProjectDoc, coll: Awaited<ReturnT
   await coll.updateOne(
     { token: doc.token },
     {
-      $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
+      $set: {
+        filesPath: getFilesMetaPath(doc.token),
+        fileCount: Object.keys(legacyFiles).length,
+        updatedAt: new Date().toISOString(),
+      },
       $unset: { files: "" },
     }
   );
@@ -414,7 +425,11 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
       await coll.updateOne(
         { token: doc.token },
         {
-          $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
+          $set: {
+            filesPath: getFilesMetaPath(doc.token),
+            fileCount: Object.keys(legacyDiskFiles).length,
+            updatedAt: new Date().toISOString(),
+          },
           $unset: { files: "" },
         }
       );
@@ -424,7 +439,11 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
       await coll.updateOne(
         { token: doc.token },
         {
-          $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
+          $set: {
+            filesPath: getFilesMetaPath(doc.token),
+            fileCount: Object.keys(DEFAULT_PROJECT_FILES).length,
+            updatedAt: new Date().toISOString(),
+          },
           $unset: { files: "" },
         }
       );
@@ -509,9 +528,10 @@ export async function updateFile(token: string, filePath: string, code: string):
   await cleanupLegacyDir(token);
 
   const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
   const result = await coll.updateOne(
     { token },
-    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
@@ -530,9 +550,10 @@ export async function updateBinaryFile(
   await cleanupLegacyDir(token);
 
   const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
   const result = await coll.updateOne(
     { token },
-    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
@@ -584,7 +605,10 @@ export async function updateFiles(
   const now = new Date().toISOString();
   const result = await coll.updateOne(
     { token },
-    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+    {
+      $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount: Object.keys(files).length },
+      $unset: { files: "" },
+    }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
@@ -607,6 +631,7 @@ export async function saveProject(project: ProjectData): Promise<void> {
     dependencies: project.dependencies ?? {},
     sandpackCompileInfo: project.sandpackCompileInfo,
     filesPath: getFilesMetaPath(project.token),
+    fileCount: Object.keys(project.files ?? {}).length,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
@@ -623,16 +648,37 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, description: 1, createdAt: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, fileCount: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
-  return docs.map((d) => ({
-    token: d.token,
-    name: d.name,
-    description: d.description,
-    createdAt: d.createdAt,
-    updatedAt: d.updatedAt,
-  }));
+  const resolved = await Promise.all(
+    docs.map(async (d) => {
+      const hasCount = typeof d.fileCount === "number" && Number.isFinite(d.fileCount);
+      if (hasCount) {
+        return {
+          token: d.token,
+          name: d.name,
+          description: d.description,
+          fileCount: Math.max(0, Math.trunc(d.fileCount as number)),
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+        };
+      }
+
+      const fileCount = await countProjectStorageFiles(d.token);
+      void coll.updateOne({ token: d.token }, { $set: { fileCount } }).catch(() => undefined);
+      return {
+        token: d.token,
+        name: d.name,
+        description: d.description,
+        fileCount,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      };
+    })
+  );
+
+  return resolved;
 }
 
 /**

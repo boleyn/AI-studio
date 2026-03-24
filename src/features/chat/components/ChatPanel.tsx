@@ -17,10 +17,7 @@ import {
   uploadChatFiles,
 } from "../services/files";
 import { updateMessageFeedback } from "../services/feedback";
-import { getChatModels } from "../services/models";
-import type { ChatModelCatalog } from "../services/models";
 import { getConversation as getConversationById, replaceConversationMessages } from "../services/conversations";
-import { listSkills } from "../services/skills";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
@@ -50,315 +47,26 @@ interface ReasoningStreamPayload {
 interface WorkflowDurationPayload {
   durationSeconds?: number;
 }
-const FILE_TAG_MARKER_PREFIX = "FILETAG:";
-const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 
-const getMessageFeedback = (message: ConversationMessage): MessageRating | undefined => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return undefined;
-  const value = (message.additional_kwargs as { userFeedback?: unknown }).userFeedback;
-  return value === "up" || value === "down" ? value : undefined;
-};
+import {
+  FILE_TAG_MARKER_PREFIX,
+  SKILL_TAG_MARKER_PREFIX,
+  buildConversationTitle,
+  buildUserBubbleContent,
+  getLatestContextUsageFromMessages,
+  getMessageFeedback,
+  hydrateArtifactsMarkdown,
+  hydrateHistoryUserMessage,
+  normalizeProjectFiles,
+  toFileArtifacts,
+  getImageInputParts,
+  toUpdatedFilesMap,
+} from "../utils/chatPanelUtils";
+import { useChatModels } from "../hooks/useChatModels";
+import { useChatSkills } from "../hooks/useChatSkills";
+import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
+import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 
-const buildConversationTitle = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  return trimmed.length > 40 ? `${trimmed.slice(0, 40)}...` : trimmed;
-};
-const normalizeProjectFiles = (rawFiles: unknown): Record<string, { code: string }> | null => {
-  if (!rawFiles || typeof rawFiles !== "object") return null;
-  const next: Record<string, { code: string }> = {};
-  for (const [filePath, value] of Object.entries(rawFiles as Record<string, unknown>)) {
-    if (typeof filePath !== "string" || !filePath) continue;
-    if (typeof value === "string") {
-      next[filePath] = { code: value };
-      continue;
-    }
-    if (value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string") {
-      next[filePath] = { code: (value as { code: string }).code };
-    }
-  }
-  return Object.keys(next).length > 0 ? next : null;
-};
-
-const buildUserBubbleContent = ({
-  text,
-  files,
-  selectedSkills,
-  selectedFilePaths,
-}: {
-  text: string;
-  files: UploadedFileArtifact[];
-  selectedSkills?: string[];
-  selectedFilePaths?: string[];
-}) => {
-  const trimmedText = text.trim();
-  const skillTagsMarkdown =
-    selectedSkills && selectedSkills.length > 0
-      ? selectedSkills
-          .map((skill) => `[${skill}](${SKILL_TAG_MARKER_PREFIX}${encodeURIComponent(skill)})`)
-          .join(" ")
-      : "";
-  const fileTagsMarkdown =
-    selectedFilePaths && selectedFilePaths.length > 0
-      ? selectedFilePaths
-          .map((path) => `[${path}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
-          .join(" ")
-      : "";
-  const imageMarkdown = files
-    .filter((file) => (file.type || "").startsWith("image/") && (file.publicUrl || file.previewUrl))
-    .map((file) => `![${file.name || "image"}](${file.publicUrl || file.previewUrl || ""})`)
-    .join("\n\n");
-
-  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
-};
-
-const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");
-
-const toStableChatFileViewUrl = ({
-  storagePath,
-  token,
-  chatId,
-}: {
-  storagePath?: string;
-  token: string;
-  chatId: string;
-}) => {
-  if (!storagePath) return "";
-  const params = new URLSearchParams({
-    storagePath,
-  });
-  if (token) params.set("token", token);
-  if (chatId) params.set("chatId", chatId);
-  return `/api/core/chat/files/view?${params.toString()}`;
-};
-
-const hydrateHistoryUserMessage = ({
-  message,
-  token,
-  chatId,
-}: {
-  message: ConversationMessage;
-  token: string;
-  chatId: string;
-}): ConversationMessage => {
-  if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") {
-    return message;
-  }
-
-  const artifact = message.artifact as { files?: unknown };
-  const files = Array.isArray(artifact.files)
-    ? (artifact.files as UploadedFileArtifact[])
-    : [];
-  if (files.length === 0) return message;
-
-  const hydratedFiles = files.map((file) => {
-    if (!isImageArtifact(file)) return file;
-    const stablePreviewUrl =
-      file.publicUrl || toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) || file.previewUrl;
-    if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
-    return {
-      ...file,
-      previewUrl: stablePreviewUrl,
-    };
-  });
-
-  const imageFiles = hydratedFiles.filter((file) => isImageArtifact(file));
-  if (imageFiles.length === 0) {
-    return {
-      ...message,
-      artifact: {
-        ...artifact,
-        files: hydratedFiles,
-      },
-    };
-  }
-
-  const imageByName = new Map<string, string>();
-  const imageQueue: string[] = [];
-  imageFiles.forEach((file) => {
-    const nextUrl = file.previewUrl || file.publicUrl || "";
-    if (!nextUrl) return;
-    if (file.name) {
-      imageByName.set(file.name, nextUrl);
-    }
-    imageQueue.push(nextUrl);
-  });
-
-  let queueIndex = 0;
-  const originalContent = extractText(message.content);
-  const rewrittenContent = originalContent.replace(
-    /!\[([^\]]*)\]\(([^)]+)\)/g,
-    (full, alt: string) => {
-      const byName = imageByName.get(alt);
-      const byOrder = imageQueue[queueIndex];
-      if (byOrder) queueIndex += 1;
-      const nextUrl = byName || byOrder;
-      if (!nextUrl) return full;
-      return `![${alt}](${nextUrl})`;
-    }
-  );
-
-  return {
-    ...message,
-    content: rewrittenContent,
-    artifact: {
-      ...artifact,
-      files: hydratedFiles,
-    },
-  };
-};
-
-const hydrateArtifactsMarkdown = async ({
-  files,
-  token,
-  chatId,
-}: {
-  files: UploadedFileArtifact[];
-  token: string;
-  chatId: string;
-}) => {
-  const hydrated = await Promise.all(
-    files.map(async (file) => {
-      const markdown = file.markdownPublicUrl
-        ? await fetchMarkdownContentByUrl(file.markdownPublicUrl).catch(() => "")
-        : file.markdownStoragePath
-        ? await fetchMarkdownContent({
-            storagePath: file.markdownStoragePath,
-            token,
-            chatId,
-          }).catch(() => "")
-        : "";
-      if (!markdown) return file;
-      return {
-        ...file,
-        parse: {
-          ...(file.parse || {
-            status: "success" as const,
-            progress: 100,
-            parser: "text" as const,
-          }),
-          markdown,
-        },
-      };
-    })
-  );
-
-  return hydrated;
-};
-
-const toFileArtifacts = (files: ChatInputFile[]) =>
-  files.map((item) => ({
-    id: item.id,
-    name: item.file.name,
-    size: item.file.size,
-    type: item.file.type,
-    lastModified: item.file.lastModified,
-    parse: {
-      status: "pending" as const,
-      progress: 0,
-      parser: "metadata" as const,
-      markdown: "",
-    },
-  }));
-
-const getImageInputParts = async (files: UploadedFileArtifact[]) => {
-  const imageFiles = files
-    .filter((item) => (item.type || "").startsWith("image/") && item.storagePath)
-    .slice(0, 4);
-
-  return imageFiles
-    .filter((item) => (item.size || 0) <= 4 * 1024 * 1024)
-    .map((item) => ({
-      type: "image_url" as const,
-      image_url: {
-        url: item.previewUrl || item.publicUrl || "",
-      },
-      key: item.storagePath,
-    }))
-    .filter((item) => item.image_url.url || item.key);
-};
-
-const toUpdatedFilesMap = (value: unknown): Record<string, { code: string }> | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return null;
-
-  const normalized: Record<string, { code: string }> = {};
-  for (const [path, file] of entries) {
-    if (!path || typeof path !== "string") return null;
-    if (!file || typeof file !== "object" || Array.isArray(file)) return null;
-
-    const code = (file as { code?: unknown }).code;
-    if (typeof code !== "string") return null;
-
-    normalized[path] = { code };
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
-};
-
-const toContextWindowUsage = (
-  value: unknown,
-  fallbackModel?: string
-): ContextWindowUsage | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const candidate = value as Record<string, unknown>;
-  const usedTokens = candidate.usedTokens;
-  const maxContext = candidate.maxContext;
-  const remainingTokens = candidate.remainingTokens;
-  const usedPercent = candidate.usedPercent;
-  if (
-    typeof usedTokens !== "number" ||
-    !Number.isFinite(usedTokens) ||
-    typeof maxContext !== "number" ||
-    !Number.isFinite(maxContext) ||
-    typeof remainingTokens !== "number" ||
-    !Number.isFinite(remainingTokens) ||
-    typeof usedPercent !== "number" ||
-    !Number.isFinite(usedPercent)
-  ) {
-    return null;
-  }
-
-  return {
-    model: typeof candidate.model === "string" && candidate.model ? candidate.model : fallbackModel || "agent",
-    usedTokens,
-    maxContext,
-    remainingTokens,
-    usedPercent,
-    totalPromptTokens:
-      typeof candidate.totalPromptTokens === "number" && Number.isFinite(candidate.totalPromptTokens)
-        ? candidate.totalPromptTokens
-        : undefined,
-    currentInputTokens:
-      typeof candidate.currentInputTokens === "number" && Number.isFinite(candidate.currentInputTokens)
-        ? candidate.currentInputTokens
-        : undefined,
-    budget:
-      candidate.budget && typeof candidate.budget === "object" && !Array.isArray(candidate.budget)
-        ? (candidate.budget as ContextWindowUsage["budget"])
-        : undefined,
-  };
-};
-
-const getLatestContextUsageFromMessages = (
-  conversationMessages: ConversationMessage[],
-  fallbackModel?: string
-): ContextWindowUsage | null => {
-  for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
-    const message = conversationMessages[i];
-    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") continue;
-    const kwargs = message.additional_kwargs as Record<string, unknown>;
-    const fromPrimary = toContextWindowUsage(kwargs.contextWindow, fallbackModel);
-    if (fromPrimary) return fromPrimary;
-    const fromLegacy = toContextWindowUsage(kwargs.contextWindowUsage, fallbackModel);
-    if (fromLegacy) return fromLegacy;
-  }
-  return null;
-};
 
 const ChatPanel = ({
   token,
@@ -416,71 +124,40 @@ const ChatPanel = ({
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
-  const [modelLoading, setModelLoading] = useState(false);
-  const [channel, setChannel] = useState("aiproxy");
-  const [model, setModel] = useState("agent");
-  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    defaultSelectedSkill ? [defaultSelectedSkill] : []
-  );
-  const [skillOptions, setSkillOptions] = useState<Array<{ name: string; description?: string }>>([]);
-  const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string; channel: string; icon?: string }>>([
-    { value: "agent", label: "agent", channel: "aiproxy" },
-  ]);
-  const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
+  const { model, setModel, channel, modelOptions, modelLoading, modelCatalog } = useChatModels();
+  
+  const {
+    isSkillsOpen,
+    setIsSkillsOpen,
+    selectedSkills,
+    setSelectedSkills,
+    skillOptions,
+  } = useChatSkills({
+    token,
+    defaultSelectedSkill,
+    hideSkillsManager,
+    openSkillsSignal,
+    skillsProjectToken,
+    fileOptions,
+  });
+
   const [contextUsage, setContextUsage] = useState<ContextWindowUsage | null>(null);
   const [contextStatus, setContextStatus] = useState<"idle" | "pending" | "ready">("idle");
   const contextUsageRef = useRef<ContextWindowUsage | null>(null);
   const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
-  const scrollRafRef = useRef<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
-  const streamingTextRef = useRef("");
-  const streamingReasoningRef = useRef("");
-  const streamFlushFrameRef = useRef<number | null>(null);
-  const reasoningFlushFrameRef = useRef<number | null>(null);
-  const skillListRefreshKey = useMemo(
-    () =>
-      fileOptions
-        .filter((item) => /\/SKILL\.md$/i.test(item))
-        .sort((a, b) => a.localeCompare(b))
-        .join("|"),
-    [fileOptions]
-  );
 
-  const flushAssistantReasoning = useCallback((assistantMessageId: string, reasoningText: string) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== assistantMessageId) return msg;
-        const currentKwargs =
-          msg.additional_kwargs && typeof msg.additional_kwargs === "object"
-            ? msg.additional_kwargs
-            : {};
-        return {
-          ...msg,
-          additional_kwargs: {
-            ...currentKwargs,
-            reasoning_text: reasoningText,
-          },
-        };
-      })
-    );
-  }, []);
-
-  const flushAssistantText = useCallback((assistantMessageId: string, content: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === assistantMessageId
-          ? {
-              ...msg,
-              content,
-            }
-          : msg
-      )
-    );
-  }, []);
+  const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
+  const {
+    streamingTextRef,
+    streamingReasoningRef,
+    cancelPendingFlushes,
+    scheduleAssistantTextFlush,
+    scheduleAssistantReasoningFlush,
+    flushAssistantText,
+    flushAssistantReasoning,
+  } = useChatStreamFlusher(setMessages);
 
   const setContextUsageSnapshot = useCallback(
     (next: ContextWindowUsage | null, conversationId?: string | null) => {
@@ -496,30 +173,6 @@ const ChatPanel = ({
       setContextStatus("idle");
     },
     []
-  );
-
-  const scheduleAssistantTextFlush = useCallback(
-    (assistantMessageId: string) => {
-      if (streamFlushFrameRef.current !== null) return;
-
-      streamFlushFrameRef.current = window.requestAnimationFrame(() => {
-        streamFlushFrameRef.current = null;
-        flushAssistantText(assistantMessageId, streamingTextRef.current);
-      });
-    },
-    [flushAssistantText]
-  );
-
-  const scheduleAssistantReasoningFlush = useCallback(
-    (assistantMessageId: string) => {
-      if (reasoningFlushFrameRef.current !== null) return;
-
-      reasoningFlushFrameRef.current = window.requestAnimationFrame(() => {
-        reasoningFlushFrameRef.current = null;
-        flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
-      });
-    },
-    [flushAssistantReasoning]
   );
 
   useEffect(() => {
@@ -554,140 +207,9 @@ const ChatPanel = ({
     setContextUsageSnapshot(cachedUsage || recoveredUsage || null, activeId || null);
   }, [activeConversation?.id, activeConversation?.messages, model, setContextUsageSnapshot, token]);
 
-  useEffect(() => {
-    let active = true;
-    setModelLoading(true);
-    getChatModels()
-      .then((catalog) => {
-        if (!active) return;
-        setModelCatalog(catalog);
 
-        const options = catalog.models.length
-          ? catalog.models.map((item) => {
-              return {
-                value: item.id,
-                label: item.label || item.id,
-                channel: item.channel,
-              };
-            })
-          : [
-              {
-                value: catalog.defaultModel || catalog.toolCallModel || "agent",
-                label: catalog.defaultModel || catalog.toolCallModel || "agent",
-                channel: catalog.defaultChannel || "aiproxy",
-              },
-            ];
-        setModelOptions(options);
-        const nextModel = (() => {
-          const prevMatch = options.find((item) => item.value === model);
-          if (prevMatch) return prevMatch.value;
-          return catalog.defaultModel || catalog.toolCallModel || options[0]?.value || "agent";
-        })();
 
-        setModel(nextModel);
-        const selectedModel = options.find((item) => item.value === nextModel);
-        setChannel(selectedModel?.channel || catalog.defaultChannel || "aiproxy");
-      })
-      .catch(() => {
-        if (!active) return;
-        setModelCatalog(null);
-        setChannel("aiproxy");
-        setModelOptions([{ value: "agent", label: "agent", channel: "aiproxy" }]);
-      })
-      .finally(() => {
-        if (active) setModelLoading(false);
-      });
 
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!modelCatalog) return;
-    const selected = modelCatalog.models.find((item) => item.id === model);
-    if (!selected) return;
-    if (selected.channel !== channel) {
-      setChannel(selected.channel);
-    }
-  }, [channel, model, modelCatalog]);
-
-  useEffect(() => {
-    if (hideSkillsManager) return;
-    if (!openSkillsSignal) return;
-    setIsSkillsOpen(true);
-  }, [hideSkillsManager, openSkillsSignal]);
-
-  useEffect(() => {
-    let active = true;
-    const tokenForSkills =
-      (skillsProjectToken && skillsProjectToken.trim()) ||
-      (token.startsWith("skill-studio:") ? "" : token);
-    listSkills(tokenForSkills)
-      .then((result) => {
-        if (!active) return;
-        const next = (result.skills || [])
-          .filter((item) => item.isLoadable && typeof item.name === "string" && item.name.length > 0)
-          .map((item) => ({
-            name: item.name as string,
-            description: item.description,
-          }));
-        setSkillOptions(next);
-        if (
-          defaultSelectedSkill &&
-          selectedSkills.length === 0 &&
-          next.some((item) => item.name === defaultSelectedSkill)
-        ) {
-          setSelectedSkills([defaultSelectedSkill]);
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setSkillOptions([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    defaultSelectedSkill,
-    isSkillsOpen,
-    selectedSkills.length,
-    skillsProjectToken,
-    token,
-    skillListRefreshKey,
-  ]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    if (!shouldAutoScrollRef.current) return;
-    if (scrollRafRef.current !== null) {
-      window.cancelAnimationFrame(scrollRafRef.current);
-    }
-    scrollRafRef.current = window.requestAnimationFrame(() => {
-      const target = scrollRef.current;
-      if (!target) return;
-      target.scrollTop = target.scrollHeight;
-      scrollRafRef.current = null;
-    });
-  }, [messages]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollRafRef.current !== null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-        scrollRafRef.current = null;
-      }
-      if (streamFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(streamFlushFrameRef.current);
-        streamFlushFrameRef.current = null;
-      }
-      if (reasoningFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-        reasoningFlushFrameRef.current = null;
-      }
-    };
-  }, []);
 
   const prepareUploadFiles = useCallback(
     async (pickedFiles: ChatInputFile[]) => {
@@ -852,14 +374,7 @@ const ChatPanel = ({
       const assistantMessageId = createDataId();
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
-      if (streamFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(streamFlushFrameRef.current);
-        streamFlushFrameRef.current = null;
-      }
-      if (reasoningFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-        reasoningFlushFrameRef.current = null;
-      }
+      cancelPendingFlushes();
       setStreamingMessageId(assistantMessageId);
       setMessages((prev) => [
         ...prev,
@@ -1220,14 +735,7 @@ const ChatPanel = ({
           )
         );
       } finally {
-        if (streamFlushFrameRef.current !== null) {
-          window.cancelAnimationFrame(streamFlushFrameRef.current);
-          streamFlushFrameRef.current = null;
-        }
-        if (reasoningFlushFrameRef.current !== null) {
-          window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-          reasoningFlushFrameRef.current = null;
-        }
+        cancelPendingFlushes();
         if (streamingTextRef.current) {
           flushAssistantText(assistantMessageId, streamingTextRef.current);
         }

@@ -4,6 +4,18 @@ import { ObjectId } from "mongodb";
 
 import { getMongoDb } from "@server/db/mongo";
 import type { SkillDetail, SkillListItem, SkillSourceType } from "@/types/skill";
+import {
+  DEFAULT_DESCRIPTION,
+  buildDefaultContent,
+  buildFilesFromContent,
+  ensureDescription,
+  ensureName,
+  ensureUserId,
+  findSkillFilePath,
+  normalizeSkillFiles,
+  readFrontmatter,
+  writeFrontmatter,
+} from "./skillUtils";
 
 type SkillDoc = {
   _id: ObjectId;
@@ -38,9 +50,6 @@ type UpdateSkillInput = {
 };
 
 const COLLECTION = "skills";
-const DEFAULT_DESCRIPTION = "Describe what this skill does and when to use it.";
-const SKILLS_ROOT = "/skills";
-const SKILL_FILE_PATTERN = /^\/skills\/[^/]+\/SKILL\.md$/i;
 
 const TEMPLATE_PRESETS: Record<
   string,
@@ -113,6 +122,12 @@ const toListItem = (doc: SkillDoc): SkillListItem => ({
   description: doc.description,
   sourceType: doc.sourceType,
   templateKey: doc.templateKey,
+  fileCount: (() => {
+    const files = normalizeSkillFiles(doc.files);
+    const count = Object.keys(files).length;
+    if (count > 0) return count;
+    return doc.content?.trim() ? 1 : 0;
+  })(),
   createdAt: doc.createdAt,
   updatedAt: doc.updatedAt,
 });
@@ -123,163 +138,9 @@ const toDetail = (doc: SkillDoc): SkillDetail => ({
   files: doc.files ? normalizeSkillFiles(doc.files) : undefined,
 });
 
-const toKebab = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "new-skill";
-
-const readFrontmatter = (content: string) => {
-  const trimmed = content.trimStart();
-  if (!trimmed.startsWith("---")) return {} as { name?: string; description?: string };
-  const match = trimmed.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-  if (!match) return {} as { name?: string; description?: string };
-  try {
-    const parsed = yaml.load(match[1]);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {} as { name?: string; description?: string };
-    }
-    const data = parsed as Record<string, unknown>;
-    return {
-      name: typeof data.name === "string" ? data.name.trim() : undefined,
-      description: typeof data.description === "string" ? data.description.trim() : undefined,
-    };
-  } catch {
-    return {} as { name?: string; description?: string };
-  }
-};
-
-const writeFrontmatter = (
-  content: string,
-  data: { name?: string; description?: string }
-) => {
-  const trimmed = content.trimStart();
-  let head = "";
-  let body = content;
-
-  const yamlOptions = { indent: 2, lineWidth: -1, noRefs: true };
-
-  if (trimmed.startsWith("---")) {
-    const match = trimmed.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-    if (match) {
-      head = match[1];
-      body = trimmed.slice(match[0].length);
-    }
-  }
-
-  try {
-    const parsed = (head ? yaml.load(head) : {}) as Record<string, any>;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      // 如果解析失败，强制从头构造
-      const nextHead = yaml.dump(data, yamlOptions).trim();
-      return `---\n${nextHead}\n---\n\n${content.trimStart()}`;
-    }
-
-    if (data.name) parsed.name = data.name;
-    if (data.description) parsed.description = data.description;
-
-    const nextHead = yaml.dump(parsed, yamlOptions).trim();
-    return `---\n${nextHead}\n---\n\n${body.trimStart()}`;
-  } catch {
-    // 兜底：直接构造新的 FM 并拼上原内容
-    const nextHead = yaml.dump(data, yamlOptions).trim();
-    return `---\n${nextHead}\n---\n\n${content.trimStart()}`;
-  }
-};
-
-const buildDefaultContent = (name: string, description: string, body?: string) => {
-  const safeName = toKebab(name);
-  const safeDescription = (description || DEFAULT_DESCRIPTION).trim();
-  const safeBody =
-    body?.trim() ||
-    [
-      "# Skill",
-      "",
-      "## Goal",
-      "Describe what this skill should help accomplish.",
-      "",
-      "## Workflow",
-      "1. Read context before action.",
-      "2. Keep changes scoped.",
-      "3. Validate before finishing.",
-    ].join("\n");
-
-  return [
-    "---",
-    `name: ${safeName}`,
-    `description: ${safeDescription}`,
-    "---",
-    "",
-    safeBody,
-  ].join("\n");
-};
-
 const resolveTemplate = (templateKey?: string) => {
   if (!templateKey) return null;
   return TEMPLATE_PRESETS[templateKey] || null;
-};
-
-const ensureUserId = (userId: string) => {
-  if (!userId?.trim()) throw new Error("用户身份无效");
-  return userId.trim();
-};
-
-const ensureName = (name?: string) => {
-  const base = (name || "new-skill").trim();
-  return toKebab(base);
-};
-
-const ensureDescription = (description?: string) => {
-  const text = (description || DEFAULT_DESCRIPTION).trim();
-  if (!text) return DEFAULT_DESCRIPTION;
-  if (text.length > 1024) return text.slice(0, 1024);
-  return text;
-};
-
-const normalizeSkillPath = (input: string) => {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  if (withSlash.includes("\\") || withSlash.includes("\0") || withSlash.includes("..")) {
-    return null;
-  }
-  if (!withSlash.startsWith(SKILLS_ROOT)) {
-    return null;
-  }
-  return withSlash;
-};
-
-const normalizeSkillFiles = (files: unknown): Record<string, { code: string }> => {
-  if (!files || typeof files !== "object" || Array.isArray(files)) return {};
-  const next: Record<string, { code: string }> = {};
-  Object.entries(files as Record<string, unknown>).forEach(([path, value]) => {
-    const normalizedPath = normalizeSkillPath(path);
-    if (!normalizedPath) return;
-    const code =
-      value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string"
-        ? (value as { code: string }).code
-        : typeof value === "string"
-          ? value
-          : "";
-    next[normalizedPath] = { code };
-  });
-  return Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
-};
-
-const buildFilesFromContent = (name: string, content: string): Record<string, { code: string }> => ({
-  [`/skills/${name}/SKILL.md`]: { code: content },
-});
-
-const findSkillFilePath = (
-  files: Record<string, { code: string }>,
-  preferredName?: string
-) => {
-  if (preferredName) {
-    const preferredPath = `/skills/${preferredName}/SKILL.md`;
-    if (files[preferredPath]) return preferredPath;
-  }
-  return Object.keys(files).find((path) => SKILL_FILE_PATTERN.test(path));
 };
 
 const findSkillDocForUser = async (token: string, userId: string) => {

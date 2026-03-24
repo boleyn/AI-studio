@@ -6,6 +6,7 @@ export type SkillListItem = {
   description: string;
   sourceType: SkillSourceType;
   templateKey?: string;
+  fileCount?: number;
   createdAt: string;
   updatedAt: string;
 };

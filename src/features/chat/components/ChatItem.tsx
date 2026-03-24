@@ -289,7 +289,20 @@ const ChatItem = ({
     (item) => item.type === "answer" && typeof item.text === "string" && item.text.trim().length > 0
   );
   const hasAnswerText = content.trim().length > 0;
-  const streamingPhaseText = isStreaming ? (hasAnswerText ? "回复中..." : "思考中...") : "";
+  const latestReasoningIndex = useMemo(() => {
+    let latest = -1;
+    timelineItems.forEach((item, index) => {
+      if (item.type === "reasoning") latest = index;
+    });
+    return latest;
+  }, [timelineItems]);
+  const getReasoningPhaseText = useCallback(
+    (index: number) => {
+      if (!isStreaming || index !== latestReasoningIndex) return "";
+      return hasAnswerText || timelineHasAnswer ? "回复中..." : "思考中...";
+    },
+    [hasAnswerText, isStreaming, latestReasoningIndex, timelineHasAnswer]
+  );
   const showAssistantAnimation = Boolean(isStreaming && !isUser && !isSystem);
   const containsImageMarkdown = isUser ? hasImageInContent(content) : false;
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
@@ -314,6 +327,29 @@ const ChatItem = ({
         minH="0"
         px={4}
         py={3}
+        sx={{
+          "& .markdown p": {
+            marginTop: "8px",
+            marginBottom: "8px",
+          },
+          "& .markdown ul, & .markdown ol": {
+            marginTop: "4px",
+            marginBottom: "4px",
+          },
+          "& .markdown li": {
+            marginTop: "1px",
+            marginBottom: "1px",
+            lineHeight: 1.23,
+          },
+          "& .markdown li > p": {
+            marginTop: "1px",
+            marginBottom: "1px",
+          },
+          "& .markdown li > ul, & .markdown li > ol": {
+            marginTop: "2px",
+            marginBottom: "2px",
+          },
+        }}
       >
         {isUser ? (
           <Flex direction="column" gap={2}>
@@ -374,6 +410,7 @@ const ChatItem = ({
                     const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
                     const isLastStep = timelineStepIndexes[timelineStepIndexes.length - 1] === index;
                     const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
+                    const reasoningPhaseText = getReasoningPhaseText(index);
                     return (
                       <Flex key={reasoningKey} align="stretch" gap={2}>
                         <Flex align="center" direction="column" w="12px">
@@ -393,9 +430,9 @@ const ChatItem = ({
                             <Text color="gray.700" flex="1" fontSize="12px" fontWeight="700" noOfLines={1}>
                               思考过程
                             </Text>
-                            {streamingPhaseText ? (
+                            {reasoningPhaseText ? (
                               <Text color="blue.500" fontSize="11px">
-                                {streamingPhaseText}
+                                {reasoningPhaseText}
                               </Text>
                             ) : null}
                             <IconButton

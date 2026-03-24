@@ -11,8 +11,9 @@ import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntime
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
-import { createSkillLoadTool } from "@server/agent/skills/tool";
+import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createProjectTools } from "@server/agent/tools";
+import { createBashTool } from "@server/agent/tools/bashTool";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
 import { getAgentRuntimeSkillPrompt } from "@server/agent/skillPrompt";
@@ -251,6 +252,8 @@ const PROJECT_LOCAL_TOOL_NAMES = new Set([
   "compile_project",
   "global",
   "skill_load",
+  "skill_run_script",
+  "bash",
 ]);
 
 const MCP_TOOL_NAME_PREFIX = "mcp_";
@@ -324,6 +327,8 @@ const routeToolsByIntent = (allTools: AgentToolDefinition[], intent: UserIntent)
         "compile_project",
         "global",
         "skill_load",
+        "skill_run_script",
+        "bash",
       ].includes(tool.name)
     );
 
@@ -672,10 +677,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedProjectSkill =
     selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
+  const skillRunScriptTool =
+    allAvailableSkills.length > 0 ? await createSkillRunScriptTool({ skills: allAvailableSkills }) : null;
+  const bashTool = createBashTool();
   const allTools = [
     ...localTools,
     ...mcpTools,
     ...(skillLoadTool ? [skillLoadTool] : []),
+    ...(skillRunScriptTool ? [skillRunScriptTool] : []),
+    bashTool,
   ];
   const userIntent = detectUserIntent(contextMessages);
   const routedTools = routeToolsByIntent(allTools, userIntent);
