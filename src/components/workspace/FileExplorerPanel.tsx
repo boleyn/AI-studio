@@ -109,14 +109,34 @@ const readBrowserFileAsWorkspaceCode = async (file: File, filePath: string) => {
   return toDataUrl(uint8ArrayToBase64(bytes), contentType);
 };
 
-const isSkillsRootPath = (path: string) => /^\/skills(\/|$)/i.test(path);
+const isAbsolutePath = (path: string) => path.startsWith("/");
 
-const toSkillsScopedPath = (path: string, baseSkillFolder: string) => {
-  if (isSkillsRootPath(path)) return path;
-  const normalized = path.replace(/^\/+/, "");
-  if (!normalized) return null;
-  const base = baseSkillFolder.replace(/\/+$/, "") || "/skills/imported-skill";
-  return `${base}/${normalized}`.replace(/\/{2,}/g, "/");
+const toSkillsScopedPath = (path: string, skillRoot?: string) => {
+  const raw = isAbsolutePath(path) ? path.replace(/^\/+/, "") : path.replace(/^\/+/, "");
+  if (!raw) return null;
+  if (/^[^/]+\/.+/.test(raw)) {
+    return `/${raw}`.replace(/\/{2,}/g, "/");
+  }
+  if (skillRoot && /^\/[^/]+$/.test(skillRoot)) {
+    return `${skillRoot}/${raw}`.replace(/\/{2,}/g, "/");
+  }
+  return `/${raw}`.replace(/\/{2,}/g, "/");
+};
+
+const getSkillRootPath = (path: string) => {
+  const match = path.match(/^\/[^/]+/);
+  return match?.[0] || "";
+};
+
+const slugifySkillName = (value: string) => {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "") || "new-skill"
+  );
 };
 
 type FileExplorerPanelProps = {
@@ -188,7 +208,7 @@ const FileExplorerPanel = ({
     const roots = Array.from(
       new Set(
         Object.keys(files)
-          .map((path) => path.match(/^\/skills\/[^/]+/i)?.[0])
+          .map((path) => path.match(/^\/[^/]+/i)?.[0])
           .filter((v): v is string => Boolean(v))
       )
     );
@@ -312,8 +332,7 @@ const FileExplorerPanel = ({
       setCreateMode(mode);
       setCreateParentPath(parentPath);
       if (mode === "file") {
-        const defaultFileName =
-          workspaceMode === "skills" && /^\/skills\/[^/]+$/i.test(parentPath) ? "SKILL.md" : "untitled.tsx";
+        const defaultFileName = workspaceMode === "skills" ? "SKILL.md" : "untitled.tsx";
         setCreateDraftName(defaultFileName);
       } else {
         setCreateDraftName("new-folder");
@@ -490,14 +509,14 @@ const FileExplorerPanel = ({
       const nextFiles: SandpackFilesPayload = { ...files };
       const selectedParent =
         selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath);
-      const baseSkillFolder = /^\/skills\/[^/]+$/i.test(selectedParent)
-        ? selectedParent
-        : "/skills/imported-skill";
+      const selectedSkillRoot =
+        workspaceMode === "skills"
+          ? getSkillRootPath(selectedParent || skillsDisplayRootPath || selectedPath || "")
+          : "";
       for (const file of selectedFiles) {
         const rawPath = toSandpackPath(file.webkitRelativePath || file.name);
         if (!rawPath) continue;
-        const path =
-          workspaceMode === "skills" ? toSkillsScopedPath(rawPath, baseSkillFolder) : rawPath;
+        const path = workspaceMode === "skills" ? toSkillsScopedPath(rawPath, selectedSkillRoot || undefined) : rawPath;
         if (!path) continue;
         nextFiles[path] = { code: await readBrowserFileAsWorkspaceCode(file, path) };
       }
@@ -505,11 +524,19 @@ const FileExplorerPanel = ({
       const firstRawPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name);
       const firstPath =
         firstRawPath && workspaceMode === "skills"
-          ? toSkillsScopedPath(firstRawPath, baseSkillFolder) || undefined
+          ? toSkillsScopedPath(firstRawPath, selectedSkillRoot || undefined) || undefined
           : firstRawPath || undefined;
       await applyFullFiles(nextFiles, firstPath);
     },
-    [applyFullFiles, defaultFolderPath, files, selectedPath, selectedType, workspaceMode]
+    [
+      applyFullFiles,
+      defaultFolderPath,
+      files,
+      selectedPath,
+      selectedType,
+      skillsDisplayRootPath,
+      workspaceMode,
+    ]
   );
 
   const handleToggleExpandAll = useCallback(() => {
@@ -551,28 +578,25 @@ const FileExplorerPanel = ({
   }, []);
 
   const handleCreateSkill = useCallback(async () => {
-    const skillBaseFolder =
-      selectedType === "folder" && /^\/skills(\/.*)?$/i.test(selectedPath)
-        ? selectedPath
-        : defaultFolderPath;
-    const nextSkillFolder = joinPath(skillBaseFolder, "new-skill");
-    if (!nextSkillFolder) return;
-    const skillFilePath = `${nextSkillFolder}/SKILL.md`;
-
     const nextFiles: SandpackFilesPayload = { ...files };
+    const usedRoots = new Set(
+      Object.keys(nextFiles)
+        .map((path) => getSkillRootPath(path).replace(/^\/+/, ""))
+        .filter(Boolean)
+    );
     let suffix = 1;
-    let candidateFolder = nextSkillFolder;
-    let candidateFile = skillFilePath;
-    while (nextFiles[candidateFile]) {
+    let candidateSlug = "new-skill";
+    while (usedRoots.has(candidateSlug)) {
       suffix += 1;
-      candidateFolder = `${nextSkillFolder}-${suffix}`;
-      candidateFile = `${candidateFolder}/SKILL.md`;
+      candidateSlug = `new-skill-${suffix}`;
     }
+    const safeSlug = slugifySkillName(candidateSlug);
+    const candidateFile = `/${safeSlug}/SKILL.md`;
 
     nextFiles[candidateFile] = { code: buildInitialFileCode(candidateFile) };
-    ensureFolderExpanded(candidateFolder);
+    ensureFolderExpanded(`/${safeSlug}`);
     await applyFullFiles(nextFiles, candidateFile);
-  }, [applyFullFiles, defaultFolderPath, ensureFolderExpanded, files, selectedPath, selectedType]);
+  }, [applyFullFiles, ensureFolderExpanded, files]);
 
   useEffect(() => {
     if (!sandpack.activeFile) return;

@@ -44,13 +44,13 @@ const STUDIO_PROMPT = [
   "You are running in Skill Creator Studio.",
   "This studio is isolated from project files.",
   "Only edit files inside this workspace.",
-  "When creating skills, write files under /skills/<skill-name>/SKILL.md.",
-  "When creating or updating any /skills/*/SKILL.md file, always include YAML frontmatter at the top.",
+  "Skill workspace uses foldered root paths. Keep the main definition at /<slug>/SKILL.md.",
+  "When creating or updating /<slug>/SKILL.md, always include YAML frontmatter at the top.",
   "The frontmatter must start and end with --- and include at least:",
   "name: <kebab-case-skill-name>",
   "description: <one-line-purpose-and-trigger>",
   "Optional fields: version, compatibility, license, metadata.",
-  "The frontmatter name must match the parent folder name exactly.",
+  "The frontmatter name must match the intended skill slug.",
 ].join("\n");
 
 const toMessages = (messages: unknown): ConversationMessage[] => {

@@ -67,10 +67,10 @@ const SkillDetailPreview = ({
   const skillRoots = useMemo(() => {
     const roots = new Set<string>();
     Object.keys(files).forEach((path) => {
-      const match = path.match(/^\/skills\/[^/]+/i);
+      const match = path.match(/^\/[^/]+/i);
       if (match) roots.add(match[0]);
     });
-    return Array.from(roots).sort((a, b) => a.localeCompare(b));
+    return Array.from(roots).filter((root) => root !== "/").sort((a, b) => a.localeCompare(b));
   }, [files]);
 
   const currentRoot = useMemo(() => {
@@ -137,7 +137,7 @@ const SkillDetailPreview = ({
   if (!currentRoot) {
     return (
       <div className={styles.emptyStateWrap}>
-        <div className={styles.emptyStateCard}>先在左侧创建 /skills/&lt;name&gt;/SKILL.md 后再预览</div>
+        <div className={styles.emptyStateCard}>先在左侧创建 /&lt;slug&gt;/SKILL.md 后再预览</div>
       </div>
     );
   }

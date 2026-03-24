@@ -48,6 +48,12 @@ type WorkspaceShellProps = {
     clickable?: boolean;
     onClick?: () => void;
   };
+  skillsValidationLog?: {
+    status: "idle" | "validating" | "pass" | "fail";
+    issueCount?: number;
+    message?: string;
+    updatedAt?: string;
+  };
 };
 
 const toLogText = (value: unknown): string => {
@@ -130,6 +136,7 @@ const WorkspaceShell = ({
   shareLabel = "分享",
   shareAriaLabel = "分享",
   customStatusBadge,
+  skillsValidationLog,
 }: WorkspaceShellProps) => {
   const { sandpack, listen } = useSandpack();
   const { logs } = useSandpackConsole({ resetOnPreviewRestart: false });
@@ -146,6 +153,7 @@ const WorkspaceShell = ({
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogItem[]>([]);
   const lastConsoleCountRef = useRef(0);
+  const isSkillsMode = workspaceMode === "skills";
 
   const pushRuntimeLog = useCallback((item: Omit<RuntimeLogItem, "id" | "timestamp">) => {
     const now = new Date();
@@ -178,6 +186,7 @@ const WorkspaceShell = ({
   }, [filePathFilter, sandpack]);
 
   useEffect(() => {
+    if (isSkillsMode) return;
     const stopListening = listen((message) => {
       const parsed = extractBundlerText(message);
       if (!parsed.text) return;
@@ -190,9 +199,10 @@ const WorkspaceShell = ({
     return () => {
       stopListening();
     };
-  }, [listen, pushRuntimeLog]);
+  }, [isSkillsMode, listen, pushRuntimeLog]);
 
   useEffect(() => {
+    if (isSkillsMode) return;
     const start = Math.min(lastConsoleCountRef.current, logs.length);
     const nextLogs = logs.slice(start);
     if (nextLogs.length === 0) return;
@@ -211,18 +221,20 @@ const WorkspaceShell = ({
         message: text,
       });
     });
-  }, [logs, pushRuntimeLog]);
+  }, [isSkillsMode, logs, pushRuntimeLog]);
 
   useEffect(() => {
+    if (isSkillsMode) return;
     if (!runtimeErrorMessage) return;
     pushRuntimeLog({
       source: "runtime",
       level: "error",
       message: runtimeErrorMessage,
     });
-  }, [pushRuntimeLog, runtimeErrorMessage]);
+  }, [isSkillsMode, pushRuntimeLog, runtimeErrorMessage]);
 
   useEffect(() => {
+    if (isSkillsMode) return;
     if (!sandpack.error) return;
     const text = [sandpack.error.title, sandpack.error.message, sandpack.error.path]
       .filter(Boolean)
@@ -233,7 +245,7 @@ const WorkspaceShell = ({
       level: "error",
       message: text,
     });
-  }, [pushRuntimeLog, sandpack.error]);
+  }, [isSkillsMode, pushRuntimeLog, sandpack.error]);
 
   const handleOpenFile = (filePath: string) => {
     if (!filePath) return;
@@ -340,7 +352,6 @@ const WorkspaceShell = ({
       ? "compiling"
       : "ready";
 
-  const isSkillsMode = workspaceMode === "skills";
   const isLogsView = activeView === "logs";
   const activeFile = showEmptyEditorState ? "" : sandpack.activeFile || "";
   const isSkillMarkdown = /\/SKILL\.md$/i.test(activeFile);
@@ -513,10 +524,18 @@ const WorkspaceShell = ({
                 {isLogsView ? (
                   <Flex align="center" justify="space-between" w="100%" px={0.5}>
                     <Text fontSize="sm" fontWeight="700" color="#1f2937">
-                      实时编译日志
+                      {isSkillsMode ? "Skill 校验日志" : "实时编译日志"}
                     </Text>
                     <Text fontSize="12px" color="#64748b">
-                      Sandpack Console
+                      {isSkillsMode
+                        ? skillsValidationLog?.status === "validating"
+                          ? "校验中"
+                          : skillsValidationLog?.status === "fail"
+                          ? `失败 ${skillsValidationLog.issueCount || 0}`
+                          : skillsValidationLog?.status === "pass"
+                          ? "已通过"
+                          : "等待校验"
+                        : "Sandpack Console"}
                     </Text>
                   </Flex>
                 ) : (
@@ -610,7 +629,69 @@ const WorkspaceShell = ({
                       py={2}
                       gap={1.5}
                     >
-                      {runtimeLogs.length === 0 ? (
+                      {isSkillsMode ? (
+                        <Flex direction="column" gap={2}>
+                          <Flex
+                            align="center"
+                            justify="space-between"
+                            px={2}
+                            py={1.5}
+                            borderRadius="8px"
+                            border="1px solid"
+                            borderColor="rgba(148,163,184,0.25)"
+                            bg="rgba(15,23,42,0.03)"
+                          >
+                            <Text fontSize="12px" color="#475569" fontWeight="600">
+                              状态
+                            </Text>
+                            <Text
+                              fontSize="12px"
+                              fontWeight="700"
+                              color={
+                                skillsValidationLog?.status === "fail"
+                                  ? "#b91c1c"
+                                  : skillsValidationLog?.status === "pass"
+                                  ? "#15803d"
+                                  : skillsValidationLog?.status === "validating"
+                                  ? "#b45309"
+                                  : "#475569"
+                              }
+                            >
+                              {skillsValidationLog?.status === "validating"
+                                ? "校验中"
+                                : skillsValidationLog?.status === "fail"
+                                ? `校验失败（${skillsValidationLog.issueCount || 0}）`
+                                : skillsValidationLog?.status === "pass"
+                                ? "校验通过"
+                                : "未触发校验"}
+                            </Text>
+                          </Flex>
+                          <Flex
+                            align="flex-start"
+                            gap={2}
+                            px={2}
+                            py={1.5}
+                            borderRadius="8px"
+                            border="1px solid"
+                            borderColor="rgba(148,163,184,0.25)"
+                            bg="rgba(255,255,255,0.86)"
+                          >
+                            <Text
+                              fontSize="12px"
+                              color="#1f2937"
+                              whiteSpace="pre-wrap"
+                              flex={1}
+                            >
+                              {skillsValidationLog?.message || "暂无校验信息，点击右上角“校验 Skills”即可检查规范。"}
+                            </Text>
+                          </Flex>
+                          {skillsValidationLog?.updatedAt ? (
+                            <Text fontSize="11px" color="#64748b" px={1}>
+                              最近更新时间：{skillsValidationLog.updatedAt}
+                            </Text>
+                          ) : null}
+                        </Flex>
+                      ) : runtimeLogs.length === 0 ? (
                         <Text fontSize="12px" color="#64748b">
                           暂无日志，等待编译或运行输出...
                         </Text>
