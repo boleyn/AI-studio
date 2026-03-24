@@ -242,14 +242,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const shouldCreateEditableSkillWorkspace = Boolean(projectToken) && !skillId;
     const workspace = await createSkillWorkspace({
       userId,
-      projectToken: projectToken || undefined,
+      projectToken: shouldCreateEditableSkillWorkspace ? undefined : projectToken || undefined,
       skillId: skillId || undefined,
     });
     res.status(200).json({
       workspaceId: workspace.id,
-      projectToken: workspace.projectToken,
+      projectToken: workspace.projectToken || projectToken || undefined,
       skillId: workspace.skillId,
       source: workspace.source,
       createdAt: workspace.createdAt,

@@ -274,7 +274,7 @@ const SkillCreatePage = () => {
         setWorkspaceId(nextWorkspaceId);
         setFiles(nextFiles);
         latestFilesRef.current = nextFiles;
-        if (hubSlug && hubKey) {
+        if ((hubSlug && hubKey) || (!skillId && nextWorkspaceId)) {
           normalizeCreateRoute(nextWorkspaceId);
         }
 
@@ -399,12 +399,8 @@ const SkillCreatePage = () => {
       }
 
       const normalized = normalizeSkillFiles(nextFiles);
-      const queryParams = new URLSearchParams();
-      if (projectToken) queryParams.set("projectToken", projectToken);
-      if (skillId) queryParams.set("skillId", skillId);
-      const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
       const response = await fetch(
-        `/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files${query}`,
+        `/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`,
         {
           method: "PUT",
           headers: {
@@ -412,8 +408,7 @@ const SkillCreatePage = () => {
             ...withAuthHeaders(),
           },
           body: JSON.stringify({
-            projectToken,
-            skillId,
+            skillId: workspaceId,
             files: normalized,
           }),
         }
@@ -428,7 +423,7 @@ const SkillCreatePage = () => {
       latestFilesRef.current = persistedFiles;
       setFiles(persistedFiles);
     },
-    [projectToken, skillId, workspaceId]
+    [workspaceId]
   );
 
   const getSkillNameFromFiles = useCallback((currentFiles: FileMap) => {
@@ -609,7 +604,7 @@ const SkillCreatePage = () => {
       window.removeEventListener("resize", updateHeight);
       window.visualViewport?.removeEventListener("resize", updateHeight);
     };
-  }, []);
+  }, [isWorkspaceReady]);
 
   const workspaceStatus: "idle" | "loading" | "ready" | "error" = isBootstrapping
     ? "loading"
