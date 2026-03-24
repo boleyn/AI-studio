@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: https://registry.npmmirror.com
-        NODE_IMAGE: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20.14.0-alpine
+        NODE_IMAGE: docker.io/library/node:20.14.0-alpine
     ports:
       - 18367:3000
     env_file:

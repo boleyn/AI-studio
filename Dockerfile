@@ -1,11 +1,11 @@
-ARG NODE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20.14.0-alpine
+ARG NODE_IMAGE=docker.io/library/node:20.14.0-alpine
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ARG APK_MIRROR=mirrors.aliyun.com
 RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
   && printf "https://%s/alpine/v%s/main\nhttps://%s/alpine/v%s/community\n" \
     "${APK_MIRROR}" "${ALPINE_VERSION}" "${APK_MIRROR}" "${ALPINE_VERSION}" > /etc/apk/repositories \
-  && apk add --no-cache libc6-compat
+  && apk add --no-cache libc6-compat python3 py3-pip bash
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
