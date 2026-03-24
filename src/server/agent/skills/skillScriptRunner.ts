@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { RuntimeSkill } from "./types";
 import { runExecFile } from "../tools/commandRunner";
+import { buildSessionIsolatedEnv } from "../tools/sessionEnv";
 
 const isPathInside = (baseDir: string, targetPath: string) => {
   const relative = path.relative(baseDir, targetPath);
@@ -44,6 +45,7 @@ export const runSkillScript = async (input: {
   runtime: "auto" | "python" | "node" | "sh" | "bash";
   cwd?: string;
   timeoutMs: number;
+  sessionId?: string;
 }) => {
   const scriptPath = resolveSkillScriptPath(input.skill, input.script);
   const scriptStat = await fs.stat(scriptPath).catch(() => null);
@@ -52,6 +54,9 @@ export const runSkillScript = async (input: {
   }
 
   const execCwd = resolveSkillCwd(input.skill, input.cwd);
+  const isolatedEnv = await buildSessionIsolatedEnv({
+    sessionId: input.sessionId,
+  });
   const detectedRuntime = detectRuntime(scriptPath, input.runtime);
   const scriptInvocationArgs = [scriptPath, ...input.args];
   const candidates: Array<{ command: string; args: string[] }> = [];
@@ -77,6 +82,7 @@ export const runSkillScript = async (input: {
       args: candidate.args,
       cwd: execCwd,
       timeoutMs: input.timeoutMs,
+      env: isolatedEnv,
     });
     if (!result.enoent) {
       return {
@@ -85,6 +91,7 @@ export const runSkillScript = async (input: {
         script: scriptPath,
         runtime: detectedRuntime,
         cwd: execCwd,
+        sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
         command: candidate.command,
         commandArgs: candidate.args,
       };

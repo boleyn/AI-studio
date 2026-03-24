@@ -292,9 +292,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
   );
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
+  const toolSessionId = conversationId || `skill-${workspace.id}-${userId}`;
   const skillRunScriptTool =
-    allAvailableSkills.length > 0 ? await createSkillRunScriptTool({ skills: allAvailableSkills }) : null;
-  const bashTool = createBashTool();
+    allAvailableSkills.length > 0
+      ? await createSkillRunScriptTool({ skills: allAvailableSkills, sessionId: toolSessionId })
+      : null;
+  const bashTool = createBashTool({ sessionId: toolSessionId });
   const allTools: AgentToolDefinition[] = [
     ...workspaceTools,
     ...(skillLoadTool ? [skillLoadTool] : []),

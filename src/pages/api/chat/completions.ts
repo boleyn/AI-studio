@@ -677,9 +677,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedProjectSkill =
     selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
+  const toolSessionId = chatId || conversationId || `project-${token}`;
   const skillRunScriptTool =
-    allAvailableSkills.length > 0 ? await createSkillRunScriptTool({ skills: allAvailableSkills }) : null;
-  const bashTool = createBashTool();
+    allAvailableSkills.length > 0
+      ? await createSkillRunScriptTool({ skills: allAvailableSkills, sessionId: toolSessionId })
+      : null;
+  const bashTool = createBashTool({ sessionId: toolSessionId });
   const allTools = [
     ...localTools,
     ...mcpTools,

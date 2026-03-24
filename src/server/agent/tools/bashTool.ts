@@ -7,6 +7,7 @@ import {
   clampToolTimeout,
   runShellCommand,
 } from "./commandRunner";
+import { buildSessionIsolatedEnv } from "./sessionEnv";
 
 const resolveWorkspaceBoundCwd = (cwd?: string) => {
   const workspaceRoot = path.resolve(process.cwd());
@@ -226,7 +227,7 @@ const validateBashCommand = async (command: string, cwd: string): Promise<string
   return null;
 };
 
-export const createBashTool = (): AgentToolDefinition => {
+export const createBashTool = (options?: { sessionId?: string }): AgentToolDefinition => {
   return {
     name: "bash",
     description:
@@ -260,10 +261,14 @@ export const createBashTool = (): AgentToolDefinition => {
         );
       }
 
-      const result = await runShellCommand({ command, cwd, timeoutMs });
+      const isolatedEnv = await buildSessionIsolatedEnv({
+        sessionId: options?.sessionId,
+      });
+      const result = await runShellCommand({ command, cwd, timeoutMs, env: isolatedEnv });
       return {
         ok: result.ok,
         sandbox: "host",
+        sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
         cwd,
         command,
         exitCode: result.exitCode,

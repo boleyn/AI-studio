@@ -26,6 +26,7 @@ export const runShellCommand = async (input: {
   command: string;
   cwd: string;
   timeoutMs: number;
+  env?: NodeJS.ProcessEnv;
 }) => {
   try {
     const result = await execAsync(input.command, {
@@ -33,6 +34,7 @@ export const runShellCommand = async (input: {
       timeout: input.timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
       encoding: "utf8",
+      env: input.env,
     });
     return {
       ok: true,
@@ -68,6 +70,7 @@ export const runExecFile = async (input: {
   args: string[];
   cwd: string;
   timeoutMs: number;
+  env?: NodeJS.ProcessEnv;
 }) => {
   try {
     const result = await execFileAsync(input.command, input.args, {
@@ -75,6 +78,7 @@ export const runExecFile = async (input: {
       timeout: input.timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
       encoding: "utf8",
+      env: input.env,
     });
     return {
       ok: true,

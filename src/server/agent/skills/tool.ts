@@ -93,6 +93,7 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
 export const createSkillRunScriptTool = async (
   options?: {
     skills?: RuntimeSkill[];
+    sessionId?: string;
   }
 ): Promise<AgentToolDefinition | null> => {
   const skills = options?.skills && options.skills.length > 0 ? options.skills : await getRuntimeSkills();
@@ -127,6 +128,7 @@ export const createSkillRunScriptTool = async (
         runtime: runtime as "auto" | "python" | "node" | "sh" | "bash",
         cwd,
         timeoutMs,
+        sessionId: options?.sessionId,
       });
 
       return {
@@ -135,6 +137,7 @@ export const createSkillRunScriptTool = async (
         script: result.script,
         runtime: result.runtime,
         cwd: result.cwd,
+        sessionId: result.sessionId,
         command: result.command,
         commandArgs: result.commandArgs,
         exitCode: result.exitCode,
