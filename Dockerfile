@@ -1,4 +1,5 @@
-FROM node:20.14.0-alpine AS base
+ARG NODE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20.14.0-alpine
+FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ARG APK_MIRROR=mirrors.aliyun.com
 RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
