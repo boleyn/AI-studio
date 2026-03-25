@@ -8,7 +8,7 @@ import {
   useLoadingOverlayState,
 } from "@codesandbox/sandpack-react";
 import { Box, Flex, IconButton, Text } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
 import FileExplorerPanel from "./workspace/FileExplorerPanel";
 import FilePreviewPanel, { isPreviewableFile } from "./workspace/FilePreviewPanel";
@@ -41,6 +41,7 @@ type WorkspaceShellProps = {
   onManualShare?: () => void;
   shareLabel?: string;
   shareAriaLabel?: string;
+  shareIcon?: ReactElement;
   customStatusBadge?: {
     text: string;
     colorScheme: string;
@@ -135,6 +136,7 @@ const WorkspaceShell = ({
   onManualShare,
   shareLabel = "分享",
   shareAriaLabel = "分享",
+  shareIcon,
   customStatusBadge,
   skillsValidationLog,
 }: WorkspaceShellProps) => {
@@ -415,7 +417,7 @@ const WorkspaceShell = ({
           aria-label={shareAriaLabel}
           size="sm"
           variant="ghost"
-          icon={<ShareIcon />}
+          icon={shareIcon || <ShareIcon />}
           onClick={onManualShare}
           isDisabled={!onManualShare}
         />

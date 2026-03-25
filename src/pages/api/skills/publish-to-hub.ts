@@ -27,11 +27,62 @@ type ParsedFrontmatter = {
   changelog?: string;
 };
 
+type HubSkillDetailPayload = {
+  skill?: {
+    slug?: string;
+    ownerUserId?: string | null;
+  };
+  owner?: {
+    handle?: string | null;
+    displayName?: string | null;
+    name?: string | null;
+  } | null;
+  latestVersion?: {
+    version?: string;
+    files?: Array<{ path?: string; size?: number }>;
+  };
+  permissions?: {
+    canUpdate?: boolean;
+  };
+  canUpdate?: boolean;
+  statusMessage?: string;
+  error?: string;
+};
+
+type PublishDiffStatus = "added" | "removed" | "changed" | "same";
+type PublishDiffItem = {
+  path: string;
+  status: PublishDiffStatus;
+  localCode: string;
+  incomingCode: string;
+};
+
+type PublishDiffPayload = {
+  files: PublishDiffItem[];
+  summary: {
+    added: number;
+    removed: number;
+    changed: number;
+    same: number;
+  };
+};
+
+type HubSkillSnapshot = {
+  exists: boolean;
+  latestVersion: string;
+  ownerName: string;
+  ownerHandle: string;
+  ownerUserId: string;
+  canUpdateFromHub: boolean | null;
+  files: Record<string, string>;
+};
+
 const INTERNAL_SKILL_FILE_PATTERN = /^\/skills\/([^/]+)\/SKILL\.md$/i;
 const PUBLIC_SKILL_FILE_PATTERN = /^\/([^/]+)\/SKILL\.md$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
 const FEISHU_OPEN_ID_HEADER = "X-ClawHub-Feishu-Open-Id";
 const PROXY_SECRET_HEADER = "X-ClawHub-Proxy-Secret";
+const MAX_INLINE_FILE_BYTES = 512 * 1024;
 
 const toPatchVersion = (latest?: string) => {
   const normalized = (latest || "").trim();
@@ -102,23 +153,87 @@ const normalizeTagInput = (tags: PublishRequest["tags"], fallback: string[]) => 
   return fallback;
 };
 
-const getHubLatestVersion = async (hubBase: string, slug: string, headers?: Record<string, string>) => {
-  const apiUrl = `${hubBase.replace(/\/+$/, "")}/api/v1/skills/${encodeURIComponent(slug)}`;
-  const response = await fetch(apiUrl, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...(headers || {}),
-    },
-  });
-  if (response.status === 404) return "";
-  if (!response.ok) {
-    throw new Error(`读取 ClawHub 版本信息失败（${response.status}）`);
-  }
-  const payload = (await response.json().catch(() => ({}))) as {
-    latestVersion?: { version?: string };
+const normalizeCodeForCompare = (code: string) => code.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+
+const buildPublishDiff = (
+  localFiles: Record<string, string>,
+  incomingFiles: Record<string, string>
+): PublishDiffPayload => {
+  const paths = Array.from(new Set([...Object.keys(localFiles), ...Object.keys(incomingFiles)])).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  const rank: Record<PublishDiffStatus, number> = {
+    changed: 0,
+    added: 1,
+    removed: 2,
+    same: 3,
   };
-  return payload.latestVersion?.version?.trim() || "";
+
+  const files = paths
+    .map((path) => {
+      const localCode = localFiles[path] || "";
+      const incomingCode = incomingFiles[path] || "";
+      const normalizedLocal = normalizeCodeForCompare(localCode);
+      const normalizedIncoming = normalizeCodeForCompare(incomingCode);
+      let status: PublishDiffStatus = "same";
+      if (path in localFiles && !(path in incomingFiles)) status = "removed";
+      else if (!(path in localFiles) && path in incomingFiles) status = "added";
+      else if (normalizedLocal !== normalizedIncoming) status = "changed";
+      return {
+        path,
+        status,
+        localCode,
+        incomingCode,
+      };
+    })
+    .sort((a, b) => {
+      const diff = rank[a.status] - rank[b.status];
+      if (diff !== 0) return diff;
+      return a.path.localeCompare(b.path);
+    });
+
+  return {
+    files,
+    summary: {
+      added: files.filter((item) => item.status === "added").length,
+      removed: files.filter((item) => item.status === "removed").length,
+      changed: files.filter((item) => item.status === "changed").length,
+      same: files.filter((item) => item.status === "same").length,
+    },
+  };
+};
+
+const toRelativeSkillFiles = (
+  files: WorkspaceFileMap,
+  skillDirName: string
+): Array<{ relativePath: string; content: string }> => {
+  return Object.entries(files)
+    .map(([path, file]) => {
+      if (!skillDirName) return null;
+      const internalPrefix = `/skills/${skillDirName}/`;
+      const publicPrefix = `/${skillDirName}/`;
+      if (path.startsWith(internalPrefix)) {
+        return {
+          relativePath: path.slice(internalPrefix.length),
+          content: typeof file?.code === "string" ? file.code : "",
+        };
+      }
+      if (!path.startsWith(publicPrefix)) return null;
+      return {
+        relativePath: path.slice(publicPrefix.length),
+        content: typeof file?.code === "string" ? file.code : "",
+      };
+    })
+    .filter((item): item is { relativePath: string; content: string } => Boolean(item?.relativePath));
+};
+
+const toSkillFileMap = (files: Array<{ relativePath: string; content: string }>) => {
+  const mapped: Record<string, string> = {};
+  files.forEach((item) => {
+    mapped[item.relativePath] = item.content;
+  });
+  return mapped;
 };
 
 const buildClawHubPublishHeaders = (input: {
@@ -136,6 +251,143 @@ const buildClawHubPublishHeaders = (input: {
 const buildClawHubReadHeaders = (proxySecret: string) => ({
   [PROXY_SECRET_HEADER]: proxySecret,
 });
+
+const resolveResponseMessage = (payload: unknown, fallback: string) => {
+  if (!payload) return fallback;
+  if (typeof payload === "string") return payload.trim() || fallback;
+  if (typeof payload === "boolean") return fallback;
+  if (typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const candidates = [record.error, record.statusMessage, record.message, record.detail]
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (candidates[0]) return candidates[0];
+  }
+  return fallback;
+};
+
+const fetchHubSkillSnapshot = async (input: {
+  hubBase: string;
+  slug: string;
+  readHeaders: Record<string, string>;
+}): Promise<HubSkillSnapshot> => {
+  const apiUrl = `${input.hubBase.replace(/\/+$/, "")}/api/v1/skills/${encodeURIComponent(input.slug)}`;
+  const response = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...input.readHeaders,
+    },
+  });
+
+  if (response.status === 404) {
+    return {
+      exists: false,
+      latestVersion: "",
+      ownerName: "",
+      ownerHandle: "",
+      ownerUserId: "",
+      canUpdateFromHub: null,
+      files: {},
+    };
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as HubSkillDetailPayload;
+  if (!response.ok) {
+    throw new Error(resolveResponseMessage(payload, `读取 ClawHub 技能信息失败（${response.status}）`));
+  }
+
+  const latestVersion = payload.latestVersion?.version?.trim() || "";
+  const ownerUserId = typeof payload.skill?.ownerUserId === "string" ? payload.skill.ownerUserId.trim() : "";
+  const ownerHandle = payload.owner?.handle?.trim() || "";
+  const ownerName = payload.owner?.displayName?.trim() || payload.owner?.name?.trim() || ownerHandle || "原作者";
+
+  const canUpdateRaw =
+    typeof payload.canUpdate === "boolean"
+      ? payload.canUpdate
+      : typeof payload.permissions?.canUpdate === "boolean"
+      ? payload.permissions.canUpdate
+      : null;
+
+  const files: Record<string, string> = {};
+  const fileEntries = Array.isArray(payload.latestVersion?.files)
+    ? payload.latestVersion.files
+        .map((item) => ({
+          path: typeof item?.path === "string" ? item.path.trim() : "",
+          size: typeof item?.size === "number" ? item.size : 0,
+        }))
+        .filter((item) => Boolean(item.path))
+    : [];
+
+  await Promise.all(
+    fileEntries.map(async (item) => {
+      if (item.size > MAX_INLINE_FILE_BYTES) {
+        files[item.path] = "";
+        return;
+      }
+      const downloadUrl =
+        `${input.hubBase.replace(/\/+$/, "")}/api/v1/download?namespace=skills` +
+        `&slug=${encodeURIComponent(input.slug)}` +
+        `&version=${encodeURIComponent(latestVersion)}` +
+        `&path=${encodeURIComponent(item.path)}`;
+      try {
+        const fileResp = await fetch(downloadUrl, {
+          method: "GET",
+          headers: input.readHeaders,
+        });
+        if (!fileResp.ok) {
+          files[item.path] = "";
+          return;
+        }
+        const buf = await fileResp.arrayBuffer();
+        files[item.path] = new TextDecoder("utf-8").decode(buf);
+      } catch {
+        files[item.path] = "";
+      }
+    })
+  );
+
+  return {
+    exists: true,
+    latestVersion,
+    ownerName,
+    ownerHandle,
+    ownerUserId,
+    canUpdateFromHub: canUpdateRaw,
+    files,
+  };
+};
+
+const resolveCanUpdate = (_snapshot: HubSkillSnapshot, _feishuOpenId: string) => true;
+
+const waitForPublishedVersion = async (input: {
+  hubBase: string;
+  slug: string;
+  readHeaders: Record<string, string>;
+  expectedVersion: string;
+  attempts?: number;
+  intervalMs?: number;
+}) => {
+  const attempts = Math.max(1, input.attempts || 4);
+  const intervalMs = Math.max(50, input.intervalMs || 450);
+
+  for (let index = 0; index < attempts; index += 1) {
+    const snapshot = await fetchHubSkillSnapshot({
+      hubBase: input.hubBase,
+      slug: input.slug,
+      readHeaders: input.readHeaders,
+    });
+    if (snapshot.latestVersion === input.expectedVersion) {
+      return true;
+    }
+    if (index < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  return false;
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -177,6 +429,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(400).json({ error: "当前账号缺少飞书 open_id，请重新使用飞书登录后再发布" });
     return;
   }
+
   const hubAuthHeaders = buildClawHubPublishHeaders({
     proxySecret,
     feishuOpenId,
@@ -194,21 +447,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: "未找到 /<slug>/SKILL.md" });
       return;
     }
+
     const skillPath = skillEntry[0];
     const skillContent = skillEntry[1]?.code || "";
     const internalMatched = skillPath.match(INTERNAL_SKILL_FILE_PATTERN);
     const publicMatched = skillPath.match(PUBLIC_SKILL_FILE_PATTERN);
     const skillDirName = internalMatched?.[1] || publicMatched?.[1] || "";
     const frontmatter = parseFrontmatter(skillContent);
-    const slug = normalizeSlug(frontmatter.name || skillDirName || "imported-skill");
-    const displayName = frontmatter.name?.trim() || slug;
+
+    const inferredSlug = normalizeSlug(frontmatter.name || skillDirName || "imported-skill");
+    const chosenSlug = normalizeSlug(typeof body.slug === "string" ? body.slug : inferredSlug);
+
+    const snapshot = await fetchHubSkillSnapshot({
+      hubBase,
+      slug: chosenSlug,
+      readHeaders: hubReadHeaders,
+    });
+
+    const displayName = frontmatter.name?.trim() || inferredSlug;
     const summary = frontmatter.description?.trim() || "Published from AI Studio";
     const tags = normalizeTagList(frontmatter.tags);
     const changelog = frontmatter.changelog || "Published from AI Studio";
-    const latestVersion = await getHubLatestVersion(hubBase, slug, hubReadHeaders);
-    const nextVersion = toPatchVersion(latestVersion);
+    const nextVersion = toPatchVersion(snapshot.latestVersion);
 
-    const chosenSlug = normalizeSlug(typeof body.slug === "string" ? body.slug : slug);
     const chosenDisplayName = typeof body.displayName === "string" && body.displayName.trim() ? body.displayName.trim() : displayName;
     const chosenSummary = typeof body.summary === "string" && body.summary.trim() ? body.summary.trim() : summary;
     const chosenTags = normalizeTagInput(body.tags, tags);
@@ -216,34 +477,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       typeof body.changelog === "string" && body.changelog.trim() ? body.changelog.trim() : changelog;
     const chosenVersionRaw =
       typeof body.version === "string" && body.version.trim() ? body.version.trim() : nextVersion;
+
     if (!SEMVER_PATTERN.test(chosenVersionRaw)) {
       res.status(400).json({ error: "version 必须是合法 semver" });
       return;
     }
 
-    const skillFiles = Object.entries(files)
-      .map(([path, file]) => {
-        if (!skillDirName) return null;
-        const internalPrefix = `/skills/${skillDirName}/`;
-        const publicPrefix = `/${skillDirName}/`;
-        if (path.startsWith(internalPrefix)) {
-          return {
-            relativePath: path.slice(internalPrefix.length),
-            content: typeof file?.code === "string" ? file.code : "",
-          };
-        }
-        if (!path.startsWith(publicPrefix)) return null;
-        return {
-          relativePath: path.slice(publicPrefix.length),
-          content: typeof file?.code === "string" ? file.code : "",
-        };
-      })
-      .filter((item): item is { relativePath: string; content: string } => Boolean(item?.relativePath));
+    if (snapshot.exists && snapshot.latestVersion && chosenVersionRaw === snapshot.latestVersion) {
+      res.status(400).json({ error: "版本号与线上一致，请先递增版本再发布" });
+      return;
+    }
 
+    const canUpdate = resolveCanUpdate(snapshot, feishuOpenId);
+    const skillFiles = toRelativeSkillFiles(files, skillDirName);
     if (skillFiles.length === 0) {
       res.status(400).json({ error: "没有可发布的 skill 文件" });
       return;
     }
+
+    const publishDiff = snapshot.exists ? buildPublishDiff(toSkillFileMap(skillFiles), snapshot.files) : buildPublishDiff(toSkillFileMap(skillFiles), {});
 
     if (isPreview) {
       res.status(200).json({
@@ -254,10 +506,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           summary: chosenSummary,
           tags: chosenTags,
           changelog: chosenChangelog,
-          latestVersion,
+          latestVersion: snapshot.latestVersion,
           nextVersion,
           version: chosenVersionRaw,
           fileCount: skillFiles.length,
+          hubStatus: {
+            exists: snapshot.exists,
+            canUpdate,
+            ownerName: snapshot.ownerName,
+            ownerHandle: snapshot.ownerHandle,
+          },
+          publishDiff,
         },
       });
       return;
@@ -286,18 +545,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         headers: hubAuthHeaders,
         body: form,
       });
-      const uploadPayload = (await uploadResp.json().catch(() => ({}))) as {
-        storageId?: string;
-        error?: string;
-        statusMessage?: string;
-      };
-      if (!uploadResp.ok || !uploadPayload.storageId) {
-        throw new Error(uploadPayload.error || uploadPayload.statusMessage || "上传文件失败");
+      const uploadPayload = await uploadResp.json().catch(() => null);
+      if (!uploadResp.ok || !uploadPayload || typeof uploadPayload !== "object" || !("storageId" in uploadPayload)) {
+        throw new Error(resolveResponseMessage(uploadPayload, "上传文件失败"));
+      }
+      const storageId = typeof (uploadPayload as { storageId?: unknown }).storageId === "string"
+        ? (uploadPayload as { storageId: string }).storageId
+        : "";
+      if (!storageId) {
+        throw new Error("上传文件失败");
       }
       uploaded.push({
         path: file.relativePath,
         size: contentBuffer.byteLength,
-        storageId: uploadPayload.storageId,
+        storageId,
         sha256: createHash("sha256").update(contentBuffer).digest("hex"),
         contentType: "text/plain",
       });
@@ -319,21 +580,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         files: uploaded,
       }),
     });
-    const publishPayload = (await publishResp.json().catch(() => ({}))) as {
-      error?: string;
-      statusMessage?: string;
-      owner?: { handle?: string | null };
-    };
+    const publishPayload = await publishResp.json().catch(() => null);
     if (!publishResp.ok) {
-      const message = publishPayload.error || publishPayload.statusMessage || "发布失败";
+      const message = resolveResponseMessage(publishPayload, "发布失败");
       if (publishResp.status === 409) {
-        res.status(409).json({ error: message });
+        const ownerName = snapshot.ownerName || snapshot.ownerHandle || "原作者";
+        res.status(409).json({
+          error: message || `该 slug 发布冲突（归属：${ownerName}），请稍后重试`,
+          canUpdate,
+          ownerName,
+          ownerHandle: snapshot.ownerHandle,
+        });
         return;
       }
       throw new Error(message);
     }
 
-    const ownerHandle = publishPayload.owner?.handle?.trim() || "";
+    const synced = await waitForPublishedVersion({
+      hubBase,
+      slug: chosenSlug,
+      readHeaders: hubReadHeaders,
+      expectedVersion: chosenVersionRaw,
+      attempts: 5,
+      intervalMs: 500,
+    });
+    if (!synced) {
+      throw new Error("ClawHub 尚未同步到目标版本，请稍后刷新后重试");
+    }
+
+    const ownerHandle =
+      publishPayload && typeof publishPayload === "object" && "owner" in publishPayload
+        ? ((publishPayload as { owner?: { handle?: string | null } }).owner?.handle?.trim() || "")
+        : snapshot.ownerHandle;
     const skillUrl = ownerHandle ? `${hubBase.replace(/\/+$/, "")}/${ownerHandle}/${chosenSlug}` : "";
 
     res.status(200).json({

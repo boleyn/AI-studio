@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeListener";
 import WorkspaceShell from "@/components/WorkspaceShell";
 import TopBar from "@/components/TopBar";
+import { PublishIcon } from "@/components/common/Icon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
@@ -52,6 +53,13 @@ type PublishDraft = {
 type PublishConflict = {
   message: string;
   ownerName: string;
+  ownerHandle?: string;
+};
+type PublishHubStatus = {
+  exists: boolean;
+  canUpdate: boolean;
+  ownerName: string;
+  ownerHandle: string;
 };
 type ImportVersionCheck = {
   incomingVersion: string;
@@ -188,6 +196,9 @@ const SkillCreatePage = () => {
     null
   );
   const [publishConflict, setPublishConflict] = useState<PublishConflict | null>(null);
+  const [publishHubStatus, setPublishHubStatus] = useState<PublishHubStatus | null>(null);
+  const [publishDiff, setPublishDiff] = useState<ImportDiffPayload | null>(null);
+  const [publishDiffSelectedPath, setPublishDiffSelectedPath] = useState("");
   const [isImportConflictOpen, setIsImportConflictOpen] = useState(false);
   const [isResolvingImportConflict, setIsResolvingImportConflict] = useState(false);
   const [importConflictDraft, setImportConflictDraft] = useState<ImportConflictDraft | null>(null);
@@ -687,6 +698,9 @@ const SkillCreatePage = () => {
     setIsPublishDialogOpen(true);
     setPublishResult(null);
     setPublishConflict(null);
+    setPublishHubStatus(null);
+    setPublishDiff(null);
+    setPublishDiffSelectedPath("");
     setPublishPreviewError("");
     setIsLoadingPublishPreview(true);
     try {
@@ -714,6 +728,13 @@ const SkillCreatePage = () => {
           version?: string;
           latestVersion?: string;
           fileCount?: number;
+          hubStatus?: {
+            exists?: boolean;
+            canUpdate?: boolean;
+            ownerName?: string;
+            ownerHandle?: string;
+          };
+          publishDiff?: Partial<ImportDiffPayload>;
         };
       };
       if (!response.ok) {
@@ -729,6 +750,44 @@ const SkillCreatePage = () => {
         latestVersion: payload.preview?.latestVersion || "",
         fileCount: Number(payload.preview?.fileCount || 0),
       });
+      const nextHubStatus: PublishHubStatus = {
+        exists: Boolean(payload.preview?.hubStatus?.exists),
+        canUpdate: Boolean(payload.preview?.hubStatus?.canUpdate),
+        ownerName: payload.preview?.hubStatus?.ownerName || "原作者",
+        ownerHandle: payload.preview?.hubStatus?.ownerHandle || "",
+      };
+      setPublishHubStatus(nextHubStatus);
+
+      const normalizedDiffFiles = Array.isArray(payload.preview?.publishDiff?.files)
+        ? payload.preview?.publishDiff?.files
+            .filter(
+              (item): item is ImportDiffItem =>
+                typeof item?.path === "string" &&
+                (item?.status === "added" ||
+                  item?.status === "removed" ||
+                  item?.status === "changed" ||
+                  item?.status === "same")
+            )
+            .map((item) => ({
+              path: item.path,
+              status: item.status,
+              localCode: typeof item.localCode === "string" ? item.localCode : "",
+              incomingCode: typeof item.incomingCode === "string" ? item.incomingCode : "",
+            }))
+        : [];
+      const normalizedDiff: ImportDiffPayload = {
+        files: normalizedDiffFiles,
+        summary: {
+          added: Number(payload.preview?.publishDiff?.summary?.added || 0),
+          removed: Number(payload.preview?.publishDiff?.summary?.removed || 0),
+          changed: Number(payload.preview?.publishDiff?.summary?.changed || 0),
+          same: Number(payload.preview?.publishDiff?.summary?.same || 0),
+        },
+      };
+      setPublishDiff(normalizedDiff);
+      const nextSelectedPath =
+        normalizedDiff.files.find((item) => item.status !== "same")?.path || normalizedDiff.files[0]?.path || "";
+      setPublishDiffSelectedPath(nextSelectedPath);
     } catch (error) {
       setPublishPreviewError(error instanceof Error ? error.message : "加载发布信息失败");
     } finally {
@@ -765,13 +824,18 @@ const SkillCreatePage = () => {
         slug?: string;
         version?: string;
         skillUrl?: string;
+        ownerName?: string;
+        ownerHandle?: string;
+        canUpdate?: boolean;
       };
       if (!response.ok) {
         if (response.status === 409) {
           const message = payload.error || "该 skill slug 已被其他账号占用";
+          const ownerLabel = payload.ownerName || parseConflictOwnerName(message);
           setPublishConflict({
             message,
-            ownerName: parseConflictOwnerName(message),
+            ownerName: ownerLabel,
+            ownerHandle: payload.ownerHandle || "",
           });
           setPublishPreviewError(message);
           return;
@@ -985,6 +1049,7 @@ const SkillCreatePage = () => {
                 onManualDownload={() => {
                   void downloadSkillZip();
                 }}
+                shareIcon={<PublishIcon />}
                 shareLabel={isPublishingToHub ? "发布中..." : "一键发布"}
                 shareAriaLabel="一键发布到 ClawHub"
                 onPersistFiles={persistSkillFiles}
@@ -1238,6 +1303,9 @@ const SkillCreatePage = () => {
           if (isPublishingToHub) return;
           setIsPublishDialogOpen(false);
           setPublishResult(null);
+          setPublishHubStatus(null);
+          setPublishDiff(null);
+          setPublishDiffSelectedPath("");
           setPublishPreviewError("");
         }}
         size="4xl"
@@ -1280,6 +1348,135 @@ const SkillCreatePage = () => {
               </Box>
             ) : (
               <Flex direction="column" gap={4}>
+                {publishHubStatus?.exists ? (
+                  <Box
+                    borderRadius="14px"
+                    border="1px solid"
+                    borderColor="blue.200"
+                    bg="blue.50"
+                    px={4}
+                    py={3}
+                  >
+                    <Text fontSize="sm" fontWeight="700" color="blue.700">
+                      检测到同名 skill，将更新线上版本
+                    </Text>
+                    <Text mt={1} fontSize="xs" color="blue.700">
+                      线上归属：{publishHubStatus.ownerName || publishHubStatus.ownerHandle || "原作者"}
+                    </Text>
+                    <Text mt={1} fontSize="xs" color="blue.700">
+                      ClawHub 会记录本次更新人和更新日志。
+                    </Text>
+                  </Box>
+                ) : null}
+
+                {publishHubStatus?.exists && publishDiff ? (
+                  <Box
+                    border="1px solid"
+                    borderColor="rgba(148,163,184,0.35)"
+                    borderRadius="12px"
+                    overflow="hidden"
+                  >
+                    <Flex align="center" justify="space-between" px={3} py={2.5} bg="rgba(15,23,42,0.03)">
+                      <Text fontSize="12px" color="myGray.700" fontWeight="700">
+                        同名 Skill 变更对比（线上 vs 当前）
+                      </Text>
+                      <Flex align="center" gap={2} wrap="wrap">
+                        <Text fontSize="11px" color="blue.600">新增 {publishDiff.summary.added}</Text>
+                        <Text fontSize="11px" color="orange.600">删除 {publishDiff.summary.removed}</Text>
+                        <Text fontSize="11px" color="purple.600">修改 {publishDiff.summary.changed}</Text>
+                        <Text fontSize="11px" color="green.600">相同 {publishDiff.summary.same}</Text>
+                      </Flex>
+                    </Flex>
+                    <Flex borderTop="1px solid" borderColor="rgba(148,163,184,0.3)" h="min(48vh, 520px)">
+                      <Box w="34%" borderRight="1px solid" borderColor="rgba(148,163,184,0.3)" overflowY="auto" bg="rgba(15,23,42,0.02)">
+                        {(publishDiff.files || []).map((file) => (
+                          <Button
+                            key={`publish-${file.status}-${file.path}`}
+                            variant="ghost"
+                            justifyContent="flex-start"
+                            w="100%"
+                            h="auto"
+                            py={2}
+                            px={3}
+                            borderRadius={0}
+                            bg={publishDiffSelectedPath === file.path ? "rgba(59,130,246,0.1)" : "transparent"}
+                            onClick={() => setPublishDiffSelectedPath(file.path)}
+                          >
+                            <Flex align="center" gap={2} minW={0}>
+                              <Text
+                                fontSize="11px"
+                                color={
+                                  file.status === "added"
+                                    ? "blue.600"
+                                    : file.status === "removed"
+                                    ? "orange.600"
+                                    : file.status === "changed"
+                                    ? "purple.600"
+                                    : "green.600"
+                                }
+                                minW="38px"
+                              >
+                                {diffStatusLabelMap[file.status]}
+                              </Text>
+                              <Text fontSize="12px" color="myGray.700" noOfLines={1}>
+                                {file.path}
+                              </Text>
+                            </Flex>
+                          </Button>
+                        ))}
+                      </Box>
+                      <Box w="66%" overflow="hidden" display="flex" flexDirection="column">
+                        {(() => {
+                          const selected = (publishDiff.files || []).find((item) => item.path === publishDiffSelectedPath);
+                          if (!selected) {
+                            return (
+                              <Flex flex={1} align="center" justify="center">
+                                <Text fontSize="12px" color="myGray.500">
+                                  请选择文件查看改动
+                                </Text>
+                              </Flex>
+                            );
+                          }
+                          return (
+                            <Flex flex={1} direction="column" minH={0}>
+                              <Text
+                                px={2.5}
+                                py={1.5}
+                                fontSize="11px"
+                                color="myGray.500"
+                                borderBottom="1px solid"
+                                borderColor="rgba(148,163,184,0.2)"
+                              >
+                                线上（左） / 当前待发布（右）差异对比
+                              </Text>
+                              <Box flex={1} minH={0} bg="white">
+                                <MonacoDiffEditor
+                                  original={selected.incomingCode || ""}
+                                  modified={selected.localCode || ""}
+                                  language={getDiffLanguage(selected.path)}
+                                  theme="vs"
+                                  options={{
+                                    readOnly: true,
+                                    automaticLayout: true,
+                                    renderSideBySide: true,
+                                    minimap: { enabled: false },
+                                    scrollBeyondLastLine: false,
+                                    wordWrap: "on",
+                                    ignoreTrimWhitespace: false,
+                                    lineNumbers: "on",
+                                  }}
+                                  width="100%"
+                                  height="100%"
+                                />
+                              </Box>
+                            </Flex>
+                          );
+                        })()}
+                      </Box>
+                    </Flex>
+                  </Box>
+                ) : null}
+
                 <Flex
                   borderRadius="14px"
                   border="1px solid"
@@ -1363,10 +1560,10 @@ const SkillCreatePage = () => {
                 {publishConflict ? (
                   <Flex direction="column" mt={2} gap={2}>
                     <Text fontSize="xs" color="red.800">
-                      该 slug 归属 {publishConflict.ownerName}，当前不允许覆盖发布。请联系所属人协作，或更换 slug 后再发布。
+                      发布冲突：{publishConflict.message}
                     </Text>
                     <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
-                      下载 skill ZIP（发给所属人）
+                      下载 skill ZIP
                     </Button>
                   </Flex>
                 ) : null}
@@ -1386,6 +1583,9 @@ const SkillCreatePage = () => {
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
                     setPublishConflict(null);
+                    setPublishHubStatus(null);
+                    setPublishDiff(null);
+                    setPublishDiffSelectedPath("");
                     setPublishPreviewError("");
                   }}
                 >
@@ -1397,6 +1597,9 @@ const SkillCreatePage = () => {
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
                     setPublishConflict(null);
+                    setPublishHubStatus(null);
+                    setPublishDiff(null);
+                    setPublishDiffSelectedPath("");
                     setPublishPreviewError("");
                   }}
                 >
@@ -1413,6 +1616,9 @@ const SkillCreatePage = () => {
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
                     setPublishConflict(null);
+                    setPublishHubStatus(null);
+                    setPublishDiff(null);
+                    setPublishDiffSelectedPath("");
                     setPublishPreviewError("");
                   }}
                 >
