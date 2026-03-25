@@ -126,6 +126,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const displayName: string = feishuUser.name || feishuUser.en_name || "";
   const email: string = feishuUser.email || feishuUser.enterprise_email || "";
+  const feishuOpenId: string = typeof feishuUser.open_id === "string" ? feishuUser.open_id.trim() : "";
+  const feishuUnionId: string = typeof feishuUser.union_id === "string" ? feishuUser.union_id.trim() : "";
   const phoneRaw: string = feishuUser.mobile || "";
   const avatarFromFeishu: string =
     feishuUser.avatar_url || feishuUser.avatar_big_url || feishuUser.avatar_thumb || "";
@@ -165,6 +167,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuOpenId: feishuOpenId || undefined,
+      feishuUnionId: feishuUnionId || undefined,
     });
     user = {
       _id: userId,
@@ -174,6 +178,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuOpenId: feishuOpenId || undefined,
+      feishuUnionId: feishuUnionId || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -181,17 +187,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shouldPatchDisplayName = !user.displayName && Boolean(nextDisplayName);
     const shouldPatchContact = !user.contact && Boolean(nextContact);
     const shouldPatchAvatar = !user.avatar && Boolean(nextAvatar);
-    if (shouldPatchDisplayName || shouldPatchContact || shouldPatchAvatar) {
+    const shouldPatchFeishuOpenId = !user.feishuOpenId && Boolean(feishuOpenId);
+    const shouldPatchFeishuUnionId = !user.feishuUnionId && Boolean(feishuUnionId);
+    if (
+      shouldPatchDisplayName ||
+      shouldPatchContact ||
+      shouldPatchAvatar ||
+      shouldPatchFeishuOpenId ||
+      shouldPatchFeishuUnionId
+    ) {
       await updateUserProfile(String(user._id), {
         displayName: shouldPatchDisplayName ? nextDisplayName : undefined,
         contact: shouldPatchContact ? nextContact : undefined,
         avatar: shouldPatchAvatar ? nextAvatar : undefined,
+        feishuOpenId: shouldPatchFeishuOpenId ? feishuOpenId : undefined,
+        feishuUnionId: shouldPatchFeishuUnionId ? feishuUnionId : undefined,
       });
       user = {
         ...user,
         displayName: shouldPatchDisplayName ? nextDisplayName : user.displayName,
         contact: shouldPatchContact ? nextContact : user.contact,
         avatar: shouldPatchAvatar ? nextAvatar : user.avatar,
+        feishuOpenId: shouldPatchFeishuOpenId ? feishuOpenId : user.feishuOpenId,
+        feishuUnionId: shouldPatchFeishuUnionId ? feishuUnionId : user.feishuUnionId,
       };
     }
   }

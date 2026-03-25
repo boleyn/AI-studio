@@ -49,6 +49,10 @@ type PublishDraft = {
   latestVersion: string;
   fileCount: number;
 };
+type PublishConflict = {
+  message: string;
+  ownerName: string;
+};
 type ImportVersionCheck = {
   incomingVersion: string;
   localVersion: string;
@@ -83,6 +87,17 @@ const RUNTIME_ENTRY_PATH = "/__skill_runtime__/index.ts";
 const RUNTIME_ENTRY_CODE = "export {};\n";
 const fallbackSkillFiles: FileMap = {};
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+const normalizeDownloadName = (value: string) =>
+  value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "") || "skill";
+const parseConflictOwnerName = (message: string) => {
+  const fromPattern = message.match(/已由\s+(.+?)\s+发布/u);
+  if (fromPattern?.[1]) return fromPattern[1].trim();
+  return "原作者";
+};
 const isRuntimeSupportPath = (path: string) => /^\/__skill_runtime__(\/|$)/i.test(path);
 const diffStatusLabelMap: Record<ImportDiffStatus, string> = {
   added: "新增",
@@ -168,6 +183,7 @@ const SkillCreatePage = () => {
   const [publishResult, setPublishResult] = useState<{ slug: string; version: string; skillUrl: string } | null>(
     null
   );
+  const [publishConflict, setPublishConflict] = useState<PublishConflict | null>(null);
   const [isImportConflictOpen, setIsImportConflictOpen] = useState(false);
   const [isResolvingImportConflict, setIsResolvingImportConflict] = useState(false);
   const [importConflictDraft, setImportConflictDraft] = useState<ImportConflictDraft | null>(null);
@@ -666,6 +682,7 @@ const SkillCreatePage = () => {
 
     setIsPublishDialogOpen(true);
     setPublishResult(null);
+    setPublishConflict(null);
     setPublishPreviewError("");
     setIsLoadingPublishPreview(true);
     try {
@@ -718,6 +735,7 @@ const SkillCreatePage = () => {
   const confirmPublishToHub = useCallback(async () => {
     if (!workspaceId || isPublishingToHub) return;
     setIsPublishingToHub(true);
+    setPublishConflict(null);
     setPublishPreviewError("");
     try {
       const response = await fetch("/api/skills/publish-to-hub", {
@@ -745,6 +763,15 @@ const SkillCreatePage = () => {
         skillUrl?: string;
       };
       if (!response.ok) {
+        if (response.status === 409) {
+          const message = payload.error || "该 skill slug 已被其他账号占用";
+          setPublishConflict({
+            message,
+            ownerName: parseConflictOwnerName(message),
+          });
+          setPublishPreviewError(message);
+          return;
+        }
         throw new Error(payload.error || "发布失败");
       }
       const nextResult = {
@@ -766,6 +793,42 @@ const SkillCreatePage = () => {
       setIsPublishingToHub(false);
     }
   }, [isPublishingToHub, projectToken, publishDraft, skillId, toast, workspaceId]);
+
+  const downloadSkillZip = useCallback(async () => {
+    const entries = Object.entries(files).filter(([path]) => skillFilePathFilter(path));
+    if (entries.length === 0 || typeof window === "undefined") {
+      toast({
+        title: "暂无可导出的 skill 文件",
+        status: "warning",
+        duration: 2000,
+      });
+      return;
+    }
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+      entries.forEach(([path, file]) => {
+        const normalizedPath = path.replace(/^\/+/, "");
+        zip.file(normalizedPath, typeof file?.code === "string" ? file.code : "");
+      });
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const baseName = normalizeDownloadName(publishDraft.slug || skillName || "skill");
+      anchor.href = url;
+      anchor.download = `${baseName}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : "导出 ZIP 失败",
+        status: "error",
+        duration: 2400,
+      });
+    }
+  }, [files, publishDraft.slug, skillFilePathFilter, skillName, toast]);
 
   return (
     <Box
@@ -1290,6 +1353,16 @@ const SkillCreatePage = () => {
             {publishPreviewError ? (
               <Box mt={3} borderRadius="12px" border="1px solid" borderColor="red.200" bg="red.50" px={3} py={2}>
                 <Text fontSize="sm" color="red.700">{publishPreviewError}</Text>
+                {publishConflict ? (
+                  <Flex direction="column" mt={2} gap={2}>
+                    <Text fontSize="xs" color="red.800">
+                      该 slug 归属 {publishConflict.ownerName}，当前不允许覆盖发布。请联系所属人协作，或更换 slug 后再发布。
+                    </Text>
+                    <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
+                      下载 skill ZIP（发给所属人）
+                    </Button>
+                  </Flex>
+                ) : null}
               </Box>
             ) : null}
           </ModalBody>
@@ -1305,6 +1378,7 @@ const SkillCreatePage = () => {
                     }
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
+                    setPublishConflict(null);
                     setPublishPreviewError("");
                   }}
                 >
@@ -1315,6 +1389,7 @@ const SkillCreatePage = () => {
                   onClick={() => {
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
+                    setPublishConflict(null);
                     setPublishPreviewError("");
                   }}
                 >
@@ -1330,6 +1405,7 @@ const SkillCreatePage = () => {
                   onClick={() => {
                     setIsPublishDialogOpen(false);
                     setPublishResult(null);
+                    setPublishConflict(null);
                     setPublishPreviewError("");
                   }}
                 >

@@ -74,3 +74,4 @@ data/projects/*
 
 # System files
 .DS_Store
+.aistudio

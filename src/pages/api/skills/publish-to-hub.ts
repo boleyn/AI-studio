@@ -30,6 +30,8 @@ type ParsedFrontmatter = {
 const INTERNAL_SKILL_FILE_PATTERN = /^\/skills\/([^/]+)\/SKILL\.md$/i;
 const PUBLIC_SKILL_FILE_PATTERN = /^\/([^/]+)\/SKILL\.md$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
+const FEISHU_OPEN_ID_HEADER = "X-ClawHub-Feishu-Open-Id";
+const PROXY_SECRET_HEADER = "X-ClawHub-Proxy-Secret";
 
 const toPatchVersion = (latest?: string) => {
   const normalized = (latest || "").trim();
@@ -100,13 +102,13 @@ const normalizeTagInput = (tags: PublishRequest["tags"], fallback: string[]) => 
   return fallback;
 };
 
-const getHubLatestVersion = async (hubBase: string, token: string | undefined, slug: string) => {
+const getHubLatestVersion = async (hubBase: string, slug: string, headers?: Record<string, string>) => {
   const apiUrl = `${hubBase.replace(/\/+$/, "")}/api/v1/skills/${encodeURIComponent(slug)}`;
   const response = await fetch(apiUrl, {
     method: "GET",
     headers: {
       Accept: "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(headers || {}),
     },
   });
   if (response.status === 404) return "";
@@ -118,6 +120,22 @@ const getHubLatestVersion = async (hubBase: string, token: string | undefined, s
   };
   return payload.latestVersion?.version?.trim() || "";
 };
+
+const buildClawHubPublishHeaders = (input: {
+  proxySecret?: string;
+  feishuOpenId?: string;
+}) => {
+  const headers: Record<string, string> = {};
+  if (input.proxySecret && input.feishuOpenId) {
+    headers[PROXY_SECRET_HEADER] = input.proxySecret;
+    headers[FEISHU_OPEN_ID_HEADER] = input.feishuOpenId;
+  }
+  return headers;
+};
+
+const buildClawHubReadHeaders = (proxySecret: string) => ({
+  [PROXY_SECRET_HEADER]: proxySecret,
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -149,7 +167,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(500).json({ error: "SKILL_HUB 未配置" });
     return;
   }
-  const token = process.env.SKILL_TOKEN?.trim();
+  const proxySecret = process.env.SKILL_HUB_PROXY_SECRET?.trim();
+  const feishuOpenId = typeof auth.user.feishuOpenId === "string" ? auth.user.feishuOpenId.trim() : "";
+  if (!proxySecret) {
+    res.status(500).json({ error: "SKILL_HUB_PROXY_SECRET 未配置" });
+    return;
+  }
+  if (!feishuOpenId) {
+    res.status(400).json({ error: "当前账号缺少飞书 open_id，请重新使用飞书登录后再发布" });
+    return;
+  }
+  const hubAuthHeaders = buildClawHubPublishHeaders({
+    proxySecret,
+    feishuOpenId,
+  });
+  const hubReadHeaders = buildClawHubReadHeaders(proxySecret);
 
   try {
     const workspace = await getSkillWorkspace(workspaceId, userId, projectToken || undefined, skillId || undefined);
@@ -173,7 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const summary = frontmatter.description?.trim() || "Published from AI Studio";
     const tags = normalizeTagList(frontmatter.tags);
     const changelog = frontmatter.changelog || "Published from AI Studio";
-    const latestVersion = await getHubLatestVersion(hubBase, token, slug);
+    const latestVersion = await getHubLatestVersion(hubBase, slug, hubReadHeaders);
     const nextVersion = toPatchVersion(latestVersion);
 
     const chosenSlug = normalizeSlug(typeof body.slug === "string" ? body.slug : slug);
@@ -251,9 +283,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const uploadResp = await fetch(`${hubBase.replace(/\/+$/, "")}/api/v1/uploads`, {
         method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: hubAuthHeaders,
         body: form,
       });
       const uploadPayload = (await uploadResp.json().catch(() => ({}))) as {
@@ -277,7 +307,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...hubAuthHeaders,
       },
       body: JSON.stringify({
         slug: chosenSlug,
@@ -295,7 +325,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       owner?: { handle?: string | null };
     };
     if (!publishResp.ok) {
-      throw new Error(publishPayload.error || publishPayload.statusMessage || "发布失败");
+      const message = publishPayload.error || publishPayload.statusMessage || "发布失败";
+      if (publishResp.status === 409) {
+        res.status(409).json({ error: message });
+        return;
+      }
+      throw new Error(message);
     }
 
     const ownerHandle = publishPayload.owner?.handle?.trim() || "";

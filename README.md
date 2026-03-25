@@ -126,6 +126,14 @@ AI_MAX_CONTEXT=
 AI_TEMPERATURE=0.2
 ```
 
+### 5) Skill 发布到 ClawHub（可选）
+
+```env
+SKILL_HUB=http://127.0.0.1:3001
+# 与 ClawHub 的 SKILL_PUBLISH_PROXY_SECRET 保持一致，用于按飞书 open_id 归属发布者
+SKILL_HUB_PROXY_SECRET=
+```
+
 ## 本地开发
 
 ```bash

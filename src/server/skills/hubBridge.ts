@@ -58,7 +58,8 @@ const buildSkillMd = (skillName: string, description: string, rawCode: string) =
 export const fetchHubSkillDetail = async (slug: string): Promise<HubSkillDetail> => {
   const hubBase = process.env.SKILL_HUB?.trim();
   if (!hubBase) throw new Error("SKILL_HUB 未配置");
-  const token = process.env.SKILL_TOKEN?.trim();
+  const proxySecret = process.env.SKILL_HUB_PROXY_SECRET?.trim();
+  if (!proxySecret) throw new Error("SKILL_HUB_PROXY_SECRET 未配置");
   const safeSlug = slug.trim().toLowerCase();
   if (!safeSlug) throw new Error("缺少 hubSlug");
 
@@ -67,7 +68,7 @@ export const fetchHubSkillDetail = async (slug: string): Promise<HubSkillDetail>
     method: "GET",
     headers: {
       Accept: "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "X-ClawHub-Proxy-Secret": proxySecret,
     },
   });
   const payload = (await response.json().catch(() => ({}))) as HubSkillDetailPayload;
@@ -100,7 +101,7 @@ export const fetchHubSkillDetail = async (slug: string): Promise<HubSkillDetail>
         const fileResp = await fetch(downloadUrl, {
           method: "GET",
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            "X-ClawHub-Proxy-Secret": proxySecret,
           },
         });
         if (!fileResp.ok) {

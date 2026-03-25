@@ -105,6 +105,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(500).json({ error: "SKILL_HUB 未配置" });
     return;
   }
+  const proxySecret = process.env.SKILL_HUB_PROXY_SECRET?.trim();
+  if (!proxySecret) {
+    res.status(500).json({ error: "SKILL_HUB_PROXY_SECRET 未配置" });
+    return;
+  }
 
   const q = parseString(req.query.q);
   const sort = parseSort(parseString(req.query.sort));
@@ -123,7 +128,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   params.set("offset", String(offset));
   params.set("limit", String(limit));
 
-  const token = process.env.SKILL_TOKEN?.trim();
   const apiUrl = `${hubBase.replace(/\/+$/, "")}/api/v1/skills/browse?${params.toString()}`;
 
   try {
@@ -131,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: "GET",
       headers: {
         Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "X-ClawHub-Proxy-Secret": proxySecret,
       },
     });
 
