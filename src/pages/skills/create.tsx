@@ -87,12 +87,16 @@ const RUNTIME_ENTRY_PATH = "/__skill_runtime__/index.ts";
 const RUNTIME_ENTRY_CODE = "export {};\n";
 const fallbackSkillFiles: FileMap = {};
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const normalizeDownloadName = (value: string) =>
-  value
+const normalizeDownloadName = (value: string) => {
+  const normalized = value
     .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
+    .replace(/\s+/g, " ")
     .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "") || "skill";
+    .replace(/\.+$/g, "")
+    .trim();
+  return normalized || "skill";
+};
 const parseConflictOwnerName = (message: string) => {
   const fromPattern = message.match(/已由\s+(.+?)\s+发布/u);
   if (fromPattern?.[1]) return fromPattern[1].trim();
@@ -814,7 +818,7 @@ const SkillCreatePage = () => {
       const blob = await zip.generateAsync({ type: "blob" });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      const baseName = normalizeDownloadName(publishDraft.slug || skillName || "skill");
+      const baseName = normalizeDownloadName(skillName || publishDraft.slug || "skill");
       anchor.href = url;
       anchor.download = `${baseName}.zip`;
       document.body.appendChild(anchor);
@@ -977,6 +981,9 @@ const SkillCreatePage = () => {
                 }}
                 onManualShare={() => {
                   void openPublishDialog();
+                }}
+                onManualDownload={() => {
+                  void downloadSkillZip();
                 }}
                 shareLabel={isPublishingToHub ? "发布中..." : "一键发布"}
                 shareAriaLabel="一键发布到 ClawHub"
