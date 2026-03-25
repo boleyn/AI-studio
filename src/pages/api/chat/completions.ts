@@ -937,16 +937,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     min: 100,
   });
   const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
-  const promptUsedPercent = Math.min(100, Math.max(0, (backgroundUsedTokens / promptMaxContext) * 100));
+  // 统一“窗口占用”口径：
+  // usedTokens/usedPercent 统一表示本次实际请求 prompt（含当前输入）的占用情况；
+  // 预算上限为 maxContext - reservedOutputTokens，避免显示与真实可用空间不一致。
+  const promptBudget = Math.max(1, promptMaxContext - reservedOutputTokens);
   const currentInputTokens = Math.max(0, promptUsedTokens - backgroundUsedTokens);
   const contextWindowUsage = {
     model: selectedModel,
     totalPromptTokens: promptUsedTokens,
     currentInputTokens,
-    usedTokens: backgroundUsedTokens,
+    usedTokens: promptUsedTokens,
     maxContext: promptMaxContext,
-    remainingTokens: Math.max(0, promptMaxContext - backgroundUsedTokens),
-    usedPercent: Number(promptUsedPercent.toFixed(2)),
+    remainingTokens: Math.max(0, promptBudget - promptUsedTokens),
+    usedPercent: Number(Math.min(100, Math.max(0, (promptUsedTokens / promptBudget) * 100)).toFixed(2)),
     budget: {
       systemAndSkillsTokens,
       historyTokens,
@@ -1058,6 +1061,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   })();
   const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
+  const finalPromptUsedTokens = await countGptMessagesTokens(runResult.completeMessages, tools).catch(() => 0);
+  const finalCurrentInputTokens = Math.max(0, finalPromptUsedTokens - backgroundUsedTokens);
+  const finalContextWindowUsage = {
+    ...contextWindowUsage,
+    totalPromptTokens: finalPromptUsedTokens,
+    currentInputTokens: finalCurrentInputTokens,
+    usedTokens: finalPromptUsedTokens,
+    remainingTokens: Math.max(0, promptBudget - finalPromptUsedTokens),
+    usedPercent: Number(Math.min(100, Math.max(0, (finalPromptUsedTokens / promptBudget) * 100)).toFixed(2)),
+    budget: {
+      ...contextWindowUsage.budget,
+      currentInputTokens: finalCurrentInputTokens,
+      totalPromptTokens: finalPromptUsedTokens,
+    },
+  };
   const toolDetailsFromFlow = flowResponses.map((node, index) => ({
     id: `${node.nodeId}-${index}`,
     toolName: node.moduleName,
@@ -1079,6 +1097,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })();
 
   if (stream) {
+    sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(finalContextWindowUsage));
     sendSseEvent(
       res,
       SseResponseEventEnum.workflowDuration,
@@ -1121,7 +1140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           toolDetails: existingToolDetails.length > 0 ? existingToolDetails : toolDetailsFromFlow,
           responseData: flowResponses,
           durationSeconds,
-          contextWindow: contextWindowUsage,
+          contextWindow: finalContextWindowUsage,
         },
       };
     } else if (resolvedFinalMessage) {
@@ -1134,7 +1153,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           toolDetails: toolDetailsFromFlow,
           responseData: flowResponses,
           durationSeconds,
-          contextWindow: contextWindowUsage,
+          contextWindow: finalContextWindowUsage,
         },
       };
     }
@@ -1150,7 +1169,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
-      contextWindow: contextWindowUsage,
+      contextWindow: finalContextWindowUsage,
       responseData: flowResponses,
       durationSeconds,
       choices: [
