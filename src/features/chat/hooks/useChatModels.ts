@@ -25,6 +25,7 @@ export const useChatModels = () => {
                 value: item.id,
                 label: item.label || item.id,
                 channel: item.channel,
+                icon: item.icon,
               };
             })
           : [

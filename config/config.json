@@ -20,6 +20,18 @@
   },
   "model": [
     {
+      "id": "MiniMax-M2.7",
+      "label": "MiniMax-M2.7",
+      "maxContext": 192000,
+      "maxResponse": 12000,
+      "quoteMaxToken": 80000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"minimax.svg"
+    } ,
+    {
       "id": "openai/gpt-5.3-codex",
       "label": "gpt-5.3-codex",
       "maxContext": 400000,
@@ -28,41 +40,8 @@
       "maxTemperature": 1.2,
       "reasoning": true,
       "defaultConfig": {},
-      "fieldMap": {}
-    },
-    {
-      "id": "gemini-3-flash-preview",
-      "label": "gemini-3-flash",
-      "maxContext": 1000000,
-      "maxResponse": 65000,
-      "quoteMaxToken": 80000,
-      "maxTemperature": 1.2,
-      "reasoning": false,
-      "defaultConfig": {},
-      "fieldMap": {}
-    },
-    {
-      "id": "gemini-3.1-pro-preview",
-      "label": "gemini-3.1",
-      "maxContext": 200000,
-      "maxResponse": 65000,
-      "quoteMaxToken": 80000,
-      "maxTemperature": 1.2,
-      "reasoning": true,
-      "defaultConfig": {},
-      "fieldMap": {}
-    }
-    ,
-    {
-      "id": "gemini-3.1-flash-lite-preview",
-      "label": "gemini-3.1-flash-lite",
-      "maxContext": 1000000,
-      "maxResponse": 65000,
-      "quoteMaxToken": 80000,
-      "maxTemperature": 1.2,
-      "reasoning": true,
-      "defaultConfig": {},
-      "fieldMap": {}
+      "fieldMap": {},
+      "icon":"openai.svg"
     }
   ]
 }

@@ -8,6 +8,7 @@ export interface ChatModelOption {
   label: string;
   channel: string;
   source: "aiproxy" | "env";
+  icon?: string;
 }
 
 export interface ChatModelChannel {
@@ -32,6 +33,7 @@ export interface ChatModelCatalog {
 type ConfigModelItem = {
   id?: unknown;
   label?: unknown;
+  icon?: unknown;
   maxContext?: unknown;
   maxResponse?: unknown;
   quoteMaxToken?: unknown;
@@ -86,10 +88,10 @@ const toBoolean = (value: unknown): boolean | undefined => {
 
 const parseModels = (value: unknown) => {
   if (!Array.isArray(value)) {
-    return [] as Array<{ id: string; label: string; profile?: Record<string, unknown> }>;
+    return [] as Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>;
   }
 
-  const normalized = value.reduce<Array<{ id: string; label: string; profile?: Record<string, unknown> }>>(
+  const normalized = value.reduce<Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>>(
     (acc, item) => {
       if (!item || typeof item !== "object") return acc;
       const record = item as ConfigModelItem;
@@ -100,6 +102,8 @@ const parseModels = (value: unknown) => {
 
       const labelRaw = record.label;
       const label = typeof labelRaw === "string" && labelRaw.trim() ? labelRaw.trim() : id;
+      const iconRaw = record.icon;
+      const icon = typeof iconRaw === "string" && iconRaw.trim() ? iconRaw.trim() : undefined;
 
       const profile: Record<string, unknown> = {
         maxContext: toNumber(record.maxContext),
@@ -116,13 +120,13 @@ const parseModels = (value: unknown) => {
           : undefined,
       };
 
-      acc.push({ id, label, profile });
+      acc.push({ id, label, icon, profile });
       return acc;
     },
     []
   );
 
-  const deduped = new Map<string, { id: string; label: string; profile?: Record<string, unknown> }>();
+  const deduped = new Map<string, { id: string; label: string; icon?: string; profile?: Record<string, unknown> }>();
   normalized.forEach((item) => {
     if (!deduped.has(item.id)) deduped.set(item.id, item);
   });
@@ -131,7 +135,7 @@ const parseModels = (value: unknown) => {
 };
 
 const buildCatalog = (params: {
-  models: Array<{ id: string; label: string; profile?: Record<string, unknown> }>;
+  models: Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>;
   warning?: string;
 }): ChatModelCatalog => {
   const runtime = getAgentRuntimeConfig();
@@ -139,7 +143,7 @@ const buildCatalog = (params: {
   const modelList =
     params.models.length > 0
       ? params.models
-      : [{ id: runtime.toolCallModel || "agent", label: runtime.toolCallModel || "agent", profile: undefined }];
+      : [{ id: runtime.toolCallModel || "agent", label: runtime.toolCallModel || "agent", icon: undefined, profile: undefined }];
 
   const defaultModel =
     modelList.find((item) => item.id === runtime.toolCallModel)?.id ||
@@ -151,6 +155,7 @@ const buildCatalog = (params: {
     models: modelList.map((item) => ({
       id: item.id,
       label: item.label,
+      icon: item.icon,
       channel: DEFAULT_CHANNEL,
       source: "aiproxy" as const,
     })),
