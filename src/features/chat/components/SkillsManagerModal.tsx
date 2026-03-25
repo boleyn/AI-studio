@@ -1,5 +1,4 @@
 import {
-  Badge,
   Box,
   Divider,
   Drawer,
@@ -11,13 +10,15 @@ import {
   Flex,
   IconButton,
   Input,
+  InputGroup,
+  InputRightElement,
   Select,
   Spinner,
   Tag,
   Text,
   useToast,
 } from "@chakra-ui/react";
-import { CollapseDetailIcon, RefreshIcon, RunIcon } from "@/components/common/Icon";
+import { CloseIcon, CollapseDetailIcon, RefreshIcon, RunIcon } from "@/components/common/Icon";
 import SkillDetailPreview from "@/components/workspace/SkillDetailPreview";
 import MyTooltip from "@/components/ui/MyTooltip";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -194,6 +195,15 @@ const SkillsManagerModal = ({
     };
   }, [detail]);
   const isDetailOpen = Boolean(selectedSlug);
+  const iconButtonBaseProps = {
+    size: "sm" as const,
+    borderRadius: "9999px",
+    boxSize: "34px",
+    minW: "34px",
+    h: "34px",
+    p: 0,
+    border: "1px solid",
+  };
   const drawerMaxW = isDetailOpen
     ? ({ base: "100vw", lg: "clamp(960px, 60vw, 1320px)" } as const)
     : ({ base: "100vw", lg: "clamp(420px, 30vw, 640px)" } as const);
@@ -342,11 +352,6 @@ const SkillsManagerModal = ({
             <Text fontSize="md" fontWeight={700}>
               Skills 管理 · ClawHub
             </Text>
-            {isDetailOpen ? (
-              <Box as="button" fontSize="12px" color="myGray.700" onClick={() => setSelectedSlug("")}>
-                返回列表
-              </Box>
-            ) : null}
           </Flex>
         </DrawerHeader>
         <DrawerCloseButton />
@@ -360,26 +365,43 @@ const SkillsManagerModal = ({
               flexShrink={0}
             >
               <Flex align="center" gap={2} mb={3}>
-                <Input
-                  placeholder="按名称、slug、简介筛选..."
-                  size="sm"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
+                <InputGroup>
+                  <Input
+                    placeholder="按名称、slug、简介筛选..."
+                    size="sm"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    bg="white"
+                    borderColor="myGray.250"
+                    borderRadius="10px"
+                    _hover={{ borderColor: "myGray.300" }}
+                    _focus={{ borderColor: "primary.400", boxShadow: "0 0 0 3px rgba(100,218,122,0.15)" }}
+                  />
+                  {query.trim() ? (
+                    <InputRightElement h="100%">
+                      <MyTooltip label="重置搜索">
+                        <IconButton
+                          aria-label="重置搜索"
+                          icon={<Box as={CloseIcon} boxSize="10px" />}
+                          onClick={() => setQuery("")}
+                          size="xs"
+                          variant="ghost"
+                          borderRadius="9999px"
+                          minW="22px"
+                          h="22px"
+                        />
+                      </MyTooltip>
+                    </InputRightElement>
+                  ) : null}
+                </InputGroup>
                 <MyTooltip label="刷新列表">
                   <IconButton
                     aria-label="刷新列表"
                     icon={<Box as={RefreshIcon} boxSize="15px" />}
                     onClick={() => void loadList()}
-                    size="sm"
-                    borderRadius="9999px"
-                    boxSize="34px"
-                    minW="34px"
-                    h="34px"
-                    p={0}
+                    {...iconButtonBaseProps}
                     bg="myGray.50"
                     color="myGray.700"
-                    border="1px solid"
                     borderColor="myGray.250"
                     _hover={{ bg: "myGray.100", borderColor: "myGray.300", color: "myGray.800" }}
                   />
@@ -390,7 +412,12 @@ const SkillsManagerModal = ({
                   size="sm"
                   value={clawHubSort}
                   onChange={(event) => setClawHubSort(event.target.value as ClawHubSort)}
-                  maxW="146px"
+                  maxW="156px"
+                  bg="white"
+                  borderColor="myGray.250"
+                  borderRadius="10px"
+                  _hover={{ borderColor: "myGray.300" }}
+                  _focus={{ borderColor: "primary.400", boxShadow: "0 0 0 3px rgba(100,218,122,0.12)" }}
                 >
                   {CLAWHUB_SORT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -402,29 +429,42 @@ const SkillsManagerModal = ({
                   <IconButton
                     aria-label="切换排序方向"
                     icon={<Box as={ArrowDownUp} boxSize="15px" />}
-                    size="sm"
-                    variant="outline"
+                    {...iconButtonBaseProps}
                     onClick={() => setClawHubDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+                    bg="white"
+                    color="myGray.700"
+                    borderColor="myGray.250"
+                    _hover={{ bg: "myGray.100", borderColor: "myGray.300", color: "myGray.800" }}
                   />
                 </MyTooltip>
                 <MyTooltip label="仅看精选">
                   <IconButton
                     aria-label="仅看精选"
                     icon={<Box as={Sparkles} boxSize="15px" />}
-                    size="sm"
-                    variant={clawHubHighlightedOnly ? "solid" : "outline"}
-                    colorScheme={clawHubHighlightedOnly ? "purple" : "gray"}
+                    {...iconButtonBaseProps}
                     onClick={() => setClawHubHighlightedOnly((prev) => !prev)}
+                    bg={clawHubHighlightedOnly ? "purple.100" : "white"}
+                    color={clawHubHighlightedOnly ? "purple.700" : "myGray.700"}
+                    borderColor={clawHubHighlightedOnly ? "purple.300" : "myGray.250"}
+                    _hover={{
+                      bg: clawHubHighlightedOnly ? "purple.200" : "myGray.100",
+                      borderColor: clawHubHighlightedOnly ? "purple.400" : "myGray.300",
+                    }}
                   />
                 </MyTooltip>
                 <MyTooltip label="过滤可疑">
                   <IconButton
                     aria-label="过滤可疑"
                     icon={<Box as={ShieldCheck} boxSize="15px" />}
-                    size="sm"
-                    variant={clawHubNonSuspiciousOnly ? "solid" : "outline"}
-                    colorScheme={clawHubNonSuspiciousOnly ? "blue" : "gray"}
+                    {...iconButtonBaseProps}
                     onClick={() => setClawHubNonSuspiciousOnly((prev) => !prev)}
+                    bg={clawHubNonSuspiciousOnly ? "blue.100" : "white"}
+                    color={clawHubNonSuspiciousOnly ? "blue.700" : "myGray.700"}
+                    borderColor={clawHubNonSuspiciousOnly ? "blue.300" : "myGray.250"}
+                    _hover={{
+                      bg: clawHubNonSuspiciousOnly ? "blue.200" : "myGray.100",
+                      borderColor: clawHubNonSuspiciousOnly ? "blue.400" : "myGray.300",
+                    }}
                   />
                 </MyTooltip>
               </Flex>
@@ -449,10 +489,15 @@ const SkillsManagerModal = ({
                           bg={isActive ? "primary.50" : "white"}
                           border="1px solid"
                           borderColor={isActive ? "primary.200" : "myGray.200"}
-                          borderRadius="10px"
+                          borderRadius="12px"
                           cursor="pointer"
                           onClick={() => setSelectedSlug(item.slug)}
                           p={2.5}
+                          transition="all 0.16s ease"
+                          _hover={{
+                            borderColor: isActive ? "primary.300" : "myGray.300",
+                            boxShadow: "0 8px 18px -14px rgba(15,23,42,0.5)",
+                          }}
                         >
                           <Flex align="center" justify="space-between" mb={1.5}>
                             <Text fontSize="sm" fontWeight={700} noOfLines={1}>
@@ -528,15 +573,9 @@ const SkillsManagerModal = ({
                         icon={<Box as={RunIcon} boxSize="15px" />}
                         onClick={() => void handleApplyToProject()}
                         isLoading={isApplying}
-                        size="sm"
-                        borderRadius="9999px"
-                        boxSize="34px"
-                        minW="34px"
-                        h="34px"
-                        p={0}
+                        {...iconButtonBaseProps}
                         bg="primary.600"
                         color="white"
-                        border="1px solid"
                         borderColor="primary.600"
                         _hover={{ bg: "primary.700", borderColor: "primary.700" }}
                       />
@@ -546,15 +585,9 @@ const SkillsManagerModal = ({
                         aria-label="收起详情"
                         icon={<Box as={CollapseDetailIcon} boxSize="15px" />}
                         onClick={() => setSelectedSlug("")}
-                        size="sm"
-                        borderRadius="9999px"
-                        boxSize="34px"
-                        minW="34px"
-                        h="34px"
-                        p={0}
+                        {...iconButtonBaseProps}
                         bg="red.50"
                         color="red.600"
-                        border="1px solid"
                         borderColor="red.200"
                         _hover={{ bg: "red.100", borderColor: "red.300", color: "red.700" }}
                       />

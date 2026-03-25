@@ -122,18 +122,18 @@ const TopBar = ({
   const headerActionButtonProps = {
     size: "sm" as const,
     variant: "solid" as const,
-    boxSize: "34px",
-    minW: "34px",
-    h: "34px",
+    boxSize: "30px",
+    minW: "30px",
+    h: "30px",
     p: 0,
-    bg: "#eef3ef",
-    color: "#2f7a40",
+    bg: "#eef2f7",
+    color: "#475569",
     borderRadius: "9999px",
     border: "1px solid",
-    borderColor: "#c9d8ce",
+    borderColor: "#d6deea",
     transition: "all 0.18s ease",
-    _hover: { bg: "#32a549", borderColor: "#32a549", color: "white", transform: "translateY(-1px)" },
-    _active: { bg: "#2c9140", borderColor: "#2c9140", color: "white", transform: "translateY(0)" },
+    _hover: { bg: "#e5ebf4", borderColor: "#c8d3e3", color: "#334155", transform: "translateY(-1px)" },
+    _active: { bg: "#dde5f1", borderColor: "#becbdd", color: "#1f2937", transform: "translateY(0)" },
   };
 
   const openAccountModal = (panel: AccountPanelTab = "account") => {
@@ -186,11 +186,11 @@ const TopBar = ({
       boxShadow="none"
     >
       <Grid templateColumns="minmax(0,1fr) auto minmax(0,1fr)" alignItems="center" w="100%" columnGap={4}>
-        <Flex align="center" gap={3.5} minW={0} justifySelf="start">
+        <Flex align="center" gap={2.5} minW={0} justifySelf="start">
           <MyTooltip label="返回">
             <IconButton
               aria-label="返回"
-              icon={<Box as={BackCustomIcon} boxSize="15px" />}
+              icon={<Box as={BackCustomIcon} boxSize="14px" />}
               onClick={() => {
                 if (onBack) {
                   onBack();
@@ -203,18 +203,24 @@ const TopBar = ({
               {...headerActionButtonProps}
             />
           </MyTooltip>
-          <AsiaInfoLogo showText={false} w="28px" />
-          <Text fontSize="24px" lineHeight="1.2" fontWeight="700" color="#1d2433" noOfLines={1}>
-            {projectName || "未命名项目"}
-          </Text>
-          <MyTooltip label="编辑项目信息">
-            <IconButton
-              aria-label="编辑项目信息"
-              icon={<Box as={EditCustomIcon} boxSize="15px" />}
-              onClick={() => setMetaModalOpen(true)}
-              {...headerActionButtonProps}
-            />
-          </MyTooltip>
+          <Flex align="center" gap={2} minW={0}>
+            <AsiaInfoLogo showText={false} w="20px" />
+            <Text fontSize="16px" lineHeight="1.2" fontWeight="600" color="#334155" noOfLines={1} maxW="220px">
+              {projectName || "未命名项目"}
+            </Text>
+            <MyTooltip label="编辑项目信息">
+              <IconButton
+                aria-label="编辑项目信息"
+                icon={<Box as={EditCustomIcon} boxSize="14px" />}
+                onClick={() => setMetaModalOpen(true)}
+                {...headerActionButtonProps}
+                bg="transparent"
+                borderColor="transparent"
+                _hover={{ bg: "#e9eef6", borderColor: "transparent", color: "#334155" }}
+                _active={{ bg: "#dde5f1", borderColor: "transparent", color: "#1f2937" }}
+              />
+            </MyTooltip>
+          </Flex>
         </Flex>
 
         <Flex align="center" gap={5} h="64px" justifySelf="center">

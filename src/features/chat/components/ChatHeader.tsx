@@ -1,6 +1,7 @@
 import {
   Box,
   CircularProgress,
+  CircularProgressLabel,
   Flex,
   IconButton,
   MenuDivider,
@@ -60,10 +61,12 @@ const ChatHeader = ({
   const usedPercentText = usedPercent.toFixed(1);
   const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
   const tooltipWithInput = isReady
-    ? `背景信息窗口（已计算）：\n${usedPercentText}% 已用（剩余 ${remainingPercentText}%）\n已用 ${contextUsage.usedTokens.toLocaleString()} 标记，共 ${contextUsage.maxContext.toLocaleString()}`
+    ? `剩余 ${remainingPercentText}%`
     : isPending
-    ? "背景信息窗口：计算中...\n正在分析当前对话上下文。"
-    : "背景信息窗口：暂未获得统计\n继续提问后会自动更新。";
+    ? "计算中..."
+    : "继续提问后会自动更新";
+  const ringColor = usedPercent < 60 ? "#72C284" : "#E58888";
+  const ringTrackColor = usedPercent < 60 ? "#E3F3E7" : "#F7E3E3";
 
   const handleConfirmDeleteOne = async () => {
     if (!pendingDeleteId) return;
@@ -109,27 +112,6 @@ const ChatHeader = ({
       </Box>
 
       <Flex align="center" gap={2}>
-        <MyTooltip label={tooltipWithInput}>
-          <Box alignItems="center" display="flex" h="28px" justifyContent="center" w="28px">
-            <CircularProgress
-              color={
-                isPending
-                  ? "blue.400"
-                  : usedPercent >= 90
-                  ? "red.400"
-                  : usedPercent >= 70
-                  ? "orange.400"
-                  : "gray.300"
-              }
-              isIndeterminate={isPending}
-              size="18px"
-              thickness="14px"
-              trackColor="gray.100"
-              value={usedPercent}
-            />
-          </Box>
-        </MyTooltip>
-
         <Flex gap={1}>
         <Menu placement="bottom-end">
           <MyTooltip label="历史对话">
@@ -212,6 +194,28 @@ const ChatHeader = ({
           />
         </MyTooltip>
         </Flex>
+
+        <MyTooltip label={tooltipWithInput}>
+          <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
+            <CircularProgress
+              color={isPending ? "#9CA3AF" : ringColor}
+              isIndeterminate={isPending}
+              size="32px"
+              thickness="12px"
+              trackColor={ringTrackColor}
+              value={usedPercent}
+            >
+              <CircularProgressLabel
+                color="#1F2937"
+                fontSize="7.5px"
+                fontWeight="700"
+                lineHeight="1"
+              >
+                {isReady ? usedPercentText : "--"}
+              </CircularProgressLabel>
+            </CircularProgress>
+          </Box>
+        </MyTooltip>
       </Flex>
       </Flex>
       <ConfirmDialog
