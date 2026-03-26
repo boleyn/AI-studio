@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Box, Text } from "@chakra-ui/react";
+import { Box, Button, Text } from "@chakra-ui/react";
 import { useToast } from "@chakra-ui/react";
 import { LoginPageTypeEnum } from "./constants";
 import FormLayout from "./FormLayout";
@@ -122,6 +122,20 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
         <Text mt={1} textAlign="center" fontSize="mini" color="myGray.500">
           扫码后将自动完成身份验证并返回当前页面
         </Text>
+        <Box mt={3} display="flex" justifyContent="center">
+          <Button
+            size="sm"
+            variant="outline"
+            borderColor="blue.300"
+            color="blue.600"
+            onClick={() => {
+              const safeLastRoute = getLastRoute(lastRoute);
+              window.location.href = `/auth/feishu/login?lastRoute=${encodeURIComponent(safeLastRoute)}`;
+            }}
+          >
+            飞书快捷登录
+          </Button>
+        </Box>
         <Box
           mt={4}
           p={4}
