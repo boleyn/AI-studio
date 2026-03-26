@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Rocket, Sparkles, Wand2 } from "lucide-react";
 import {
   Badge,
@@ -50,6 +50,7 @@ export default function ProjectList() {
     projects,
     loading: loadingProjects,
     creating: creatingProject,
+    loadProjects,
     createProject,
     openProject,
     renameProject,
@@ -61,13 +62,14 @@ export default function ProjectList() {
     skills,
     loading: loadingSkills,
     creating: creatingSkill,
+    loadSkills,
     createSkill,
     openSkill,
     updateSkill,
     deleteSkill,
     duplicateSkill,
   } = useSkills();
-  const { overview } = useDashboardOverview();
+  const { overview, loadOverview } = useDashboardOverview();
 
   const [activeTab, setActiveTab] = useState<HomeTab>("projects");
   const [searchValue, setSearchValue] = useState("");
@@ -175,6 +177,14 @@ export default function ProjectList() {
   } as const;
 
   const isNameInvalid = createType === "skill" && nameInput.trim() !== "" && !/^[\w\-\s]+$/.test(nameInput);
+
+  useEffect(() => {
+    if (loadingUser) return;
+    if (!user?.id) return;
+    void loadProjects();
+    void loadSkills();
+    void loadOverview();
+  }, [loadOverview, loadProjects, loadSkills, loadingUser, user?.id]);
 
   return (
     <Box position="relative" minH="100vh" overflow="hidden">

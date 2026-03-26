@@ -28,140 +28,41 @@ import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeList
 import WorkspaceShell from "@/components/WorkspaceShell";
 import TopBar from "@/components/TopBar";
 import { PublishIcon } from "@/components/common/Icon";
+import type {
+  ActiveView,
+  FileMap,
+  ImportConflictDraft,
+  ImportDiffItem,
+  ImportDiffPayload,
+  ImportVersionCheck,
+  PublishConflict,
+  PublishDraft,
+  PublishHubStatus,
+} from "@/features/skillsCreate/types";
+import {
+  RUNTIME_ENTRY_CODE,
+  RUNTIME_ENTRY_PATH,
+  SKILL_ROOT,
+  diffStatusLabelMap,
+  fallbackSkillFiles,
+  getDiffLanguage,
+  isNonEmptyString,
+  isSkillPath,
+  isSameFileMap,
+  isSameSkillRoots,
+  normalizeDownloadName,
+  normalizeSkillFiles,
+  parseConflictOwnerName,
+} from "@/features/skillsCreate/utils";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
 
-type FileMap = Record<string, { code: string }>;
 const MonacoDiffEditor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.DiffEditor),
   { ssr: false }
 );
-
-type ActiveView = "preview" | "code" | "logs";
-type PublishDraft = {
-  slug: string;
-  displayName: string;
-  summary: string;
-  tags: string;
-  changelog: string;
-  version: string;
-  latestVersion: string;
-  fileCount: number;
-};
-type PublishConflict = {
-  message: string;
-  ownerName: string;
-  ownerHandle?: string;
-};
-type PublishHubStatus = {
-  exists: boolean;
-  canUpdate: boolean;
-  ownerName: string;
-  ownerHandle: string;
-};
-type ImportVersionCheck = {
-  incomingVersion: string;
-  localVersion: string;
-  sameVersion: boolean;
-};
-type ImportDiffStatus = "added" | "removed" | "changed" | "same";
-type ImportDiffItem = {
-  path: string;
-  status: ImportDiffStatus;
-  localCode: string;
-  incomingCode: string;
-};
-type ImportDiffPayload = {
-  files: ImportDiffItem[];
-  summary: {
-    added: number;
-    removed: number;
-    changed: number;
-    same: number;
-  };
-};
-type ImportConflictDraft = {
-  skillId: string;
-  skillName: string;
-  versionCheck: ImportVersionCheck;
-  importDiff: ImportDiffPayload;
-};
-
-const SKILL_ROOT = "/";
-const isSkillPath = (path: string) => /^\/[^/]+\/.+/.test(path);
-const RUNTIME_ENTRY_PATH = "/__skill_runtime__/index.ts";
-const RUNTIME_ENTRY_CODE = "export {};\n";
-const fallbackSkillFiles: FileMap = {};
-const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const normalizeDownloadName = (value: string) => {
-  const normalized = value
-    .trim()
-    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
-    .replace(/\s+/g, " ")
-    .replace(/-+/g, "-")
-    .replace(/\.+$/g, "")
-    .trim();
-  return normalized || "skill";
-};
-const parseConflictOwnerName = (message: string) => {
-  const fromPattern = message.match(/已由\s+(.+?)\s+发布/u);
-  if (fromPattern?.[1]) return fromPattern[1].trim();
-  return "原作者";
-};
-const isRuntimeSupportPath = (path: string) => /^\/__skill_runtime__(\/|$)/i.test(path);
-const diffStatusLabelMap: Record<ImportDiffStatus, string> = {
-  added: "新增",
-  removed: "删除",
-  changed: "修改",
-  same: "相同",
-};
-const languageByExt: Record<string, string> = {
-  js: "javascript",
-  jsx: "javascript",
-  ts: "typescript",
-  tsx: "typescript",
-  json: "json",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "html",
-  md: "markdown",
-  yml: "yaml",
-  yaml: "yaml",
-  xml: "xml",
-  sh: "shell",
-  py: "python",
-  java: "java",
-  go: "go",
-  rs: "rust",
-};
-const getDiffLanguage = (filePath: string) => {
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  return languageByExt[ext] || "plaintext";
-};
-
-const normalizeSkillFiles = (rawFiles: unknown): FileMap => {
-  if (!rawFiles || typeof rawFiles !== "object") return {};
-
-  const next: FileMap = {};
-  Object.entries(rawFiles as Record<string, unknown>).forEach(([path, value]) => {
-    if (!isSkillPath(path)) return;
-    if (isRuntimeSupportPath(path)) return;
-
-    if (typeof value === "string") {
-      next[path] = { code: value };
-      return;
-    }
-
-    if (value && typeof value === "object" && typeof (value as { code?: unknown }).code === "string") {
-      next[path] = { code: (value as { code: string }).code };
-    }
-  });
-
-  return next;
-};
 
 const SkillCreatePage = () => {
   const router = useRouter();
@@ -452,7 +353,13 @@ const SkillCreatePage = () => {
 
       const persistedFiles = normalizeSkillFiles(payload.files);
       latestFilesRef.current = persistedFiles;
-      setFiles(persistedFiles);
+      // 避免每次自动保存都触发整个 Sandpack files 重绑定，导致活动标签被重置到首个文件。
+      // 仅当 skill 根目录变化时（如导入/切换 skill）才更新页面级 files 状态。
+      setFiles((prev) => {
+        if (isSameFileMap(prev, persistedFiles)) return prev;
+        if (isSameSkillRoots(prev, persistedFiles)) return prev;
+        return persistedFiles;
+      });
     },
     [workspaceId]
   );
@@ -1328,6 +1235,38 @@ const SkillCreatePage = () => {
           </ModalHeader>
           <ModalCloseButton isDisabled={isPublishingToHub} />
           <ModalBody overflowY="auto" py={5}>
+            {publishPreviewError ? (
+              <Box
+                mb={4}
+                position="sticky"
+                top={0}
+                zIndex={2}
+                borderRadius="12px"
+                border="1px solid"
+                borderColor="red.200"
+                bg="red.50"
+                px={3}
+                py={2.5}
+                boxShadow="0 8px 18px -14px rgba(220,38,38,0.45)"
+              >
+                <Text fontSize="11px" color="red.700" fontWeight="800" letterSpacing="0.04em" textTransform="uppercase">
+                  发布提醒
+                </Text>
+                <Text mt={1} fontSize="sm" color="red.700">
+                  {publishPreviewError}
+                </Text>
+                {publishConflict ? (
+                  <Flex direction="column" mt={2} gap={2}>
+                    <Text fontSize="xs" color="red.800">
+                      发布冲突：{publishConflict.message}
+                    </Text>
+                    <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
+                      下载 skill ZIP
+                    </Button>
+                  </Flex>
+                ) : null}
+              </Box>
+            ) : null}
             {isLoadingPublishPreview ? (
               <Flex align="center" justify="center" py={12} gap={2}>
                 <Spinner size="sm" />
@@ -1554,21 +1493,6 @@ const SkillCreatePage = () => {
                 </Text>
               </Flex>
             )}
-            {publishPreviewError ? (
-              <Box mt={3} borderRadius="12px" border="1px solid" borderColor="red.200" bg="red.50" px={3} py={2}>
-                <Text fontSize="sm" color="red.700">{publishPreviewError}</Text>
-                {publishConflict ? (
-                  <Flex direction="column" mt={2} gap={2}>
-                    <Text fontSize="xs" color="red.800">
-                      发布冲突：{publishConflict.message}
-                    </Text>
-                    <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
-                      下载 skill ZIP
-                    </Button>
-                  </Flex>
-                ) : null}
-              </Box>
-            ) : null}
           </ModalBody>
           <ModalFooter borderTop="1px solid" borderColor="myGray.200">
             {publishResult ? (

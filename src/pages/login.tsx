@@ -53,13 +53,23 @@ const Login = () => {
   const productName = "AI Studio";
   const brandTitle = "AI Studio";
   const brandSubtitle = "MODEL LAB";
+  const redirectWithReload = useCallback(
+    (target: string) => {
+      if (typeof window !== "undefined") {
+        window.location.replace(target);
+        return;
+      }
+      void router.replace(target);
+    },
+    [router]
+  );
 
   useEffect(() => {
     const token = getAuthToken();
     if (token) {
-      router.replace(getLastRoute(lastRoute) || "/");
+      redirectWithReload(getLastRoute(lastRoute) || "/");
     }
-  }, [lastRoute, router]);
+  }, [lastRoute, redirectWithReload]);
 
   const loginSuccess = useCallback(
     (res: AuthSuccessPayload) => {
@@ -67,9 +77,9 @@ const Login = () => {
         setAuthToken(res.token);
       }
       const target = getLastRoute(lastRoute) || "/";
-      router.replace(target);
+      redirectWithReload(target);
     },
-    [lastRoute, router]
+    [lastRoute, redirectWithReload]
   );
 
   const currentMeta = pageMetaMap[pageType] || pageMetaMap[LoginPageTypeEnum.password];
