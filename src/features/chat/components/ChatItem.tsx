@@ -296,6 +296,13 @@ const ChatItem = ({
     });
     return latest;
   }, [timelineItems]);
+  const latestAnswerIndex = useMemo(() => {
+    let latest = -1;
+    timelineItems.forEach((item, index) => {
+      if (item.type === "answer") latest = index;
+    });
+    return latest;
+  }, [timelineItems]);
   const getReasoningPhaseText = useCallback(
     (index: number) => {
       if (!isStreaming || index !== latestReasoningIndex) return "";
@@ -475,7 +482,7 @@ const ChatItem = ({
                                 },
                               }}
                             >
-                              <Markdown showAnimation={showAssistantAnimation} source={item.text || ""} />
+                              <Markdown source={item.text || ""} />
                             </Box>
                           </Collapse>
                         </Box>
@@ -622,7 +629,10 @@ const ChatItem = ({
                   }
                   return (
                     <Box key={`${messageId}-timeline-answer-${index}`} pl={timelineStepIndexes.length > 0 ? "20px" : 0}>
-                      <Markdown showAnimation={showAssistantAnimation} source={item.text || ""} />
+                      <Markdown
+                        showAnimation={showAssistantAnimation && index === latestAnswerIndex}
+                        source={item.text || ""}
+                      />
                     </Box>
                   );
                 })}

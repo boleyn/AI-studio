@@ -100,6 +100,8 @@ const SkillCreatePage = () => {
   const [publishHubStatus, setPublishHubStatus] = useState<PublishHubStatus | null>(null);
   const [publishDiff, setPublishDiff] = useState<ImportDiffPayload | null>(null);
   const [publishDiffSelectedPath, setPublishDiffSelectedPath] = useState("");
+  const [showPublishMeta, setShowPublishMeta] = useState(false);
+  const [showPublishDiff, setShowPublishDiff] = useState(false);
   const [isImportConflictOpen, setIsImportConflictOpen] = useState(false);
   const [isResolvingImportConflict, setIsResolvingImportConflict] = useState(false);
   const [importConflictDraft, setImportConflictDraft] = useState<ImportConflictDraft | null>(null);
@@ -608,6 +610,8 @@ const SkillCreatePage = () => {
     setPublishHubStatus(null);
     setPublishDiff(null);
     setPublishDiffSelectedPath("");
+    setShowPublishMeta(false);
+    setShowPublishDiff(false);
     setPublishPreviewError("");
     setIsLoadingPublishPreview(true);
     try {
@@ -1213,6 +1217,8 @@ const SkillCreatePage = () => {
           setPublishHubStatus(null);
           setPublishDiff(null);
           setPublishDiffSelectedPath("");
+          setShowPublishMeta(false);
+          setShowPublishDiff(false);
           setPublishPreviewError("");
         }}
         size="4xl"
@@ -1235,38 +1241,6 @@ const SkillCreatePage = () => {
           </ModalHeader>
           <ModalCloseButton isDisabled={isPublishingToHub} />
           <ModalBody overflowY="auto" py={5}>
-            {publishPreviewError ? (
-              <Box
-                mb={4}
-                position="sticky"
-                top={0}
-                zIndex={2}
-                borderRadius="12px"
-                border="1px solid"
-                borderColor="red.200"
-                bg="red.50"
-                px={3}
-                py={2.5}
-                boxShadow="0 8px 18px -14px rgba(220,38,38,0.45)"
-              >
-                <Text fontSize="11px" color="red.700" fontWeight="800" letterSpacing="0.04em" textTransform="uppercase">
-                  发布提醒
-                </Text>
-                <Text mt={1} fontSize="sm" color="red.700">
-                  {publishPreviewError}
-                </Text>
-                {publishConflict ? (
-                  <Flex direction="column" mt={2} gap={2}>
-                    <Text fontSize="xs" color="red.800">
-                      发布冲突：{publishConflict.message}
-                    </Text>
-                    <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
-                      下载 skill ZIP
-                    </Button>
-                  </Flex>
-                ) : null}
-              </Box>
-            ) : null}
             {isLoadingPublishPreview ? (
               <Flex align="center" justify="center" py={12} gap={2}>
                 <Spinner size="sm" />
@@ -1287,177 +1261,79 @@ const SkillCreatePage = () => {
               </Box>
             ) : (
               <Flex direction="column" gap={4}>
-                {publishHubStatus?.exists ? (
+                {publishPreviewError ? (
                   <Box
                     borderRadius="14px"
                     border="1px solid"
-                    borderColor="blue.200"
-                    bg="blue.50"
+                    borderColor="red.200"
+                    bg="red.50"
                     px={4}
                     py={3}
                   >
-                    <Text fontSize="sm" fontWeight="700" color="blue.700">
-                      检测到同名 skill，将更新线上版本
+                    <Text fontSize="12px" color="red.700" fontWeight="800" letterSpacing="0.04em" textTransform="uppercase">
+                      发布异常
                     </Text>
-                    <Text mt={1} fontSize="xs" color="blue.700">
-                      线上归属：{publishHubStatus.ownerName || publishHubStatus.ownerHandle || "原作者"}
+                    <Text mt={1} fontSize="sm" color="red.700">
+                      {publishPreviewError}
                     </Text>
-                    <Text mt={1} fontSize="xs" color="blue.700">
-                      ClawHub 会记录本次更新人和更新日志。
-                    </Text>
-                  </Box>
-                ) : null}
-
-                {publishHubStatus?.exists && publishDiff ? (
-                  <Box
-                    border="1px solid"
-                    borderColor="rgba(148,163,184,0.35)"
-                    borderRadius="12px"
-                    overflow="hidden"
-                  >
-                    <Flex align="center" justify="space-between" px={3} py={2.5} bg="rgba(15,23,42,0.03)">
-                      <Text fontSize="12px" color="myGray.700" fontWeight="700">
-                        同名 Skill 变更对比（线上 vs 当前）
-                      </Text>
-                      <Flex align="center" gap={2} wrap="wrap">
-                        <Text fontSize="11px" color="blue.600">新增 {publishDiff.summary.added}</Text>
-                        <Text fontSize="11px" color="orange.600">删除 {publishDiff.summary.removed}</Text>
-                        <Text fontSize="11px" color="purple.600">修改 {publishDiff.summary.changed}</Text>
-                        <Text fontSize="11px" color="green.600">相同 {publishDiff.summary.same}</Text>
+                    {publishConflict ? (
+                      <Flex direction="column" mt={2} gap={2}>
+                        <Text fontSize="xs" color="red.800">
+                          发布冲突：{publishConflict.message}
+                        </Text>
+                        <Button size="sm" variant="whitePrimary" alignSelf="flex-start" onClick={() => void downloadSkillZip()}>
+                          下载 skill ZIP
+                        </Button>
                       </Flex>
-                    </Flex>
-                    <Flex borderTop="1px solid" borderColor="rgba(148,163,184,0.3)" h="min(48vh, 520px)">
-                      <Box w="34%" borderRight="1px solid" borderColor="rgba(148,163,184,0.3)" overflowY="auto" bg="rgba(15,23,42,0.02)">
-                        {(publishDiff.files || []).map((file) => (
-                          <Button
-                            key={`publish-${file.status}-${file.path}`}
-                            variant="ghost"
-                            justifyContent="flex-start"
-                            w="100%"
-                            h="auto"
-                            py={2}
-                            px={3}
-                            borderRadius={0}
-                            bg={publishDiffSelectedPath === file.path ? "rgba(59,130,246,0.1)" : "transparent"}
-                            onClick={() => setPublishDiffSelectedPath(file.path)}
-                          >
-                            <Flex align="center" gap={2} minW={0}>
-                              <Text
-                                fontSize="11px"
-                                color={
-                                  file.status === "added"
-                                    ? "blue.600"
-                                    : file.status === "removed"
-                                    ? "orange.600"
-                                    : file.status === "changed"
-                                    ? "purple.600"
-                                    : "green.600"
-                                }
-                                minW="38px"
-                              >
-                                {diffStatusLabelMap[file.status]}
-                              </Text>
-                              <Text fontSize="12px" color="myGray.700" noOfLines={1}>
-                                {file.path}
-                              </Text>
-                            </Flex>
-                          </Button>
-                        ))}
-                      </Box>
-                      <Box w="66%" overflow="hidden" display="flex" flexDirection="column">
-                        {(() => {
-                          const selected = (publishDiff.files || []).find((item) => item.path === publishDiffSelectedPath);
-                          if (!selected) {
-                            return (
-                              <Flex flex={1} align="center" justify="center">
-                                <Text fontSize="12px" color="myGray.500">
-                                  请选择文件查看改动
-                                </Text>
-                              </Flex>
-                            );
-                          }
-                          return (
-                            <Flex flex={1} direction="column" minH={0}>
-                              <Text
-                                px={2.5}
-                                py={1.5}
-                                fontSize="11px"
-                                color="myGray.500"
-                                borderBottom="1px solid"
-                                borderColor="rgba(148,163,184,0.2)"
-                              >
-                                线上（左） / 当前待发布（右）差异对比
-                              </Text>
-                              <Box flex={1} minH={0} bg="white">
-                                <MonacoDiffEditor
-                                  original={selected.incomingCode || ""}
-                                  modified={selected.localCode || ""}
-                                  language={getDiffLanguage(selected.path)}
-                                  theme="vs"
-                                  options={{
-                                    readOnly: true,
-                                    automaticLayout: true,
-                                    renderSideBySide: true,
-                                    minimap: { enabled: false },
-                                    scrollBeyondLastLine: false,
-                                    wordWrap: "on",
-                                    ignoreTrimWhitespace: false,
-                                    lineNumbers: "on",
-                                  }}
-                                  width="100%"
-                                  height="100%"
-                                />
-                              </Box>
-                            </Flex>
-                          );
-                        })()}
-                      </Box>
-                    </Flex>
+                    ) : null}
                   </Box>
                 ) : null}
 
-                <Flex
+                <Box
                   borderRadius="14px"
                   border="1px solid"
-                  borderColor="myGray.200"
-                  bg="myGray.50"
+                  borderColor={
+                    publishHubStatus?.exists ? (publishHubStatus?.canUpdate ? "blue.200" : "orange.200") : "green.200"
+                  }
+                  bg={publishHubStatus?.exists ? (publishHubStatus?.canUpdate ? "blue.50" : "orange.50") : "green.50"}
                   px={4}
-                  py={3}
-                  align="center"
-                  justify="space-between"
+                  py={3.5}
                 >
-                  <Text fontSize="13px" color="myGray.600">发布文件数</Text>
-                  <Text fontSize="20px" fontWeight="800" color="primary.700">
-                    {publishDraft.fileCount}
+                  <Text
+                    fontSize="sm"
+                    fontWeight="700"
+                    color={publishHubStatus?.exists ? (publishHubStatus?.canUpdate ? "blue.700" : "orange.700") : "green.700"}
+                  >
+                    {publishHubStatus?.exists
+                      ? publishHubStatus?.canUpdate
+                        ? "重点：将更新线上同名 skill"
+                        : "重点：检测到同名 skill，可能需要确认权限"
+                      : "重点：将创建新的线上 skill"}
                   </Text>
-                </Flex>
+                  <Flex mt={2} gap={3} wrap="wrap">
+                    <Text fontSize="12px" color="myGray.700">
+                      文件数 {publishDraft.fileCount}
+                    </Text>
+                    <Text fontSize="12px" color="myGray.700">
+                      版本 {publishDraft.latestVersion || "无线上版本"} → {publishDraft.version}
+                    </Text>
+                    {publishHubStatus?.exists ? (
+                      <Text fontSize="12px" color="myGray.700">
+                        线上归属 {publishHubStatus.ownerName || publishHubStatus.ownerHandle || "原作者"}
+                      </Text>
+                    ) : null}
+                  </Flex>
+                </Box>
 
-                <FormControl>
-                  <FormLabel color="myGray.700" fontWeight="700">Slug</FormLabel>
-                  <Input
-                    value={publishDraft.slug}
-                    onChange={(event) => setPublishDraft((prev) => ({ ...prev, slug: event.target.value }))}
-                    focusBorderColor="primary.400"
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel color="myGray.700" fontWeight="700">显示名</FormLabel>
-                  <Input
-                    value={publishDraft.displayName}
-                    onChange={(event) => setPublishDraft((prev) => ({ ...prev, displayName: event.target.value }))}
-                    focusBorderColor="primary.400"
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel color="myGray.700" fontWeight="700">简介</FormLabel>
-                  <Textarea
-                    value={publishDraft.summary}
-                    onChange={(event) => setPublishDraft((prev) => ({ ...prev, summary: event.target.value }))}
-                    rows={3}
-                    focusBorderColor="primary.400"
-                  />
-                </FormControl>
-                <Flex gap={3}>
+                <Flex gap={3} align="stretch" direction={{ base: "column", md: "row" }}>
+                  <FormControl>
+                    <FormLabel color="myGray.700" fontWeight="700">Slug</FormLabel>
+                    <Input
+                      value={publishDraft.slug}
+                      onChange={(event) => setPublishDraft((prev) => ({ ...prev, slug: event.target.value }))}
+                      focusBorderColor="primary.400"
+                    />
+                  </FormControl>
                   <FormControl>
                     <FormLabel color="myGray.700" fontWeight="700">版本（默认 patch +1）</FormLabel>
                     <Input
@@ -1466,31 +1342,190 @@ const SkillCreatePage = () => {
                       focusBorderColor="primary.400"
                     />
                   </FormControl>
-                  <FormControl>
-                    <FormLabel color="myGray.700" fontWeight="700">当前线上版本</FormLabel>
-                    <Input value={publishDraft.latestVersion || "尚无版本"} isReadOnly bg="myGray.100" />
-                  </FormControl>
                 </Flex>
+
                 <FormControl>
-                  <FormLabel color="myGray.700" fontWeight="700">标签（逗号分隔）</FormLabel>
-                  <Input
-                    value={publishDraft.tags}
-                    onChange={(event) => setPublishDraft((prev) => ({ ...prev, tags: event.target.value }))}
-                    focusBorderColor="primary.400"
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel color="myGray.700" fontWeight="700">更新说明</FormLabel>
+                  <FormLabel color="myGray.700" fontWeight="700">更新说明（用于线上更新日志）</FormLabel>
                   <Textarea
                     value={publishDraft.changelog}
                     onChange={(event) => setPublishDraft((prev) => ({ ...prev, changelog: event.target.value }))}
-                    rows={4}
+                    rows={3}
                     focusBorderColor="primary.400"
                   />
                 </FormControl>
-                <Text fontSize="xs" color="myGray.500">
-                  将发布 {publishDraft.fileCount} 个文件（来源：当前 skill 工作区）
-                </Text>
+
+                <Box border="1px solid" borderColor="myGray.200" borderRadius="12px" overflow="hidden">
+                  <Button
+                    variant="ghost"
+                    w="100%"
+                    h="auto"
+                    px={4}
+                    py={3}
+                    borderRadius={0}
+                    justifyContent="space-between"
+                    onClick={() => setShowPublishMeta((prev) => !prev)}
+                  >
+                    <Text fontSize="13px" fontWeight="700" color="myGray.700">
+                      Skill 基础信息（可选）
+                    </Text>
+                    <Text fontSize="12px" color="myGray.500">{showPublishMeta ? "收起" : "展开"}</Text>
+                  </Button>
+                  {showPublishMeta ? (
+                    <Flex direction="column" gap={3} px={4} pb={4} borderTop="1px solid" borderColor="myGray.200">
+                      <FormControl pt={3}>
+                        <FormLabel color="myGray.700" fontWeight="700">显示名</FormLabel>
+                        <Input
+                          value={publishDraft.displayName}
+                          onChange={(event) => setPublishDraft((prev) => ({ ...prev, displayName: event.target.value }))}
+                          focusBorderColor="primary.400"
+                        />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel color="myGray.700" fontWeight="700">简介</FormLabel>
+                        <Textarea
+                          value={publishDraft.summary}
+                          onChange={(event) => setPublishDraft((prev) => ({ ...prev, summary: event.target.value }))}
+                          rows={2}
+                          focusBorderColor="primary.400"
+                        />
+                      </FormControl>
+                      <Flex gap={3} direction={{ base: "column", md: "row" }}>
+                        <FormControl>
+                          <FormLabel color="myGray.700" fontWeight="700">标签（逗号分隔）</FormLabel>
+                          <Input
+                            value={publishDraft.tags}
+                            onChange={(event) => setPublishDraft((prev) => ({ ...prev, tags: event.target.value }))}
+                            focusBorderColor="primary.400"
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel color="myGray.700" fontWeight="700">当前线上版本</FormLabel>
+                          <Input value={publishDraft.latestVersion || "尚无版本"} isReadOnly bg="myGray.100" />
+                        </FormControl>
+                      </Flex>
+                    </Flex>
+                  ) : null}
+                </Box>
+
+                {publishDiff ? (
+                  <Box
+                    border="1px solid"
+                    borderColor="rgba(148,163,184,0.35)"
+                    borderRadius="12px"
+                    overflow="hidden"
+                  >
+                    <Button
+                      variant="ghost"
+                      w="100%"
+                      h="auto"
+                      px={4}
+                      py={3}
+                      borderRadius={0}
+                      justifyContent="space-between"
+                      onClick={() => setShowPublishDiff((prev) => !prev)}
+                    >
+                      <Flex align="center" gap={3} wrap="wrap">
+                        <Text fontSize="13px" color="myGray.700" fontWeight="700">
+                          变更对比（线上 vs 当前）
+                        </Text>
+                        <Text fontSize="11px" color="blue.600">新增 {publishDiff.summary.added}</Text>
+                        <Text fontSize="11px" color="orange.600">删除 {publishDiff.summary.removed}</Text>
+                        <Text fontSize="11px" color="purple.600">修改 {publishDiff.summary.changed}</Text>
+                        <Text fontSize="11px" color="green.600">相同 {publishDiff.summary.same}</Text>
+                      </Flex>
+                      <Text fontSize="12px" color="myGray.500">{showPublishDiff ? "收起" : "展开"}</Text>
+                    </Button>
+                    {showPublishDiff ? (
+                      <Flex borderTop="1px solid" borderColor="rgba(148,163,184,0.3)" h="min(42vh, 460px)">
+                        <Box w="36%" borderRight="1px solid" borderColor="rgba(148,163,184,0.3)" overflowY="auto" bg="rgba(15,23,42,0.02)">
+                          {(publishDiff.files || []).map((file) => (
+                            <Button
+                              key={`publish-${file.status}-${file.path}`}
+                              variant="ghost"
+                              justifyContent="flex-start"
+                              w="100%"
+                              h="auto"
+                              py={2}
+                              px={3}
+                              borderRadius={0}
+                              bg={publishDiffSelectedPath === file.path ? "rgba(59,130,246,0.1)" : "transparent"}
+                              onClick={() => setPublishDiffSelectedPath(file.path)}
+                            >
+                              <Flex align="center" gap={2} minW={0}>
+                                <Text
+                                  fontSize="11px"
+                                  color={
+                                    file.status === "added"
+                                      ? "blue.600"
+                                      : file.status === "removed"
+                                      ? "orange.600"
+                                      : file.status === "changed"
+                                      ? "purple.600"
+                                      : "green.600"
+                                  }
+                                  minW="38px"
+                                >
+                                  {diffStatusLabelMap[file.status]}
+                                </Text>
+                                <Text fontSize="12px" color="myGray.700" noOfLines={1}>
+                                  {file.path}
+                                </Text>
+                              </Flex>
+                            </Button>
+                          ))}
+                        </Box>
+                        <Box w="64%" overflow="hidden" display="flex" flexDirection="column">
+                          {(() => {
+                            const selected = (publishDiff.files || []).find((item) => item.path === publishDiffSelectedPath);
+                            if (!selected) {
+                              return (
+                                <Flex flex={1} align="center" justify="center">
+                                  <Text fontSize="12px" color="myGray.500">
+                                    请选择文件查看改动
+                                  </Text>
+                                </Flex>
+                              );
+                            }
+                            return (
+                              <Flex flex={1} direction="column" minH={0}>
+                                <Text
+                                  px={2.5}
+                                  py={1.5}
+                                  fontSize="11px"
+                                  color="myGray.500"
+                                  borderBottom="1px solid"
+                                  borderColor="rgba(148,163,184,0.2)"
+                                >
+                                  线上（左） / 当前待发布（右）差异对比
+                                </Text>
+                                <Box flex={1} minH={0} bg="white">
+                                  <MonacoDiffEditor
+                                    original={selected.incomingCode || ""}
+                                    modified={selected.localCode || ""}
+                                    language={getDiffLanguage(selected.path)}
+                                    theme="vs"
+                                    options={{
+                                      readOnly: true,
+                                      automaticLayout: true,
+                                      renderSideBySide: true,
+                                      minimap: { enabled: false },
+                                      scrollBeyondLastLine: false,
+                                      wordWrap: "on",
+                                      ignoreTrimWhitespace: false,
+                                      lineNumbers: "on",
+                                    }}
+                                    width="100%"
+                                    height="100%"
+                                  />
+                                </Box>
+                              </Flex>
+                            );
+                          })()}
+                        </Box>
+                      </Flex>
+                    ) : null}
+                  </Box>
+                ) : null}
               </Flex>
             )}
           </ModalBody>
@@ -1510,6 +1545,8 @@ const SkillCreatePage = () => {
                     setPublishHubStatus(null);
                     setPublishDiff(null);
                     setPublishDiffSelectedPath("");
+                    setShowPublishMeta(false);
+                    setShowPublishDiff(false);
                     setPublishPreviewError("");
                   }}
                 >
@@ -1524,6 +1561,8 @@ const SkillCreatePage = () => {
                     setPublishHubStatus(null);
                     setPublishDiff(null);
                     setPublishDiffSelectedPath("");
+                    setShowPublishMeta(false);
+                    setShowPublishDiff(false);
                     setPublishPreviewError("");
                   }}
                 >
@@ -1543,6 +1582,8 @@ const SkillCreatePage = () => {
                     setPublishHubStatus(null);
                     setPublishDiff(null);
                     setPublishDiffSelectedPath("");
+                    setShowPublishMeta(false);
+                    setShowPublishDiff(false);
                     setPublishPreviewError("");
                   }}
                 >
