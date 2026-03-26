@@ -58,6 +58,24 @@ export function useDashboardOverview() {
     void loadOverview();
   }, [loadOverview]);
 
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadOverview();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadOverview();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [loadOverview]);
+
   return {
     overview,
     loading,

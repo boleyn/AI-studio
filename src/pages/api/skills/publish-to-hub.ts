@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { requireAuth } from "@server/auth/session";
+import { markUserSkillPublished } from "@server/skills/skillStorage";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
 
 type WorkspaceFileMap = Record<string, { code: string }>;
@@ -637,6 +638,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? ((publishPayload as { owner?: { handle?: string | null } }).owner?.handle?.trim() || "")
         : snapshot.ownerHandle;
     const skillUrl = ownerHandle ? `${hubBase.replace(/\/+$/, "")}/${ownerHandle}/${chosenSlug}` : "";
+
+    if (skillId) {
+      try {
+        await markUserSkillPublished({
+          token: skillId,
+          userId,
+          version: chosenVersionRaw,
+        });
+      } catch {
+        // Ignore local marker failure to avoid blocking successful hub publish.
+      }
+    }
 
     res.status(200).json({
       ok: true,

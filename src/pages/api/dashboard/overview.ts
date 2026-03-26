@@ -75,10 +75,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return count;
     }, 0);
 
-    // 当前技能尚未接入真实发布状态字段；新建项目默认均应显示为待发布。
-    const published = 0;
-    const pending = skills.length;
-    const publishedRate = 0;
+    const published = skills.filter((skill) => typeof skill.publishedAt === "string" && skill.publishedAt.trim()).length;
+    const pending = Math.max(0, skills.length - published);
+    const publishedRate = skills.length > 0 ? Math.round((published / skills.length) * 100) : 0;
 
     const projectTokens = projectItems.map((item) => item.token).filter(Boolean);
     let totalSessions = 0;

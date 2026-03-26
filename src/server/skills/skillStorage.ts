@@ -27,6 +27,8 @@ type SkillDoc = {
   files?: Record<string, { code: string }>;
   sourceType: SkillSourceType;
   templateKey?: string;
+  publishedAt?: string;
+  publishedVersion?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -122,6 +124,8 @@ const toListItem = (doc: SkillDoc): SkillListItem => ({
   description: doc.description,
   sourceType: doc.sourceType,
   templateKey: doc.templateKey,
+  publishedAt: doc.publishedAt,
+  publishedVersion: doc.publishedVersion,
   fileCount: (() => {
     const files = normalizeSkillFiles(doc.files);
     const count = Object.keys(files).length;
@@ -325,6 +329,32 @@ export const updateUserSkill = async ({
     createdAt: current.createdAt,
     updatedAt: now,
   };
+};
+
+export const markUserSkillPublished = async ({
+  token,
+  userId,
+  version,
+}: {
+  token: string;
+  userId: string;
+  version?: string;
+}) => {
+  const safeToken = token.trim();
+  const safeUserId = ensureUserId(userId);
+  if (!safeToken) return;
+  const coll = await getCollection();
+  const now = new Date().toISOString();
+  await coll.updateOne(
+    { token: safeToken, userId: safeUserId },
+    {
+      $set: {
+        publishedAt: now,
+        ...(typeof version === "string" && version.trim() ? { publishedVersion: version.trim() } : {}),
+        updatedAt: now,
+      },
+    }
+  );
 };
 
 export const deleteUserSkill = async ({
