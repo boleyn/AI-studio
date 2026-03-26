@@ -31,13 +31,14 @@ const getFeishuConfig = () => ({
   defaultPassword: process.env.FEISHU_DEFAULT_PASSWORD || "Feishu@123456",
 });
 
-const requestPassportToken = async (appId: string, appSecret: string, code: string) => {
+const requestPassportToken = async (appId: string, appSecret: string, code: string, redirectUri?: string) => {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: appId,
     client_secret: appSecret,
     code,
   });
+  if (redirectUri) params.set("redirect_uri", redirectUri);
   const response = await fetch(
     `https://passport.feishu.cn/suite/passport/oauth/token?${params.toString()}`,
     { method: "POST" }
@@ -47,19 +48,29 @@ const requestPassportToken = async (appId: string, appSecret: string, code: stri
   return data?.access_token || data?.data?.access_token || null;
 };
 
-const requestOpenApiToken = async (appId: string, appSecret: string, code: string) => {
+const requestOpenApiToken = async (appId: string, appSecret: string, code: string, redirectUri?: string) => {
+  const payload: Record<string, string> = {
+    grant_type: "authorization_code",
+    code,
+    client_id: appId,
+    client_secret: appSecret,
+  };
+  if (redirectUri) payload.redirect_uri = redirectUri;
   const response = await fetch("https://open.feishu.cn/open-apis/authen/v2/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      code,
-      client_id: appId,
-      client_secret: appSecret,
-    }),
+    body: JSON.stringify(payload),
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const failed = (await response.json().catch(() => null)) as any;
+    const detail = String(failed?.msg || failed?.message || failed?.error || "").trim();
+    throw new Error(detail || `飞书授权失败（HTTP ${response.status}）`);
+  }
   const data = (await response.json().catch(() => null)) as any;
+  if (Number(data?.code) !== 0 && !data?.access_token && !data?.data?.access_token) {
+    const detail = String(data?.msg || data?.message || data?.error || "").trim();
+    throw new Error(detail || "飞书授权失败");
+  }
   return data?.access_token || data?.data?.access_token || null;
 };
 
@@ -85,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const { appId, appSecret, defaultPassword } = getFeishuConfig();
+  const { appId, appSecret, redirectUri, defaultPassword } = getFeishuConfig();
   if (!appId || !appSecret) {
     res.status(500).json({ error: "未配置飞书登录参数" });
     return;
@@ -98,8 +109,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   const accessToken =
-    (await requestPassportToken(appId, appSecret, code)) ||
-    (await requestOpenApiToken(appId, appSecret, code));
+    (await requestPassportToken(appId, appSecret, code, redirectUri)) ||
+    (await requestOpenApiToken(appId, appSecret, code, redirectUri));
 
   if (!accessToken) {
     res.status(500).json({ error: "飞书授权失败" });

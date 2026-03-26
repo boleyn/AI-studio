@@ -17,7 +17,7 @@ const FeishuAutoLoginPage = () => {
     const lastRoute = getLastRoute(rawLastRoute);
     if (!router.isReady) return;
     setStatus("正在跳转飞书授权...");
-    const target = `/api/auth/feishu/authorize?lastRoute=${encodeURIComponent(lastRoute)}`;
+    const target = `/api/auth/feishu/authorize?returnTo=${encodeURIComponent(lastRoute)}`;
     window.location.replace(target);
   }, [router]);
 

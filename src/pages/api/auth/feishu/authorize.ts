@@ -2,18 +2,18 @@ import type { NextApiRequest, NextApiResponse } from "next";
 
 const FEISHU_AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize";
 
-const normalizeLastRoute = (value: unknown) => {
+const normalizeReturnTo = (value: unknown) => {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
   return raw;
 };
 
-const getCallbackUrl = (redirectUri: string, lastRoute: string) => {
+const getCallbackUrl = (redirectUri: string, returnTo: string) => {
   const normalized = redirectUri.trim();
   if (!normalized) return "";
   try {
     const callback = new URL(normalized);
-    callback.searchParams.set("lastRoute", lastRoute);
+    callback.searchParams.set("returnTo", returnTo);
     return callback.toString();
   } catch {
     return "";
@@ -29,8 +29,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   const appId = process.env.FEISHU_APP_ID?.trim() || "";
   const redirectUri = process.env.FEISHU_REDIRECT_URI?.trim() || "";
-  const lastRoute = normalizeLastRoute(req.query.lastRoute);
-  const callbackUrl = getCallbackUrl(redirectUri, lastRoute);
+  const returnTo = normalizeReturnTo(req.query.lastRoute ?? req.query.returnTo);
+  const callbackUrl = getCallbackUrl(redirectUri, returnTo);
 
   if (!appId || !callbackUrl) {
     res.status(500).json({ error: "飞书登录未配置" });
@@ -42,7 +42,5 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("redirect_uri", callbackUrl);
   authUrl.searchParams.set("state", "STATE");
-  authUrl.searchParams.set("scope", "contact:contact.base:readonly");
   res.redirect(302, authUrl.toString());
 }
-

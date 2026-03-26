@@ -18,7 +18,12 @@ const FeishuCallbackPage = () => {
   useEffect(() => {
     if (!router.isReady) return;
     const code = typeof router.query.code === "string" ? router.query.code : "";
-    const rawLastRoute = typeof router.query.lastRoute === "string" ? router.query.lastRoute : "/";
+    const rawLastRoute =
+      typeof router.query.lastRoute === "string"
+        ? router.query.lastRoute
+        : typeof router.query.returnTo === "string"
+        ? router.query.returnTo
+        : "/";
     const lastRoute = getLastRoute(rawLastRoute);
 
     if (!code) {
