@@ -60,6 +60,8 @@ const ChatInput = ({
   const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const skillPickerRef = useRef<HTMLDivElement | null>(null);
+  const filePickerRef = useRef<HTMLDivElement | null>(null);
   const updateTriggerState = useCallback((value: string, cursorPosition: number) => {
     const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
     const prefix = value.slice(0, safeCursor);
@@ -209,6 +211,28 @@ const ChatInput = ({
   useEffect(() => {
     setActiveFileIndex(0);
   }, [fileQuery, showFilePicker]);
+  useEffect(() => {
+    if (!showSkillPicker || filteredSkillOptions.length === 0) return;
+    setActiveSkillIndex((prev) => Math.min(prev, filteredSkillOptions.length - 1));
+  }, [filteredSkillOptions.length, showSkillPicker]);
+  useEffect(() => {
+    if (!showFilePicker || filteredFileOptions.length === 0) return;
+    setActiveFileIndex((prev) => Math.min(prev, filteredFileOptions.length - 1));
+  }, [filteredFileOptions.length, showFilePicker]);
+  useEffect(() => {
+    if (!showSkillPicker) return;
+    const container = skillPickerRef.current;
+    if (!container) return;
+    const activeNode = container.querySelector<HTMLElement>(`[data-skill-option-index="${activeSkillIndex}"]`);
+    activeNode?.scrollIntoView({ block: "nearest" });
+  }, [activeSkillIndex, showSkillPicker]);
+  useEffect(() => {
+    if (!showFilePicker) return;
+    const container = filePickerRef.current;
+    if (!container) return;
+    const activeNode = container.querySelector<HTMLElement>(`[data-file-option-index="${activeFileIndex}"]`);
+    activeNode?.scrollIntoView({ block: "nearest" });
+  }, [activeFileIndex, showFilePicker]);
 
   const applySelectedSkill = useCallback(
     (skillName: string) => {
@@ -699,6 +723,7 @@ const ChatInput = ({
             />
             {showFilePicker ? (
               <Box
+                ref={filePickerRef}
                 bg="white"
                 border="1px solid"
                 borderColor={skillTheme.pickerBorderColor || "adora.200"}
@@ -718,6 +743,7 @@ const ChatInput = ({
                     return (
                       <Box
                         key={item}
+                        data-file-option-index={index}
                         bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
                         borderRadius="8px"
                         cursor="pointer"
@@ -739,6 +765,7 @@ const ChatInput = ({
             ) : null}
             {showSkillPicker ? (
               <Box
+                ref={skillPickerRef}
                 bg="white"
                 border="1px solid"
                 borderColor={skillTheme.pickerBorderColor || "adora.200"}
@@ -758,6 +785,7 @@ const ChatInput = ({
                     return (
                       <Box
                         key={item.name}
+                        data-skill-option-index={index}
                         bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
                         borderRadius="8px"
                         cursor="pointer"

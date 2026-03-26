@@ -22,6 +22,8 @@ const debugLog = (label: string, data: Record<string, unknown>) => {
   console.info(`[feishu-login] ${label}`, data);
 };
 
+const normalizeId = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
 const getFeishuConfig = () => ({
   appId: process.env.FEISHU_APP_ID,
   appSecret: process.env.FEISHU_APP_SECRET,
@@ -187,8 +189,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shouldPatchDisplayName = !user.displayName && Boolean(nextDisplayName);
     const shouldPatchContact = !user.contact && Boolean(nextContact);
     const shouldPatchAvatar = !user.avatar && Boolean(nextAvatar);
-    const shouldPatchFeishuOpenId = !user.feishuOpenId && Boolean(feishuOpenId);
-    const shouldPatchFeishuUnionId = !user.feishuUnionId && Boolean(feishuUnionId);
+    const currentFeishuOpenId = normalizeId(user.feishuOpenId);
+    const currentFeishuUnionId = normalizeId(user.feishuUnionId);
+    // Always sync the latest Feishu IDs when they differ, to avoid stale/mismatched binding.
+    const shouldPatchFeishuOpenId = Boolean(feishuOpenId) && feishuOpenId !== currentFeishuOpenId;
+    const shouldPatchFeishuUnionId = Boolean(feishuUnionId) && feishuUnionId !== currentFeishuUnionId;
     if (
       shouldPatchDisplayName ||
       shouldPatchContact ||

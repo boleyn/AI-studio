@@ -247,9 +247,13 @@ const buildClawHubPublishHeaders = (input: {
     headers[PROXY_SECRET_HEADER] = input.proxySecret;
     if (input.feishuOpenId) {
       headers[FEISHU_OPEN_ID_HEADER] = input.feishuOpenId;
+      headers["X-Feishu-Open-Id"] = input.feishuOpenId;
+      headers["X-Feishu-OpenId"] = input.feishuOpenId;
     }
     if (input.feishuUnionId) {
       headers[FEISHU_UNION_ID_HEADER] = input.feishuUnionId;
+      headers["X-Feishu-Union-Id"] = input.feishuUnionId;
+      headers["X-Feishu-UnionId"] = input.feishuUnionId;
     }
   }
   return headers;
@@ -258,6 +262,13 @@ const buildClawHubPublishHeaders = (input: {
 const buildClawHubReadHeaders = (proxySecret: string) => ({
   [PROXY_SECRET_HEADER]: proxySecret,
 });
+
+const maskIdentity = (value?: string) => {
+  const v = typeof value === "string" ? value.trim() : "";
+  if (!v) return "(empty)";
+  if (v.length <= 8) return `${v.slice(0, 2)}***${v.slice(-2)}`;
+  return `${v.slice(0, 4)}***${v.slice(-4)}`;
+};
 
 const resolveResponseMessage = (payload: unknown, fallback: string) => {
   if (!payload) return fallback;
@@ -592,6 +603,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const publishPayload = await publishResp.json().catch(() => null);
     if (!publishResp.ok) {
       const message = resolveResponseMessage(publishPayload, "发布失败");
+      if (/No ClawHub user is linked to this Feishu open_id\/union_id/i.test(message)) {
+        res.status(400).json({
+          error:
+            "ClawHub 未找到与你当前飞书身份绑定的用户，请先在 ClawHub 完成同一飞书账号登录/绑定后再发布。" +
+            `（当前 open_id=${maskIdentity(feishuOpenId)}, union_id=${maskIdentity(feishuUnionId)}）`,
+        });
+        return;
+      }
       if (publishResp.status === 409) {
         const ownerName = snapshot.ownerName || snapshot.ownerHandle || "原作者";
         res.status(409).json({

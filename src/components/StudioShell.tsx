@@ -109,6 +109,9 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
   return Object.keys(output).length > 0 ? output : null;
 };
 
+const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
+  Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
+
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
   const router = useRouter();
   const toast = useToast();
@@ -142,6 +145,9 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     editable: "",
     preview: "",
   });
+  const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
+    toSortedFilePaths(initialProject?.files || null)
+  );
 
   const loadProject = useCallback(async (requestedToken: string) => {
     if (!requestedToken) {
@@ -177,6 +183,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
       setTemplate((nextTemplate as SandpackPredefinedTemplate) || DEFAULT_TEMPLATE);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
+      setChatFileOptions(toSortedFilePaths(nextFiles));
       setDependencies(nextDependencies as Record<string, string>);
       setProjectName(nextName);
       setStatus("ready");
@@ -385,6 +392,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
   const handleFilesChange = useCallback((nextFiles: SandpackFiles) => {
     latestFilesRef.current = nextFiles;
+    setChatFileOptions(toSortedFilePaths(nextFiles));
   }, []);
 
   useEffect(() => {
@@ -411,6 +419,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
       ...updated,
     };
     latestFilesRef.current = merged;
+    setChatFileOptions(toSortedFilePaths(merged));
     setFiles(merged);
   }, [files]);
 
@@ -576,6 +585,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 onFilesUpdated={handleAgentFilesUpdated}
                 height="100%"
                 openSkillsSignal={openSkillsSignal}
+                fileOptions={chatFileOptions}
               />
             </Box>
             <Box
