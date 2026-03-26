@@ -81,6 +81,7 @@ const INTERNAL_SKILL_FILE_PATTERN = /^\/skills\/([^/]+)\/SKILL\.md$/i;
 const PUBLIC_SKILL_FILE_PATTERN = /^\/([^/]+)\/SKILL\.md$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
 const FEISHU_OPEN_ID_HEADER = "X-ClawHub-Feishu-Open-Id";
+const FEISHU_UNION_ID_HEADER = "X-ClawHub-Feishu-Union-Id";
 const PROXY_SECRET_HEADER = "X-ClawHub-Proxy-Secret";
 const MAX_INLINE_FILE_BYTES = 512 * 1024;
 
@@ -239,11 +240,17 @@ const toSkillFileMap = (files: Array<{ relativePath: string; content: string }>)
 const buildClawHubPublishHeaders = (input: {
   proxySecret?: string;
   feishuOpenId?: string;
+  feishuUnionId?: string;
 }) => {
   const headers: Record<string, string> = {};
-  if (input.proxySecret && input.feishuOpenId) {
+  if (input.proxySecret && (input.feishuOpenId || input.feishuUnionId)) {
     headers[PROXY_SECRET_HEADER] = input.proxySecret;
-    headers[FEISHU_OPEN_ID_HEADER] = input.feishuOpenId;
+    if (input.feishuOpenId) {
+      headers[FEISHU_OPEN_ID_HEADER] = input.feishuOpenId;
+    }
+    if (input.feishuUnionId) {
+      headers[FEISHU_UNION_ID_HEADER] = input.feishuUnionId;
+    }
   }
   return headers;
 };
@@ -421,18 +428,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const proxySecret = process.env.SKILL_HUB_PROXY_SECRET?.trim();
   const feishuOpenId = typeof auth.user.feishuOpenId === "string" ? auth.user.feishuOpenId.trim() : "";
+  const feishuUnionId = typeof auth.user.feishuUnionId === "string" ? auth.user.feishuUnionId.trim() : "";
   if (!proxySecret) {
     res.status(500).json({ error: "SKILL_HUB_PROXY_SECRET 未配置" });
     return;
   }
-  if (!feishuOpenId) {
-    res.status(400).json({ error: "当前账号缺少飞书 open_id，请重新使用飞书登录后再发布" });
+  if (!feishuOpenId && !feishuUnionId) {
+    res.status(400).json({ error: "当前账号缺少飞书身份标识（open_id/union_id），请重新使用飞书登录后再发布" });
     return;
   }
 
   const hubAuthHeaders = buildClawHubPublishHeaders({
     proxySecret,
     feishuOpenId,
+    feishuUnionId,
   });
   const hubReadHeaders = buildClawHubReadHeaders(proxySecret);
 
