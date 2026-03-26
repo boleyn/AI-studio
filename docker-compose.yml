@@ -27,6 +27,7 @@ services:
       AGENT_SKILL_FILE: skills/aistudio-mcp-code-workflow/SKILL.md
       FEISHU_APP_ID: cli_a9283dab3d4cdcb2
       FEISHU_REDIRECT_URI: https://aistudio.asiainfo.tech/feishu/oauth/callback
+      
       FEISHU_APP_SECRET: HxxPdVdgN7ILDwY78VlYmfscDmehzqLs
       FEISHU_DEFAULT_PASSWORD: Feishu@123456
 
