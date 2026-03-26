@@ -9,6 +9,7 @@ const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
 
 const payloadSchema = z.object({
   code: z.string().min(1, "缺少 code"),
+  returnTo: z.string().optional(),
 });
 
 const maskValue = (value: unknown) => {
@@ -31,6 +32,24 @@ const getFeishuConfig = () => ({
   defaultPassword: process.env.FEISHU_DEFAULT_PASSWORD || "Feishu@123456",
 });
 
+const normalizeReturnTo = (value: unknown) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  return raw;
+};
+
+const buildRedirectUriWithReturnTo = (baseRedirectUri: string, returnTo: string) => {
+  const normalized = baseRedirectUri.trim();
+  if (!normalized) return "";
+  try {
+    const callback = new URL(normalized);
+    callback.searchParams.set("returnTo", normalizeReturnTo(returnTo));
+    return callback.toString();
+  } catch {
+    return normalized;
+  }
+};
+
 const requestPassportToken = async (appId: string, appSecret: string, code: string, redirectUri?: string) => {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
@@ -43,8 +62,16 @@ const requestPassportToken = async (appId: string, appSecret: string, code: stri
     `https://passport.feishu.cn/suite/passport/oauth/token?${params.toString()}`,
     { method: "POST" }
   );
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const failed = (await response.json().catch(() => null)) as any;
+    const detail = String(failed?.msg || failed?.message || failed?.error || "").trim();
+    throw new Error(detail || `passport token 失败（HTTP ${response.status}）`);
+  }
   const data = (await response.json().catch(() => null)) as any;
+  if (Number(data?.code) !== 0 && !data?.access_token && !data?.data?.access_token) {
+    const detail = String(data?.msg || data?.message || data?.error || "").trim();
+    throw new Error(detail || "passport token 失败");
+  }
   return data?.access_token || data?.data?.access_token || null;
 };
 
@@ -102,18 +129,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const { code } = parseResult.data;
+  const { code, returnTo } = parseResult.data;
   debugLog("received_callback_code", {
     hasCode: Boolean(code),
     codePreview: maskValue(code),
   });
 
-  const accessToken =
-    (await requestPassportToken(appId, appSecret, code, redirectUri)) ||
-    (await requestOpenApiToken(appId, appSecret, code, redirectUri));
+  const tokenRedirectUri = buildRedirectUriWithReturnTo(redirectUri || "", returnTo || "/");
+  let accessToken: string | null = null;
+  let passportError = "";
+  let openapiError = "";
+  try {
+    accessToken = await requestPassportToken(appId, appSecret, code, tokenRedirectUri);
+  } catch (err) {
+    passportError = err instanceof Error ? err.message : "passport token 失败";
+  }
+  if (!accessToken) {
+    try {
+      accessToken = await requestOpenApiToken(appId, appSecret, code, tokenRedirectUri);
+    } catch (err) {
+      openapiError = err instanceof Error ? err.message : "openapi token 失败";
+    }
+  }
 
   if (!accessToken) {
-    res.status(500).json({ error: "飞书授权失败" });
+    const detail = [passportError ? `passport: ${passportError}` : "", openapiError ? `openapi: ${openapiError}` : ""]
+      .filter(Boolean)
+      .join(" | ");
+    res.status(500).json({ error: detail || "飞书授权失败" });
     return;
   }
 

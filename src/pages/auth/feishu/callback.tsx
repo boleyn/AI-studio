@@ -25,6 +25,7 @@ const FeishuCallbackPage = () => {
         ? router.query.returnTo
         : "/";
     const lastRoute = getLastRoute(rawLastRoute);
+    const returnTo = typeof router.query.returnTo === "string" ? router.query.returnTo : lastRoute;
 
     if (!code) {
       setError("缺少授权码");
@@ -37,7 +38,7 @@ const FeishuCallbackPage = () => {
         const response = await fetch("/api/auth/feishu/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code, returnTo }),
         });
         const payload = (await response.json().catch(() => null)) as
           | { token?: string; error?: string }
