@@ -247,13 +247,9 @@ const buildClawHubPublishHeaders = (input: {
     headers[PROXY_SECRET_HEADER] = input.proxySecret;
     if (input.feishuOpenId) {
       headers[FEISHU_OPEN_ID_HEADER] = input.feishuOpenId;
-      headers["X-Feishu-Open-Id"] = input.feishuOpenId;
-      headers["X-Feishu-OpenId"] = input.feishuOpenId;
     }
     if (input.feishuUnionId) {
       headers[FEISHU_UNION_ID_HEADER] = input.feishuUnionId;
-      headers["X-Feishu-Union-Id"] = input.feishuUnionId;
-      headers["X-Feishu-UnionId"] = input.feishuUnionId;
     }
   }
   return headers;
