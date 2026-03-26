@@ -6,6 +6,7 @@ import { clearAuthToken, getAuthToken, withAuthHeaders } from "@features/auth/cl
 const PUBLIC_ROUTES = new Set<string>([
   "/login",
   "/auth/feishu/login",
+  "/auth/feishu/callback",
   "/feishu/oauth/callback",
   "/share/preview/[shareId]",
 ]);
