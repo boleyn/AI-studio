@@ -19,15 +19,5 @@ export function formatGlobalResult(result: GlobalToolResult): string {
     }
   }
 
-  if (result.action === "search") {
-    const data = result.data as { results?: Array<{ path: string; matches: any[] }> } | undefined;
-    if (data?.results) {
-      const summary = data.results
-        .map((entry) => `${entry.path} (${entry.matches.length})`)
-        .join("\n");
-      return `搜索结果:\n${summary}`;
-    }
-  }
-
   return result.message;
 }

@@ -4,12 +4,12 @@ import {
   runWorkspaceAction,
   type WorkspaceActionInput,
 } from "@server/skills/workspaceStorage";
+import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
 
 const listFilesSchema = z.object({});
 const readFileSchema = z.object({ path: z.string() });
 const writeFileSchema = z.object({ path: z.string(), content: z.string() });
 const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
-const searchInFilesSchema = z.object({ query: z.string(), limit: z.number().int().min(1).max(200).optional() });
 
 const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
   if (schema === listFilesSchema) return { type: "object", properties: {} };
@@ -44,8 +44,14 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
   return {
     type: "object",
     properties: {
-      query: { type: "string", description: "搜索关键词" },
-      limit: { type: "integer", minimum: 1, maximum: 200 },
+      query: { type: "string", description: "搜索关键词或正则" },
+      regex: { type: "boolean", description: "是否按正则处理，默认 true" },
+      caseSensitive: { type: "boolean", description: "是否区分大小写，默认 true" },
+      wholeWord: { type: "boolean", description: "是否整词匹配" },
+      includeGlobs: { type: "array", items: { type: "string" }, description: "只搜索匹配这些 glob 的路径" },
+      excludeGlobs: { type: "array", items: { type: "string" }, description: "排除匹配这些 glob 的路径" },
+      contextLines: { type: "integer", minimum: 0, maximum: 5, description: "返回前后上下文行数" },
+      maxResults: { type: "integer", minimum: 1, maximum: 500, description: "全局最大返回命中数" },
     },
     required: ["query"],
   };
@@ -133,15 +139,21 @@ export const createSkillWorkspaceTools = ({
     },
     {
       name: "search_in_files",
-      description: "在 workspace 内搜索关键词。",
+      description: "在 workspace 内按 rg 风格搜索（正则、glob、上下文）。",
       parameters: toJsonSchema(searchInFilesSchema),
       run: async (input) => {
-        const parsed = safeParse<{ query: string; limit?: number }>(searchInFilesSchema, input);
+        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
         return run({
           action: "search",
           query: parsed.data.query,
-          limit: parsed.data.limit,
+          regex: parsed.data.regex,
+          caseSensitive: parsed.data.caseSensitive,
+          wholeWord: parsed.data.wholeWord,
+          includeGlobs: parsed.data.includeGlobs,
+          excludeGlobs: parsed.data.excludeGlobs,
+          contextLines: parsed.data.contextLines,
+          maxResults: parsed.data.maxResults,
         });
       },
     },

@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { ChangeTracker, GlobalToolInput } from "../globalTools";
 import { globalToolSchema, runGlobalAction } from "../globalTools";
 import type { AgentToolDefinition } from "./types";
-import { getProject } from "@server/projects/projectStorage";
+import { getProject, hasProjectFilesDir } from "@server/projects/projectStorage";
+import { runSearchInFiles, searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
 import {
   getObjectFromStorage,
   listStorageObjectKeysByPrefix,
@@ -29,7 +30,6 @@ const readFileSchema = z
   );
 const writeFileSchema = z.object({ path: z.string(), content: z.string() });
 const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
-const searchInFilesSchema = z.object({ query: z.string(), limit: z.number().int().min(1).max(200).optional() });
 const sandpackCompileInfoSchema = z.object({
   includeLogs: z.boolean().optional(),
   includeEvents: z.boolean().optional(),
@@ -141,8 +141,14 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
     return {
       type: "object",
       properties: {
-        query: { type: "string", description: "搜索关键词" },
-        limit: { type: "integer", minimum: 1, maximum: 200, description: "最多返回条数" },
+        query: { type: "string", description: "搜索关键词或正则" },
+        regex: { type: "boolean", description: "是否将 query 按正则处理，默认 true（接近 rg）" },
+        caseSensitive: { type: "boolean", description: "是否区分大小写，默认 true（接近 rg）" },
+        wholeWord: { type: "boolean", description: "是否整词匹配（类似 rg -w）" },
+        includeGlobs: { type: "array", items: { type: "string" }, description: "只搜索匹配这些 glob 的路径" },
+        excludeGlobs: { type: "array", items: { type: "string" }, description: "排除匹配这些 glob 的路径" },
+        contextLines: { type: "integer", minimum: 0, maximum: 5, description: "每条命中返回前后上下文行数" },
+        maxResults: { type: "integer", minimum: 1, maximum: 500, description: "全局最大返回命中数" },
       },
       required: ["query"],
     };
@@ -322,16 +328,25 @@ export function createProjectTools(
     },
     {
       name: "search_in_files",
-      description: "在项目中搜索指定关键词。",
+      description: "在项目中按 rg 风格搜索（支持正则、大小写、glob 过滤、上下文）。",
       parameters: toJsonSchema(searchInFilesSchema),
       run: async (input) => {
-        const parsed = safeParse<{ query: string; limit?: number }>(searchInFilesSchema, input);
+        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
-        return runGlobalAction(
-          token,
-          { action: "search", query: parsed.data.query, limit: parsed.data.limit },
-          changeTracker
-        );
+
+        const project = await getProject(token);
+        if (!project) {
+          throw new Error("项目不存在");
+        }
+        const hasFiles = await hasProjectFilesDir(token);
+        if (!hasFiles) {
+          throw new Error("项目文件目录缺失，请先保存一次项目文件后再试");
+        }
+
+        return runSearchInFiles({
+          files: project.files || {},
+          input: parsed.data,
+        });
       },
     },
     {
@@ -376,16 +391,15 @@ export function createProjectTools(
     },
     {
       name: "global",
-      description: "通用文件操作工具，支持 list/read/write/replace/search。",
+      description: "通用文件操作工具，支持 list/read/write/replace。",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["list", "read", "write", "replace", "search"] },
+          action: { type: "string", enum: ["list", "read", "write", "replace"] },
           path: { type: "string" },
           content: { type: "string" },
           query: { type: "string" },
           replace: { type: "string" },
-          limit: { type: "integer", minimum: 1, maximum: 200 },
         },
         required: ["action"],
       },

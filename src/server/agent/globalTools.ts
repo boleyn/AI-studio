@@ -7,12 +7,11 @@ export type ChangeTracker = {
 };
 
 export type GlobalToolInput = {
-  action: "list" | "read" | "write" | "replace" | "search";
+  action: "list" | "read" | "write" | "replace";
   path?: string;
   content?: string;
   query?: string;
   replace?: string;
-  limit?: number;
 };
 
 export type GlobalToolResult = {
@@ -20,16 +19,14 @@ export type GlobalToolResult = {
   action: GlobalToolInput["action"];
   message: string;
   data?: Record<string, unknown>;
-  files?: Record<string, { code: string }>;
 };
 
 export const globalToolSchema = z.object({
-  action: z.enum(["list", "read", "write", "replace", "search"]),
+  action: z.enum(["list", "read", "write", "replace"]),
   path: z.string().optional(),
   content: z.string().optional(),
   query: z.string().optional(),
   replace: z.string().optional(),
-  limit: z.number().int().min(1).max(200).optional(),
 });
 
 const unsafePathPattern = /\\|\.\.|\0/;
@@ -58,30 +55,6 @@ function replaceAll(haystack: string, needle: string, replacement: string) {
   const count = countOccurrences(haystack, needle);
   const content = haystack.split(needle).join(replacement);
   return { content, count };
-}
-
-function collectMatches(content: string, query: string, limit: number) {
-  const matches: Array<{ line: number; column: number; snippet: string }> = [];
-  if (!query) {
-    return matches;
-  }
-  const lines = content.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    let index = line.indexOf(query);
-    while (index !== -1) {
-      matches.push({
-        line: i + 1,
-        column: index + 1,
-        snippet: line.trim().slice(0, 160),
-      });
-      if (matches.length >= limit) {
-        return matches;
-      }
-      index = line.indexOf(query, index + query.length);
-    }
-  }
-  return matches;
 }
 
 async function getProjectFiles(token: string) {
@@ -146,8 +119,7 @@ export async function runGlobalAction(
       ok: true,
       action,
       message: `已写入 ${path}。`,
-      data: { path, files: { [path]: { code: input.content } } },
-      files: { [path]: { code: input.content } },
+      data: { path, bytes: input.content.length },
     };
   }
 
@@ -169,29 +141,7 @@ export async function runGlobalAction(
       ok: true,
       action,
       message: `已在 ${path} 中替换 ${count} 处。`,
-      data: { path, replaced: count, files: { [path]: { code: content } } },
-      files: { [path]: { code: content } },
-    };
-  }
-
-  if (action === "search") {
-    if (!input.query) {
-      return { ok: false, action, message: "请提供 query" };
-    }
-    const files = await getProjectFiles(token);
-    const limit = input.limit ?? 50;
-    const results: Array<{ path: string; matches: Array<{ line: number; column: number; snippet: string }>; total: number }> = [];
-    Object.entries(files).forEach(([path, file]) => {
-      const matches = collectMatches(file.code, input.query!, limit);
-      if (matches.length === 0) return;
-      results.push({ path, matches, total: matches.length });
-    });
-
-    return {
-      ok: true,
-      action,
-      message: `搜索 "${input.query}" 完成。`,
-      data: { results },
+      data: { path, replaced: count, bytes: content.length },
     };
   }
 
@@ -244,13 +194,6 @@ export function parseGlobalCommand(text: string): GlobalCommandParseResult | nul
       return { ok: false, message: "请提供读取路径，例如 /global read /App.js" };
     }
     return { ok: true, input: { action: "read", path: args[0] } };
-  }
-
-  if (action === "search") {
-    if (args.length === 0) {
-      return { ok: false, message: "请提供搜索关键字，例如 /global search useState" };
-    }
-    return { ok: true, input: { action: "search", query: args.join(" ") } };
   }
 
   return {

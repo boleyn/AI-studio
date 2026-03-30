@@ -63,6 +63,56 @@ const parseToolResponse = (response: string): unknown => {
   }
 };
 
+const compactToolResponseForModel = (toolName: string, response: string): string => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response);
+  } catch {
+    return response;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return response;
+  }
+
+  const payload = parsed as Record<string, unknown>;
+  const action = typeof payload.action === "string" ? payload.action : "";
+  const isWriteLikeTool =
+    toolName === "write_file" ||
+    toolName === "replace_in_file" ||
+    (toolName === "global" && (action === "write" || action === "replace"));
+  if (!isWriteLikeTool) {
+    return response;
+  }
+
+  const rawFiles =
+    payload.files && typeof payload.files === "object" && !Array.isArray(payload.files)
+      ? (payload.files as Record<string, unknown>)
+      : null;
+  const fileSummaries = rawFiles
+    ? Object.entries(rawFiles).map(([path, file]) => ({
+        path,
+        chars:
+          file && typeof file === "object" && !Array.isArray(file) && typeof (file as { code?: unknown }).code === "string"
+            ? ((file as { code: string }).code || "").length
+            : 0,
+      }))
+    : undefined;
+
+  const nextData =
+    payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+      ? Object.fromEntries(
+          Object.entries(payload.data as Record<string, unknown>).filter(([key]) => key !== "files")
+        )
+      : payload.data;
+
+  return JSON.stringify({
+    ...payload,
+    ...(nextData !== undefined ? { data: nextData } : {}),
+    ...(fileSummaries ? { files: fileSummaries } : {}),
+    compactedForModel: true,
+  });
+};
+
 export const runSimpleAgentWorkflow = async ({
   selectedModel,
   stream,
@@ -151,6 +201,7 @@ export const runSimpleAgentWorkflow = async ({
       const toolName = call.function.name;
       const params = formatToolArgs(call.function.arguments);
       const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
+      const modelResponse = compactToolResponseForModel(toolName, response);
 
       onEvent?.(SseResponseEventEnum.toolResponse, {
         id: call.id,
@@ -166,7 +217,7 @@ export const runSimpleAgentWorkflow = async ({
         runningTime,
         status,
         toolInput: toSafeToolArgs(call.function.arguments),
-        toolRes: parseToolResponse(response),
+        toolRes: parseToolResponse(modelResponse),
       };
       flowResponses.push(nodeResponse);
 
@@ -175,7 +226,7 @@ export const runSimpleAgentWorkflow = async ({
       const toolContent = JSON.stringify({
         toolName,
         params,
-        response,
+        response: modelResponse,
       });
 
       return {
