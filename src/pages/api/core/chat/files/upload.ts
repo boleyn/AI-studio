@@ -22,6 +22,16 @@ interface UploadFileInput {
   storagePath: string;
   markdownStoragePath?: string;
 }
+
+const inferContentTypeFromName = (fileName: string) => {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (lower.endsWith(".csv")) return "text/csv; charset=utf-8";
+  return "application/octet-stream";
+};
 const buildMirrorRawFilePath = ({
   storagePath,
 }: {
@@ -47,7 +57,11 @@ const syncAttachmentRawToProject = async ({
     key: storagePath,
     bucketType: "private",
   });
-  const type = file.type || "application/octet-stream";
+  const normalizedType = (file.type || "").trim().toLowerCase();
+  const type =
+    normalizedType && normalizedType !== "application/octet-stream"
+      ? normalizedType
+      : inferContentTypeFromName(file.name || storagePath);
   await updateBinaryFile(token, mirrorPath, buffer, type);
 };
 

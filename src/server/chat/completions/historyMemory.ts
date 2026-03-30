@@ -15,6 +15,14 @@ export const getHistories = (
     systemHistoryIndex === -1 ? sourceHistories : sourceHistories.slice(0, systemHistoryIndex);
   const chatHistories = systemHistoryIndex === -1 ? [] : sourceHistories.slice(systemHistoryIndex);
 
+  // 默认应保留完整历史；只有显式传入 history=0 或负数时才退化为仅 system。
+  if (typeof history === "undefined") {
+    return {
+      histories: sourceHistories,
+      summary: histories.summary,
+    };
+  }
+
   if (!history) {
     return {
       histories: systemHistories,

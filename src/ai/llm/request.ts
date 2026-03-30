@@ -76,6 +76,38 @@ const extractErrorResponseInfo = (error: any) => {
 };
 
 const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessageParam[]) => {
+  const toSafeToolArguments = (raw: unknown, toolCallId: string) => {
+    const value = typeof raw === 'string' ? raw : String(raw ?? '');
+    const trimmed = value.trim();
+    if (!trimmed) return '{}';
+
+    try {
+      JSON.parse(trimmed);
+      return trimmed;
+    } catch {
+      // Try to recover when concatenated fragments like `}{` appear.
+      const objectStart = trimmed.indexOf('{');
+      const objectEnd = trimmed.lastIndexOf('}');
+      if (objectStart >= 0 && objectEnd > objectStart) {
+        const candidate = trimmed.slice(objectStart, objectEnd + 1);
+        try {
+          JSON.parse(candidate);
+          addLog.warn('[LLM Request][repair-tool-arguments-json]', {
+            tool_call_id: toolCallId,
+            strategy: 'extract-braced-json'
+          });
+          return candidate;
+        } catch {
+          // fall through
+        }
+      }
+      addLog.warn('[LLM Request][invalid-tool-arguments-json-fallback]', {
+        tool_call_id: toolCallId,
+      });
+      return '{}';
+    }
+  };
+
   const seenToolCallIds = new Set<string>();
   const sanitized: ChatCompletionMessageParam[] = [];
 
@@ -86,6 +118,21 @@ const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessagePa
         calls.forEach((call) => {
           if (call?.id) seenToolCallIds.add(call.id);
         });
+        const repairedCalls = calls.map((call) => {
+          if (!call || call.type !== 'function' || !call.function) return call;
+          return {
+            ...call,
+            function: {
+              ...call.function,
+              arguments: toSafeToolArguments(call.function.arguments, call.id || '')
+            }
+          } as ChatCompletionMessageToolCall;
+        });
+        sanitized.push({
+          ...message,
+          tool_calls: repairedCalls
+        } as ChatCompletionMessageParam);
+        continue;
       }
       sanitized.push(message);
       continue;
