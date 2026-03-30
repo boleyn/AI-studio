@@ -85,9 +85,12 @@ const compactToolResponseForModel = (toolName: string, response: string): string
   }
 
   const rawFiles =
-    payload.files && typeof payload.files === "object" && !Array.isArray(payload.files)
+    (payload.files && typeof payload.files === "object" && !Array.isArray(payload.files)
       ? (payload.files as Record<string, unknown>)
-      : null;
+      : null) ||
+    (payload.uiFiles && typeof payload.uiFiles === "object" && !Array.isArray(payload.uiFiles)
+      ? (payload.uiFiles as Record<string, unknown>)
+      : null);
   const fileSummaries = rawFiles
     ? Object.entries(rawFiles).map(([path, file]) => ({
         path,
@@ -101,7 +104,9 @@ const compactToolResponseForModel = (toolName: string, response: string): string
   const nextData =
     payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
       ? Object.fromEntries(
-          Object.entries(payload.data as Record<string, unknown>).filter(([key]) => key !== "files")
+          Object.entries(payload.data as Record<string, unknown>).filter(
+            ([key]) => key !== "files" && key !== "uiFiles"
+          )
         )
       : payload.data;
 
@@ -109,6 +114,7 @@ const compactToolResponseForModel = (toolName: string, response: string): string
     ...payload,
     ...(nextData !== undefined ? { data: nextData } : {}),
     ...(fileSummaries ? { files: fileSummaries } : {}),
+    ...(payload.uiFiles !== undefined ? { uiFiles: undefined } : {}),
     compactedForModel: true,
   });
 };

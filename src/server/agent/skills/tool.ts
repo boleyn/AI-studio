@@ -1,5 +1,10 @@
 import { buildSkillContentBlock } from "./prompt";
-import { getRuntimeSkills, sampleSkillFiles } from "./registry";
+import {
+  getRuntimeSkills,
+  sampleSkillFiles,
+  sampleSkillResourceTree,
+  sampleSkillRunnableScripts,
+} from "./registry";
 import { runSkillScript } from "./skillScriptRunner";
 import type { RuntimeSkill } from "./types";
 import type { AgentToolDefinition } from "../tools/types";
@@ -50,7 +55,9 @@ export const createSkillLoadTool = async (
       const skill = resolveSkillByName(skills, name);
 
       const sampledFiles = await sampleSkillFiles(skill, 10);
-      return buildSkillContentBlock(skill, sampledFiles);
+      const runnableScripts = await sampleSkillRunnableScripts(skill, 20);
+      const resourceTree = await sampleSkillResourceTree(skill, { maxDepth: 4, maxEntries: 120 });
+      return buildSkillContentBlock(skill, sampledFiles, runnableScripts, resourceTree);
     },
   };
 };
@@ -64,7 +71,8 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
     },
     script: {
       type: "string",
-      description: "脚本路径。支持 skill 目录内相对路径或其绝对路径。",
+      description:
+        "脚本路径。必须优先使用 skill_load 返回的 <skill_runnable_scripts> 中的精确相对路径；支持 skill 目录内相对路径或其绝对路径。",
     },
     args: {
       type: "array",
@@ -85,6 +93,10 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
       minimum: 1000,
       maximum: MAX_TOOL_TIMEOUT_MS,
       description: `执行超时毫秒数，默认 ${DEFAULT_TOOL_TIMEOUT_MS}，最大 ${MAX_TOOL_TIMEOUT_MS}。`,
+    },
+    autoInstallDeps: {
+      type: "boolean",
+      description: "运行前自动安装脚本目录依赖（默认 true，Node runtime 下生效）。",
     },
   },
   required: ["name", "script"],
@@ -113,6 +125,7 @@ export const createSkillRunScriptTool = async (
       const args = Array.isArray(payload.args) ? payload.args.map((item) => String(item)) : [];
       const timeoutMs = clampToolTimeout(payload.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
       const cwd = typeof payload.cwd === "string" ? payload.cwd.trim() : "";
+      const autoInstallDeps = payload.autoInstallDeps !== false;
 
       if (!name) throw new Error("缺少 name 参数。");
       if (!script) throw new Error("缺少 script 参数。");
@@ -129,6 +142,7 @@ export const createSkillRunScriptTool = async (
         runtime: runtime as "auto" | "python" | "node" | "sh" | "bash",
         cwd,
         timeoutMs,
+        autoInstallDeps,
         sessionId: options?.sessionId,
         workspaceFiles: options?.workspaceFiles,
       });
@@ -148,6 +162,7 @@ export const createSkillRunScriptTool = async (
         stdout: result.stdout,
         stderr: result.stderr,
         error: result.error,
+        dependencyInstall: result.dependencyInstall,
       };
     },
   };

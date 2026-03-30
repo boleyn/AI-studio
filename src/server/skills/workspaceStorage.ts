@@ -376,6 +376,11 @@ export const runWorkspaceAction = async (
         path: toSafeAbsolutePath(input.path),
         bytes: (updatedFiles[filePath]?.code || input.content).length,
       },
+      uiFiles: {
+        [toSafeAbsolutePath(input.path)]: {
+          code: updatedFiles[filePath]?.code || input.content,
+        },
+      },
     };
   }
 
@@ -404,6 +409,11 @@ export const runWorkspaceAction = async (
         path: toSafeAbsolutePath(input.path),
         replaced: count,
         bytes: (updatedFiles[filePath]?.code || content).length,
+      },
+      uiFiles: {
+        [toSafeAbsolutePath(input.path)]: {
+          code: updatedFiles[filePath]?.code || content,
+        },
       },
     };
   }

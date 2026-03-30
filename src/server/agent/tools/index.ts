@@ -1,6 +1,8 @@
+import { promises as fs } from "fs";
+import path from "path";
 import { z } from "zod";
-import type { ChangeTracker, GlobalToolInput } from "../globalTools";
-import { globalToolSchema, runGlobalAction } from "../globalTools";
+import type { ChangeTracker } from "../globalTools";
+import { runGlobalAction } from "../globalTools";
 import type { AgentToolDefinition } from "./types";
 import { getProject, hasProjectFilesDir } from "@server/projects/projectStorage";
 import { runSearchInFiles, searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
@@ -84,6 +86,51 @@ const isLikelyTextContentType = (contentType: string) =>
 const inferMarkdownPath = (storagePath: string) => {
   if (storagePath.includes("/.files/markdown/")) return storagePath;
   return storagePath.replace("/.files/files/", "/.files/markdown/") + ".md";
+};
+
+const isPathInside = (baseDir: string, targetPath: string) => {
+  const relative = path.relative(baseDir, targetPath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
+const readSkillFileIfAllowed = async ({
+  pathInput,
+  skillBaseDirs,
+  maxChars,
+}: {
+  pathInput: string;
+  skillBaseDirs: string[];
+  maxChars: number;
+}) => {
+  if (!pathInput || skillBaseDirs.length === 0) return null;
+
+  const candidates = new Set<string>();
+  if (path.isAbsolute(pathInput)) {
+    candidates.add(path.resolve(pathInput));
+  } else {
+    candidates.add(path.resolve(process.cwd(), pathInput));
+  }
+
+  for (const candidate of candidates) {
+    for (const baseRaw of skillBaseDirs) {
+      const baseDir = path.resolve(baseRaw);
+      if (!isPathInside(baseDir, candidate)) continue;
+      const stat = await fs.stat(candidate).catch(() => null);
+      if (!stat?.isFile()) continue;
+      const content = await fs.readFile(candidate, "utf8");
+      const snippet = content.slice(0, maxChars);
+      return {
+        ok: true,
+        mode: "raw",
+        path: candidate,
+        source: "skill",
+        content: content.length > maxChars ? `${snippet}\n\n...[truncated]` : snippet,
+        truncated: content.length > maxChars,
+      };
+    }
+  }
+
+  return null;
 };
 
 const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
@@ -177,7 +224,7 @@ const safeParse = <T>(schema: z.ZodTypeAny, input: unknown): { ok: true; data: T
 export function createProjectTools(
   token: string,
   changeTracker: ChangeTracker,
-  options?: { chatId?: string }
+  options?: { chatId?: string; skillBaseDirs?: string[] }
 ): AgentToolDefinition[] {
   return [
     {
@@ -193,7 +240,7 @@ export function createProjectTools(
     {
       name: "read_file",
       description:
-        "读取项目文件或当前会话附件。项目文件使用 path；附件使用 storagePath 或 fileName。docx/pdf/excel 等文档默认返回 markdown，图片返回 base64。",
+        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。docx/pdf/excel 等文档默认返回 markdown，图片返回 base64。",
       parameters: toJsonSchema(readFileSchema),
       run: async (input) => {
         const parsed = safeParse<{
@@ -205,21 +252,35 @@ export function createProjectTools(
         }>(readFileSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
 
-        const projectPath = (parsed.data.path || "").trim();
-        if (projectPath) {
-          return runGlobalAction(token, { action: "read", path: projectPath }, changeTracker);
-        }
+        const pathInput = (parsed.data.path || "").trim();
+        const storagePathInput = (parsed.data.storagePath || "").trim();
+        const fileNameInput = (parsed.data.fileName || "").trim();
+        const looksLikeStoragePath =
+          /^\/?chat_uploads\//i.test(pathInput) || pathInput.includes("/.files/files/");
+        const shouldReadAttachment =
+          Boolean(storagePathInput || fileNameInput) || looksLikeStoragePath;
 
         const chatId = (options?.chatId || "").trim();
-        if (!chatId) {
-          throw new Error("当前会话缺少 chatId，无法读取附件");
-        }
-        const mode = parsed.data.mode || "auto";
         const maxChars = parsed.data.maxChars ?? CHAT_FILE_MAX_CHARS;
+        if (!shouldReadAttachment && pathInput) {
+          try {
+            return await runGlobalAction(token, { action: "read", path: pathInput }, changeTracker);
+          } catch (error) {
+            const skillRead = await readSkillFileIfAllowed({
+              pathInput,
+              skillBaseDirs: options?.skillBaseDirs || [],
+              maxChars,
+            });
+            if (skillRead) return skillRead;
+            throw error;
+          }
+        }
+        if (!chatId) throw new Error("当前会话缺少 chatId，无法读取附件");
+        const mode = parsed.data.mode || "auto";
 
-        let storagePath = (parsed.data.storagePath || "").trim();
+        let storagePath = storagePathInput || (looksLikeStoragePath ? pathInput.replace(/^\/+/, "") : "");
         if (!storagePath) {
-          const keyword = (parsed.data.fileName || "").trim().toLowerCase();
+          const keyword = fileNameInput.toLowerCase();
           const prefix = getChatUploadRoot(token, chatId);
           const allKeys = await listStorageObjectKeysByPrefix({
             prefix,
@@ -387,28 +448,6 @@ export function createProjectTools(
           events: includeEvents ? compileInfo.events.slice(-limit) : [],
           logs: includeLogs ? compileInfo.logs.slice(-limit) : [],
         };
-      },
-    },
-    {
-      name: "global",
-      description: "通用文件操作工具，支持 list/read/write/replace。",
-      parameters: {
-        type: "object",
-        properties: {
-          action: { type: "string", enum: ["list", "read", "write", "replace"] },
-          path: { type: "string" },
-          content: { type: "string" },
-          query: { type: "string" },
-          replace: { type: "string" },
-        },
-        required: ["action"],
-      },
-      run: async (input) => {
-        const parsed = globalToolSchema.safeParse(input);
-        if (!parsed.success) {
-          throw new Error(parsed.error.issues.map((err) => err.message).join("; "));
-        }
-        return runGlobalAction(token, parsed.data as GlobalToolInput, changeTracker);
       },
     },
   ];

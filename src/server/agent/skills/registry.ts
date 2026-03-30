@@ -13,6 +13,7 @@ import {
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILLS_DIR_NAME = "skills";
 const CACHE_TTL_MS = 60 * 1000;
+const RUNNABLE_SCRIPT_EXTS = new Set([".js", ".mjs", ".cjs", ".py", ".sh", ".bash"]);
 
 const cacheState = globalThis as typeof globalThis & {
   __agentSkillSnapshotCache?: {
@@ -386,6 +387,72 @@ export const sampleSkillFiles = async (skill: RuntimeSkill, limit = 10): Promise
   }
 
   return found.sort((a, b) => a.localeCompare(b));
+};
+
+export const sampleSkillRunnableScripts = async (
+  skill: RuntimeSkill,
+  limit = 20
+): Promise<string[]> => {
+  const stack = [skill.baseDir];
+  const found: string[] = [];
+
+  while (stack.length > 0 && found.length < limit) {
+    const current = stack.pop();
+    if (!current) continue;
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => []);
+    for (const item of entries) {
+      if (found.length >= limit) break;
+      const absolute = path.join(current, item.name);
+      if (item.isDirectory()) {
+        if (item.name === "node_modules" || item.name.startsWith(".")) continue;
+        stack.push(absolute);
+        continue;
+      }
+      if (!item.isFile()) continue;
+      const ext = path.extname(item.name).toLowerCase();
+      if (!RUNNABLE_SCRIPT_EXTS.has(ext)) continue;
+      found.push(path.relative(skill.baseDir, absolute));
+    }
+  }
+
+  return found.sort((a, b) => a.localeCompare(b));
+};
+
+export const sampleSkillResourceTree = async (
+  skill: RuntimeSkill,
+  options?: {
+    maxDepth?: number;
+    maxEntries?: number;
+  }
+): Promise<string[]> => {
+  const maxDepth = Math.max(1, options?.maxDepth ?? 4);
+  const maxEntries = Math.max(10, options?.maxEntries ?? 120);
+  const out: string[] = [];
+
+  const walk = async (dir: string, depth: number) => {
+    if (out.length >= maxEntries) return;
+    if (depth > maxDepth) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of sorted) {
+      if (out.length >= maxEntries) return;
+      if (entry.name.startsWith(".")) continue;
+      const absolute = path.join(dir, entry.name);
+      const rel = path.relative(skill.baseDir, absolute).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules") continue;
+        out.push(`${rel}/`);
+        await walk(absolute, depth + 1);
+        continue;
+      }
+      if (entry.isFile()) {
+        out.push(rel);
+      }
+    }
+  };
+
+  await walk(skill.baseDir, 1);
+  return out;
 };
 
 export type CreateSkillInput = {

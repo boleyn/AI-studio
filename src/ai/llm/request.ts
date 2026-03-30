@@ -75,6 +75,41 @@ const extractErrorResponseInfo = (error: any) => {
   };
 };
 
+const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessageParam[]) => {
+  const seenToolCallIds = new Set<string>();
+  const sanitized: ChatCompletionMessageParam[] = [];
+
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      const calls = (message as { tool_calls?: ChatCompletionMessageToolCall[] }).tool_calls;
+      if (Array.isArray(calls)) {
+        calls.forEach((call) => {
+          if (call?.id) seenToolCallIds.add(call.id);
+        });
+      }
+      sanitized.push(message);
+      continue;
+    }
+
+    if (message.role === 'tool') {
+      const toolCallId = (message as { tool_call_id?: string }).tool_call_id || '';
+      if (toolCallId && seenToolCallIds.has(toolCallId)) {
+        sanitized.push(message);
+      } else {
+        addLog.warn('[LLM Request][drop-orphan-tool-result-before-provider]', {
+          tool_call_id: toolCallId,
+          reason: 'tool_call_id_not_found_in_previous_assistant_tool_calls'
+        });
+      }
+      continue;
+    }
+
+    sanitized.push(message);
+  }
+
+  return sanitized;
+};
+
 type LLMResponse = {
   error?: any;
   isStreamResponse: boolean;
@@ -383,11 +418,11 @@ export const createStreamResponse = async ({
   if (tools?.length) {
     const stripDefaultApiPrefix = (name: string) =>
       name.startsWith('default_api:') ? name.slice('default_api:'.length) : name;
-    let callingTool: {
+    const pendingTools = new Map<number, {
       id?: string;
       name: string;
       arguments: string;
-    } | null = null;
+    }>();
     const toolCalls: ChatCompletionMessageToolCall[] = [];
 
     try {
@@ -416,60 +451,24 @@ export const createStreamResponse = async ({
         if (responseChoice?.tool_calls?.length) {
           responseChoice.tool_calls.forEach((toolCall: any, i: number) => {
             const index = toolCall.index ?? i;
+            const argChunk: string = toolCall?.function?.arguments ?? '';
+            const nameChunk: string = toolCall?.function?.name ?? '';
+            const existingPending = pendingTools.get(index) || {
+              id: undefined,
+              name: '',
+              arguments: ''
+            };
+            if (!existingPending.id && typeof toolCall?.id === 'string' && toolCall.id) {
+              existingPending.id = toolCall.id;
+            }
+            if (nameChunk) existingPending.name += nameChunk;
+            if (argChunk) existingPending.arguments += argChunk;
+            pendingTools.set(index, existingPending);
 
-            const hasNewTool = toolCall?.function?.name || callingTool;
-            if (hasNewTool) {
-              if (toolCall?.function?.name) {
-                callingTool = {
-                  id: toolCall.id,
-                  name: toolCall.function?.name || '',
-                  arguments: toolCall.function?.arguments || ''
-                };
-              } else if (callingTool) {
-                callingTool.name += toolCall.function?.name || '';
-                callingTool.arguments += toolCall.function?.arguments || '';
-              }
-
-              const toolName = callingTool!.name;
-              const normalizedToolName = stripDefaultApiPrefix(toolName);
-              const filteredTools = tools.filter(
-                (
-                  item
-                ): item is ChatCompletionTool & {
-                  type: 'function';
-                  function: { name: string; description?: string; parameters?: any };
-                } => {
-                  return (
-                    item.type === 'function' && 'function' in item && item.function !== undefined
-                  );
-                }
-              );
-              const matchTool =
-                filteredTools.find((item) => item.function.name === toolName) ||
-                filteredTools.find((item) => item.function.name === normalizedToolName);
-              if (matchTool) {
-                const call: ChatCompletionMessageToolCall = {
-                  id: callingTool?.id || getNanoid(),
-                  type: 'function',
-                  function: {
-                    name: toolName || matchTool.function.name,
-                    arguments: callingTool!.arguments
-                  } as ChatCompletionMessageToolCall['function']
-                };
-                addLog.info('[LLM ToolCall][stream]', {
-                  id: call.id,
-                  name: call.function?.name
-                });
-                toolCalls[index] = call;
-                onToolCall?.({ call });
-                callingTool = null;
-              }
-            } else {
-              const arg: string = toolCall?.function?.arguments ?? '';
-              const currentTool = toolCalls[index];
+            const currentTool = toolCalls[index];
+            if (currentTool) {
               if (
-                currentTool &&
-                arg &&
+                argChunk &&
                 currentTool.type === 'function' &&
                 'function' in currentTool &&
                 currentTool.function
@@ -478,10 +477,52 @@ export const createStreamResponse = async ({
                   type: 'function';
                   function: { name: string; arguments: string };
                 };
-                toolWithFunction.function.arguments += arg;
-
-                onToolParam?.({ tool: currentTool, params: arg });
+                toolWithFunction.function.arguments += argChunk;
+                onToolParam?.({ tool: currentTool, params: argChunk });
               }
+              return;
+            }
+
+            const toolName = existingPending.name;
+            if (!toolName) return;
+
+            const normalizedToolName = stripDefaultApiPrefix(toolName);
+            const filteredTools = tools.filter(
+              (
+                item
+              ): item is ChatCompletionTool & {
+                type: 'function';
+                function: { name: string; description?: string; parameters?: any };
+              } => {
+                return (
+                  item.type === 'function' && 'function' in item && item.function !== undefined
+                );
+              }
+            );
+            const matchTool =
+              filteredTools.find((item) => item.function.name === toolName) ||
+              filteredTools.find((item) => item.function.name === normalizedToolName);
+            if (!matchTool) return;
+
+            const call: ChatCompletionMessageToolCall = {
+              id: existingPending.id || getNanoid(),
+              type: 'function',
+              function: {
+                name: toolName || matchTool.function.name,
+                arguments: existingPending.arguments
+              } as ChatCompletionMessageToolCall['function']
+            };
+            addLog.info('[LLM ToolCall][stream]', {
+              id: call.id,
+              name: call.function?.name
+            });
+            toolCalls[index] = call;
+            onToolCall?.({ call });
+            // call 已创建后，arguments 的后续分片由 onToolParam 继续追加。
+            existingPending.arguments = '';
+            pendingTools.set(index, existingPending);
+            if (argChunk) {
+              onToolParam?.({ tool: call, params: argChunk });
             }
           });
         }
@@ -823,7 +864,14 @@ export const createChatCompletion = async ({
       headers: sanitizeHeaders(requestHeaders) as Record<string, string>
     };
 
-    const response = await ai.chat.completions.create(body, {
+    const safeBody = {
+      ...body,
+      messages: Array.isArray(body.messages)
+        ? sanitizeToolResultMessagesForProvider(body.messages)
+        : body.messages
+    };
+
+    const response = await ai.chat.completions.create(safeBody, {
       ...options,
       ...(modelData.requestUrl ? { path: modelData.requestUrl } : {}),
       headers: {

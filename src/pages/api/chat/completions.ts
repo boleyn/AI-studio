@@ -250,7 +250,17 @@ const PROJECT_LOCAL_TOOL_NAMES = new Set([
   "replace_in_file",
   "search_in_files",
   "compile_project",
-  "global",
+  "skill_load",
+  "skill_run_script",
+  "bash",
+]);
+const ALWAYS_KEEP_TOOL_NAMES = new Set([
+  "list_files",
+  "read_file",
+  "search_in_files",
+  "write_file",
+  "replace_in_file",
+  "compile_project",
   "skill_load",
   "skill_run_script",
   "bash",
@@ -325,7 +335,6 @@ const routeToolsByIntent = (allTools: AgentToolDefinition[], intent: UserIntent)
         "replace_in_file",
         "write_file",
         "compile_project",
-        "global",
         "skill_load",
         "skill_run_script",
         "bash",
@@ -657,7 +666,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const tracker: ChangeTracker = { changed: false, paths: new Set() };
-  const localTools = createProjectTools(token, tracker, { chatId });
   const mcpTools = await loadMcpTools();
   const runtimeSkills = await getRuntimeSkills();
   const projectSkillsParsed = collectProjectRuntimeSkills(project.files || {}, `project:${token}`);
@@ -676,11 +684,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : null;
   const selectedProjectSkill =
     selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
+  const localTools = createProjectTools(token, tracker, {
+    chatId,
+    skillBaseDirs: allAvailableSkills.map((item) => item.baseDir),
+  });
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
   const toolSessionId = chatId || conversationId || `project-${token}`;
   const skillRunScriptTool =
     allAvailableSkills.length > 0
-      ? await createSkillRunScriptTool({ skills: allAvailableSkills, sessionId: toolSessionId })
+      ? await createSkillRunScriptTool({
+          skills: allAvailableSkills,
+          sessionId: toolSessionId,
+          workspaceFiles: project.files || {},
+        })
       : null;
   const bashTool = createBashTool({ sessionId: toolSessionId });
   const allTools = [
@@ -692,7 +708,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ];
   const userIntent = detectUserIntent(contextMessages);
   const routedTools = routeToolsByIntent(allTools, userIntent);
-  const selectedTools = routedTools.selectedTools;
+  const selectedTools = (() => {
+    const routed = routedTools.selectedTools;
+    const keep = allTools.filter((tool) => ALWAYS_KEEP_TOOL_NAMES.has(tool.name));
+    const merged = [...routed];
+    for (const tool of keep) {
+      if (!merged.some((item) => item.name === tool.name)) {
+        merged.push(tool);
+      }
+    }
+    return merged;
+  })();
   const toolChoiceMode = selectedTools.length > 0
     ? selectedRuntimeSkill
       ? "required"

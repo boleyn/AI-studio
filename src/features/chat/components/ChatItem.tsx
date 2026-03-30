@@ -80,15 +80,11 @@ const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
     responseData?: unknown;
   };
 
-  const rawToolDetails = kwargs.toolDetails;
-  if (Array.isArray(rawToolDetails) && rawToolDetails.length > 0) {
-    return rawToolDetails.filter((item): item is ToolDetail => Boolean(item && typeof item === "object"));
-  }
-
-  const responseData = kwargs.responseData;
-  if (!Array.isArray(responseData)) return [];
-
-  return responseData
+  const detailsFromToolDetails = Array.isArray(kwargs.toolDetails)
+    ? kwargs.toolDetails.filter((item): item is ToolDetail => Boolean(item && typeof item === "object"))
+    : [];
+  const detailsFromResponseData = Array.isArray(kwargs.responseData)
+    ? kwargs.responseData
     .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
     .map((item, index) => ({
       id: typeof item.nodeId === "string" ? `${item.nodeId}-${index}` : undefined,
@@ -105,7 +101,14 @@ const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
           : item.toolRes == null
           ? ""
           : JSON.stringify(item.toolRes, null, 2),
-    }));
+    }))
+    : [];
+
+  // 在历史数据中，toolDetails 可能只包含少量“工具调用壳子”，而 responseData 才是完整执行清单。
+  // 选择条目更多的来源，避免出现“调用工具数很多，但只展示少量同名工具”的问题。
+  return detailsFromResponseData.length > detailsFromToolDetails.length
+    ? detailsFromResponseData
+    : detailsFromToolDetails;
 };
 
 const getReasoningText = (message: ConversationMessage): string => {
@@ -177,7 +180,7 @@ const composeTimelineItems = ({
         next[targetIndex] = {
           ...target,
           toolName: target.toolName || tool.toolName,
-          params: target.params || tool.params,
+          params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
           response: target.response || tool.response,
         };
         return;
@@ -490,7 +493,7 @@ const ChatItem = ({
                     );
                   }
                   if (item.type === "tool") {
-                    const toolKey = item.id || `${messageId}-timeline-tool-${index}`;
+                    const toolKey = `${messageId}-timeline-tool-${item.id || "unknown"}-${index}`;
                     const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
                     const isRunning = isStreaming && !item.response;
                     const isLastStep = timelineStepIndexes[timelineStepIndexes.length - 1] === index;

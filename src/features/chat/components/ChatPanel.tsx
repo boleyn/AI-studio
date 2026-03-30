@@ -293,8 +293,11 @@ const ChatPanel = ({
       }
     ) => {
       const text = payload.text.trim();
-      if ((text.length === 0 && payload.files.length === 0 && !payload.selectedFilePaths?.length) || isSending)
-        return;
+      const fallbackArtifacts = toFileArtifacts(payload.files);
+      const finalArtifacts =
+        payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
+      const hasArtifacts = finalArtifacts.length > 0;
+      if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
 
       const conversation = await ensureConversation();
@@ -303,13 +306,10 @@ const ChatPanel = ({
       const displayText =
         text ||
         (payload.selectedFilePaths?.length ? `已选择 ${payload.selectedFilePaths.length} 个文件` : "") ||
-        `已上传 ${payload.files.length} 个文件`;
+        `已上传 ${finalArtifacts.length} 个文件`;
       const nextConversationTitle = buildConversationTitle(text);
 
       const userMessageId = createDataId();
-      const fallbackArtifacts = toFileArtifacts(payload.files);
-      const finalArtifacts =
-        payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
       if (echoUserMessage) {
         setMessages((prev) => [
           ...prev,
@@ -318,7 +318,7 @@ const ChatPanel = ({
             content: displayText,
             id: userMessageId,
             artifact:
-              payload.files.length > 0
+              hasArtifacts
                 ? {
                     files: finalArtifacts,
                   }
@@ -344,7 +344,7 @@ const ChatPanel = ({
         role: "user",
         content: userBubbleContent || displayText,
         id: userMessageId,
-        artifact: payload.files.length > 0 ? { files: finalArtifacts } : undefined,
+        artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: payload.selectedFilePaths
           ? { selectedFilePaths: payload.selectedFilePaths }
           : undefined,
@@ -485,7 +485,7 @@ const ChatPanel = ({
                   id: toolId,
                   toolName:
                     typeof nextPartial.toolName === "string" ? nextPartial.toolName : target.toolName,
-                  params: typeof nextPartial.params === "string" ? nextPartial.params : target.params,
+                  params: `${typeof target.params === "string" ? target.params : ""}${typeof nextPartial.params === "string" ? nextPartial.params : ""}`,
                   response:
                     typeof nextPartial.response === "string" ? nextPartial.response : target.response,
                 };
@@ -650,13 +650,11 @@ const ChatPanel = ({
                 if (streamPayload.id) {
                   upsertToolMessage(streamPayload.id, {
                     toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
                     response: streamPayload.response || "",
                   });
                   upsertTimelineTool({
                     id: streamPayload.id,
                     toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
                     response: streamPayload.response || "",
                   });
                 }
@@ -665,8 +663,10 @@ const ChatPanel = ({
                   try {
                     const parsed = JSON.parse(streamPayload.response);
                     const filesCandidate =
+                      (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
                       (parsed as { files?: Record<string, { code: string }> }).files ||
-                      (parsed as { data?: { files?: Record<string, { code: string }> } }).data?.files;
+                      (parsed as { data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> } }).data?.uiFiles ||
+                      (parsed as { data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> } }).data?.files;
                     const files = toUpdatedFilesMap(filesCandidate);
                     if (files && typeof files === "object") {
                       onFilesUpdated(files);
@@ -901,6 +901,11 @@ const ChatPanel = ({
 
       const text = stripTagMarkersFromUserContent(extractText(userMessage.content));
       if (!text) return;
+      const uploadedFiles =
+        userMessage.artifact && typeof userMessage.artifact === "object"
+          ? (Array.isArray((userMessage.artifact as { files?: unknown }).files) ? ((userMessage.artifact as { files?: unknown }).files as unknown[]) : [])
+              .filter((item): item is UploadedFileArtifact => Boolean(item && typeof item === "object"))
+          : [];
 
       const conversationId = activeConversation?.id;
       if (!conversationId) return;
@@ -924,7 +929,7 @@ const ChatPanel = ({
       await handleSend({
         text,
         files: [],
-        uploadedFiles: [],
+        uploadedFiles,
         selectedSkill: Array.from(new Set(selectedSkills.filter(Boolean)))[0],
         selectedSkills: Array.from(new Set(selectedSkills.filter(Boolean))),
         selectedFilePaths:
@@ -1033,7 +1038,7 @@ const ChatPanel = ({
               </Box>
             </Flex>
           ) : (
-            <Flex direction="column" gap={3}>
+            <Flex direction="column" gap={3} pt={14}>
               {messages.map((message, index) => {
                 const messageId = message.id ?? `${message.role}-${index}`;
                 const summary = getExecutionSummary(message);

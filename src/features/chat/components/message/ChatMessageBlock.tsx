@@ -37,6 +37,7 @@ const ChatMessageBlock = ({
       direction="column"
       position="relative"
       w="full"
+      zIndex={1}
       sx={{
         ".message-action-anchor": {
           opacity: 0,
@@ -46,6 +47,9 @@ const ChatMessageBlock = ({
         "&:hover .message-action-anchor, .message-action-anchor:hover": {
           opacity: 1,
         },
+        "&:hover": {
+          zIndex: 40,
+        },
       }}
     >
       {canShowActions ? (
@@ -54,8 +58,8 @@ const ChatMessageBlock = ({
           position="absolute"
           {...(isUser ? { right: 0 } : { left: 0 })}
           top={0}
-          transform="translateY(calc(-100% - 2px))"
-          zIndex={3}
+          transform="translateY(calc(-100% - 6px))"
+          zIndex={60}
         >
           <MessageActionBar
             canDelete={isUser}

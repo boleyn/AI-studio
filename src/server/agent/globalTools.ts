@@ -120,6 +120,7 @@ export async function runGlobalAction(
       action,
       message: `已写入 ${path}。`,
       data: { path, bytes: input.content.length },
+      uiFiles: { [path]: { code: input.content } },
     };
   }
 
@@ -142,6 +143,7 @@ export async function runGlobalAction(
       action,
       message: `已在 ${path} 中替换 ${count} 处。`,
       data: { path, replaced: count, bytes: content.length },
+      uiFiles: { [path]: { code: content } },
     };
   }
 

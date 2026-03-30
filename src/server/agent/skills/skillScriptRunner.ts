@@ -4,6 +4,7 @@ import path from "path";
 import type { RuntimeSkill } from "./types";
 import { runExecFile } from "../tools/commandRunner";
 import { buildSessionIsolatedEnv } from "../tools/sessionEnv";
+import { getObjectFromStorage } from "@server/storage/s3";
 
 const isPathInside = (baseDir: string, targetPath: string) => {
   const relative = path.relative(baseDir, targetPath);
@@ -39,6 +40,100 @@ const detectRuntime = (scriptPath: string, runtime?: string) => {
   return "auto";
 };
 
+const resolveNodeCommandCandidates = async () => {
+  const candidates: string[] = [];
+  const execPath = process.execPath;
+  if (execPath) {
+    const stat = await fs.stat(execPath).catch(() => null);
+    if (stat?.isFile()) candidates.push(execPath);
+  }
+  candidates.push("node");
+  return [...new Set(candidates)];
+};
+
+const extractChatUploadStorageKey = (value: string) => {
+  const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/").trim();
+  if (!normalized) return "";
+  const marker = "/chat_uploads/";
+  const idx = normalized.indexOf(marker);
+  const storageKey =
+    idx >= 0
+      ? normalized.slice(idx + 1)
+      : normalized.startsWith("chat_uploads/")
+      ? normalized
+      : "";
+  return /^chat_uploads\/.+/.test(storageKey) ? storageKey : "";
+};
+
+const SUPPORTED_SCRIPT_EXTS = [".js", ".mjs", ".cjs", ".py", ".sh", ".bash"] as const;
+
+const isSupportedScriptFile = (filePath: string) => {
+  const ext = path.extname(filePath).toLowerCase();
+  return SUPPORTED_SCRIPT_EXTS.includes(ext as (typeof SUPPORTED_SCRIPT_EXTS)[number]);
+};
+
+const collectSkillScriptFiles = async (baseDir: string, maxDepth = 3) => {
+  const entries: string[] = [];
+  const walk = async (dir: string, depth: number) => {
+    if (depth > maxDepth) return;
+    const children = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const child of children) {
+      const childPath = path.join(dir, child.name);
+      if (child.isDirectory()) {
+        if (child.name === "node_modules" || child.name.startsWith(".")) continue;
+        await walk(childPath, depth + 1);
+        continue;
+      }
+      if (child.isFile() && isSupportedScriptFile(childPath)) {
+        entries.push(childPath);
+      }
+    }
+  };
+  await walk(baseDir, 0);
+  return entries;
+};
+
+const resolveFallbackScriptPath = async (skill: RuntimeSkill, requestedScript: string) => {
+  const baseDir = path.resolve(skill.baseDir);
+  const allScriptFiles = await collectSkillScriptFiles(baseDir, 3);
+  if (allScriptFiles.length === 0) return null;
+
+  const normalizedRequested = requestedScript.replace(/\\/g, "/");
+  const requestedExt = path.extname(normalizedRequested).toLowerCase();
+  const requestedStem = path.basename(normalizedRequested, requestedExt).toLowerCase();
+
+  // 1) 优先同名（忽略扩展名）
+  const sameStem = allScriptFiles.filter((item) => {
+    const ext = path.extname(item).toLowerCase();
+    const stem = path.basename(item, ext).toLowerCase();
+    return requestedStem && stem === requestedStem;
+  });
+  if (sameStem.length === 1) return sameStem[0];
+
+  // 2) 常见内置入口脚本
+  const preferredRelatives = [
+    "index.js",
+    "index.mjs",
+    "index.cjs",
+    "index.py",
+    "scripts/index.js",
+    "scripts/index.mjs",
+    "scripts/index.cjs",
+    "bin/index.js",
+    "run.js",
+    "main.js",
+  ];
+  for (const rel of preferredRelatives) {
+    const abs = path.join(baseDir, rel);
+    if (allScriptFiles.includes(abs)) return abs;
+  }
+
+  // 3) 只有一个脚本文件时自动兜底
+  if (allScriptFiles.length === 1) return allScriptFiles[0];
+
+  return null;
+};
+
 export const runSkillScript = async (input: {
   skill: RuntimeSkill;
   script: string;
@@ -46,6 +141,7 @@ export const runSkillScript = async (input: {
   runtime: "auto" | "python" | "node" | "sh" | "bash";
   cwd?: string;
   timeoutMs: number;
+  autoInstallDeps?: boolean;
   sessionId?: string;
   workspaceFiles?: Record<string, { code: string }>;
 }) => {
@@ -74,9 +170,60 @@ export const runSkillScript = async (input: {
   };
 
   const workspaceMount = await materializeWorkspaceFiles(input.workspaceFiles);
+  const storageMaterializedByKey = new Map<string, string>();
+  const extraTempRoots = new Set<string>();
+  const resolvedSkillBaseDir = path.resolve(input.skill.baseDir);
+  const tryMaterializeChatUploadArg = async (value: string): Promise<string | null> => {
+    const storageKey = extractChatUploadStorageKey(value);
+    if (!storageKey) return null;
+
+    const cached = storageMaterializedByKey.get(storageKey);
+    if (cached) return cached;
+
+    const baseName = path.posix.basename(storageKey);
+    const targetRoot =
+      workspaceMount?.tempRoot ||
+      (await fs.mkdtemp(path.join(os.tmpdir(), "skill-chat-upload-")));
+    if (!workspaceMount) extraTempRoots.add(targetRoot);
+    const targetPath = path.join(targetRoot, ".files", baseName);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+    try {
+      const object = await getObjectFromStorage({ key: storageKey, bucketType: "private" });
+      await fs.writeFile(targetPath, object.buffer);
+      storageMaterializedByKey.set(storageKey, targetPath);
+      return targetPath;
+    } catch {
+      return null;
+    }
+  };
   const mapWorkspacePath = (value: string) => {
-    if (!workspaceMount || !value || !path.isAbsolute(value)) return value;
-    const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+    if (!workspaceMount || !value) return value;
+
+    const storageLike = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+    const extractStorageKey = (raw: string) => {
+      const marker = "/chat_uploads/";
+      const idx = raw.indexOf(marker);
+      if (idx >= 0) return raw.slice(idx + 1);
+      return raw;
+    };
+    const storageKeyLike = extractStorageKey(storageLike);
+    if (!path.isAbsolute(storageLike) && /^chat_uploads\/.+/.test(storageLike) && workspaceMount.roots.has(".files")) {
+      const base = path.posix.basename(storageLike);
+      return path.join(workspaceMount.tempRoot, ".files", base);
+    }
+    if (/^chat_uploads\/.+/.test(storageKeyLike) && workspaceMount.roots.has(".files")) {
+      const base = path.posix.basename(storageKeyLike);
+      return path.join(workspaceMount.tempRoot, ".files", base);
+    }
+
+    if (!path.isAbsolute(value)) return value;
+    const resolvedAbs = path.resolve(value);
+    // Never remap real files under the skill directory.
+    if (resolvedAbs === resolvedSkillBaseDir || resolvedAbs.startsWith(`${resolvedSkillBaseDir}${path.sep}`)) {
+      return resolvedAbs;
+    }
+    const normalized = resolvedAbs.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
     const parts = normalized.split("/").filter(Boolean);
     const root = parts[0] || "";
     if (root && workspaceMount.roots.has(root)) {
@@ -90,35 +237,176 @@ export const runSkillScript = async (input: {
   };
 
   const scriptPath = resolveSkillScriptPath(input.skill, input.script);
-  const scriptStat = await fs.stat(scriptPath).catch(() => null);
+  const mappedScriptPath = mapWorkspacePath(scriptPath);
+  const scriptStat = await fs.stat(mappedScriptPath).catch(() => null);
+
+  let finalScriptPath = mappedScriptPath;
   if (!scriptStat || !scriptStat.isFile()) {
-    throw new Error(`脚本文件不存在: ${scriptPath}`);
+    const fallbackScript = await resolveFallbackScriptPath(input.skill, input.script);
+    const mappedFallback = fallbackScript ? mapWorkspacePath(fallbackScript) : null;
+    const fallbackStat = mappedFallback ? await fs.stat(mappedFallback).catch(() => null) : null;
+
+    if (mappedFallback && fallbackStat?.isFile()) {
+      finalScriptPath = mappedFallback;
+    } else {
+      const availableScripts = await collectSkillScriptFiles(path.resolve(input.skill.baseDir), 3);
+      const listed = availableScripts
+        .slice(0, 12)
+        .map((file) => path.relative(path.resolve(input.skill.baseDir), file))
+        .join(", ");
+      throw new Error(
+        `脚本文件不存在: ${mappedScriptPath}${
+          listed ? `。该 skill 可用脚本: ${listed}` : "。该 skill 未发现可执行脚本文件"
+        }`
+      );
+    }
   }
 
   const mappedCwd = mapWorkspacePath(input.cwd || "");
-  const execCwd =
-    mappedCwd && path.isAbsolute(mappedCwd)
+  const defaultSkillCwd = mapWorkspacePath(path.resolve(input.skill.baseDir));
+  const execCwd = input.cwd
+    ? mappedCwd && path.isAbsolute(mappedCwd)
       ? mappedCwd
-      : resolveSkillCwd(input.skill, input.cwd);
+      : resolveSkillCwd(input.skill, input.cwd)
+    : defaultSkillCwd;
   const isolatedEnv = await buildSessionIsolatedEnv({
     sessionId: input.sessionId,
   });
-  const detectedRuntime = detectRuntime(scriptPath, input.runtime);
-  const resolvedArgs = input.args.map((item) => mapWorkspacePath(item));
-  const scriptInvocationArgs = [scriptPath, ...resolvedArgs];
+  const detectedRuntime = detectRuntime(finalScriptPath, input.runtime);
+  const resolvedArgs = (
+    await Promise.all(
+      input.args.map(async (item) => {
+        const storageKey = extractChatUploadStorageKey(item);
+        const materialized = await tryMaterializeChatUploadArg(item);
+        if (storageKey && !materialized) {
+          throw new Error(`附件下载失败，无法读取: ${storageKey}`);
+        }
+        return materialized || mapWorkspacePath(item);
+      })
+    )
+  ).filter((item) => Boolean(item));
+  const scriptInvocationArgs = [finalScriptPath, ...resolvedArgs];
+  const dependencyInstall: {
+    attempted: boolean;
+    installed: boolean;
+    command?: string;
+    args?: string[];
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+    skippedReason?: string;
+  } = {
+    attempted: false,
+    installed: false,
+  };
+
+  const ensureNodeDependencies = async () => {
+    if (input.autoInstallDeps === false) {
+      dependencyInstall.skippedReason = "auto_install_disabled";
+      return;
+    }
+    if (detectedRuntime !== "node") {
+      dependencyInstall.skippedReason = "runtime_not_node";
+      return;
+    }
+
+    const packageDir = path.dirname(finalScriptPath);
+    const packageJson = path.join(packageDir, "package.json");
+    const hasPackageJson = await fs
+      .stat(packageJson)
+      .then((stat) => stat.isFile())
+      .catch(() => false);
+    if (!hasPackageJson) {
+      dependencyInstall.skippedReason = "package_json_not_found";
+      return;
+    }
+
+    const hasNodeModules = await fs
+      .stat(path.join(packageDir, "node_modules"))
+      .then((stat) => stat.isDirectory())
+      .catch(() => false);
+    if (hasNodeModules) {
+      const pkgRaw = await fs.readFile(packageJson, "utf8").catch(() => "");
+      let missingDeps = false;
+      try {
+        const pkg = JSON.parse(pkgRaw) as {
+          dependencies?: Record<string, string>;
+          optionalDependencies?: Record<string, string>;
+        };
+        const declared = {
+          ...(pkg.dependencies || {}),
+          ...(pkg.optionalDependencies || {}),
+        };
+        const depNames = Object.keys(declared);
+        if (depNames.length > 0) {
+          for (const depName of depNames) {
+            const depPath = path.join(packageDir, "node_modules", ...depName.split("/"));
+            const installed = await fs
+              .stat(depPath)
+              .then((stat) => stat.isDirectory())
+              .catch(() => false);
+            if (!installed) {
+              missingDeps = true;
+              break;
+            }
+          }
+        }
+      } catch {
+        // package.json 解析失败时，保守执行一次安装
+        missingDeps = true;
+      }
+
+      if (!missingDeps) {
+        dependencyInstall.skippedReason = "node_modules_exists";
+        return;
+      }
+    }
+
+    const hasLockFile = await fs
+      .stat(path.join(packageDir, "package-lock.json"))
+      .then((stat) => stat.isFile())
+      .catch(() => false);
+    const command = "npm";
+    const args = hasLockFile
+      ? ["ci", "--no-audit", "--no-fund"]
+      : ["install", "--no-audit", "--no-fund"];
+    dependencyInstall.attempted = true;
+    dependencyInstall.command = command;
+    dependencyInstall.args = args;
+
+    const installResult = await runExecFile({
+      command,
+      args,
+      cwd: packageDir,
+      timeoutMs: Math.max(input.timeoutMs, 120_000),
+      env: isolatedEnv,
+    });
+    dependencyInstall.exitCode = installResult.exitCode;
+    dependencyInstall.stdout = installResult.stdout;
+    dependencyInstall.stderr = installResult.stderr;
+
+    if (!installResult.ok) {
+      const errText = installResult.stderr || installResult.error || "unknown install error";
+      throw new Error(`依赖安装失败 (${command} ${args.join(" ")}): ${errText}`);
+    }
+    dependencyInstall.installed = true;
+  };
+
+  await ensureNodeDependencies();
   const candidates: Array<{ command: string; args: string[] }> = [];
 
   if (detectedRuntime === "python") {
     candidates.push({ command: "python3", args: scriptInvocationArgs });
     candidates.push({ command: "python", args: scriptInvocationArgs });
   } else if (detectedRuntime === "node") {
-    candidates.push({ command: "node", args: scriptInvocationArgs });
+    const nodeCommands = await resolveNodeCommandCandidates();
+    nodeCommands.forEach((command) => candidates.push({ command, args: scriptInvocationArgs }));
   } else if (detectedRuntime === "sh") {
     candidates.push({ command: "sh", args: scriptInvocationArgs });
   } else if (detectedRuntime === "bash") {
     candidates.push({ command: "bash", args: scriptInvocationArgs });
   } else {
-    candidates.push({ command: scriptPath, args: input.args });
+    candidates.push({ command: finalScriptPath, args: resolvedArgs });
     candidates.push({ command: "bash", args: scriptInvocationArgs });
     candidates.push({ command: "sh", args: scriptInvocationArgs });
   }
@@ -136,12 +424,13 @@ export const runSkillScript = async (input: {
         return {
           ...result,
           skill: input.skill.name,
-          script: scriptPath,
+          script: finalScriptPath,
           runtime: detectedRuntime,
           cwd: execCwd,
           sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
           command: candidate.command,
           commandArgs: candidate.args,
+          dependencyInstall,
         };
       }
     }
@@ -152,6 +441,9 @@ export const runSkillScript = async (input: {
   } finally {
     if (workspaceMount?.tempRoot) {
       await fs.rm(workspaceMount.tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+    for (const tempRoot of extraTempRoots) {
+      await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 };

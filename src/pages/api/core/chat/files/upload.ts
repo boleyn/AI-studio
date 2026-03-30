@@ -40,7 +40,6 @@ const syncAttachmentRawToProject = async ({
   file: UploadFileInput;
   storagePath: string;
 }) => {
-  if (!isImageFile(file.name, file.type)) return;
   const mirrorPath = buildMirrorRawFilePath({
     storagePath,
   });
