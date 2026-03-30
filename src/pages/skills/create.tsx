@@ -135,6 +135,12 @@ const SkillCreatePage = () => {
     () => (typeof router.query.key === "string" ? router.query.key.trim() : ""),
     [router.query.key]
   );
+  const returnTo = useMemo(() => {
+    const raw = router.query.returnTo;
+    const value = typeof raw === "string" ? raw.trim() : Array.isArray(raw) ? raw[0]?.trim() || "" : "";
+    if (!value.startsWith("/") || value.startsWith("//")) return "";
+    return value;
+  }, [router.query.returnTo]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -156,6 +162,7 @@ const SkillCreatePage = () => {
       const query: Record<string, string> = { skillId: nextSkillId };
       if (conversationId) query.conversation = conversationId;
       if (projectToken) query.projectToken = projectToken;
+      if (returnTo) query.returnTo = returnTo;
       void router.replace(
         {
           pathname: "/skills/create",
@@ -165,7 +172,7 @@ const SkillCreatePage = () => {
         { shallow: true }
       );
     },
-    [conversationId, projectToken, router]
+    [conversationId, projectToken, returnTo, router]
   );
 
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
@@ -853,7 +860,7 @@ const SkillCreatePage = () => {
           activeView={activeView}
           onChangeView={setActiveView}
           onBack={() => {
-            const target = projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/";
+            const target = returnTo || (projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/");
             if (typeof window !== "undefined") {
               window.location.assign(target);
               return;

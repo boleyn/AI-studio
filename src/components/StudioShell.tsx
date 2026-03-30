@@ -535,10 +535,6 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
           activeView={activeView}
           onChangeView={setActiveView}
           onBack={() => {
-            if (window.history.length > 1) {
-              router.back();
-              return;
-            }
             void router.push("/");
           }}
           onOpenSettings={() => setOpenSkillsSignal((prev) => prev + 1)}
