@@ -376,6 +376,7 @@ const ChatPanel = ({
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
       cancelPendingFlushes();
+      shouldAutoScrollRef.current = false;
       setStreamingMessageId(assistantMessageId);
       setMessages((prev) => [
         ...prev,
@@ -570,6 +571,9 @@ const ChatPanel = ({
               : "";
           streamingTextRef.current = assistantText;
           streamingReasoningRef.current = assistantReasoning;
+          if (assistantText || assistantReasoning) {
+            shouldAutoScrollRef.current = true;
+          }
 
           if (onFilesUpdated) {
             const files = toUpdatedFilesMap(responsePayload?.files);
@@ -597,12 +601,14 @@ const ChatPanel = ({
               if (item.event === SseResponseEventEnum.answer) {
                 const answerPayload = item as { text?: string; reasoningText?: string };
                 if (answerPayload.reasoningText) {
+                  shouldAutoScrollRef.current = true;
                   const reasoningText = answerPayload.reasoningText;
                   streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
                   scheduleAssistantReasoningFlush(assistantMessageId);
                   appendTimelineText("reasoning", reasoningText);
                 }
                 if (answerPayload.text) {
+                  shouldAutoScrollRef.current = true;
                   streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
                   scheduleAssistantTextFlush(assistantMessageId);
                   appendTimelineText("answer", answerPayload.text);
@@ -994,6 +1000,13 @@ const ChatPanel = ({
           bg="#f7f8fc"
           flex="1"
           overflowY="auto"
+          sx={{
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+            "&::-webkit-scrollbar": {
+              display: "none",
+            },
+          }}
           px={4}
           py={4}
           onScroll={(event) => {

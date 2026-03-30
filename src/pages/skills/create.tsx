@@ -135,6 +135,15 @@ const SkillCreatePage = () => {
     () => (typeof router.query.key === "string" ? router.query.key.trim() : ""),
     [router.query.key]
   );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const trimmedName = skillName.trim();
+    if (trimmedName) {
+      document.title = trimmedName;
+    }
+  }, [skillName]);
+
   useEffect(() => {
     if (skillId || hubSlug) {
       setSkillName(skillId || hubSlug);

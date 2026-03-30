@@ -217,6 +217,14 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const topSearchFilePaths = useMemo(() => Object.keys(sandpackFiles), [sandpackFiles]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const trimmedName = projectName.trim();
+    if (trimmedName) {
+      document.title = trimmedName;
+    }
+  }, [projectName]);
+
+  useEffect(() => {
     if (!token) return;
     let active = true;
     (async () => {
