@@ -213,9 +213,55 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
   return { type: "object" };
 };
 
-const safeParse = <T>(schema: z.ZodTypeAny, input: unknown): { ok: true; data: T } | { ok: false; error: string } => {
+const describeInputType = (input: unknown) => {
+  if (input === null) return "null";
+  if (Array.isArray(input)) return "array";
+  return typeof input;
+};
+
+const toInputPreview = (input: unknown, maxLen = 200) => {
+  try {
+    const raw =
+      typeof input === "string" ? input : JSON.stringify(input);
+    if (!raw) return "";
+    return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
+  } catch {
+    return String(input);
+  }
+};
+
+const safeParse = <T>(
+  schema: z.ZodTypeAny,
+  input: unknown,
+  toolName = "unknown_tool"
+): { ok: true; data: T } | { ok: false; error: string } => {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
+    const inputType = describeInputType(input);
+    const inputPreview = toInputPreview(input);
+    console.warn("[agent-tool][validation-error]", {
+      toolName,
+      inputType,
+      inputPreview,
+      issues: parsed.error.issues,
+    });
+
+    const invalidObjectIssue = parsed.error.issues.find(
+      (issue) =>
+        issue.code === "invalid_type" &&
+        "expected" in issue &&
+        issue.expected === "object"
+    );
+    if (invalidObjectIssue) {
+      const preview = toInputPreview(input);
+      const previewSuffix = preview ? `；收到片段: ${preview}` : "";
+      return {
+        ok: false,
+        error:
+          `工具入参类型错误：期望 JSON 对象(object)，实际收到 ${describeInputType(input)}。` +
+          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/App.js","content":"..."}${previewSuffix}`,
+      };
+    }
     return { ok: false, error: parsed.error.issues.map((err) => err.message).join("; ") };
   }
   return { ok: true, data: parsed.data as T };
@@ -239,7 +285,7 @@ export function createProjectTools(
       description: "列出项目中的所有文件路径。",
       parameters: toJsonSchema(listFilesSchema),
       run: async (input) => {
-        const parsed = safeParse(listFilesSchema, input);
+        const parsed = safeParse(listFilesSchema, input, "list_files");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
         const files = await workspaceManager.listFiles(token);
@@ -263,7 +309,7 @@ export function createProjectTools(
           fileName?: string;
           mode?: "auto" | "markdown" | "raw";
           maxChars?: number;
-        }>(readFileSchema, input);
+        }>(readFileSchema, input, "read_file");
         if (!parsed.ok) throw new Error(parsed.error);
 
         const pathInput = (parsed.data.path || "").trim();
@@ -388,7 +434,7 @@ export function createProjectTools(
       description: "在项目中创建或覆盖文件内容。",
       parameters: toJsonSchema(writeFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input);
+        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input, "write_file");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
         const result = await workspaceManager.writeFile(token, parsed.data.path, parsed.data.content);
@@ -408,7 +454,11 @@ export function createProjectTools(
       description: "替换文件中的指定文本。",
       parameters: toJsonSchema(replaceInFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; query: string; replace: string }>(replaceInFileSchema, input);
+        const parsed = safeParse<{ path: string; query: string; replace: string }>(
+          replaceInFileSchema,
+          input,
+          "replace_in_file"
+        );
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
         const result = await workspaceManager.replaceInFile(
@@ -441,7 +491,7 @@ export function createProjectTools(
       description: "在项目中按 rg 风格搜索（支持正则、大小写、glob 过滤、上下文）。",
       parameters: toJsonSchema(searchInFilesSchema),
       run: async (input) => {
-        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input);
+        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input, "search_in_files");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
         return workspaceManager.searchInFiles(token, parsed.data);
@@ -456,7 +506,7 @@ export function createProjectTools(
           includeLogs?: boolean;
           includeEvents?: boolean;
           limit?: number;
-        }>(sandpackCompileInfoSchema, input);
+        }>(sandpackCompileInfoSchema, input, "compile_project");
         if (!parsed.ok) throw new Error(parsed.error);
 
         const project = await getProject(token);

@@ -57,9 +57,55 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
   };
 };
 
-const safeParse = <T>(schema: z.ZodTypeAny, input: unknown): { ok: true; data: T } | { ok: false; error: string } => {
+const describeInputType = (input: unknown) => {
+  if (input === null) return "null";
+  if (Array.isArray(input)) return "array";
+  return typeof input;
+};
+
+const toInputPreview = (input: unknown, maxLen = 200) => {
+  try {
+    const raw =
+      typeof input === "string" ? input : JSON.stringify(input);
+    if (!raw) return "";
+    return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
+  } catch {
+    return String(input);
+  }
+};
+
+const safeParse = <T>(
+  schema: z.ZodTypeAny,
+  input: unknown,
+  toolName = "unknown_tool"
+): { ok: true; data: T } | { ok: false; error: string } => {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
+    const inputType = describeInputType(input);
+    const inputPreview = toInputPreview(input);
+    console.warn("[agent-tool][validation-error]", {
+      toolName,
+      inputType,
+      inputPreview,
+      issues: parsed.error.issues,
+    });
+
+    const invalidObjectIssue = parsed.error.issues.find(
+      (issue) =>
+        issue.code === "invalid_type" &&
+        "expected" in issue &&
+        issue.expected === "object"
+    );
+    if (invalidObjectIssue) {
+      const preview = toInputPreview(input);
+      const previewSuffix = preview ? `；收到片段: ${preview}` : "";
+      return {
+        ok: false,
+        error:
+          `工具入参类型错误：期望 JSON 对象(object)，实际收到 ${describeInputType(input)}。` +
+          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/App.js","content":"..."}${previewSuffix}`,
+      };
+    }
     return { ok: false, error: parsed.error.issues.map((err) => err.message).join("; ") };
   }
   return { ok: true, data: parsed.data as T };
@@ -93,7 +139,7 @@ export const createSkillWorkspaceTools = ({
       description: "列出 workspace 中所有文件路径。",
       parameters: toJsonSchema(listFilesSchema),
       run: async (input) => {
-        const parsed = safeParse(listFilesSchema, input);
+        const parsed = safeParse(listFilesSchema, input, "list_files");
         if (!parsed.ok) throw new Error(parsed.error);
         return run({ action: "list" });
       },
@@ -103,7 +149,7 @@ export const createSkillWorkspaceTools = ({
       description: "读取 workspace 文件内容。",
       parameters: toJsonSchema(readFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string }>(readFileSchema, input);
+        const parsed = safeParse<{ path: string }>(readFileSchema, input, "read_file");
         if (!parsed.ok) throw new Error(parsed.error);
         return run({ action: "read", path: parsed.data.path });
       },
@@ -113,7 +159,7 @@ export const createSkillWorkspaceTools = ({
       description: "写入或覆盖 workspace 文件。",
       parameters: toJsonSchema(writeFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input);
+        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input, "write_file");
         if (!parsed.ok) throw new Error(parsed.error);
         return run({
           action: "write",
@@ -127,7 +173,11 @@ export const createSkillWorkspaceTools = ({
       description: "替换 workspace 文件中的指定文本。",
       parameters: toJsonSchema(replaceInFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; query: string; replace: string }>(replaceInFileSchema, input);
+        const parsed = safeParse<{ path: string; query: string; replace: string }>(
+          replaceInFileSchema,
+          input,
+          "replace_in_file"
+        );
         if (!parsed.ok) throw new Error(parsed.error);
         return run({
           action: "replace",
@@ -142,7 +192,7 @@ export const createSkillWorkspaceTools = ({
       description: "在 workspace 内按 rg 风格搜索（正则、glob、上下文）。",
       parameters: toJsonSchema(searchInFilesSchema),
       run: async (input) => {
-        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input);
+        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input, "search_in_files");
         if (!parsed.ok) throw new Error(parsed.error);
         return run({
           action: "search",
