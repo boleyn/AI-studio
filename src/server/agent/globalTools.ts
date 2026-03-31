@@ -19,6 +19,7 @@ export type GlobalToolResult = {
   action: GlobalToolInput["action"];
   message: string;
   data?: Record<string, unknown>;
+  uiFiles?: Record<string, { code: string }>;
 };
 
 export const globalToolSchema = z.object({

@@ -2,15 +2,15 @@ import { promises as fs } from "fs";
 import path from "path";
 import { z } from "zod";
 import type { ChangeTracker } from "../globalTools";
-import { runGlobalAction } from "../globalTools";
 import type { AgentToolDefinition } from "./types";
-import { getProject, hasProjectFilesDir } from "@server/projects/projectStorage";
-import { runSearchInFiles, searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
+import { getProject } from "@server/projects/projectStorage";
+import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
 import {
   getObjectFromStorage,
   listStorageObjectKeysByPrefix,
   normalizeStorageKey,
 } from "@server/storage/s3";
+import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 
 const listFilesSchema = z.object({});
 const readFileSchema = z
@@ -224,8 +224,15 @@ const safeParse = <T>(schema: z.ZodTypeAny, input: unknown): { ok: true; data: T
 export function createProjectTools(
   token: string,
   changeTracker: ChangeTracker,
-  options?: { chatId?: string; skillBaseDirs?: string[] }
+  options?: { chatId?: string; skillBaseDirs?: string[]; workspaceManager?: ProjectWorkspaceManager }
 ): AgentToolDefinition[] {
+  const workspaceManager =
+    options?.workspaceManager ||
+    new ProjectWorkspaceManager({
+      fallbackProjectToken: token,
+      sessionId: options?.chatId || `project-${token}`,
+    });
+
   return [
     {
       name: "list_files",
@@ -234,7 +241,14 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse(listFilesSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
-        return runGlobalAction(token, { action: "list" }, changeTracker);
+        await workspaceManager.hydrate(token);
+        const files = await workspaceManager.listFiles(token);
+        return {
+          ok: true,
+          action: "list",
+          message: `共 ${files.length} 个文件。`,
+          data: { files },
+        };
       },
     },
     {
@@ -264,7 +278,17 @@ export function createProjectTools(
         const maxChars = parsed.data.maxChars ?? CHAT_FILE_MAX_CHARS;
         if (!shouldReadAttachment && pathInput) {
           try {
-            return await runGlobalAction(token, { action: "read", path: pathInput }, changeTracker);
+            await workspaceManager.hydrate(token);
+            const file = await workspaceManager.readFile(token, pathInput);
+            if (!file) {
+              return { ok: false, action: "read", message: `未找到文件 ${pathInput}` };
+            }
+            return {
+              ok: true,
+              action: "read",
+              message: `已读取 ${file.path}。`,
+              data: { path: file.path, content: file.content },
+            };
           } catch (error) {
             const skillRead = await readSkillFileIfAllowed({
               pathInput,
@@ -366,11 +390,17 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
-        return runGlobalAction(
-          token,
-          { action: "write", path: parsed.data.path, content: parsed.data.content },
-          changeTracker
-        );
+        await workspaceManager.hydrate(token);
+        const result = await workspaceManager.writeFile(token, parsed.data.path, parsed.data.content);
+        changeTracker.paths.add(result.path);
+        changeTracker.changed = true;
+        return {
+          ok: true,
+          action: "write",
+          message: `已写入 ${result.path}。`,
+          data: { path: result.path, bytes: result.bytes },
+          uiFiles: { [result.path]: { code: parsed.data.content } },
+        };
       },
     },
     {
@@ -380,11 +410,30 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse<{ path: string; query: string; replace: string }>(replaceInFileSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
-        return runGlobalAction(
+        await workspaceManager.hydrate(token);
+        const result = await workspaceManager.replaceInFile(
           token,
-          { action: "replace", path: parsed.data.path, query: parsed.data.query, replace: parsed.data.replace },
-          changeTracker
+          parsed.data.path,
+          parsed.data.query,
+          parsed.data.replace
         );
+        if (!result.ok) {
+          return {
+            ok: false,
+            action: "replace",
+            message: result.message,
+          };
+        }
+        const latest = await workspaceManager.readFile(token, result.path);
+        changeTracker.paths.add(result.path);
+        changeTracker.changed = true;
+        return {
+          ok: true,
+          action: "replace",
+          message: `已在 ${result.path} 中替换 ${result.replaced} 处。`,
+          data: { path: result.path, replaced: result.replaced, bytes: result.bytes },
+          uiFiles: latest ? { [result.path]: { code: latest.content } } : {},
+        };
       },
     },
     {
@@ -394,20 +443,8 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input);
         if (!parsed.ok) throw new Error(parsed.error);
-
-        const project = await getProject(token);
-        if (!project) {
-          throw new Error("项目不存在");
-        }
-        const hasFiles = await hasProjectFilesDir(token);
-        if (!hasFiles) {
-          throw new Error("项目文件目录缺失，请先保存一次项目文件后再试");
-        }
-
-        return runSearchInFiles({
-          files: project.files || {},
-          input: parsed.data,
-        });
+        await workspaceManager.hydrate(token);
+        return workspaceManager.searchInFiles(token, parsed.data);
       },
     },
     {

@@ -28,7 +28,7 @@ export const buildSessionIsolatedEnv = async (input: {
 
   await fs.mkdir(sessionTmp, { recursive: true });
 
-  const env: NodeJS.ProcessEnv = {};
+  const env = {} as NodeJS.ProcessEnv;
   for (const key of SESSION_ENV_ALLOWLIST) {
     const value = process.env[key];
     if (typeof value === "string" && value) {
@@ -44,4 +44,3 @@ export const buildSessionIsolatedEnv = async (input: {
 
   return env;
 };
-
