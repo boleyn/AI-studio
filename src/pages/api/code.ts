@@ -57,6 +57,21 @@ const toAsciiFilename = (name: string): string => {
   return ascii || "project.zip";
 };
 
+const parseBase64DataUrl = (value: string): { mime: string; bytes: Buffer } | null => {
+  const match = value.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const mime = (match[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const base64Body = match[2].replace(/\s+/g, "");
+  try {
+    return {
+      mime,
+      bytes: Buffer.from(base64Body, "base64"),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   const auth = await requireAuth(req, res);
   if (!auth) return;
@@ -125,7 +140,13 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         Object.entries(project.files).forEach(([filePath, file]) => {
           const zipPath = normalizeZipPath(filePath);
           if (!zipPath) return;
-          zip.file(zipPath, file.code ?? "");
+          const code = file.code ?? "";
+          const dataUrl = parseBase64DataUrl(code);
+          if (dataUrl) {
+            zip.file(zipPath, dataUrl.bytes);
+            return;
+          }
+          zip.file(zipPath, code);
         });
 
         if (Object.keys(zip.files).length === 0) {

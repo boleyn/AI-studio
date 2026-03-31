@@ -1,4 +1,5 @@
 import {
+  deleteSkillWorkspaceFile,
   getSkillWorkspace,
   replaceSkillWorkspaceFiles,
   toWorkspacePublicFiles,
@@ -7,6 +8,14 @@ import {
 } from "@server/skills/workspaceStorage";
 import { requireAuth } from "@server/auth/session";
 import type { NextApiRequest, NextApiResponse } from "next";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "20mb",
+    },
+  },
+};
 
 const getWorkspaceId = (req: NextApiRequest) => {
   const value = req.query.workspaceId;
@@ -83,24 +92,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const path = typeof body.path === "string" ? body.path.trim() : "";
+    const shouldDelete = Boolean(body.delete);
     const content = typeof body.content === "string" ? body.content : "";
     if (!path) {
       res.status(400).json({ error: "缺少 path" });
       return;
     }
     try {
-      const files = await writeSkillWorkspaceFile({
-        workspaceId,
-        userId,
-        projectToken: bodyProjectToken || projectToken || undefined,
-        skillId: bodySkillId || skillId || undefined,
-        path,
-        content,
-      });
+      const files = shouldDelete
+        ? await deleteSkillWorkspaceFile({
+            workspaceId,
+            userId,
+            projectToken: bodyProjectToken || projectToken || undefined,
+            skillId: bodySkillId || skillId || undefined,
+            path,
+          })
+        : await writeSkillWorkspaceFile({
+            workspaceId,
+            userId,
+            projectToken: bodyProjectToken || projectToken || undefined,
+            skillId: bodySkillId || skillId || undefined,
+            path,
+            content,
+          });
       res.status(200).json({
         workspaceId,
         files: toWorkspacePublicFiles(files),
         updatedPath: path,
+        deleted: shouldDelete,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存 workspace 文件失败";

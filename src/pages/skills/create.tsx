@@ -108,6 +108,7 @@ const SkillCreatePage = () => {
   const [importConflictSelectedPath, setImportConflictSelectedPath] = useState("");
 
   const latestFilesRef = useRef<FileMap>({});
+  const persistedFilesRef = useRef<FileMap>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
@@ -177,6 +178,26 @@ const SkillCreatePage = () => {
 
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
 
+  const diffSkillFiles = useCallback((prevFiles: FileMap, nextFiles: FileMap) => {
+    const upserts: Array<{ path: string; content: string }> = [];
+    const deletions: string[] = [];
+    const allPaths = new Set([...Object.keys(prevFiles), ...Object.keys(nextFiles)]);
+
+    allPaths.forEach((path) => {
+      const prev = prevFiles[path];
+      const next = nextFiles[path];
+      if (!next && prev) {
+        deletions.push(path);
+        return;
+      }
+      if (next && (!prev || prev.code !== next.code)) {
+        upserts.push({ path, content: next.code || "" });
+      }
+    });
+
+    return { upserts, deletions };
+  }, []);
+
   useEffect(() => {
     if (!router.isReady) return;
 
@@ -224,6 +245,7 @@ const SkillCreatePage = () => {
         setWorkspaceId(nextWorkspaceId);
         setFiles(nextFiles);
         latestFilesRef.current = nextFiles;
+        persistedFilesRef.current = nextFiles;
         if ((hubSlug && hubKey) || (!skillId && nextWorkspaceId)) {
           normalizeCreateRoute(nextWorkspaceId);
         }
@@ -320,6 +342,7 @@ const SkillCreatePage = () => {
       setWorkspaceId((payload.workspaceId || importConflictDraft.skillId).trim() || importConflictDraft.skillId);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
+      persistedFilesRef.current = nextFiles;
       normalizeCreateRoute((payload.workspaceId || importConflictDraft.skillId).trim() || importConflictDraft.skillId);
       setIsImportConflictOpen(false);
       toast({
@@ -349,9 +372,14 @@ const SkillCreatePage = () => {
       }
 
       const normalized = normalizeSkillFiles(nextFiles);
-      const response = await fetch(
-        `/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`,
-        {
+      const { upserts, deletions } = diffSkillFiles(persistedFilesRef.current, normalized);
+      if (upserts.length === 0 && deletions.length === 0) {
+        latestFilesRef.current = normalized;
+        return;
+      }
+
+      for (const item of upserts) {
+        const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -359,17 +387,40 @@ const SkillCreatePage = () => {
           },
           body: JSON.stringify({
             skillId: workspaceId,
-            files: normalized,
+            path: item.path,
+            content: item.content,
           }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (response.status === 413) {
+            throw new Error("文件过大，已超出服务端上传限制（413）。请联系管理员调大网关大小限制。");
+          }
+          throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
         }
-      );
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
       }
 
-      const persistedFiles = normalizeSkillFiles(payload.files);
+      for (const path of deletions) {
+        const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...withAuthHeaders(),
+          },
+          body: JSON.stringify({
+            skillId: workspaceId,
+            path,
+            delete: true,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
+        }
+      }
+
+      const persistedFiles = normalized;
+      persistedFilesRef.current = persistedFiles;
       latestFilesRef.current = persistedFiles;
       // 避免每次自动保存都触发整个 Sandpack files 重绑定，导致活动标签被重置到首个文件。
       // 仅当 skill 根目录变化时（如导入/切换 skill）才更新页面级 files 状态。
@@ -379,7 +430,7 @@ const SkillCreatePage = () => {
         return persistedFiles;
       });
     },
-    [workspaceId]
+    [diffSkillFiles, workspaceId]
   );
 
   const getSkillNameFromFiles = useCallback((currentFiles: FileMap) => {

@@ -99,6 +99,23 @@ const uint8ArrayToBase64 = (bytes: Uint8Array) => {
 
 const toDataUrl = (base64: string, contentType: string) => `data:${contentType};base64,${base64}`;
 
+const parseDataUrlToBytes = (value: string): { mime: string; bytes: Uint8Array } | null => {
+  const match = value.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const mime = (match[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const normalizedBase64 = match[2].replace(/\s+/g, "");
+  try {
+    const binary = atob(normalizedBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return { mime, bytes };
+  } catch {
+    return null;
+  }
+};
+
 const readBrowserFileAsWorkspaceCode = async (file: File, filePath: string) => {
   if (file.type.startsWith("text/") || isTextLikePath(filePath)) {
     return file.text();
@@ -554,7 +571,10 @@ const FileExplorerPanel = ({
   const handleDownloadFile = useCallback(
     (path: string, name: string) => {
       const code = files[path]?.code ?? "";
-      const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+      const binary = parseDataUrlToBytes(code);
+      const blob = binary
+        ? new Blob([binary.bytes], { type: binary.mime })
+        : new Blob([code], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;

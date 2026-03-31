@@ -285,6 +285,42 @@ export const writeSkillWorkspaceFile = async ({
   return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
 };
 
+export const deleteSkillWorkspaceFile = async ({
+  workspaceId,
+  userId,
+  projectToken,
+  skillId,
+  path,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+  path: string;
+}) => {
+  const workspace = await resolveWorkspace({ workspaceId, userId, projectToken, skillId });
+  const normalizedPath = toWorkspaceStoredPath(path, workspace.files);
+
+  if (workspace.source === "project") {
+    throw new Error("项目绑定 workspace 为兼容只读模式，无法写入");
+  }
+
+  const nextFiles = { ...workspace.files };
+  delete nextFiles[normalizedPath];
+  const next = pickSkillContentFromFiles(nextFiles);
+
+  const updated = await updateUserSkill({
+    token: workspace.skillId || workspace.id,
+    userId,
+    updates: {
+      files: nextFiles,
+      content: next?.content || "",
+    },
+  });
+  if (!updated) throw new Error("skill 不存在");
+  return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
+};
+
 export const replaceSkillWorkspaceFiles = async ({
   workspaceId,
   userId,

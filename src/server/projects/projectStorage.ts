@@ -241,6 +241,28 @@ const inferImageMimeFromPath = (filePath: string) => {
   return "image/png";
 };
 
+const isLikelyTextContentType = (contentType?: string) => {
+  const normalized = (contentType || "").toLowerCase().split(";")[0].trim();
+  if (!normalized) return true;
+  if (normalized.startsWith("text/")) return true;
+  return [
+    "application/json",
+    "application/ld+json",
+    "application/xml",
+    "application/javascript",
+    "application/x-javascript",
+    "application/typescript",
+    "application/x-typescript",
+    "application/ecmascript",
+    "application/x-www-form-urlencoded",
+    "application/graphql",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "image/svg+xml",
+  ].includes(normalized);
+};
+
 async function syncFileToStorage(token: string, filePath: string, code: string) {
   await uploadObjectToStorage({
     key: toProjectStorageFileKey(token, filePath),
@@ -351,7 +373,14 @@ async function collectFilesFromStorage(token: string): Promise<Record<string, Pr
         const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
         return [filePath, { code: dataUrl }] as const;
       }
-      return [filePath, { code: buffer.toString("utf8") }] as const;
+
+      if (isLikelyTextContentType(contentType)) {
+        return [filePath, { code: buffer.toString("utf8") }] as const;
+      }
+
+      const mime = (contentType || "application/octet-stream").split(";")[0].trim() || "application/octet-stream";
+      const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+      return [filePath, { code: dataUrl }] as const;
     })
   );
 
