@@ -65,6 +65,19 @@ const extractChatUploadStorageKey = (value: string) => {
   return /^chat_uploads\/.+/.test(storageKey) ? storageKey : "";
 };
 
+const parseBase64DataUrl = (raw: string): Buffer | null => {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const base64Body = (match[2] || "").replace(/\s+/g, "");
+  if (!base64Body) return null;
+  try {
+    return Buffer.from(base64Body, "base64");
+  } catch {
+    return null;
+  }
+};
+
 const SUPPORTED_SCRIPT_EXTS = [".js", ".mjs", ".cjs", ".py", ".sh", ".bash"] as const;
 const DEFAULT_PYPI_INDEX_URL = "https://pypi.mirrors.ustc.edu.cn/simple";
 const DEFAULT_PYPI_TRUSTED_HOST = "pypi.mirrors.ustc.edu.cn";
@@ -164,7 +177,14 @@ export const runSkillScript = async (input: {
       roots.add(parts[0]);
       const target = path.join(tempRoot, ...parts);
       await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, typeof file?.code === "string" ? file.code : "", "utf8");
+      const code = typeof file?.code === "string" ? file.code : "";
+      const isAttachmentPath = normalized.startsWith("/.files/");
+      const binaryAttachment = isAttachmentPath ? parseBase64DataUrl(code) : null;
+      if (binaryAttachment) {
+        await fs.writeFile(target, binaryAttachment);
+      } else {
+        await fs.writeFile(target, code, "utf8");
+      }
     }
 
     if (roots.size === 0) {

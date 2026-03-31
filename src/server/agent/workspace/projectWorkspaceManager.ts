@@ -250,10 +250,19 @@ export class ProjectWorkspaceManager {
     return { token, state };
   }
 
+  private normalizeWorkspaceLocalPath(input: string) {
+    const raw = (input || "").trim();
+    if (raw === "/files" || raw === "/.files") return ".files";
+    if (raw.startsWith("/files/")) return `.files/${raw.slice("/files/".length)}`;
+    if (raw.startsWith("/.files/")) return `.${raw}`;
+    return raw;
+  }
+
   async resolveCwd(projectToken: string, cwd?: string) {
     const { state } = await this.assertHydrated(projectToken);
     const root = state.workspaceRoot;
-    const candidate = cwd && cwd.trim() ? cwd.trim() : ".";
+    const candidateRaw = cwd && cwd.trim() ? cwd.trim() : ".";
+    const candidate = this.normalizeWorkspaceLocalPath(candidateRaw);
     const resolved = path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(root, candidate);
     ensureInside(root, resolved, "cwd");
     return resolved;
@@ -262,7 +271,10 @@ export class ProjectWorkspaceManager {
   async resolvePathInWorkspace(projectToken: string, filePath: string, cwd?: string) {
     const { state } = await this.assertHydrated(projectToken);
     const base = await this.resolveCwd(projectToken, cwd);
-    const resolved = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(base, filePath);
+    const normalizedFilePath = this.normalizeWorkspaceLocalPath(filePath);
+    const resolved = path.isAbsolute(normalizedFilePath)
+      ? path.resolve(normalizedFilePath)
+      : path.resolve(base, normalizedFilePath);
     ensureInside(state.workspaceRoot, resolved, "路径");
     return resolved;
   }
