@@ -25,11 +25,11 @@ ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
-RUN npm config set registry ${NPM_REGISTRY} \
-  && rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg \
-  && npm install -g @yarnpkg/cli-dist@4.5.1 \
-  && python3 -m pip config set global.index-url ${PIP_INDEX_URL} \
-  && python3 -m pip config set global.trusted-host ${PIP_TRUSTED_HOST} \
+RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
+  && corepack enable \
+  && (corepack prepare yarn@4.5.1 --activate || npm install -g @yarnpkg/cli-dist@4.5.1) \
+  && if [ -n "${PIP_INDEX_URL}" ]; then python3 -m pip config set global.index-url "${PIP_INDEX_URL}"; fi \
+  && if [ -n "${PIP_TRUSTED_HOST}" ]; then python3 -m pip config set global.trusted-host "${PIP_TRUSTED_HOST}"; fi \
   && python3 -m pip install --no-cache-dir \
     python-docx \
     xlrd \
@@ -38,10 +38,11 @@ RUN npm config set registry ${NPM_REGISTRY} \
     xlsxwriter
 
 FROM base AS deps
-ARG NPM_REGISTRY
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 COPY package.json yarn.lock ./
-RUN npm config set registry ${NPM_REGISTRY} \
-  && yarn config set npmRegistryServer ${NPM_REGISTRY} \
+RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
+  && corepack enable \
+  && if [ -n "${NPM_REGISTRY}" ]; then yarn config set npmRegistryServer "${NPM_REGISTRY}"; fi \
   && yarn config set nodeLinker node-modules \
   && yarn install --immutable
 
