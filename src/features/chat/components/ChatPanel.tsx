@@ -38,6 +38,7 @@ interface ToolStreamPayload {
   toolName?: string;
   params?: string;
   response?: string;
+  rawResponse?: string;
 }
 
 interface ReasoningStreamPayload {
@@ -647,21 +648,23 @@ const ChatPanel = ({
               }
               if (item.event === SseResponseEventEnum.toolResponse) {
                 const streamPayload = item as ToolStreamPayload;
+                const responseForDisplay = streamPayload.response || "";
+                const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
                 if (streamPayload.id) {
                   upsertToolMessage(streamPayload.id, {
                     toolName: streamPayload.toolName,
-                    response: streamPayload.response || "",
+                    response: responseForDisplay,
                   });
                   upsertTimelineTool({
                     id: streamPayload.id,
                     toolName: streamPayload.toolName,
-                    response: streamPayload.response || "",
+                    response: responseForDisplay,
                   });
                 }
 
-                if (streamPayload.response && onFilesUpdated) {
+                if (responseForFileUpdates && onFilesUpdated) {
                   try {
-                    const parsed = JSON.parse(streamPayload.response);
+                    const parsed = JSON.parse(responseForFileUpdates);
                     const filesCandidate =
                       (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
                       (parsed as { files?: Record<string, { code: string }> }).files ||

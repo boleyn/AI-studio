@@ -37,19 +37,30 @@ interface RunSimpleAgentWorkflowResult {
   flowResponses: SimpleWorkflowNodeResponse[];
 }
 
-const toSafeToolArgs = (raw: string | undefined): unknown => {
+const parsePossiblyNestedJson = (raw: string | undefined): unknown => {
   if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
+  let current: unknown = raw;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "string") break;
+    const trimmed = current.trim();
+    if (!trimmed) break;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      break;
+    }
   }
+  return current;
 };
+
+const toSafeToolArgs = (raw: string | undefined): unknown => parsePossiblyNestedJson(raw);
 
 const formatToolArgs = (raw: string | undefined): string => {
   if (!raw) return "";
+  const parsed = parsePossiblyNestedJson(raw);
+  if (typeof parsed === "string") return parsed;
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
+    return JSON.stringify(parsed, null, 2);
   } catch {
     return raw;
   }
@@ -213,7 +224,8 @@ export const runSimpleAgentWorkflow = async ({
         id: call.id,
         toolName,
         params,
-        response,
+        response: modelResponse,
+        rawResponse: response,
       });
 
       const nodeResponse: SimpleWorkflowNodeResponse = {
