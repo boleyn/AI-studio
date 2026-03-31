@@ -18,8 +18,6 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
     py3-openpyxl \
     py3-lxml \
     py3-defusedxml \
-    py3-xlrd \
-    py3-odfpy \
     py3-scipy \
     py3-matplotlib
 ARG NPM_REGISTRY=https://registry.npmmirror.com
@@ -34,6 +32,8 @@ RUN npm config set registry ${NPM_REGISTRY} \
   && python3 -m pip config set global.trusted-host ${PIP_TRUSTED_HOST} \
   && python3 -m pip install --no-cache-dir \
     python-docx \
+    xlrd \
+    odfpy \
     pyxlsb \
     xlsxwriter
 
