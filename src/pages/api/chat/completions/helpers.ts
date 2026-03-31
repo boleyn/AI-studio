@@ -4,6 +4,7 @@ import { createDataId } from "@shared/chat/ids";
 import { extractText, type IncomingMessage } from "@shared/chat/messages";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { ConversationMessage } from "@server/conversations/conversationStorage";
+import path from "node:path";
 
 export const getToken = (req: NextApiRequest): string | null => {
   const headerToken =
@@ -116,6 +117,7 @@ export type UserArtifactFileMeta = {
   name: string;
   type: string;
   storagePath: string;
+  workspacePath: string;
   isImage: boolean;
 };
 
@@ -130,10 +132,12 @@ export const getUserArtifactFiles = (message: ConversationMessage): UserArtifact
       const name = typeof item.name === "string" ? item.name : "file";
       const type = typeof item.type === "string" ? item.type : "";
       const storagePath = typeof item.storagePath === "string" ? item.storagePath : "";
+      const workspacePath = `/.files/${path.posix.basename(storagePath || name)}`;
       return {
         name,
         type,
         storagePath,
+        workspacePath,
         isImage: type.toLowerCase().startsWith("image/"),
       };
     });
@@ -156,22 +160,26 @@ export const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
   const docFiles = files.filter((item) => !item.isImage);
   const lines: string[] = ["【附件信息】"];
   if (imageCount > 0) {
-    lines.push(`- 本轮包含图片 ${imageCount} 张。可调用 read_file(storagePath=...)；图片会返回 base64（也可显式 mode=raw）。`);
+    lines.push(
+      `- 本轮包含图片 ${imageCount} 张。优先用 read_file(path=/.files/<文件名>)；若用 bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
+    );
     const imagePreviews = imageFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";
+      const wsPathPart = file.workspacePath ? ` | path=${file.workspacePath}` : "";
       const pathPart = file.storagePath ? ` | storagePath=${file.storagePath}` : "";
-      return `  - ${file.name}${typePart}${pathPart}`;
+      return `  - ${file.name}${typePart}${wsPathPart}${pathPart}`;
     });
     lines.push(...imagePreviews);
   }
   if (docFiles.length > 0) {
     lines.push(
-      `- 本轮包含文档 ${docFiles.length} 个。可调用 read_file(storagePath=...)；docx/pdf/excel 等会返回解析后的 markdown（也可显式 mode=markdown）。`
+      `- 本轮包含文档 ${docFiles.length} 个。优先用 read_file(path=/.files/<文件名>)；若用 bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
     );
     const previews = docFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";
+      const wsPathPart = file.workspacePath ? ` | path=${file.workspacePath}` : "";
       const pathPart = file.storagePath ? ` | storagePath=${file.storagePath}` : "";
-      return `  - ${file.name}${typePart}${pathPart}`;
+      return `  - ${file.name}${typePart}${wsPathPart}${pathPart}`;
     });
     lines.push(...previews);
     if (docFiles.length > 8) {

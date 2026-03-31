@@ -537,8 +537,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               "Current turn includes uploaded attachments.",
               'Before giving the final answer, you must call tool "read_file" at least once for an uploaded file.',
               "Use storagePath from attachment metadata.",
-              "For image files use mode=raw.",
-              "For docx/pdf/excel and other documents use mode=markdown.",
+              "Use mode=raw for attachments.",
             ].join("\n"),
           } as ChatCompletionMessageParam,
         ]

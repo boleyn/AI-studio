@@ -26,7 +26,7 @@ export const ensureInside = (baseDir: string, candidate: string, label: string) 
     candidate === baseDir ||
     (relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative));
   if (!inside) {
-    throw new Error(`${label} 越界：仅允许访问项目工作区 (${baseDir})`);
+    throw new Error(`${label} 越界：仅允许访问项目工作区`);
   }
 };
 

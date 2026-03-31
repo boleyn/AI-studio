@@ -33,6 +33,16 @@ function extractText(params) {
     throw new Error('pdfPath is required');
   }
 
+  const resolvedPath = path.resolve(pdfPath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`PDF file not found: ${pdfPath} (resolved: ${resolvedPath})`);
+  }
+  try {
+    fs.accessSync(resolvedPath, fs.constants.R_OK);
+  } catch {
+    throw new Error(`PDF file is not readable: ${pdfPath} (resolved: ${resolvedPath})`);
+  }
+
   // Lazy load PDF.js (only when needed)
   if (!pdfjs) {
     try {
@@ -48,7 +58,25 @@ function extractText(params) {
   }
 
   return new Promise((resolve, reject) => {
-    const fileData = fs.readFileSync(pdfPath);
+    let fileData;
+    try {
+      fileData = fs.readFileSync(resolvedPath);
+    } catch (error) {
+      const err = asError(error, 'Failed to read PDF file');
+      if (err && err.code === 'ENOENT') {
+        reject(new Error(`PDF file not found: ${pdfPath} (resolved: ${resolvedPath})`));
+        return;
+      }
+      reject(new Error(`Failed to read PDF file: ${err.message}`));
+      return;
+    }
+
+    const header = fileData.subarray(0, 5).toString();
+    if (!header.startsWith('%PDF-')) {
+      reject(new Error(`Invalid PDF header (expected %PDF-): ${pdfPath} (resolved: ${resolvedPath})`));
+      return;
+    }
+
     // pdfjs-dist (modern build) expects Uint8Array in Node.js, not Buffer.
     const pdfBytes = new Uint8Array(fileData.buffer, fileData.byteOffset, fileData.byteLength);
     const loadingTask = pdfjs.getDocument(pdfBytes);
@@ -98,7 +126,11 @@ function extractText(params) {
 
     }).catch((error) => {
       const err = asError(error, 'PDF parsing failed');
-      reject(new Error(`PDF parsing failed: ${err.message}`));
+      if (err && err.code === 'ENOENT') {
+        reject(new Error(`PDF file not found: ${pdfPath} (resolved: ${resolvedPath})`));
+        return;
+      }
+      reject(new Error(`PDF parsing failed: ${err.message} (file: ${resolvedPath})`));
     });
   });
 }

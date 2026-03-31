@@ -8,8 +8,6 @@ const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024;
 interface PresignedUploadArtifact extends UploadedFileArtifact {
   storagePath: string;
   publicUrl: string;
-  markdownStoragePath?: string;
-  markdownPublicUrl?: string;
   upload: {
     method: "PUT";
     url: string;
@@ -200,74 +198,6 @@ export const uploadChatFiles = async ({
     chatId,
     files: presignedFiles,
   });
-};
-
-export const parseChatFiles = async ({
-  token,
-  chatId,
-  files,
-  onProgress,
-}: {
-  token: string;
-  chatId: string;
-  files: UploadedFileArtifact[];
-  onProgress?: (phase: UploadPhase, progress: number) => void;
-}): Promise<UploadedFileArtifact[]> => {
-  if (!files.length) return files;
-  if (onProgress) onProgress("parsing", 80);
-
-  const response = await fetch("/api/core/chat/files/parse", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...withAuthHeaders(),
-    },
-    body: JSON.stringify({ token, chatId, files }),
-  });
-
-  if (!response.ok) {
-    if (onProgress) onProgress("parsing", 90);
-    return files;
-  }
-
-  const data = (await response.json()) as { files?: UploadedFileArtifact[] };
-  const nextFiles = Array.isArray(data.files) ? data.files : files;
-  if (onProgress) onProgress("done", 100);
-  return nextFiles;
-};
-
-export const fetchMarkdownContent = async ({
-  storagePath,
-  token,
-  chatId,
-}: {
-  storagePath: string;
-  token?: string;
-  chatId?: string;
-}) => {
-  const params = new URLSearchParams({
-    storagePath,
-  });
-  if (token) params.set("token", token);
-  if (chatId) params.set("chatId", chatId);
-  const response = await fetch(`/api/core/chat/files/markdown?${params.toString()}`, {
-    headers: {
-      ...withAuthHeaders(),
-    },
-  });
-  if (!response.ok) return "";
-  const data = (await response.json()) as { markdown?: string };
-  return typeof data.markdown === "string" ? data.markdown : "";
-};
-
-export const fetchMarkdownContentByUrl = async (url: string) => {
-  const response = await fetch(url, {
-    headers: {
-      ...withAuthHeaders(),
-    },
-  });
-  if (!response.ok) return "";
-  return await response.text();
 };
 
 export const getPresignedChatFileGetUrl = async ({

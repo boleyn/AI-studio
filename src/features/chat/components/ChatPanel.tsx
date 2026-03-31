@@ -10,10 +10,7 @@ import { useConversations } from "../hooks/useConversations";
 import {
   buildDownloadUrl,
   buildPreviewUrl,
-  fetchMarkdownContent,
-  fetchMarkdownContentByUrl,
   getPresignedChatFileGetUrl,
-  parseChatFiles,
   uploadChatFiles,
 } from "../services/files";
 import { updateMessageFeedback } from "../services/feedback";
@@ -57,7 +54,6 @@ import {
   stripTagMarkersFromUserContent,
   getLatestContextUsageFromMessages,
   getMessageFeedback,
-  hydrateArtifactsMarkdown,
   hydrateHistoryUserMessage,
   normalizeProjectFiles,
   toFileArtifacts,
@@ -225,17 +221,9 @@ const ChatPanel = ({
         chatId: uploadChatId,
         files: pickedFiles,
       });
-      const parsedFiles =
-        uploadedFiles.length > 0
-          ? await parseChatFiles({
-              token,
-              chatId: uploadChatId,
-              files: uploadedFiles,
-            }).catch(() => uploadedFiles)
-          : uploadedFiles;
 
       const withPreviewUrls = await Promise.all(
-        parsedFiles.map(async (file) => {
+        uploadedFiles.map(async (file) => {
           const signedPreviewUrl = file.storagePath
             ? await getPresignedChatFileGetUrl({
                 token,
@@ -262,14 +250,6 @@ const ChatPanel = ({
         })
       );
 
-      const hydratedFiles = withPreviewUrls.length > 0
-        ? await hydrateArtifactsMarkdown({
-            files: withPreviewUrls,
-            token,
-            chatId: uploadChatId,
-          })
-        : withPreviewUrls;
-
       if (onFilesUpdated) {
         const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
           headers: withAuthHeaders(),
@@ -281,7 +261,7 @@ const ChatPanel = ({
         }
       }
 
-      return hydratedFiles;
+      return withPreviewUrls;
     },
     [activeConversation?.id, ensureConversation, onFilesUpdated, token]
   );
@@ -312,6 +292,7 @@ const ChatPanel = ({
 
       const userMessageId = createDataId();
       if (echoUserMessage) {
+        shouldAutoScrollRef.current = true;
         setMessages((prev) => [
           ...prev,
           {
@@ -377,7 +358,7 @@ const ChatPanel = ({
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
       cancelPendingFlushes();
-      shouldAutoScrollRef.current = false;
+      shouldAutoScrollRef.current = true;
       setStreamingMessageId(assistantMessageId);
       setMessages((prev) => [
         ...prev,

@@ -66,11 +66,15 @@ const extractChatUploadStorageKey = (value: string) => {
 };
 
 const SUPPORTED_SCRIPT_EXTS = [".js", ".mjs", ".cjs", ".py", ".sh", ".bash"] as const;
+const DEFAULT_PYPI_INDEX_URL = "https://pypi.mirrors.ustc.edu.cn/simple";
+const DEFAULT_PYPI_TRUSTED_HOST = "pypi.mirrors.ustc.edu.cn";
 
 const isSupportedScriptFile = (filePath: string) => {
   const ext = path.extname(filePath).toLowerCase();
   return SUPPORTED_SCRIPT_EXTS.includes(ext as (typeof SUPPORTED_SCRIPT_EXTS)[number]);
 };
+
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(value.trim());
 
 const collectSkillScriptFiles = async (baseDir: string, maxDepth = 3) => {
   const entries: string[] = [];
@@ -142,6 +146,8 @@ export const runSkillScript = async (input: {
   cwd?: string;
   timeoutMs: number;
   autoInstallDeps?: boolean;
+  autoDownloadScript?: boolean;
+  scriptDownloadUrl?: string;
   sessionId?: string;
   workspaceFiles?: Record<string, { code: string }>;
 }) => {
@@ -236,29 +242,135 @@ export const runSkillScript = async (input: {
     return value;
   };
 
-  const scriptPath = resolveSkillScriptPath(input.skill, input.script);
-  const mappedScriptPath = mapWorkspacePath(scriptPath);
-  const scriptStat = await fs.stat(mappedScriptPath).catch(() => null);
+  const resolveExtByRuntime = (runtime: "auto" | "python" | "node" | "sh" | "bash") => {
+    if (runtime === "python") return ".py";
+    if (runtime === "node") return ".js";
+    if (runtime === "sh" || runtime === "bash") return ".sh";
+    return "";
+  };
+
+  const downloadScriptToSkillDir = async (urlRaw: string, preferredName: string) => {
+    const url = urlRaw.trim();
+    if (!isHttpUrl(url)) {
+      throw new Error(`不支持的脚本下载地址: ${urlRaw}`);
+    }
+
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), Math.min(Math.max(input.timeoutMs, 10_000), 120_000));
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+    if (!response.ok) {
+      throw new Error(`下载脚本失败: ${url} (HTTP ${response.status})`);
+    }
+
+    const body = Buffer.from(await response.arrayBuffer());
+    const inferredName = (() => {
+      const fromUrl = path.posix.basename(new URL(url).pathname);
+      if (fromUrl && fromUrl !== "/") return fromUrl;
+      return "";
+    })();
+
+    const sanitizedPreferredName = preferredName.replace(/\\/g, "/").split("/").pop() || "script";
+    const baseName = inferredName || sanitizedPreferredName || "script";
+    const ext = path.extname(baseName) || resolveExtByRuntime(input.runtime);
+    const stem = path.basename(baseName, path.extname(baseName));
+
+    const downloadDir = path.join(path.resolve(input.skill.baseDir), ".aistudio_downloads");
+    await fs.mkdir(downloadDir, { recursive: true });
+    const timestamp = Date.now();
+    const fileName = `${stem || "script"}-${timestamp}${ext || ""}`;
+    const filePath = path.join(downloadDir, fileName);
+    await fs.writeFile(filePath, body);
+    await fs.chmod(filePath, 0o755).catch(() => undefined);
+    return filePath;
+  };
+
+  const resolveDownloadCandidates = () => {
+    const candidates: string[] = [];
+    if (input.scriptDownloadUrl && input.scriptDownloadUrl.trim()) {
+      candidates.push(input.scriptDownloadUrl.trim());
+    }
+    if (isHttpUrl(input.script)) {
+      candidates.push(input.script.trim());
+    }
+    const metadata = input.skill.metadata || {};
+    const fromMetadata = [
+      metadata.script_download_url,
+      metadata.download_url,
+      metadata.script_url,
+    ].filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    candidates.push(...fromMetadata.map((item) => item.trim()));
+    return [...new Set(candidates)];
+  };
+
+  const resolveScriptPathOrNull = () => {
+    if (isHttpUrl(input.script)) return null;
+    return resolveSkillScriptPath(input.skill, input.script);
+  };
+
+  const resolvedScriptPath = resolveScriptPathOrNull();
+  const mappedScriptPath = resolvedScriptPath ? mapWorkspacePath(resolvedScriptPath) : "";
+  const scriptStat = mappedScriptPath ? await fs.stat(mappedScriptPath).catch(() => null) : null;
 
   let finalScriptPath = mappedScriptPath;
   if (!scriptStat || !scriptStat.isFile()) {
-    const fallbackScript = await resolveFallbackScriptPath(input.skill, input.script);
+    const fallbackScript =
+      resolvedScriptPath && !isHttpUrl(input.script)
+        ? await resolveFallbackScriptPath(input.skill, input.script)
+        : null;
     const mappedFallback = fallbackScript ? mapWorkspacePath(fallbackScript) : null;
     const fallbackStat = mappedFallback ? await fs.stat(mappedFallback).catch(() => null) : null;
 
     if (mappedFallback && fallbackStat?.isFile()) {
       finalScriptPath = mappedFallback;
     } else {
-      const availableScripts = await collectSkillScriptFiles(path.resolve(input.skill.baseDir), 3);
-      const listed = availableScripts
-        .slice(0, 12)
-        .map((file) => path.relative(path.resolve(input.skill.baseDir), file))
-        .join(", ");
-      throw new Error(
-        `脚本文件不存在: ${mappedScriptPath}${
-          listed ? `。该 skill 可用脚本: ${listed}` : "。该 skill 未发现可执行脚本文件"
-        }`
-      );
+      const shouldAutoDownload = input.autoDownloadScript !== false;
+      if (shouldAutoDownload) {
+        const downloadCandidates = resolveDownloadCandidates();
+        let lastError = "";
+        for (const url of downloadCandidates) {
+          try {
+            finalScriptPath = await downloadScriptToSkillDir(url, input.script);
+            break;
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        const downloadedStat = finalScriptPath ? await fs.stat(finalScriptPath).catch(() => null) : null;
+        if (downloadedStat?.isFile()) {
+          // use downloaded script
+        } else {
+          const availableScripts = await collectSkillScriptFiles(path.resolve(input.skill.baseDir), 3);
+          const listed = availableScripts
+            .slice(0, 12)
+            .map((file) => path.relative(path.resolve(input.skill.baseDir), file))
+            .join(", ");
+          const downloadHint =
+            downloadCandidates.length > 0
+              ? `。已尝试下载地址: ${downloadCandidates.join(", ")}${lastError ? `；最后错误: ${lastError}` : ""}`
+              : "。未提供可用下载地址（可用 scriptDownloadUrl 或 skill metadata.script_download_url）。";
+          throw new Error(
+            `脚本文件不存在: ${mappedScriptPath || input.script}${
+              listed ? `。该 skill 可用脚本: ${listed}` : "。该 skill 未发现可执行脚本文件"
+            }${downloadHint}`
+          );
+        }
+      } else {
+        const availableScripts = await collectSkillScriptFiles(path.resolve(input.skill.baseDir), 3);
+        const listed = availableScripts
+          .slice(0, 12)
+          .map((file) => path.relative(path.resolve(input.skill.baseDir), file))
+          .join(", ");
+        throw new Error(
+          `脚本文件不存在: ${mappedScriptPath || input.script}${
+            listed ? `。该 skill 可用脚本: ${listed}` : "。该 skill 未发现可执行脚本文件"
+          }`
+        );
+      }
     }
   }
 
@@ -299,6 +411,7 @@ export const runSkillScript = async (input: {
     attempted: false,
     installed: false,
   };
+  let pythonRequirementsEnsured = false;
 
   const ensureNodeDependencies = async () => {
     if (input.autoInstallDeps === false) {
@@ -392,6 +505,99 @@ export const runSkillScript = async (input: {
     dependencyInstall.installed = true;
   };
 
+  const ensurePythonDependenciesFromRequirements = async (pythonCommand: string) => {
+    if (pythonRequirementsEnsured) return;
+    if (input.autoInstallDeps === false) return;
+    if (detectedRuntime !== "python") return;
+    const searchDirs = [
+      path.dirname(finalScriptPath),
+      path.resolve(input.skill.baseDir),
+      path.resolve(path.dirname(finalScriptPath), ".."),
+      path.resolve(path.dirname(finalScriptPath), "../.."),
+    ];
+    const uniqueDirs = [...new Set(searchDirs)];
+    let requirementsPath = "";
+    for (const dir of uniqueDirs) {
+      const candidate = path.join(dir, "requirements.txt");
+      const exists = await fs
+        .stat(candidate)
+        .then((stat) => stat.isFile())
+        .catch(() => false);
+      if (exists) {
+        requirementsPath = candidate;
+        break;
+      }
+    }
+    if (!requirementsPath) return;
+
+    const pipArgs = [
+      "-m",
+      "pip",
+      "install",
+      "-r",
+      requirementsPath,
+      "-i",
+      process.env.PIP_INDEX_URL || DEFAULT_PYPI_INDEX_URL,
+      "--trusted-host",
+      process.env.PIP_TRUSTED_HOST || DEFAULT_PYPI_TRUSTED_HOST,
+    ];
+    dependencyInstall.attempted = true;
+    dependencyInstall.command = pythonCommand;
+    dependencyInstall.args = pipArgs;
+    const installResult = await runExecFile({
+      command: pythonCommand,
+      args: pipArgs,
+      cwd: execCwd,
+      timeoutMs: Math.max(input.timeoutMs, 120_000),
+      env: isolatedEnv,
+    });
+    dependencyInstall.exitCode = installResult.exitCode;
+    dependencyInstall.stdout = installResult.stdout;
+    dependencyInstall.stderr = installResult.stderr;
+    dependencyInstall.installed = installResult.ok;
+    if (!installResult.ok) {
+      const errText = installResult.stderr || installResult.error || "unknown pip install error";
+      throw new Error(`Python 依赖安装失败 (${pythonCommand} ${pipArgs.join(" ")}): ${errText}`);
+    }
+    pythonRequirementsEnsured = true;
+  };
+
+  const extractMissingPythonModule = (stderr?: string, stdout?: string, errorText?: string) => {
+    const source = `${stderr || ""}\n${stdout || ""}\n${errorText || ""}`;
+    const match = source.match(/ModuleNotFoundError:\s*No module named ['"]([^'"]+)['"]/);
+    return match?.[1]?.trim() || "";
+  };
+
+  const ensurePythonModule = async (pythonCommand: string, moduleName: string) => {
+    if (!moduleName) return false;
+    dependencyInstall.attempted = true;
+    dependencyInstall.command = pythonCommand;
+    const pipArgs = [
+      "-m",
+      "pip",
+      "install",
+      moduleName,
+      "-i",
+      process.env.PIP_INDEX_URL || DEFAULT_PYPI_INDEX_URL,
+      "--trusted-host",
+      process.env.PIP_TRUSTED_HOST || DEFAULT_PYPI_TRUSTED_HOST,
+    ];
+    dependencyInstall.args = pipArgs;
+    const installResult = await runExecFile({
+      command: pythonCommand,
+      args: pipArgs,
+      cwd: execCwd,
+      timeoutMs: Math.max(input.timeoutMs, 120_000),
+      env: isolatedEnv,
+    });
+    dependencyInstall.exitCode = installResult.exitCode;
+    dependencyInstall.stdout = installResult.stdout;
+    dependencyInstall.stderr = installResult.stderr;
+    dependencyInstall.installed = installResult.ok;
+    if (!installResult.ok) return false;
+    return true;
+  };
+
   await ensureNodeDependencies();
   const candidates: Array<{ command: string; args: string[] }> = [];
 
@@ -413,13 +619,36 @@ export const runSkillScript = async (input: {
 
   try {
     for (const candidate of candidates) {
-      const result = await runExecFile({
+      if (detectedRuntime === "python" && !candidate.args.includes("-m")) {
+        await ensurePythonDependenciesFromRequirements(candidate.command);
+      }
+      let result = await runExecFile({
         command: candidate.command,
         args: candidate.args,
         cwd: execCwd,
         timeoutMs: input.timeoutMs,
         env: isolatedEnv,
       });
+      if (
+        detectedRuntime === "python" &&
+        input.autoInstallDeps !== false &&
+        !result.ok &&
+        !result.enoent
+      ) {
+        const missingModule = extractMissingPythonModule(result.stderr, result.stdout, result.error);
+        if (missingModule) {
+          const installed = await ensurePythonModule(candidate.command, missingModule);
+          if (installed) {
+            result = await runExecFile({
+              command: candidate.command,
+              args: candidate.args,
+              cwd: execCwd,
+              timeoutMs: input.timeoutMs,
+              env: isolatedEnv,
+            });
+          }
+        }
+      }
       if (!result.enoent) {
         return {
           ...result,

@@ -35,6 +35,26 @@ type ProjectWorkspaceState = {
   totalBytes: number;
 };
 
+const ATTACHMENT_PATH_PREFIX = "/.files/";
+const TRANSIENT_WORKSPACE_PREFIXES = ["/.aistudio/"];
+
+const isAttachmentPath = (normalizedPath: string) => normalizedPath.startsWith(ATTACHMENT_PATH_PREFIX);
+const isTransientWorkspacePath = (normalizedPath: string) =>
+  TRANSIENT_WORKSPACE_PREFIXES.some((prefix) => normalizedPath.startsWith(prefix));
+
+const parseBase64DataUrl = (raw: string): Buffer | null => {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const base64Body = (match[2] || "").replace(/\s+/g, "");
+  if (!base64Body) return null;
+  try {
+    return Buffer.from(base64Body, "base64");
+  } catch {
+    return null;
+  }
+};
+
 export class ProjectWorkspaceManager {
   private readonly safeSessionId: string;
   private readonly fallbackProjectToken?: string;
@@ -174,23 +194,35 @@ export class ProjectWorkspaceManager {
     for (const filePath of sortedPaths) {
       const normalized = normalizeProjectPath(filePath);
       const content = typeof files[filePath]?.code === "string" ? files[filePath].code : "";
-      const bytes = Buffer.byteLength(content, "utf8");
-      if (bytes > MAX_SINGLE_FILE_BYTES) {
-        throw new Error(`文件过大，拒绝加载: ${normalized}`);
-      }
-      const nextTotal = state.totalBytes + bytes;
-      if (nextTotal > MAX_WORKSPACE_TOTAL_BYTES) {
-        throw new Error("项目工作区超出大小上限，拒绝加载");
+      const isAttachment = isAttachmentPath(normalized);
+      const attachmentBuffer = isAttachmentPath(normalized) ? parseBase64DataUrl(content) : null;
+      const bytes = attachmentBuffer ? attachmentBuffer.byteLength : Buffer.byteLength(content, "utf8");
+      if (!isAttachment) {
+        if (bytes > MAX_SINGLE_FILE_BYTES) {
+          throw new Error(`文件过大，拒绝加载: ${normalized} (${bytes} bytes > ${MAX_SINGLE_FILE_BYTES} bytes)`);
+        }
+        const nextTotal = state.totalBytes + bytes;
+        if (nextTotal > MAX_WORKSPACE_TOTAL_BYTES) {
+          throw new Error("项目工作区超出大小上限，拒绝加载");
+        }
+        state.totalBytes = nextTotal;
       }
 
       const absPath = path.join(state.workspaceRoot, normalized.replace(/^\/+/, ""));
       ensureInside(state.workspaceRoot, absPath, "文件路径");
       await fs.mkdir(path.dirname(absPath), { recursive: true });
-      await fs.writeFile(absPath, content, "utf8");
+      if (attachmentBuffer) {
+        await fs.writeFile(absPath, attachmentBuffer);
+      } else {
+        await fs.writeFile(absPath, content, "utf8");
+      }
       state.vol.mkdirSync(path.posix.dirname(normalized), { recursive: true });
-      state.vol.writeFileSync(normalized, content, { encoding: "utf8" });
+      if (attachmentBuffer) {
+        state.vol.writeFileSync(normalized, attachmentBuffer);
+      } else {
+        state.vol.writeFileSync(normalized, content, { encoding: "utf8" });
+      }
       state.fileSizeByPath.set(normalized, bytes);
-      state.totalBytes = nextTotal;
     }
 
     state.hydrated = true;
@@ -244,11 +276,23 @@ export class ProjectWorkspaceManager {
     const { state } = await this.assertHydrated(projectToken);
     const normalized = normalizeProjectPath(filePath);
     if (!state.vol.existsSync(normalized)) return null;
-    const content = String(state.vol.readFileSync(normalized, { encoding: "utf8" }));
+    const raw = state.vol.readFileSync(normalized) as Buffer | string;
+    const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw), "utf8");
+    if (isLikelyBinaryBuffer(buffer)) {
+      return {
+        path: normalized,
+        content: `[binary file omitted: ${buffer.byteLength} bytes]`,
+      };
+    }
+    const content = buffer.toString("utf8");
     return { path: normalized, content };
   }
 
   private ensureQuotaAfterWrite(state: ProjectWorkspaceState, normalizedPath: string, nextBytes: number) {
+    if (isAttachmentPath(normalizedPath)) {
+      state.fileSizeByPath.set(normalizedPath, nextBytes);
+      return;
+    }
     if (nextBytes > MAX_SINGLE_FILE_BYTES) {
       throw new Error(`文件过大，超过限制 (${MAX_SINGLE_FILE_BYTES} bytes): ${normalizedPath}`);
     }
@@ -329,15 +373,18 @@ export class ProjectWorkspaceManager {
     const startedAt = Date.now();
     const { token, state } = await this.assertHydrated(projectToken);
 
-    const diskFiles = await collectWorkspaceFiles(state.workspaceRoot);
-    let totalBytes = 0;
+    const diskFiles = (await collectWorkspaceFiles(state.workspaceRoot)).filter(
+      (item) => !isTransientWorkspacePath(item.path)
+    );
+    let codeTotalBytes = 0;
     for (const item of diskFiles) {
-      totalBytes += item.buffer.length;
+      if (isAttachmentPath(item.path)) continue;
+      codeTotalBytes += item.buffer.length;
       if (item.buffer.length > MAX_SINGLE_FILE_BYTES) {
         throw new Error(`文件过大，拒绝回写: ${item.path}`);
       }
     }
-    if (totalBytes > MAX_WORKSPACE_TOTAL_BYTES) {
+    if (codeTotalBytes > MAX_WORKSPACE_TOTAL_BYTES) {
       throw new Error(`项目工作区超过总大小限制 (${MAX_WORKSPACE_TOTAL_BYTES} bytes)`);
     }
 
@@ -365,13 +412,13 @@ export class ProjectWorkspaceManager {
       changedFiles.push(normalized);
     }
 
-    state.totalBytes = totalBytes;
+    state.totalBytes = codeTotalBytes;
     await fs.utimes(state.workspaceRoot, new Date(), new Date()).catch(() => undefined);
     logWorkspaceEvent("flush_complete", {
       projectToken: token,
       sessionId: this.safeSessionId,
       changedCount: changedFiles.length,
-      totalBytes,
+      totalBytes: codeTotalBytes,
       durationMs: Date.now() - startedAt,
     });
 

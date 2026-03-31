@@ -7,6 +7,8 @@ services:
       args:
         NPM_REGISTRY: https://registry.npmmirror.com
         NODE_IMAGE: docker.io/library/node:20.14.0-alpine
+        PIP_INDEX_URL: https://pypi.mirrors.ustc.edu.cn/simple
+        PIP_TRUSTED_HOST: pypi.mirrors.ustc.edu.cn
     ports:
       - 18367:3000
     env_file:

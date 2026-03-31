@@ -4,7 +4,6 @@ export interface FileParseInfo {
   status: ParseStatus;
   progress: number;
   parser: "text" | "customPdfParse" | "metadata";
-  markdown?: string;
   error?: string;
 }
 
@@ -16,14 +15,12 @@ export interface UploadFileResult {
   lastModified: number;
   storagePath: string;
   publicUrl: string;
-  markdownStoragePath?: string;
-  markdownPublicUrl?: string;
   parse: FileParseInfo;
 }
 
 export const pendingParseInfo: FileParseInfo = {
-  status: "pending",
-  progress: 0,
+  status: "skipped",
+  progress: 100,
   parser: "metadata",
-  markdown: "",
+  error: "上传文件自动 markdown 解析已关闭",
 };

@@ -5,31 +5,15 @@ import type { ChangeTracker } from "../globalTools";
 import type { AgentToolDefinition } from "./types";
 import { getProject } from "@server/projects/projectStorage";
 import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
-import {
-  getObjectFromStorage,
-  listStorageObjectKeysByPrefix,
-  normalizeStorageKey,
-} from "@server/storage/s3";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 
 const listFilesSchema = z.object({});
 const readFileSchema = z
   .object({
-    path: z.string().optional(),
-    storagePath: z.string().optional(),
-    fileName: z.string().optional(),
-    mode: z.enum(["auto", "markdown", "raw"]).optional(),
+    path: z.string(),
+    mode: z.enum(["auto", "raw"]).optional(),
     maxChars: z.number().int().min(500).max(50000).optional(),
-  })
-  .refine(
-    (value) =>
-      Boolean(
-        (value.path || "").trim() || (value.storagePath || "").trim() || (value.fileName || "").trim()
-      ),
-    {
-      message: "path、storagePath、fileName 至少提供一个",
-    }
-  );
+  });
 const writeFileSchema = z.object({ path: z.string(), content: z.string() });
 const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
 const sandpackCompileInfoSchema = z.object({
@@ -38,29 +22,7 @@ const sandpackCompileInfoSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 const CHAT_FILE_MAX_CHARS = 12000;
-
-const toSafeSegment = (value: string) =>
-  value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown";
-
-const getChatUploadRoot = (token: string, chatId: string) =>
-  `chat_uploads/${toSafeSegment(token)}/${toSafeSegment(chatId)}/.files`;
-
-const assertChatScopedStoragePath = ({
-  storagePath,
-  token,
-  chatId,
-}: {
-  storagePath: string;
-  token: string;
-  chatId: string;
-}) => {
-  const normalizedPath = normalizeStorageKey(storagePath);
-  const expectedPrefix = `${getChatUploadRoot(token, chatId)}/`;
-  if (!normalizedPath.startsWith(expectedPrefix)) {
-    throw new Error("无权限访问该附件");
-  }
-  return normalizedPath;
-};
+const CHAT_FILE_BASE64_MAX_BYTES = 200 * 1024;
 
 const toUtf8Snippet = (buffer: Buffer, maxChars: number) => {
   const raw = buffer.toString("utf8");
@@ -83,9 +45,46 @@ const isLikelyTextContentType = (contentType: string) =>
     "application/x-yaml",
   ].some((item) => contentType.startsWith(item));
 
-const inferMarkdownPath = (storagePath: string) => {
-  if (storagePath.includes("/.files/markdown/")) return storagePath;
-  return storagePath.replace("/.files/files/", "/.files/markdown/") + ".md";
+const toReadFilePayload = ({
+  mode,
+  path,
+  buffer,
+  contentType,
+  maxChars,
+}: {
+  mode: "auto" | "raw";
+  path: string;
+  buffer: Buffer;
+  contentType: string;
+  maxChars: number;
+}) => {
+  const normalizedType = (contentType || "").toLowerCase();
+  const isImage = normalizedType.startsWith("image/");
+  const resolvedMode = mode === "auto" ? "raw" : mode;
+  const shouldUseUtf8 = !isImage && isLikelyTextContentType(normalizedType);
+  const shouldUseBase64 = !shouldUseUtf8;
+  if (shouldUseBase64 && buffer.byteLength > CHAT_FILE_BASE64_MAX_BYTES) {
+    return {
+      ok: false,
+      mode: resolvedMode,
+      path,
+      contentType,
+      fileSizeBytes: buffer.byteLength,
+      maxBase64Bytes: CHAT_FILE_BASE64_MAX_BYTES,
+      message: `附件过大（${buffer.byteLength} bytes），禁止返回 base64。请下载后本地处理。`,
+    };
+  }
+
+  const content = shouldUseUtf8 ? toUtf8Snippet(buffer, maxChars) : toBase64Snippet(buffer, maxChars);
+  return {
+    ok: true,
+    mode: resolvedMode,
+    path,
+    contentType,
+    content,
+    contentEncoding: shouldUseBase64 ? "base64" : "utf8",
+    truncated: content.includes("...[truncated]"),
+  };
 };
 
 const isPathInside = (baseDir: string, targetPath: string) => {
@@ -139,20 +138,15 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
     return {
       type: "object",
       properties: {
-        path: { type: "string", description: "项目文件路径（以 / 开头）" },
-        storagePath: {
+        path: {
           type: "string",
-          description: "会话附件 storagePath（优先）",
-        },
-        fileName: {
-          type: "string",
-          description: "附件文件名关键词（未提供 storagePath 时用于模糊匹配）",
+          description: "项目/skill 文件路径（以 / 开头）；附件使用 path=/.files/<文件名>",
         },
         mode: {
           type: "string",
-          enum: ["auto", "markdown", "raw"],
+          enum: ["auto", "raw"],
           description:
-            "附件读取模式。auto: 图片返回 base64、docx/pdf/excel 等文档优先 markdown；markdown: 返回解析 markdown；raw: 图片/二进制返回 base64，文本返回 UTF-8",
+            "附件读取模式。auto/raw: 图片/二进制返回 base64，文本返回 UTF-8。",
         },
         maxChars: {
           type: "integer",
@@ -161,6 +155,7 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
           description: "附件内容最大返回字符数（默认 12000）",
         },
       },
+      required: ["path"],
     };
   }
   if (schema === writeFileSchema) {
@@ -300,14 +295,14 @@ export function createProjectTools(
     {
       name: "read_file",
       description:
-        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。docx/pdf/excel 等文档默认返回 markdown，图片返回 base64。",
+        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。附件默认按 raw 返回（文本 UTF-8，二进制 base64）。",
       parameters: toJsonSchema(readFileSchema),
       run: async (input) => {
         const parsed = safeParse<{
           path?: string;
           storagePath?: string;
           fileName?: string;
-          mode?: "auto" | "markdown" | "raw";
+          mode?: "auto" | "raw";
           maxChars?: number;
         }>(readFileSchema, input, "read_file");
         if (!parsed.ok) throw new Error(parsed.error);
@@ -315,19 +310,36 @@ export function createProjectTools(
         const pathInput = (parsed.data.path || "").trim();
         const storagePathInput = (parsed.data.storagePath || "").trim();
         const fileNameInput = (parsed.data.fileName || "").trim();
-        const looksLikeStoragePath =
-          /^\/?chat_uploads\//i.test(pathInput) || pathInput.includes("/.files/files/");
+        const looksLikeScopedStoragePath = /^\/?chat_uploads\//i.test(pathInput);
         const shouldReadAttachment =
-          Boolean(storagePathInput || fileNameInput) || looksLikeStoragePath;
+          Boolean(storagePathInput || fileNameInput) || looksLikeScopedStoragePath;
 
-        const chatId = (options?.chatId || "").trim();
+        const mode = parsed.data.mode || "auto";
         const maxChars = parsed.data.maxChars ?? CHAT_FILE_MAX_CHARS;
-        if (!shouldReadAttachment && pathInput) {
+        if (pathInput && !storagePathInput && !fileNameInput) {
           try {
             await workspaceManager.hydrate(token);
             const file = await workspaceManager.readFile(token, pathInput);
             if (!file) {
+              const skillRead = await readSkillFileIfAllowed({
+                pathInput,
+                skillBaseDirs: options?.skillBaseDirs || [],
+                maxChars,
+              });
+              if (skillRead) return skillRead;
               return { ok: false, action: "read", message: `未找到文件 ${pathInput}` };
+            }
+            if (/^\/?\.?files\//i.test(pathInput)) {
+              const absPath = await workspaceManager.resolvePathInWorkspace(token, pathInput);
+              const buffer = await fs.readFile(absPath).catch(() => null);
+              if (!buffer) return { ok: false, action: "read", message: `未找到文件 ${pathInput}` };
+              return toReadFilePayload({
+                mode,
+                storagePath: file.path,
+                buffer,
+                contentType: "",
+                maxChars,
+              });
             }
             return {
               ok: true,
@@ -345,18 +357,30 @@ export function createProjectTools(
             throw error;
           }
         }
-        if (!chatId) throw new Error("当前会话缺少 chatId，无法读取附件");
-        const mode = parsed.data.mode || "auto";
+        if (!shouldReadAttachment) {
+          throw new Error("请提供 path（工作区路径）或 storagePath/fileName（会话附件）。");
+        }
 
-        let storagePath = storagePathInput || (looksLikeStoragePath ? pathInput.replace(/^\/+/, "") : "");
+        const chatId = (options?.chatId || "").trim();
+        if (!chatId) throw new Error("当前会话缺少 chatId，无法读取附件");
+
+        const explicitStorageLooksScoped =
+          /^\/?chat_uploads\//i.test(storagePathInput) ||
+          /^\/?\.?files\//i.test(storagePathInput);
+        let storagePath = storagePathInput || (looksLikeScopedStoragePath ? pathInput.replace(/^\/+/, "") : "");
+        if (storagePathInput && !explicitStorageLooksScoped) {
+          storagePath = "";
+        }
         if (!storagePath) {
-          const keyword = fileNameInput.toLowerCase();
+          const keyword = (fileNameInput || storagePathInput).toLowerCase();
           const prefix = getChatUploadRoot(token, chatId);
           const allKeys = await listStorageObjectKeysByPrefix({
             prefix,
             bucketType: "private",
           });
-          const fileKeys = allKeys.filter((key) => key.includes("/.files/files/"));
+          const fileKeys = allKeys.filter(
+            (key) => key.includes("/.files/files/") || key.includes("/.files/")
+          );
           const matched = fileKeys
             .filter((key) => {
               if (!keyword) return true;
@@ -375,58 +399,35 @@ export function createProjectTools(
           token,
           chatId,
         });
-        const { buffer, contentType } = await getObjectFromStorage({
-          key: normalizedPath,
-          bucketType: "private",
-        });
-        const normalizedType = (contentType || "").toLowerCase();
-        const isImage = normalizedType.startsWith("image/");
-        const resolvedMode = mode === "auto" ? (isImage ? "raw" : "markdown") : mode;
-
-        if (resolvedMode === "markdown") {
-          const markdownPath = assertChatScopedStoragePath({
-            storagePath: inferMarkdownPath(normalizedPath),
-            token,
-            chatId,
-          });
+        let buffer: Buffer | null = null;
+        let contentType = "";
+        let loadedPath = normalizedPath;
+        let lastError: unknown;
+        for (const key of toStorageCandidates(normalizedPath)) {
           try {
-            const { buffer: markdownBuffer } = await getObjectFromStorage({
-              key: markdownPath,
+            const object = await getObjectFromStorage({
+              key,
               bucketType: "private",
             });
-            const content = toUtf8Snippet(markdownBuffer, maxChars);
-            return {
-              ok: true,
-              mode: resolvedMode,
-              storagePath: normalizedPath,
-              markdownPath,
-              content,
-              truncated: content.includes("...[truncated]"),
-            };
-          } catch {
-            return {
-              ok: false,
-              mode: resolvedMode,
-              storagePath: normalizedPath,
-              message: "markdown 解析结果不存在，请改用 mode=raw 或先触发解析。",
-            };
+            buffer = object.buffer;
+            contentType = object.contentType || "";
+            loadedPath = key;
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
           }
         }
-
-        const content = isImage
-          ? toBase64Snippet(buffer, maxChars)
-          : isLikelyTextContentType(normalizedType)
-          ? toUtf8Snippet(buffer, maxChars)
-          : toBase64Snippet(buffer, maxChars);
-        return {
-          ok: true,
-          mode: resolvedMode,
-          storagePath: normalizedPath,
+        if (!buffer) {
+          throw (lastError instanceof Error ? lastError : new Error("附件读取失败"));
+        }
+        return toReadFilePayload({
+          mode,
+          storagePath: loadedPath,
+          buffer,
           contentType,
-          content,
-          contentEncoding: isImage || !isLikelyTextContentType(normalizedType) ? "base64" : "utf8",
-          truncated: content.includes("...[truncated]"),
-        };
+          maxChars,
+        });
       },
     },
     {

@@ -1,12 +1,11 @@
 import path from "node:path";
 import { requireAuth } from "@server/auth/session";
-import { buildChatFileViewUrl, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
+import { buildChatFileViewUrl, getObjectFromStorage } from "@server/storage/s3";
 import { updateBinaryFile } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import {
   assertChatScopedStoragePath,
-  isImageFile,
   MAX_FILES,
   MAX_FILE_SIZE,
   toSafeFileName,
@@ -20,7 +19,6 @@ interface UploadFileInput {
   size?: number;
   lastModified?: number;
   storagePath: string;
-  markdownStoragePath?: string;
 }
 
 const inferContentTypeFromName = (fileName: string) => {
@@ -129,43 +127,6 @@ export default async function handler(
       return;
     }
 
-    let markdownStoragePath: string | undefined;
-    let markdownPublicUrl: string | undefined;
-    if (!isImageFile(file.name, type)) {
-      if (file.markdownStoragePath) {
-        try {
-          markdownStoragePath = assertChatScopedStoragePath({
-            storagePath: file.markdownStoragePath,
-            token,
-            chatId,
-          });
-        } catch {
-          res.status(400).json({ error: `文件 ${file.name} markdown 路径非法` });
-          return;
-        }
-      } else {
-        const fileName = path.posix.basename(storagePath);
-        const marker = "/.files/";
-        const markerIndex = storagePath.indexOf(marker);
-        const filesRoot =
-          markerIndex >= 0
-            ? `${storagePath.slice(0, markerIndex + marker.length)}markdown`
-            : `${storagePath.replace(/\/files\/[^/]+$/, "")}/markdown`;
-        markdownStoragePath = `${filesRoot}/${fileName}.md`;
-      }
-      await uploadObjectToStorage({
-        key: markdownStoragePath,
-        body: "",
-        contentType: "text/markdown; charset=utf-8",
-        bucketType: "private",
-      });
-      markdownPublicUrl = buildChatFileViewUrl({
-        storagePath: markdownStoragePath,
-        token,
-        chatId,
-      });
-    }
-
     const publicUrl = buildChatFileViewUrl({
       storagePath,
       token,
@@ -180,8 +141,6 @@ export default async function handler(
       lastModified: Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : now,
       storagePath,
       publicUrl,
-      markdownStoragePath,
-      markdownPublicUrl,
       parse: pendingParseInfo,
     });
 

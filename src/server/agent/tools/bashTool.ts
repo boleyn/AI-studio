@@ -1,3 +1,4 @@
+import path from "path";
 import type { AgentToolDefinition } from "./types";
 import {
   DEFAULT_TOOL_TIMEOUT_MS,
@@ -31,6 +32,35 @@ const normalizeStructuredCommandInput = (cmdRaw: string, argsRaw: string[]) => {
     cmd: cmdTrimmed,
     args,
   };
+};
+
+const normalizeWorkspaceLikePath = (value: string) => {
+  const raw = value.trim();
+  if (!raw) return raw;
+  // Users/models often treat "/files" as workspace root. Map to workspace-relative.
+  if (raw === "/files" || raw === "/.files") return ".files";
+  if (raw.startsWith("/files/")) return `.files/${raw.slice("/files/".length)}`;
+  if (raw.startsWith("/.files/")) return `.files/${raw.slice("/.files/".length)}`;
+  return raw;
+};
+
+const INLINE_CODE_FLAGS = new Set(["-c", "-e", "--eval", "--command"]);
+const INLINE_CODE_COMMANDS = new Set(["bash", "sh", "zsh", "python", "python3", "node", "nodejs"]);
+
+const normalizeInlineCodePathMentions = (value: string) =>
+  value
+    .replace(/(^|[^\w./-])\/\.files(?=\/|$)/g, "$1.files")
+    .replace(/(^|[^\w./-])\/files(?=\/|$)/g, "$1.files");
+
+const normalizeStructuredArgs = (cmdRaw: string, argsRaw: string[]) => {
+  const normalizedArgs = argsRaw.map((arg) => normalizeWorkspaceLikePath(arg));
+  const cmd = cmdRaw.trim().toLowerCase();
+  if (!INLINE_CODE_COMMANDS.has(cmd)) return normalizedArgs;
+  for (let i = 0; i < normalizedArgs.length - 1; i += 1) {
+    if (!INLINE_CODE_FLAGS.has(normalizedArgs[i])) continue;
+    normalizedArgs[i + 1] = normalizeInlineCodePathMentions(normalizedArgs[i + 1]);
+  }
+  return normalizedArgs;
 };
 
 export const createBashTool = (options?: {
@@ -72,8 +102,9 @@ export const createBashTool = (options?: {
       const argsInput = Array.isArray(payload.args) ? payload.args.map((item) => String(item)) : [];
       const normalizedCommand = normalizeStructuredCommandInput(cmdInput, argsInput);
       const cmd = normalizedCommand.cmd;
-      const args = normalizedCommand.args;
-      const cwdInput = typeof payload.cwd === "string" ? payload.cwd : "";
+      const args = normalizeStructuredArgs(cmd, normalizedCommand.args);
+      const cwdInputRaw = typeof payload.cwd === "string" ? payload.cwd : "";
+      const cwdInput = normalizeWorkspaceLikePath(cwdInputRaw);
       const timeoutMs = clampToolTimeout(payload.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
 
       if (!normalizedProjectToken) {
@@ -110,23 +141,46 @@ export const createBashTool = (options?: {
         timeoutMs,
         env: isolatedEnv,
       });
+      const withFallback = async () => {
+        if (!result.error?.includes("ENOENT")) return result;
+        if (cmd === "python") {
+          return runStructuredCommand({
+            command: "python3",
+            args,
+            cwd,
+            timeoutMs,
+            env: isolatedEnv,
+          });
+        }
+        if (cmd === "pip") {
+          return runStructuredCommand({
+            command: "pip3",
+            args,
+            cwd,
+            timeoutMs,
+            env: isolatedEnv,
+          });
+        }
+        return result;
+      };
+      const finalResult = await withFallback();
       const flushed = await workspaceManager.flushChangedFiles(normalizedProjectToken);
+      const relativeCwd = path.relative(prepared.workspaceRoot, cwd).split(path.sep).join("/") || ".";
 
       return {
-        ok: result.ok,
+        ok: finalResult.ok,
         sandbox: "project_workspace",
         sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
-        workspaceRoot: prepared.workspaceRoot,
         projectToken: normalizedProjectToken,
-        cwd,
+        cwd: relativeCwd === "" ? "." : relativeCwd,
         cmd,
         args,
-        exitCode: result.exitCode,
-        killed: result.killed,
-        signal: result.signal,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        error: result.error,
+        exitCode: finalResult.exitCode,
+        killed: finalResult.killed,
+        signal: finalResult.signal,
+        stdout: finalResult.stdout,
+        stderr: finalResult.stderr,
+        error: finalResult.error,
         changedFiles: flushed.changedFiles,
       };
     },

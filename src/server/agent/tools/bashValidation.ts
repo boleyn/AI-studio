@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import path from "path";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 
 const MAX_SCRIPT_SCAN_BYTES = 256 * 1024;
@@ -79,6 +80,9 @@ const ALLOWED_COMMANDS = new Set([
   "bun",
   "pip",
   "pip3",
+  "pandoc",
+  "unzip",
+  "zip",
 ]);
 
 const SCRIPT_LAUNCHERS = new Set([
@@ -102,19 +106,24 @@ const isLikelyScriptPath = (token: string) =>
 
 const extractScriptArg = (cmd: string, args: string[]) => {
   if (!SCRIPT_LAUNCHERS.has(cmd)) return null;
+  // Inline code modes should not be treated as script-path execution.
+  if (args.includes("-c") || args.includes("-e") || args.includes("--eval") || args.includes("--command")) {
+    return null;
+  }
   const scriptArg = args.find((arg) => arg && !arg.startsWith("-"));
   if (!scriptArg) return null;
   return isLikelyScriptPath(scriptArg) || scriptArg.includes("/") ? scriptArg : null;
 };
 
 const validateScriptFile = async (absolutePath: string): Promise<string | null> => {
+  const fileName = path.basename(absolutePath) || "script";
   let stat;
   try {
     stat = await fs.stat(absolutePath);
   } catch {
-    return `脚本不存在或不可访问: ${absolutePath}`;
+    return `脚本不存在或不可访问: ${fileName}`;
   }
-  if (!stat.isFile()) return `脚本路径不是文件: ${absolutePath}`;
+  if (!stat.isFile()) return `脚本路径不是文件: ${fileName}`;
   if (stat.size > MAX_SCRIPT_SCAN_BYTES) {
     return `脚本过大，拒绝执行（>${MAX_SCRIPT_SCAN_BYTES} bytes）`;
   }
@@ -123,7 +132,7 @@ const validateScriptFile = async (absolutePath: string): Promise<string | null> 
   try {
     content = await fs.readFile(absolutePath, "utf8");
   } catch {
-    return `脚本读取失败: ${absolutePath}`;
+    return `脚本读取失败: ${fileName}`;
   }
 
   for (const rule of DANGEROUS_PATTERN_RULES) {
@@ -160,11 +169,10 @@ export const validateStructuredCommand = async (input: {
 
   const scriptArg = extractScriptArg(cmd, input.args);
   if (scriptArg) {
-    const absoluteScriptPath = await input.workspaceManager.resolvePathInWorkspace(
-      input.projectToken,
-      scriptArg,
-      input.cwd
-    );
+    const isAbsolute = scriptArg.startsWith("/");
+    const absoluteScriptPath = isAbsolute
+      ? scriptArg
+      : await input.workspaceManager.resolvePathInWorkspace(input.projectToken, scriptArg, input.cwd);
     const scriptError = await validateScriptFile(absoluteScriptPath);
     if (scriptError) return scriptError;
   }

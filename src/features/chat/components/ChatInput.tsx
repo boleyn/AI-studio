@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChatInputFile, ChatInputProps, ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
+import { toFileTagLabel } from "../utils/chatPanelUtils";
 import ModelCascader from "./ModelCascader";
 
 type LocalInputFile = ChatInputFile & {
@@ -48,7 +49,6 @@ const ChatInput = ({
   const skillTheme = chatInputTheme?.skillMention || {};
   const [text, setText] = useState("");
   const [files, setFiles] = useState<LocalInputFile[]>([]);
-  const [isComposing, setIsComposing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
@@ -160,6 +160,14 @@ const ChatInput = ({
       .slice(0, 10);
   }, [fileOptions, fileQuery, selectedFilePaths]);
   const showFilePicker = Boolean(fileRange) && filteredFileOptions.length > 0 && !isSending && !isSubmitting;
+  const inputPlaceholder = useMemo(() => {
+    if (isSending) {
+      return t("chat:generating", { defaultValue: "正在生成回复..." });
+    }
+    return t("chat:input_placeholder", {
+      defaultValue: "输入你的问题，按 Enter 发送，Shift + Enter 换行",
+    });
+  }, [isSending, t]);
   const previewFiles = useMemo(
     () =>
       files.map((item) => {
@@ -558,35 +566,41 @@ const ChatInput = ({
             {selectedFilePaths.length > 0 ? (
               <Flex px={2} pt={selectedSkillList.length > 0 ? 1.5 : 2}>
                 <Flex gap={1.5} wrap="wrap">
-                  {selectedFilePaths.map((filePath) => (
+                  {selectedFilePaths.map((filePath) => {
+                    const fileLabel = toFileTagLabel(filePath);
+                    const fileIcon = getFileIcon(fileLabel);
+                    return (
                     <Flex
                       key={filePath}
                       align="center"
-                      bg="gray.50"
+                      bg="white"
                       border="1px solid"
-                      borderColor="gray.200"
-                      borderRadius="10px"
+                      borderColor="#E2E8F0"
+                      borderRadius="8px"
+                      boxShadow="0px 2.571px 6.429px 0px rgba(19, 51, 107, 0.08), 0px 0px 0.643px 0px rgba(19, 51, 107, 0.08)"
                       color="gray.700"
-                      gap={1}
-                      h="28px"
-                      maxW="360px"
-                      pl={2.5}
+                      gap={2}
+                      h="32px"
+                      maxW="320px"
+                      pl={2}
                       pr={1}
                     >
+                      <Box as="img" h="18px" src={`/icons/chat/${fileIcon}.svg`} w="18px" />
                       <Text fontSize="12px" fontWeight={600} noOfLines={1}>
-                        {filePath}
+                        {fileLabel}
                       </Text>
                       <CloseButton
                         color="gray.500"
                         onClick={() => {
                           setSelectedFilePaths((prev) => prev.filter((item) => item !== filePath));
                         }}
-                        aria-label={`移除文件 ${filePath}`}
+                        aria-label={`移除文件 ${fileLabel}`}
                         size="sm"
                         transform="scale(0.88)"
                       />
                     </Flex>
-                  ))}
+                    );
+                  })}
                 </Flex>
               </Flex>
             ) : null}
@@ -598,10 +612,10 @@ const ChatInput = ({
                 fontSize: "13px",
               }}
               border="none"
-              color="myGray.900"
-              fontSize="1rem"
+              color="myGray.700"
+              fontSize="15px"
               fontWeight={400}
-              lineHeight="1.5"
+              lineHeight="1.45"
               maxH="128px"
               mb={0}
               minH="50px"
@@ -625,8 +639,6 @@ const ChatInput = ({
                 textarea.style.height = `${nextHeight}px`;
                 textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
               }}
-              onCompositionEnd={() => setIsComposing(false)}
-              onCompositionStart={() => setIsComposing(true)}
               onFocus={() => setIsFocused(true)}
               onPaste={(event) => {
                 if (isInputLocked) return;
@@ -704,16 +716,15 @@ const ChatInput = ({
                   }
                 }
                 if (event.key === "Enter" && !event.shiftKey) {
-                  if (isComposing) return;
+                  const nativeEvent = event.nativeEvent as { isComposing?: boolean; keyCode?: number };
+                  if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
                   event.preventDefault();
                   handleSend();
                 }
               }}
               overflowX="hidden"
               overflowY="hidden"
-              placeholder={t("chat:input_placeholder", {
-                defaultValue: "输入你的问题，按 Enter 发送，Shift + Enter 换行",
-              })}
+              placeholder={inputPlaceholder}
               px={2}
               resize="none"
               rows={1}
@@ -820,11 +831,7 @@ const ChatInput = ({
               modelOptions={modelOptions}
               onChangeModel={onChangeModel}
             />
-            {isSending ? (
-              <Text color="myGray.500" fontSize="xs">
-                {t("chat:generating", { defaultValue: "正在生成回复..." })}
-              </Text>
-            ) : hasUploadingFiles ? (
+            {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">
                 {t("chat:uploading_files", { defaultValue: "文件上传中..." })}
               </Text>

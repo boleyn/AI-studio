@@ -98,6 +98,15 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
       type: "boolean",
       description: "运行前自动安装脚本目录依赖（默认 true，Node runtime 下生效）。",
     },
+    autoDownloadScript: {
+      type: "boolean",
+      description: "脚本不存在时是否自动下载（默认 true）。",
+    },
+    scriptDownloadUrl: {
+      type: "string",
+      description:
+        "脚本下载地址（可选，http/https）。当本地脚本缺失时优先使用该地址下载。",
+    },
   },
   required: ["name", "script"],
 };
@@ -126,6 +135,9 @@ export const createSkillRunScriptTool = async (
       const timeoutMs = clampToolTimeout(payload.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
       const cwd = typeof payload.cwd === "string" ? payload.cwd.trim() : "";
       const autoInstallDeps = payload.autoInstallDeps !== false;
+      const autoDownloadScript = payload.autoDownloadScript !== false;
+      const scriptDownloadUrl =
+        typeof payload.scriptDownloadUrl === "string" ? payload.scriptDownloadUrl.trim() : "";
 
       if (!name) throw new Error("缺少 name 参数。");
       if (!script) throw new Error("缺少 script 参数。");
@@ -143,6 +155,8 @@ export const createSkillRunScriptTool = async (
         cwd,
         timeoutMs,
         autoInstallDeps,
+        autoDownloadScript,
+        scriptDownloadUrl,
         sessionId: options?.sessionId,
         workspaceFiles: options?.workspaceFiles,
       });

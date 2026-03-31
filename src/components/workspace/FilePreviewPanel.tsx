@@ -1,5 +1,5 @@
 import { Box, Image, Spinner, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 type PreviewKind = "image" | "pdf" | "docx" | "spreadsheet" | "presentation" | "unknown";
@@ -64,19 +64,70 @@ const toInlineUrl = (code: string) => {
   return "";
 };
 
+const isLikelyPublicHttpsUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return false;
+    const host = (url.hostname || "").toLowerCase();
+    if (!host) return false;
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host.endsWith(".local") ||
+      host.includes("host.docker.internal")
+    ) {
+      return false;
+    }
+    if (
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const buildContentFingerprint = (value: string) => {
+  const len = value.length;
+  if (len === 0) return "0::";
+  const head = value.slice(0, 64);
+  const tail = value.slice(-64);
+  return `${len}:${head}:${tail}`;
+};
+
 type FilePreviewPanelProps = {
   token: string;
   activeFile: string;
   sourceCode: string;
 };
 
+type PreviewCacheEntry =
+  | { kind: "pdf"; binaryObjectUrl: string }
+  | { kind: "docx"; docxHtml: string }
+  | { kind: "spreadsheet"; officePreviewUrl: string; sheetName: string; sheetRows: string[][] }
+  | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
+
 const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
+  const previewCacheKey = `${token}::${activeFile}`;
+  const sourceFingerprint = useMemo(() => buildContentFingerprint(sourceCode), [sourceCode]);
   const viewBinaryUrl = useMemo(
     () =>
       token && activeFile
         ? `/api/code?token=${encodeURIComponent(token)}&action=view&path=${encodeURIComponent(activeFile)}&v=${sourceHash}`
+        : "",
+    [token, activeFile, sourceHash]
+  );
+  const viewSignedUrlApi = useMemo(
+    () =>
+      token && activeFile
+        ? `/api/code?token=${encodeURIComponent(token)}&action=view-url&path=${encodeURIComponent(activeFile)}&v=${sourceHash}`
         : "",
     [token, activeFile, sourceHash]
   );
@@ -87,22 +138,72 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState("");
   const [binaryObjectUrl, setBinaryObjectUrl] = useState("");
-  const [docxHtml, setDocxHtml] = useState("");
+  const [officePreviewUrl, setOfficePreviewUrl] = useState("");
   const [sheetName, setSheetName] = useState("");
   const [sheetRows, setSheetRows] = useState<string[][]>([]);
   const [pptSlides, setPptSlides] = useState<string[][]>([]);
+  const docxContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewCacheRef = useRef<Map<string, PreviewCacheEntry>>(new Map());
+  const cachedBlobUrlsRef = useRef<Set<string>>(new Set());
+  const fileFingerprintRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      for (const url of cachedBlobUrlsRef.current) {
+        URL.revokeObjectURL(url);
+      }
+      cachedBlobUrlsRef.current.clear();
+      previewCacheRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let objectUrl = "";
+    let shouldRevokeObjectUrl = false;
+
+    if (previewKind === "pdf" || previewKind === "docx" || previewKind === "spreadsheet" || previewKind === "presentation") {
+      const prevFingerprint = fileFingerprintRef.current.get(previewCacheKey);
+      if (prevFingerprint !== sourceFingerprint) {
+        const stale = previewCacheRef.current.get(previewCacheKey);
+        if (stale && stale.kind === "pdf") {
+          URL.revokeObjectURL(stale.binaryObjectUrl);
+          cachedBlobUrlsRef.current.delete(stale.binaryObjectUrl);
+        }
+        previewCacheRef.current.delete(previewCacheKey);
+        fileFingerprintRef.current.set(previewCacheKey, sourceFingerprint);
+      }
+    }
+
+    if (previewKind === "pdf" || previewKind === "docx" || previewKind === "spreadsheet" || previewKind === "presentation") {
+      const cached = previewCacheRef.current.get(previewCacheKey);
+      if (cached) {
+        setDocError("");
+        setDocLoading(false);
+        setBinaryObjectUrl(cached.kind === "pdf" ? cached.binaryObjectUrl : "");
+        setOfficePreviewUrl(cached.kind === "spreadsheet" || cached.kind === "presentation" ? cached.officePreviewUrl : "");
+        setSheetName(cached.kind === "spreadsheet" ? cached.sheetName : "");
+        setSheetRows(cached.kind === "spreadsheet" ? cached.sheetRows : []);
+        setPptSlides(cached.kind === "presentation" ? cached.pptSlides : []);
+        if (docxContainerRef.current) {
+          docxContainerRef.current.innerHTML = cached.kind === "docx" ? cached.docxHtml : "";
+        }
+        return () => {
+          cancelled = true;
+        };
+      }
+    }
 
     setDocError("");
     setDocLoading(false);
     setBinaryObjectUrl("");
-    setDocxHtml("");
+    setOfficePreviewUrl("");
     setSheetName("");
     setSheetRows([]);
     setPptSlides([]);
+    if (docxContainerRef.current) {
+      docxContainerRef.current.innerHTML = "";
+    }
 
     const run = async () => {
       try {
@@ -121,6 +222,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
           if (type.startsWith("image/")) {
             const blob = await res.blob();
             objectUrl = URL.createObjectURL(blob);
+            shouldRevokeObjectUrl = true;
             if (!cancelled) setImageSrc(objectUrl);
             return;
           }
@@ -138,15 +240,72 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         if (previewKind === "pdf") {
           const blob = await response.blob();
           objectUrl = URL.createObjectURL(blob);
-          if (!cancelled) setBinaryObjectUrl(objectUrl);
+          if (!cancelled) {
+            setBinaryObjectUrl(objectUrl);
+            previewCacheRef.current.set(previewCacheKey, {
+              kind: "pdf",
+              binaryObjectUrl: objectUrl,
+            });
+            cachedBlobUrlsRef.current.add(objectUrl);
+          }
           return;
+        }
+
+        if (previewKind === "spreadsheet" || previewKind === "presentation") {
+          try {
+            const signedRes = await fetch(viewSignedUrlApi, {
+              headers: withAuthHeaders(),
+              credentials: "include",
+            });
+            if (signedRes.ok) {
+              const data = (await signedRes.json()) as { url?: string };
+              const signedUrl = typeof data.url === "string" ? data.url : "";
+              if (signedUrl && isLikelyPublicHttpsUrl(signedUrl)) {
+                const embedUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(signedUrl)}`;
+                if (!cancelled) {
+                  setOfficePreviewUrl(embedUrl);
+                  if (previewKind === "spreadsheet") {
+                    previewCacheRef.current.set(previewCacheKey, {
+                      kind: "spreadsheet",
+                      officePreviewUrl: embedUrl,
+                      sheetName: "",
+                      sheetRows: [],
+                    });
+                  } else {
+                    previewCacheRef.current.set(previewCacheKey, {
+                      kind: "presentation",
+                      officePreviewUrl: embedUrl,
+                      pptSlides: [],
+                    });
+                  }
+                }
+                return;
+              }
+            }
+          } catch {
+            // Fall back to local lightweight parsing below.
+          }
         }
 
         const arrayBuffer = await response.arrayBuffer();
         if (previewKind === "docx") {
-          const mammoth = await import("mammoth");
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          if (!cancelled) setDocxHtml(result.value || "");
+          const container = docxContainerRef.current;
+          if (!container) throw new Error("Word 预览容器未就绪");
+          container.innerHTML = "";
+          const docxPreview = await import("docx-preview");
+          await docxPreview.renderAsync(arrayBuffer, container, undefined, {
+            ignoreWidth: false,
+            ignoreHeight: true,
+            breakPages: true,
+            className: "docx-preview",
+            inWrapper: true,
+          });
+          if (!cancelled) {
+            previewCacheRef.current.set(previewCacheKey, {
+              kind: "docx",
+              docxHtml: container.innerHTML,
+            });
+          }
           return;
         }
         if (previewKind === "spreadsheet") {
@@ -159,6 +318,12 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
           if (!cancelled) {
             setSheetName(firstName);
             setSheetRows(rows);
+            previewCacheRef.current.set(previewCacheKey, {
+              kind: "spreadsheet",
+              officePreviewUrl: "",
+              sheetName: firstName,
+              sheetRows: rows,
+            });
           }
           return;
         }
@@ -178,7 +343,14 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
             const nodes = Array.from(doc.getElementsByTagName("a:t"));
             slides.push(nodes.map((node) => (node.textContent || "").trim()).filter(Boolean));
           }
-          if (!cancelled) setPptSlides(slides);
+          if (!cancelled) {
+            setPptSlides(slides);
+            previewCacheRef.current.set(previewCacheKey, {
+              kind: "presentation",
+              officePreviewUrl: "",
+              pptSlides: slides,
+            });
+          }
         }
       } catch (error) {
         if (!cancelled) setDocError(error instanceof Error ? error.message : "预览失败");
@@ -191,9 +363,9 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (shouldRevokeObjectUrl && objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeFile, inlineImageSrc, inlineImageUrl, previewKind, sourceCode, viewBinaryUrl]);
+  }, [activeFile, inlineImageSrc, inlineImageUrl, previewKind, previewCacheKey, sourceFingerprint, viewBinaryUrl, viewSignedUrlApi]);
 
   if (previewKind === "unknown") {
     return (
@@ -255,21 +427,53 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
 
   if (previewKind === "docx") {
     return (
-      <Box h="100%" overflow="auto" bg="#f8fafc" p={5}>
+      <Box h="100%" overflow="auto" bg="#f8fafc" p={5} position="relative">
+        <Box
+          ref={docxContainerRef}
+          bg="white"
+          border="1px solid #e2e8f0"
+          borderRadius="md"
+          p={5}
+          minH="180px"
+          sx={{
+            "& .docx-wrapper": {
+              background: "white !important",
+              padding: "0 !important",
+            },
+          }}
+        />
         {docLoading ? (
-          <Box display="flex" alignItems="center" gap={2}>
+          <Box
+            position="absolute"
+            inset={5}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            gap={2}
+            bg="rgba(248,250,252,0.72)"
+            borderRadius="md"
+          >
             <Spinner size="sm" />
             <Text fontSize="sm" color="gray.600">
-              正在解析 Word 文档...
+              正在加载 Word 预览...
             </Text>
           </Box>
         ) : docError ? (
-          <Text fontSize="sm" color="red.500">
-            Word 预览失败：{docError}
-          </Text>
-        ) : (
-          <Box bg="white" border="1px solid #e2e8f0" borderRadius="md" p={5} dangerouslySetInnerHTML={{ __html: docxHtml || "<p>文档内容为空</p>" }} />
-        )}
+          <Box
+            position="absolute"
+            inset={5}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            p={4}
+            bg="rgba(248,250,252,0.8)"
+            borderRadius="md"
+          >
+            <Text fontSize="sm" color="red.500">
+              Word 预览失败：{docError}
+            </Text>
+          </Box>
+        ) : null}
       </Box>
     );
   }
@@ -288,6 +492,10 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
           <Text fontSize="sm" color="red.500">
             Excel 预览失败：{docError}
           </Text>
+        ) : officePreviewUrl ? (
+          <Box h="100%" minH="560px" bg="white" border="1px solid #e2e8f0" borderRadius="md" overflow="hidden">
+            <iframe src={officePreviewUrl} title={activeFile} style={{ width: "100%", height: "100%", minHeight: "560px", border: "none" }} />
+          </Box>
         ) : (
           <Box>
             <Text fontSize="sm" color="gray.700" mb={2}>
@@ -327,6 +535,10 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         <Text fontSize="sm" color="red.500">
           PPT 预览失败：{docError}
         </Text>
+      ) : officePreviewUrl ? (
+        <Box h="100%" minH="560px" bg="white" border="1px solid #e2e8f0" borderRadius="md" overflow="hidden">
+          <iframe src={officePreviewUrl} title={activeFile} style={{ width: "100%", height: "100%", minHeight: "560px", border: "none" }} />
+        </Box>
       ) : (
         <Box display="flex" flexDirection="column" gap={3}>
           {pptSlides.length === 0 ? (

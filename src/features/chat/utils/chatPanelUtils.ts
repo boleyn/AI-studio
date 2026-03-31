@@ -3,8 +3,6 @@ import { extractText } from "@shared/chat/messages";
 import {
   buildDownloadUrl,
   buildPreviewUrl,
-  fetchMarkdownContent,
-  fetchMarkdownContentByUrl,
   getPresignedChatFileGetUrl,
 } from "../services/files";
 import type { ChatInputFile } from "../types/chatInput";
@@ -15,6 +13,16 @@ import type { MessageRating } from "../components/message/MessageActionBar";
 
 export const FILE_TAG_MARKER_PREFIX = "FILETAG:";
 export const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
+
+export const toFileTagLabel = (filePath: string): string => {
+  const normalized = (filePath || "").replace(/\\/g, "/");
+  const base = normalized.split("/").filter(Boolean).pop() || filePath;
+  try {
+    return decodeURIComponent(base);
+  } catch {
+    return base;
+  }
+};
 
 export const getMessageFeedback = (message: ConversationMessage): MessageRating | undefined => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return undefined;
@@ -65,7 +73,7 @@ export const buildUserBubbleContent = ({
   const fileTagsMarkdown =
     selectedFilePaths && selectedFilePaths.length > 0
       ? selectedFilePaths
-          .map((path) => `[${path}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
+          .map((path) => `[${toFileTagLabel(path)}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
           .join(" ")
       : "";
   const imageMarkdown = files
@@ -187,44 +195,6 @@ export const hydrateHistoryUserMessage = ({
   };
 };
 
-export const hydrateArtifactsMarkdown = async ({
-  files,
-  token,
-  chatId,
-}: {
-  files: UploadedFileArtifact[];
-  token: string;
-  chatId: string;
-}) => {
-  const hydrated = await Promise.all(
-    files.map(async (file) => {
-      const markdown = file.markdownPublicUrl
-        ? await fetchMarkdownContentByUrl(file.markdownPublicUrl).catch(() => "")
-        : file.markdownStoragePath
-        ? await fetchMarkdownContent({
-            storagePath: file.markdownStoragePath,
-            token,
-            chatId,
-          }).catch(() => "")
-        : "";
-      if (!markdown) return file;
-      return {
-        ...file,
-        parse: {
-          ...(file.parse || {
-            status: "success" as const,
-            progress: 100,
-            parser: "text" as const,
-          }),
-          markdown,
-        },
-      };
-    })
-  );
-
-  return hydrated;
-};
-
 export const toFileArtifacts = (files: ChatInputFile[]) =>
   files.map((item) => ({
     id: item.id,
@@ -236,7 +206,6 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
       status: "pending" as const,
       progress: 0,
       parser: "metadata" as const,
-      markdown: "",
     },
   }));
 
