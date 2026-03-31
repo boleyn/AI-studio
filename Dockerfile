@@ -30,7 +30,7 @@ RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}";
   && (corepack prepare yarn@4.5.1 --activate || npm install -g @yarnpkg/cli-dist@4.5.1) \
   && if [ -n "${PIP_INDEX_URL}" ]; then python3 -m pip config set global.index-url "${PIP_INDEX_URL}"; fi \
   && if [ -n "${PIP_TRUSTED_HOST}" ]; then python3 -m pip config set global.trusted-host "${PIP_TRUSTED_HOST}"; fi \
-  && python3 -m pip install --no-cache-dir \
+  && python3 -m pip install --break-system-packages --no-cache-dir \
     python-docx \
     xlrd \
     odfpy \
