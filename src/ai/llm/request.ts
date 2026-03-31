@@ -12,7 +12,6 @@ import type {
   UnStreamChatType
 } from '@aistudio/ai/compat/global/core/ai/type';
 import {
-  computedMaxToken,
   computedTemperature,
   parseLLMStreamResponse,
   parseReasoningContent
@@ -463,6 +462,18 @@ export const createStreamResponse = async ({
   const { parsePart, getResponseData, updateFinishReason, updateError } = parseLLMStreamResponse();
 
   if (tools?.length) {
+    const toChunkText = (value: unknown) => {
+      if (typeof value === 'string') return value;
+      if (value == null) return '';
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return '';
+        }
+      }
+      return String(value);
+    };
     const stripDefaultApiPrefix = (name: string) =>
       name.startsWith('default_api:') ? name.slice('default_api:'.length) : name;
     const pendingTools = new Map<number, {
@@ -498,8 +509,8 @@ export const createStreamResponse = async ({
         if (responseChoice?.tool_calls?.length) {
           responseChoice.tool_calls.forEach((toolCall: any, i: number) => {
             const index = toolCall.index ?? i;
-            const argChunk: string = toolCall?.function?.arguments ?? '';
-            const nameChunk: string = toolCall?.function?.name ?? '';
+            const argChunk = toChunkText(toolCall?.function?.arguments);
+            const nameChunk = toChunkText(toolCall?.function?.name);
             const existingPending = pendingTools.get(index) || {
               id: undefined,
               name: '',
@@ -788,15 +799,9 @@ export const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
   })();
   const stop = body.stop ?? undefined;
 
-  const maxTokens = computedMaxToken({
-    model: modelData,
-    maxToken: body.max_tokens || undefined
-  });
-
   const formatStop = stop?.split('|').filter((item) => !!item.trim());
   let requestBody = ({
     ...body,
-    max_tokens: maxTokens,
     model: modelData.model,
     temperature:
       typeof body.temperature === 'number'

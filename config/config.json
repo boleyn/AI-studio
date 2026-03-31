@@ -23,7 +23,7 @@
       "id": "MiniMax-M2.7",
       "label": "MiniMax-M2.7",
       "maxContext": 192000,
-      "maxResponse": 12000,
+      "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
       "reasoning": false,

@@ -2,7 +2,6 @@ import type { ChatCompletionTool, ChatCompletionMessageParam } from "@aistudio/a
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { compressRequestMessages } from "@aistudio/ai/llm/compress";
 import { getLLMModel } from "@aistudio/ai/model";
-import { computedMaxToken } from "@aistudio/ai/utils";
 import { formatGlobalResult } from "@server/agent/globalResultFormatter";
 import { parseGlobalCommand, runGlobalAction, type ChangeTracker } from "@server/agent/globalTools";
 import { loadMcpTools } from "@server/agent/mcpClient";
@@ -627,14 +626,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const historyTokens = await countGptMessagesTokens(historyBaseAgentMessages).catch(() => 0);
   const historyFileTokens = 0;
   const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
-  const reservedOutputTokens = computedMaxToken({
-    model: selectedModelInfo,
-    min: 100,
-  });
+  const reservedOutputTokens = 0;
   const promptMaxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
-  // 统一“窗口占用”口径：
-  // usedTokens/usedPercent 统一表示本次实际请求 prompt（含当前输入）的占用情况；
-  // 预算上限为 maxContext - reservedOutputTokens，避免显示与真实可用空间不一致。
+  // 统一“窗口占用”口径：usedTokens/usedPercent 表示本次实际请求 prompt（含当前输入）的占用情况。
   const promptBudget = Math.max(1, promptMaxContext - reservedOutputTokens);
   const currentInputTokens = Math.max(0, promptUsedTokens - backgroundUsedTokens);
   const contextWindowUsage = {

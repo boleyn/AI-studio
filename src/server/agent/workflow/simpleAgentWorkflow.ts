@@ -6,6 +6,7 @@ import { runAgentCall } from "@aistudio/ai/llm/agentCall";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import type { SseEventName } from "@shared/network/sseEvents";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
+import json5 from "json5";
 
 export interface SimpleWorkflowNodeResponse {
   nodeId: string;
@@ -46,14 +47,54 @@ const parsePossiblyNestedJson = (raw: string | undefined): unknown => {
     if (!trimmed) break;
     try {
       current = JSON.parse(trimmed);
+      continue;
     } catch {
+      try {
+        current = json5.parse(trimmed);
+        continue;
+      } catch {
+        const objectStart = trimmed.indexOf("{");
+        const objectEnd = trimmed.lastIndexOf("}");
+        if (objectStart >= 0 && objectEnd > objectStart) {
+          const candidate = trimmed.slice(objectStart, objectEnd + 1);
+          try {
+            current = JSON.parse(candidate);
+            continue;
+          } catch {
+            try {
+              current = json5.parse(candidate);
+              continue;
+            } catch {
+              // keep raw string
+            }
+          }
+        }
+      }
       break;
     }
   }
   return current;
 };
 
-const toSafeToolArgs = (raw: string | undefined): unknown => parsePossiblyNestedJson(raw);
+const coerceToolArgs = (raw: string | undefined): unknown => {
+  const parsed = parsePossiblyNestedJson(raw);
+  if (typeof parsed !== "string") return parsed;
+  const trimmed = parsed.trim();
+  if (!trimmed) return {};
+  // If it still looks like a JSON-ish payload but parsing failed, fallback to empty object
+  // to avoid passing malformed string into object-schema tools.
+  if (
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    trimmed.includes(":") ||
+    trimmed.includes("\"")
+  ) {
+    return {};
+  }
+  return parsed;
+};
+
+const toSafeToolArgs = (raw: string | undefined): unknown => coerceToolArgs(raw);
 
 const formatToolArgs = (raw: string | undefined): string => {
   if (!raw) return "";
