@@ -51,6 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       displayName: user.displayName || user.username,
       contact: user.contact,
       avatar: sanitizeAvatar(user.avatar),
+      primaryModel: user.primaryModel,
       provider: user.provider ?? "password",
     },
   });

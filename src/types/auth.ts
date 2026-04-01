@@ -4,5 +4,6 @@ export type AuthUser = {
   displayName?: string;
   contact?: string;
   avatar?: string;
+  primaryModel?: string;
   provider?: string;
 };

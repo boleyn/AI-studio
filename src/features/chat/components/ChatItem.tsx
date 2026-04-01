@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { extractText } from "@shared/chat/messages";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "@/components/Markdown";
 import { useCopyData } from "@/hooks/useCopyData";
 
@@ -55,6 +55,24 @@ interface TimelineItem {
 }
 
 const MAX_TOOL_DETAIL_CHARS = 800;
+
+const normalizeToolPayload = (value?: string) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    return JSON.stringify(JSON.parse(trimmed));
+  } catch {
+    return trimmed.replace(/\s+/g, " ");
+  }
+};
+
+const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
+  const normalizedName = (toolName || "").trim().toLowerCase();
+  const normalizedParams = normalizeToolPayload(params);
+  const normalizedResponse = normalizeToolPayload(response);
+  return `${normalizedName}::${normalizedParams}::${normalizedResponse}`;
+};
 
 const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
   if (!message.artifact || typeof message.artifact !== "object") return [];
@@ -148,7 +166,25 @@ const composeTimelineItems = ({
   reasoningText: string;
   toolDetails: ToolDetail[];
 }): TimelineItem[] => {
-  const next = [...rawTimelineItems];
+  const next: TimelineItem[] = [];
+
+  rawTimelineItems.forEach((item) => {
+    if ((item.type === "reasoning" || item.type === "answer") && typeof item.text === "string") {
+      const last = next[next.length - 1];
+      if (last && last.type === item.type && typeof last.text === "string") {
+        next[next.length - 1] = {
+          ...last,
+          text: `${last.text}${item.text}`,
+        };
+        return;
+      }
+      next.push({ ...item });
+      return;
+    }
+
+    next.push({ ...item });
+  });
+
   const normalizedReasoning = reasoningText.trim();
   const hasReasoningInTimeline = next.some(
     (item) => item.type === "reasoning" && typeof item.text === "string" && item.text.trim().length > 0
@@ -165,14 +201,33 @@ const composeTimelineItems = ({
   if (toolDetails.length === 0) return next;
 
   const timelineToolIndexById = new Map<string, number>();
+  const timelineToolIndexByFingerprint = new Map<string, number>();
   next.forEach((item, index) => {
     if (item.type !== "tool") return;
-    if (typeof item.id !== "string" || !item.id) return;
-    timelineToolIndexById.set(item.id, index);
+    timelineToolIndexByFingerprint.set(
+      getToolFingerprint(item.toolName, item.params, item.response),
+      index
+    );
+    if (typeof item.id === "string" && item.id) {
+      timelineToolIndexById.set(item.id, index);
+    }
   });
 
   toolDetails.forEach((tool) => {
     const toolId = typeof tool.id === "string" && tool.id ? tool.id : undefined;
+    const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
+    const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
+    if (targetIndexByFingerprint !== undefined) {
+      const target = next[targetIndexByFingerprint];
+      next[targetIndexByFingerprint] = {
+        ...target,
+        toolName: target.toolName || tool.toolName,
+        params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+        response: target.response || tool.response,
+      };
+      return;
+    }
+
     if (toolId) {
       const targetIndex = timelineToolIndexById.get(toolId);
       if (targetIndex !== undefined) {
@@ -186,13 +241,17 @@ const composeTimelineItems = ({
         return;
       }
     }
-    next.push({
+    const insertedIndex = next.push({
       type: "tool",
       id: toolId,
       toolName: tool.toolName || "",
       params: tool.params || "",
       response: tool.response || "",
-    });
+    }) - 1;
+    if (toolId) {
+      timelineToolIndexById.set(toolId, insertedIndex);
+    }
+    timelineToolIndexByFingerprint.set(toolFingerprint, insertedIndex);
   });
 
   return next;
@@ -208,6 +267,91 @@ const truncateDetailText = (value?: string) => {
 const isDetailTruncated = (value?: string) => {
   if (!value) return false;
   return value.trim().length > MAX_TOOL_DETAIL_CHARS;
+};
+
+const useTypewriterText = (value: string, enabled: boolean) => {
+  const normalizedValue = value || "";
+  const [displayed, setDisplayed] = useState(normalizedValue);
+  const displayedRef = useRef(normalizedValue);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    displayedRef.current = displayed;
+  }, [displayed]);
+
+  useEffect(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (!enabled) {
+      setDisplayed(normalizedValue);
+      displayedRef.current = normalizedValue;
+      return;
+    }
+
+    const current = displayedRef.current;
+    if (!normalizedValue.startsWith(current) || normalizedValue.length <= current.length) {
+      setDisplayed(normalizedValue);
+      displayedRef.current = normalizedValue;
+      return;
+    }
+
+    let cursor = current.length;
+    const target = normalizedValue;
+
+    const tick = () => {
+      if (cursor >= target.length) {
+        rafRef.current = null;
+        return;
+      }
+      const remaining = target.length - cursor;
+      const step = Math.max(1, Math.min(8, Math.ceil(remaining / 24)));
+      cursor = Math.min(target.length, cursor + step);
+      const nextText = target.slice(0, cursor);
+      displayedRef.current = nextText;
+      setDisplayed(nextText);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [enabled, normalizedValue]);
+
+  return displayed;
+};
+
+const ToolStreamText = ({
+  value,
+  isStreaming,
+  color,
+  fontSize = "11px",
+}: {
+  value: string;
+  isStreaming?: boolean;
+  color: string;
+  fontSize?: string;
+}) => {
+  const displayValue = useTypewriterText(value, Boolean(isStreaming));
+  return (
+    <Text
+      color={color}
+      fontFamily="mono"
+      fontSize={fontSize}
+      overflowWrap="anywhere"
+      whiteSpace="pre-wrap"
+      wordBreak="break-word"
+    >
+      {displayValue}
+    </Text>
+  );
 };
 
 const ChatItem = ({
@@ -570,16 +714,11 @@ const ChatItem = ({
                                     </Button>
                                   ) : null}
                                 </Flex>
-                                <Text
+                                <ToolStreamText
                                   color="gray.600"
-                                  fontFamily="mono"
-                                  fontSize="11px"
-                                  overflowWrap="anywhere"
-                                  whiteSpace="pre-wrap"
-                                  wordBreak="break-word"
-                                >
-                                  {truncatedParams || "{}"}
-                                </Text>
+                                  isStreaming={isStreaming}
+                                  value={truncatedParams || "{}"}
+                                />
                               </Box>
 
                               <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
@@ -604,16 +743,11 @@ const ChatItem = ({
                                   ) : null}
                                 </Flex>
                                 {truncatedResponse ? (
-                                  <Text
+                                  <ToolStreamText
                                     color="gray.800"
-                                    fontFamily="mono"
-                                    fontSize="11px"
-                                    overflowWrap="anywhere"
-                                    whiteSpace="pre-wrap"
-                                    wordBreak="break-word"
-                                  >
-                                    {truncatedResponse}
-                                  </Text>
+                                    isStreaming={isStreaming}
+                                    value={truncatedResponse}
+                                  />
                                 ) : isRunning ? (
                                   <Text color="gray.500" fontSize="12px">
                                     执行中...
@@ -665,9 +799,12 @@ const ChatItem = ({
               </Button>
             </Flex>
             <Box bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="8px" maxH="60vh" overflow="auto" p={3}>
-              <Text color="gray.800" fontFamily="mono" fontSize="12px" whiteSpace="pre-wrap">
-                {detailModalData?.content || ""}
-              </Text>
+              <ToolStreamText
+                color="gray.800"
+                fontSize="12px"
+                isStreaming={isStreaming}
+                value={detailModalData?.content || ""}
+              />
             </Box>
           </ModalBody>
         </ModalContent>

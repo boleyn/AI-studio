@@ -53,6 +53,30 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   const previousFilesRef = useRef<string>("");
   const isInitialMountRef = useRef(true);
 
+  const pruneDuplicateReactScaffoldFiles = useCallback(() => {
+    const files = sandpack.files as Record<string, { code: string }> | undefined;
+    if (!files) return;
+    const hasSrcApp = Boolean(files["/src/App.jsx"] || files["/src/App.js"]);
+    const hasSrcStyles = Boolean(files["/src/styles.css"] || files["/src/index.css"]);
+    const hasSrcEntry = Boolean(files["/src/main.jsx"] || files["/src/main.js"]);
+    if (!hasSrcApp && !hasSrcStyles && !hasSrcEntry) return;
+    const indexHtml = files["/index.html"]?.code || "";
+    const usesSrcMainEntry = /src\s*=\s*["']\/src\/main\.(jsx|js)["']/i.test(indexHtml);
+
+    const duplicates = [
+      "/App.jsx",
+      "/App.js",
+      "/styles.css",
+      "/index.css",
+      ...(usesSrcMainEntry ? ["/index.jsx", "/index.js"] : []),
+    ].filter((path) => Boolean(files[path]));
+    if (duplicates.length === 0) return;
+
+    for (const path of duplicates) {
+      sandpack.deleteFile(path, true);
+    }
+  }, [sandpack]);
+
   const saveProject = useCallback(async () => {
     if (!token || !sandpack.files) {
       return;
@@ -96,6 +120,10 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   }), [saveProject]);
 
   const debouncedSave = useDebounce(saveProject, autoSaveDelay);
+
+  useEffect(() => {
+    pruneDuplicateReactScaffoldFiles();
+  }, [pruneDuplicateReactScaffoldFiles, sandpack.files]);
 
   useEffect(() => {
     // 跳过初始挂载，避免在加载项目时触发保存

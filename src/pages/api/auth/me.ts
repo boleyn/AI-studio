@@ -26,6 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       displayName: auth.user.displayName || auth.user.username,
       contact: auth.user.contact,
       avatar: sanitizeAvatar(auth.user.avatar),
+      primaryModel: auth.user.primaryModel,
       provider: auth.user.provider ?? "password",
     },
   });

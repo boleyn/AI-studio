@@ -8,7 +8,7 @@ import {
   deleteProject as deleteProjectStorage,
   type ProjectData,
 } from "@server/projects/projectStorage";
-import { deleteAllConversations } from "@server/conversations/conversationStorage";
+import { purgeAllConversations } from "@server/conversations/conversationStorage";
 import { requireAuth } from "@server/auth/session";
 
 type ProjectListItem = {
@@ -34,9 +34,24 @@ const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: strin
 };
 
 // 默认项目模板（Node + React）
-const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
+const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "vite-react";
 const DEFAULT_FILES: Record<string, { code: string }> = {
-  "/index.js": {
+  "/index.html": {
+    code: `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+`,
+  },
+  "/src/main.jsx": {
     code: `import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
@@ -45,7 +60,7 @@ const root = createRoot(document.getElementById("root"));
 root.render(<App />);
 `,
   },
-  "/App.js": {
+  "/src/App.jsx": {
     code: `import { useState } from "react";
 
 export default function App() {
@@ -66,7 +81,7 @@ export default function App() {
   );
 }`,
   },
-  "/styles.css": {
+  "/src/styles.css": {
     code: `.app {
   font-family: "Sora", sans-serif;
   color: #f7f5ff;
@@ -213,7 +228,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         res.status(403).json({ error: "无权删除该项目" });
         return;
       }
-      await deleteAllConversations(token);
+      await purgeAllConversations(token);
       await deleteProjectStorage(token);
       res.status(200).json({ success: true });
     } catch (error) {

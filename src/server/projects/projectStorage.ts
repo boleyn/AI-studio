@@ -77,10 +77,26 @@ type ProjectDoc = {
 const COLLECTION = "projects";
 const PROJECT_STORAGE_PREFIX = "projects";
 const PROJECT_STORAGE_FILES_SEGMENT = "files";
+const CHAT_UPLOAD_ROOT = "chat_uploads";
 const LEGACY_PROJECT_FILES_ROOT = path.join(process.cwd(), "data", "projects");
 
 const DEFAULT_PROJECT_FILES: Record<string, ProjectFile> = {
-  "/index.js": {
+  "/index.html": {
+    code: `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+`,
+  },
+  "/src/main.jsx": {
     code: `import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
@@ -89,7 +105,7 @@ const root = createRoot(document.getElementById("root"));
 root.render(<App />);
 `,
   },
-  "/App.js": {
+  "/src/App.jsx": {
     code: `import { useState } from "react";
 
 export default function App() {
@@ -110,7 +126,7 @@ export default function App() {
   );
 }`,
   },
-  "/styles.css": {
+  "/src/styles.css": {
     code: `.app {
   font-family: "Sora", sans-serif;
   color: #f7f5ff;
@@ -177,6 +193,35 @@ h2 {
   },
 };
 
+const normalizeReactScaffoldFiles = (
+  files: Record<string, ProjectFile>
+): { files: Record<string, ProjectFile>; changed: boolean } => {
+  const hasSrcApp = Boolean(files["/src/App.jsx"] || files["/src/App.js"]);
+  const hasSrcStyles = Boolean(files["/src/styles.css"] || files["/src/index.css"]);
+  const hasSrcEntry = Boolean(files["/src/main.jsx"] || files["/src/main.js"]);
+  const hasRootApp = Boolean(files["/App.jsx"] || files["/App.js"]);
+  const hasRootStyles = Boolean(files["/styles.css"] || files["/index.css"]);
+  const hasRootEntry = Boolean(files["/index.jsx"] || files["/index.js"]);
+  const indexHtml = files["/index.html"]?.code || "";
+  const usesSrcMainEntry = /src\s*=\s*["']\/src\/main\.(jsx|js)["']/i.test(indexHtml);
+
+  // If both root scaffold and src scaffold exist, keep src scaffold and remove root duplicates.
+  const hasMixedDuplicateScaffold =
+    (hasSrcApp && hasRootApp) || (hasSrcStyles && hasRootStyles) || (hasSrcEntry && hasRootEntry);
+  if (!hasMixedDuplicateScaffold) return { files, changed: false };
+
+  const next = { ...files };
+  delete next["/App.jsx"];
+  delete next["/App.js"];
+  delete next["/styles.css"];
+  delete next["/index.css"];
+  if (usesSrcMainEntry) {
+    delete next["/index.jsx"];
+    delete next["/index.js"];
+  }
+  return { files: next, changed: true };
+};
+
 async function getCollection() {
   const db = await getMongoDb();
   return db.collection<ProjectDoc>(COLLECTION);
@@ -191,8 +236,16 @@ function getLegacyProjectDir(token: string): string {
   return path.join(LEGACY_PROJECT_FILES_ROOT, token);
 }
 
+function toSafeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown";
+}
+
 function getProjectStoragePrefix(token: string): string {
   return path.posix.join(PROJECT_STORAGE_PREFIX, token, PROJECT_STORAGE_FILES_SEGMENT);
+}
+
+function getTokenChatUploadPrefix(token: string): string {
+  return `${CHAT_UPLOAD_ROOT}/${toSafeSegment(token)}`;
 }
 
 function getFilesMetaPath(token: string): string {
@@ -335,6 +388,14 @@ async function deleteProjectStorageFilesByKeys(keys: string[]): Promise<void> {
     keys,
     bucketType: "private",
   });
+}
+
+async function deleteChatUploadStorageByToken(token: string): Promise<void> {
+  const keys = await listStorageObjectKeysByPrefix({
+    prefix: getTokenChatUploadPrefix(token),
+    bucketType: "private",
+  });
+  await deleteProjectStorageFilesByKeys(keys);
 }
 
 async function replaceProjectFilesInStorage(
@@ -480,6 +541,22 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
     }
   } else {
     await cleanupLegacyDir(doc.token);
+  }
+
+  const normalized = normalizeReactScaffoldFiles(files);
+  if (normalized.changed) {
+    files = normalized.files;
+    await replaceProjectFilesInStorage(doc.token, files);
+    await coll.updateOne(
+      { token: doc.token },
+      {
+        $set: {
+          filesPath: getFilesMetaPath(doc.token),
+          fileCount: Object.keys(files).length,
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    );
   }
 
   return {
@@ -740,6 +817,7 @@ export async function deleteProject(token: string): Promise<boolean> {
   const result = await coll.deleteOne({ token });
   const keys = await listProjectStorageKeys(token);
   await deleteProjectStorageFilesByKeys(keys);
+  await deleteChatUploadStorageByToken(token);
   await cleanupLegacyDir(token);
   return result.deletedCount > 0;
 }

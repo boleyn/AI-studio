@@ -6,6 +6,7 @@ import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "../hooks/useConversations";
 import {
   buildDownloadUrl,
@@ -64,6 +65,7 @@ import { useChatModels } from "../hooks/useChatModels";
 import { useChatSkills } from "../hooks/useChatSkills";
 import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { updatePrimaryModel } from "../services/models";
 
 
 const ChatPanel = ({
@@ -103,6 +105,7 @@ const ChatPanel = ({
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
+  const { user } = useAuth();
   const {
     conversations,
     activeConversation,
@@ -122,7 +125,9 @@ const ChatPanel = ({
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
-  const { model, setModel, channel, modelOptions, modelLoading, modelCatalog } = useChatModels();
+  const { model, setModel, channel, modelOptions, modelLoading, modelCatalog } = useChatModels(
+    user?.primaryModel
+  );
   
   const {
     isSkillsOpen,
@@ -145,6 +150,17 @@ const ChatPanel = ({
   const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
+
+  const handleChangeModel = useCallback(
+    (nextModel: string) => {
+      if (nextModel === model) return;
+      setModel(nextModel);
+      updatePrimaryModel(nextModel).catch(() => {
+        // Ignore persistence failures to keep the chat interaction smooth.
+      });
+    },
+    [model, setModel]
+  );
 
   const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
   const {
@@ -440,6 +456,7 @@ const ChatPanel = ({
               };
               return { ...current, timeline: next };
             }
+
             return {
               ...current,
               timeline: [...list, { type, text }],
@@ -562,6 +579,174 @@ const ChatPanel = ({
             if (files) onFilesUpdated(files);
           }
         } else {
+          const streamEventQueue: unknown[] = [];
+          let isDrainingStreamQueue = false;
+          const processSseEventInOrder = (item: unknown) => {
+            if (abortCtrl.signal.aborted) return;
+            if (!item || typeof item !== "object") return;
+            const event = (item as { event?: unknown }).event;
+            const flushPendingAssistantStreams = () => {
+              if (streamingTextRef.current) {
+                flushAssistantText(assistantMessageId, streamingTextRef.current);
+              }
+              if (streamingReasoningRef.current) {
+                flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
+              }
+            };
+
+            if (event === SseResponseEventEnum.answer) {
+              const answerPayload = item as { text?: string; reasoningText?: string };
+              if (answerPayload.reasoningText) {
+                shouldAutoScrollRef.current = true;
+                const reasoningText = answerPayload.reasoningText;
+                streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
+                scheduleAssistantReasoningFlush(assistantMessageId);
+                appendTimelineText("reasoning", reasoningText);
+              }
+              if (answerPayload.text) {
+                shouldAutoScrollRef.current = true;
+                streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
+                scheduleAssistantTextFlush(assistantMessageId);
+                appendTimelineText("answer", answerPayload.text);
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.toolCall) {
+              // 保证视觉顺序与事件顺序一致：在工具卡片出现前先提交已到达的文本片段
+              flushPendingAssistantStreams();
+              const streamPayload = item as ToolStreamPayload;
+              if (streamPayload.id) {
+                upsertToolMessage(streamPayload.id, {
+                  toolName: streamPayload.toolName,
+                  params: "",
+                  response: "",
+                });
+                upsertTimelineTool({
+                  id: streamPayload.id,
+                  toolName: streamPayload.toolName,
+                });
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.toolParams) {
+              flushPendingAssistantStreams();
+              const streamPayload = item as ToolStreamPayload;
+              if (streamPayload.id) {
+                upsertToolMessage(streamPayload.id, {
+                  toolName: streamPayload.toolName,
+                  params: streamPayload.params || "",
+                });
+                upsertTimelineTool({
+                  id: streamPayload.id,
+                  toolName: streamPayload.toolName,
+                  params: streamPayload.params || "",
+                });
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.toolResponse) {
+              flushPendingAssistantStreams();
+              const streamPayload = item as ToolStreamPayload;
+              const responseForDisplay = streamPayload.response || "";
+              const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
+              if (streamPayload.id) {
+                upsertToolMessage(streamPayload.id, {
+                  toolName: streamPayload.toolName,
+                  response: responseForDisplay,
+                });
+                upsertTimelineTool({
+                  id: streamPayload.id,
+                  toolName: streamPayload.toolName,
+                  response: responseForDisplay,
+                });
+              }
+
+              if (responseForFileUpdates && onFilesUpdated) {
+                try {
+                  const parsed = JSON.parse(responseForFileUpdates);
+                  const filesCandidate =
+                    (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
+                    (parsed as { files?: Record<string, { code: string }> }).files ||
+                    (parsed as {
+                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
+                    }).data?.uiFiles ||
+                    (parsed as {
+                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
+                    }).data?.files;
+                  const files = toUpdatedFilesMap(filesCandidate);
+                  if (files && typeof files === "object") {
+                    onFilesUpdated(files);
+                  }
+                } catch {
+                  return;
+                }
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.flowNodeResponse) {
+              const streamPayload = item as FlowNodeResponsePayload;
+              updateAssistantMetadata((current) => {
+                const currentResponseData = Array.isArray(current.responseData)
+                  ? current.responseData
+                  : [];
+                return {
+                  ...current,
+                  responseData: [...currentResponseData, streamPayload],
+                };
+              });
+              return;
+            }
+            if (event === SseResponseEventEnum.workflowDuration) {
+              const streamPayload = item as WorkflowDurationPayload;
+              if (typeof streamPayload.durationSeconds !== "number") return;
+              updateAssistantMetadata((current) => ({
+                ...current,
+                durationSeconds: streamPayload.durationSeconds,
+              }));
+              return;
+            }
+            if (event === SseResponseEventEnum.contextWindow) {
+              const streamPayload = item as Partial<ContextWindowUsage>;
+              if (
+                typeof streamPayload.usedTokens !== "number" ||
+                typeof streamPayload.maxContext !== "number" ||
+                typeof streamPayload.remainingTokens !== "number" ||
+                typeof streamPayload.usedPercent !== "number"
+              ) {
+                return;
+              }
+              setContextUsageSnapshot({
+                model: typeof streamPayload.model === "string" ? streamPayload.model : model,
+                usedTokens: streamPayload.usedTokens,
+                maxContext: streamPayload.maxContext,
+                remainingTokens: streamPayload.remainingTokens,
+                usedPercent: streamPayload.usedPercent,
+              }, conversationId || null);
+              updateAssistantMetadata((current) => ({
+                ...current,
+                contextWindow: {
+                  model: typeof streamPayload.model === "string" ? streamPayload.model : model,
+                  usedTokens: streamPayload.usedTokens,
+                  maxContext: streamPayload.maxContext,
+                  remainingTokens: streamPayload.remainingTokens,
+                  usedPercent: streamPayload.usedPercent,
+                },
+              }));
+            }
+          };
+          const enqueueSseEvent = (item: unknown) => {
+            streamEventQueue.push(item);
+            if (isDrainingStreamQueue) return;
+            isDrainingStreamQueue = true;
+            try {
+              while (streamEventQueue.length > 0) {
+                const next = streamEventQueue.shift();
+                processSseEventInOrder(next);
+              }
+            } finally {
+              isDrainingStreamQueue = false;
+            }
+          };
           await streamFetch({
             url: completionsPath,
             data: {
@@ -579,138 +764,7 @@ const ChatPanel = ({
             headers: withAuthHeaders(),
             abortCtrl,
             onMessage: (item) => {
-              if (abortCtrl.signal.aborted) return;
-              if (item.event === SseResponseEventEnum.answer) {
-                const answerPayload = item as { text?: string; reasoningText?: string };
-                if (answerPayload.reasoningText) {
-                  shouldAutoScrollRef.current = true;
-                  const reasoningText = answerPayload.reasoningText;
-                  streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
-                  scheduleAssistantReasoningFlush(assistantMessageId);
-                  appendTimelineText("reasoning", reasoningText);
-                }
-                if (answerPayload.text) {
-                  shouldAutoScrollRef.current = true;
-                  streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
-                  scheduleAssistantTextFlush(assistantMessageId);
-                  appendTimelineText("answer", answerPayload.text);
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolCall) {
-                const streamPayload = item as ToolStreamPayload;
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    params: "",
-                    response: "",
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                  });
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolParams) {
-                const streamPayload = item as ToolStreamPayload;
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                  });
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolResponse) {
-                const streamPayload = item as ToolStreamPayload;
-                const responseForDisplay = streamPayload.response || "";
-                const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    response: responseForDisplay,
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                    response: responseForDisplay,
-                  });
-                }
-
-                if (responseForFileUpdates && onFilesUpdated) {
-                  try {
-                    const parsed = JSON.parse(responseForFileUpdates);
-                    const filesCandidate =
-                      (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
-                      (parsed as { files?: Record<string, { code: string }> }).files ||
-                      (parsed as { data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> } }).data?.uiFiles ||
-                      (parsed as { data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> } }).data?.files;
-                    const files = toUpdatedFilesMap(filesCandidate);
-                    if (files && typeof files === "object") {
-                      onFilesUpdated(files);
-                    }
-                  } catch {
-                    return;
-                  }
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.flowNodeResponse) {
-                const streamPayload = item as FlowNodeResponsePayload;
-                updateAssistantMetadata((current) => {
-                  const currentResponseData = Array.isArray(current.responseData)
-                    ? current.responseData
-                    : [];
-                  return {
-                    ...current,
-                    responseData: [...currentResponseData, streamPayload],
-                  };
-                });
-                return;
-              }
-              if (item.event === SseResponseEventEnum.workflowDuration) {
-                const streamPayload = item as WorkflowDurationPayload;
-                if (typeof streamPayload.durationSeconds !== "number") return;
-                updateAssistantMetadata((current) => ({
-                  ...current,
-                  durationSeconds: streamPayload.durationSeconds,
-                }));
-                return;
-              }
-              if (item.event === SseResponseEventEnum.contextWindow) {
-                const streamPayload = item as Partial<ContextWindowUsage>;
-                if (
-                  typeof streamPayload.usedTokens !== "number" ||
-                  typeof streamPayload.maxContext !== "number" ||
-                  typeof streamPayload.remainingTokens !== "number" ||
-                  typeof streamPayload.usedPercent !== "number"
-                ) {
-                  return;
-                }
-                setContextUsageSnapshot({
-                  model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                  usedTokens: streamPayload.usedTokens,
-                  maxContext: streamPayload.maxContext,
-                  remainingTokens: streamPayload.remainingTokens,
-                  usedPercent: streamPayload.usedPercent,
-                }, conversationId || null);
-                updateAssistantMetadata((current) => ({
-                  ...current,
-                  contextWindow: {
-                    model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                    usedTokens: streamPayload.usedTokens,
-                    maxContext: streamPayload.maxContext,
-                    remainingTokens: streamPayload.remainingTokens,
-                    usedPercent: streamPayload.usedPercent,
-                  },
-                }));
-              }
+              enqueueSseEvent(item);
             },
           });
         }
@@ -974,7 +1028,7 @@ const ChatPanel = ({
         model={model}
         modelLoading={modelLoading}
         modelOptions={modelOptions}
-        onChangeModel={setModel}
+        onChangeModel={handleChangeModel}
         onDeleteAllConversations={() => deleteAllConversations()}
         onDeleteConversation={(id) => deleteConversation(id)}
         onNewConversation={() => createNewConversation()}
@@ -1069,7 +1123,7 @@ const ChatPanel = ({
           selectedSkills={selectedSkills}
           skillOptions={skillOptions}
           fileOptions={fileOptions}
-          onChangeModel={setModel}
+          onChangeModel={handleChangeModel}
           onChangeSelectedSkills={setSelectedSkills}
           onUploadFiles={prepareUploadFiles}
           onSend={handleSend}

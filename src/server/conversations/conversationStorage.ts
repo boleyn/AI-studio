@@ -64,7 +64,7 @@ const META_COLLECTION = "conversations";
 const ITEM_COLLECTION = "conversation_items";
 const MAX_LIST_CONVERSATIONS = 200;
 const MAX_RECORD_PAGE_SIZE = 2000;
-const VALID_CHAT_ID_FILTER = { $type: "string", $ne: "" };
+const VALID_CHAT_ID_FILTER = { $type: "string", $ne: "" } as const;
 type ContextWindowUsage = {
   model: string;
   usedTokens: number;
@@ -625,6 +625,22 @@ export async function deleteAllConversations(token: string): Promise<number> {
   );
 
   return result.modifiedCount ?? 0;
+}
+
+export async function purgeAllConversations(token: string): Promise<{
+  deletedMetaCount: number;
+  deletedItemCount: number;
+}> {
+  const [metaCol, itemCol] = await Promise.all([getMetaCollection(), getItemCollection()]);
+  const [metaResult, itemResult] = await Promise.all([
+    metaCol.deleteMany({ token, chatId: VALID_CHAT_ID_FILTER }),
+    itemCol.deleteMany({ token }),
+  ]);
+
+  return {
+    deletedMetaCount: metaResult.deletedCount ?? 0,
+    deletedItemCount: itemResult.deletedCount ?? 0,
+  };
 }
 
 export async function updateConversationMessageFeedback({

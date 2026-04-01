@@ -8,7 +8,15 @@ import AuthInputField from "./AuthInputField";
 
 export type AuthSuccessPayload = {
   token: string;
-  user: { id: string; username: string; displayName?: string; contact?: string; avatar?: string; provider?: string };
+  user: {
+    id: string;
+    username: string;
+    displayName?: string;
+    contact?: string;
+    avatar?: string;
+    primaryModel?: string;
+    provider?: string;
+  };
 };
 
 interface Props {

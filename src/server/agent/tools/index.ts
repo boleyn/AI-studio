@@ -254,7 +254,7 @@ const safeParse = <T>(
         ok: false,
         error:
           `工具入参类型错误：期望 JSON 对象(object)，实际收到 ${describeInputType(input)}。` +
-          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/App.js","content":"..."}${previewSuffix}`,
+          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/src/App.jsx","content":"..."}${previewSuffix}`,
       };
     }
     return { ok: false, error: parsed.error.issues.map((err) => err.message).join("; ") };

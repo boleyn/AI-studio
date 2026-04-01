@@ -34,3 +34,18 @@ export const getChatModels = async (forceRefresh = false): Promise<ChatModelCata
 
   return response.json();
 };
+
+export const updatePrimaryModel = async (primaryModel: string): Promise<void> => {
+  const response = await fetch("/api/auth/primary-model", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...withAuthHeaders(),
+    },
+    body: JSON.stringify({ primaryModel }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`主模型保存失败: ${response.status}`);
+  }
+};

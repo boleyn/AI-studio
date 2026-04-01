@@ -8,6 +8,7 @@ export type UserDoc = {
   displayName?: string;
   contact?: string;
   avatar?: string;
+  primaryModel?: string;
   provider?: "password" | "feishu";
   feishuOpenId?: string;
   feishuUnionId?: string;
@@ -74,6 +75,7 @@ export const updateUserProfile = async (
     displayName?: string;
     contact?: string;
     avatar?: string;
+    primaryModel?: string;
     feishuOpenId?: string;
     feishuUnionId?: string;
   }
@@ -89,6 +91,9 @@ export const updateUserProfile = async (
   if (typeof patch.avatar === "string") {
     setDoc.avatar = patch.avatar;
   }
+  if (typeof patch.primaryModel === "string") {
+    setDoc.primaryModel = patch.primaryModel;
+  }
   if (typeof patch.feishuOpenId === "string") {
     setDoc.feishuOpenId = patch.feishuOpenId;
   }
@@ -97,4 +102,13 @@ export const updateUserProfile = async (
   }
   const result = await users.updateOne({ _id: new ObjectId(userId) }, { $set: setDoc });
   return result.modifiedCount > 0;
+};
+
+export const updateUserPrimaryModel = async (userId: string, primaryModel: string) => {
+  const users = await getUsersCollection();
+  const result = await users.updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { primaryModel, updatedAt: new Date() } }
+  );
+  return result.matchedCount > 0;
 };

@@ -46,6 +46,7 @@ const normalizeWorkspaceLikePath = (value: string) => {
 
 const INLINE_CODE_FLAGS = new Set(["-c", "-e", "--eval", "--command"]);
 const INLINE_CODE_COMMANDS = new Set(["bash", "sh", "zsh", "python", "python3", "node", "nodejs"]);
+const FILE_OP_COMMANDS = new Set(["rm", "cp", "mv"]);
 
 const normalizeInlineCodePathMentions = (value: string) =>
   value
@@ -53,8 +54,18 @@ const normalizeInlineCodePathMentions = (value: string) =>
     .replace(/(^|[^\w./-])\/files(?=\/|$)/g, "$1.files");
 
 const normalizeStructuredArgs = (cmdRaw: string, argsRaw: string[]) => {
-  const normalizedArgs = argsRaw.map((arg) => normalizeWorkspaceLikePath(arg));
   const cmd = cmdRaw.trim().toLowerCase();
+  const normalizedArgs = argsRaw.map((arg) => normalizeWorkspaceLikePath(arg));
+  if (FILE_OP_COMMANDS.has(cmd)) {
+    for (let i = 0; i < normalizedArgs.length; i += 1) {
+      const token = normalizedArgs[i];
+      if (!token || token === "/" || token.startsWith("-")) continue;
+      // list_files returns project paths with leading "/", convert to workspace-relative for file ops.
+      if (token.startsWith("/")) {
+        normalizedArgs[i] = token.slice(1);
+      }
+    }
+  }
   if (!INLINE_CODE_COMMANDS.has(cmd)) return normalizedArgs;
   for (let i = 0; i < normalizedArgs.length - 1; i += 1) {
     if (!INLINE_CODE_FLAGS.has(normalizedArgs[i])) continue;

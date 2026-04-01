@@ -437,12 +437,60 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await appendConversationMessages(conversationToken, conversationId, newConversationMessages);
     }
     if (conversationId) {
-      const toolDetails = result.flowResponses.map((node, index) => ({
-        id: `${node.nodeId}-${index}`,
-        toolName: node.moduleName,
-        params: toStringValue(node.toolInput),
-        response: toStringValue(node.toolRes),
-      }));
+      const normalizeToolPayloadForMatch = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+        try {
+          return JSON.stringify(JSON.parse(trimmed));
+        } catch {
+          return trimmed.replace(/\s+/g, " ");
+        }
+      };
+      const buildToolFingerprint = (toolName: string, params: string, response: string) =>
+        `${toolName.trim().toLowerCase()}::${normalizeToolPayloadForMatch(params)}::${normalizeToolPayloadForMatch(response)}`;
+      const timelineToolCandidates = timeline
+        .map((item, index) => ({ item, index }))
+        .filter(
+          (entry): entry is { item: TimelineItem & { type: "tool" }; index: number } =>
+            entry.item.type === "tool"
+        );
+      const usedTimelineToolIndexes = new Set<number>();
+      const pickTimelineToolId = (toolName: string, params: string, response: string) => {
+        const targetFingerprint = buildToolFingerprint(toolName, params, response);
+        for (const candidate of timelineToolCandidates) {
+          if (usedTimelineToolIndexes.has(candidate.index)) continue;
+          if (!candidate.item.id) continue;
+          const candidateFingerprint = buildToolFingerprint(
+            candidate.item.toolName || "",
+            candidate.item.params || "",
+            candidate.item.response || ""
+          );
+          if (candidateFingerprint !== targetFingerprint) continue;
+          usedTimelineToolIndexes.add(candidate.index);
+          return candidate.item.id;
+        }
+        for (const candidate of timelineToolCandidates) {
+          if (usedTimelineToolIndexes.has(candidate.index)) continue;
+          if (!candidate.item.id) continue;
+          const sameName =
+            (candidate.item.toolName || "").trim().toLowerCase() === toolName.trim().toLowerCase();
+          if (!sameName) continue;
+          usedTimelineToolIndexes.add(candidate.index);
+          return candidate.item.id;
+        }
+        return undefined;
+      };
+      const toolDetails = result.flowResponses.map((node, index) => {
+        const toolName = node.moduleName || "";
+        const params = toStringValue(node.toolInput);
+        const response = toStringValue(node.toolRes);
+        return {
+          id: pickTimelineToolId(toolName, params, response) || `${node.nodeId}-${index}`,
+          toolName,
+          params,
+          response,
+        };
+      });
       await appendConversationMessages(conversationToken, conversationId, [
         {
           role: "assistant",

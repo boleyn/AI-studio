@@ -284,6 +284,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       displayName: user.displayName || user.username,
       contact: user.contact,
       avatar: user.avatar || DEFAULT_AVATAR,
+      primaryModel: user.primaryModel,
       provider: user.provider ?? "feishu",
     },
   });

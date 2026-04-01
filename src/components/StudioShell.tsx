@@ -49,10 +49,19 @@ type StudioShellProps = {
 type ActiveView = "preview" | "code" | "logs";
 type ShareMode = "editable" | "preview";
 
-const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
+const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "vite-react";
 
 const fallbackFiles: SandpackFiles = {
-  "/App.js": {
+  "/src/main.jsx": {
+    code: `import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./styles.css";
+
+const root = createRoot(document.getElementById("root"));
+root.render(<App />);
+`,
+  },
+  "/src/App.jsx": {
     code: `import "./styles.css";
 
 export default function App() {
@@ -64,7 +73,7 @@ export default function App() {
   );
 }`,
   },
-  "/styles.css": {
+  "/src/styles.css": {
     code: `.app {
   font-family: "Sora", sans-serif;
   color: #f7f5ff;

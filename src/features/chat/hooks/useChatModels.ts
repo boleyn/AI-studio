@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getChatModels } from "../services/models";
 import type { ChatModelCatalog } from "../services/models";
 
-export const useChatModels = () => {
+export const useChatModels = (primaryModel?: string) => {
   const [modelLoading, setModelLoading] = useState(false);
   const [channel, setChannel] = useState("aiproxy");
   const [model, setModel] = useState("agent");
@@ -10,6 +10,7 @@ export const useChatModels = () => {
     Array<{ value: string; label: string; channel: string; icon?: string }>
   >([{ value: "agent", label: "agent", channel: "aiproxy" }]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
+  const appliedPrimaryModelRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -69,6 +70,17 @@ export const useChatModels = () => {
       setChannel(selected.channel);
     }
   }, [channel, model, modelCatalog]);
+
+  useEffect(() => {
+    if (!modelCatalog || !primaryModel) return;
+    if (appliedPrimaryModelRef.current === primaryModel) return;
+    const selected = modelCatalog.models.find((item) => item.id === primaryModel);
+    if (!selected) return;
+
+    appliedPrimaryModelRef.current = primaryModel;
+    setModel(primaryModel);
+    setChannel(selected.channel);
+  }, [modelCatalog, primaryModel]);
 
   return {
     model,

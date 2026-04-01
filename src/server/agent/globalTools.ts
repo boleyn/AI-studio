@@ -166,7 +166,7 @@ export function parseGlobalCommand(text: string): GlobalCommandParseResult | nul
     return {
       ok: false,
       message: "请提供 global 指令参数。",
-      hint: "示例: /global list 或 /global {\"action\":\"read\",\"path\":\"/App.js\"}",
+      hint: "示例: /global list 或 /global {\"action\":\"read\",\"path\":\"/src/App.jsx\"}",
     };
   }
 
@@ -194,7 +194,7 @@ export function parseGlobalCommand(text: string): GlobalCommandParseResult | nul
 
   if (action === "read") {
     if (!args[0]) {
-      return { ok: false, message: "请提供读取路径，例如 /global read /App.js" };
+      return { ok: false, message: "请提供读取路径，例如 /global read /src/App.jsx" };
     }
     return { ok: true, input: { action: "read", path: args[0] } };
   }
@@ -202,6 +202,6 @@ export function parseGlobalCommand(text: string): GlobalCommandParseResult | nul
   return {
     ok: false,
     message: "该操作建议使用 JSON 参数。",
-    hint: "示例: /global {\"action\":\"replace\",\"path\":\"/App.js\",\"query\":\"foo\",\"replace\":\"bar\"}",
+    hint: "示例: /global {\"action\":\"replace\",\"path\":\"/src/App.jsx\",\"query\":\"foo\",\"replace\":\"bar\"}",
   };
 }

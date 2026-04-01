@@ -83,6 +83,9 @@ const ALLOWED_COMMANDS = new Set([
   "pandoc",
   "unzip",
   "zip",
+  "rm",
+  "cp",
+  "mv",
 ]);
 
 const SCRIPT_LAUNCHERS = new Set([
@@ -113,6 +116,35 @@ const extractScriptArg = (cmd: string, args: string[]) => {
   const scriptArg = args.find((arg) => arg && !arg.startsWith("-"));
   if (!scriptArg) return null;
   return isLikelyScriptPath(scriptArg) || scriptArg.includes("/") ? scriptArg : null;
+};
+
+const FILE_OP_COMMANDS = new Set(["rm", "cp", "mv"]);
+
+const collectPathLikeArgs = (cmd: string, args: string[]) => {
+  // Keep only non-flag arguments as path candidates.
+  // `--` means remaining args are positional.
+  const positional: string[] = [];
+  let afterDoubleDash = false;
+  for (const arg of args) {
+    if (!afterDoubleDash && arg === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
+    if (!afterDoubleDash && arg.startsWith("-")) continue;
+    positional.push(arg);
+  }
+
+  if (cmd === "rm") return positional;
+  if (cmd === "cp" || cmd === "mv") return positional;
+  return [];
+};
+
+const isUnsafePathArg = (arg: string) => {
+  if (!arg) return true;
+  if (arg.startsWith("/")) return true;
+  const normalized = arg.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.includes("..");
 };
 
 const validateScriptFile = async (absolutePath: string): Promise<string | null> => {
@@ -165,6 +197,21 @@ export const validateStructuredCommand = async (input: {
     if (typeof arg !== "string") return "args 仅允许字符串。";
     if (arg.length > MAX_ARG_LENGTH) return `参数长度过长（>${MAX_ARG_LENGTH}）。`;
     if (arg.includes("\0")) return "参数包含非法字符。";
+  }
+
+  if (FILE_OP_COMMANDS.has(cmd)) {
+    const pathArgs = collectPathLikeArgs(cmd, input.args);
+    if (cmd === "rm" && pathArgs.length < 1) {
+      return "rm 至少需要一个项目内路径参数。";
+    }
+    if ((cmd === "cp" || cmd === "mv") && pathArgs.length < 2) {
+      return `${cmd} 至少需要源路径和目标路径（项目内）。`;
+    }
+    for (const arg of pathArgs) {
+      if (isUnsafePathArg(arg)) {
+        return `${cmd} 仅允许项目内相对路径，禁止绝对路径或 .. 越界路径: ${arg}`;
+      }
+    }
   }
 
   const scriptArg = extractScriptArg(cmd, input.args);

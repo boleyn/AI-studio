@@ -39,14 +39,22 @@ Follow this skill for coding tasks in this repository.
 - Read target files before claiming code changes.
 - Run MCP reference steps before implementation changes when relevant MCP exists.
 - For UI/prototype/code tasks, complete GitLab KB lookup before prototyping and implementation when GitLab KB tools are available.
-- Default implementation style for frontend output: `React + TypeScript`, functional components, and hook-based state management.
+- Default implementation style for frontend output: follow the current repo/runtime stack detected from files and `package.json` (do not force TypeScript when the project is JavaScript).
 - Keep edits scoped to user intent.
 - Never hard-code unavailable server/tool names; always bind workflow to discovered capabilities in the current turn.
-- Strictly follow existing project stack and directory conventions.
-- Do not create standalone files/boilerplate that conflicts with current project structure and conventions.
-- Exception policy:
-  - If user explicitly requests an unconstrained PoC/prototype, you may relax style/structure alignment constraints after completing minimum project discovery (`list_files` + package manifest read).
-  - For urgent hotfix/debug tasks, you may skip non-critical style alignment steps to reduce latency, but you must explicitly report skipped steps and rationale in the final summary.
+
+## Project Conventions (Must Follow)
+
+- Always infer conventions from the current target project's files and dependencies first; never force a framework layout.
+- Framework detection priority:
+  - If `package.json` has `next`, follow Next.js Pages Router conventions (`src/pages/**`, `src/pages/api/**`, etc.).
+  - If `package.json` indicates Vite React/React SPA (and no `next`), follow this workspace default scaffold.
+- Workspace default React scaffold (authoritative):
+  - root: `/index.html`, `/package.json`, `/vite.config.js`
+  - source: `/src/main.jsx`, `/src/App.jsx`, `/src/styles.css`
+- When `/src/*` scaffold exists, do not create duplicate root entry files such as `/App.jsx`, `/index.jsx`, `/styles.css`.
+- Do not apply Next.js folder rules to a React SPA scaffold.
+- Do not create a second conflicting source root when an existing one is already established.
 
 ## Tool Strategy
 

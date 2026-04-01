@@ -3,21 +3,13 @@ import type { RuntimeSkill } from "./types";
 export const buildSkillsCatalogPrompt = (skills: RuntimeSkill[]): string => {
   if (skills.length === 0) return "";
 
-  const body = skills.flatMap((skill) => [
-    "  <skill>",
-    `    <name>${skill.name}</name>`,
-    `    <description>${skill.description}</description>`,
-    `    <location>${skill.relativeLocation}</location>`,
-    "  </skill>",
-  ]);
+  const body = skills.map((skill) => `- ${skill.name}: ${skill.description}`);
 
   return [
-    "Skills catalog for this project:",
-    "When the task matches a skill below, first call skill_load with the exact skill name.",
-    "Load only the skills needed for the current task.",
-    "<available_skills>",
+    "Project skills catalog (compact):",
+    "If task matches one of these, call skill_load with exact skill name before continuing.",
     ...body,
-    "</available_skills>",
+    "Only load skills needed for current task.",
   ].join("\n");
 };
 

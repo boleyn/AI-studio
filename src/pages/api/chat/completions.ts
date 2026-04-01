@@ -127,6 +127,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
   const created = Math.floor(Date.now() / 1000);
   let streamStarted = false;
+  const persistedTimeline: Array<{
+    type: "reasoning" | "answer" | "tool";
+    text?: string;
+    id?: string;
+    toolName?: string;
+    params?: string;
+    response?: string;
+  }> = [];
+
+  const appendTimelineText = (type: "reasoning" | "answer", text: string) => {
+    if (!text) return;
+    const last = persistedTimeline[persistedTimeline.length - 1];
+    if (last && last.type === type && typeof last.text === "string") {
+      last.text = `${last.text}${text}`;
+      return;
+    }
+    persistedTimeline.push({ type, text });
+  };
+
+  const upsertTimelineTool = (nextPartial: {
+    id?: string;
+    toolName?: string;
+    params?: string;
+    response?: string;
+  }) => {
+    const toolId = typeof nextPartial.id === "string" ? nextPartial.id : "";
+    if (toolId) {
+      for (let i = persistedTimeline.length - 1; i >= 0; i -= 1) {
+        const item = persistedTimeline[i];
+        if (item.type !== "tool" || item.id !== toolId) continue;
+        item.toolName = nextPartial.toolName ?? item.toolName;
+        item.params = `${item.params || ""}${nextPartial.params || ""}`;
+        item.response = nextPartial.response ?? item.response;
+        return;
+      }
+    }
+    persistedTimeline.push({
+      type: "tool",
+      id: toolId || undefined,
+      toolName: nextPartial.toolName || "",
+      params: nextPartial.params || "",
+      response: nextPartial.response || "",
+    });
+  };
 
   const emitAnswerChunk = (
     text: string,
@@ -704,11 +748,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       tools,
       abortSignal: workflowAbortController.signal,
       onEvent: (event, data) => {
-        if (!stream) return;
-
         if (event === SseResponseEventEnum.answer) {
           const text = typeof data.text === "string" ? data.text : "";
           if (!text) return;
+          appendTimelineText("answer", text);
+          if (!stream) return;
           emitAnswerChunk(text);
           return;
         }
@@ -716,10 +760,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (event === SseResponseEventEnum.reasoning) {
           const text = typeof data.text === "string" ? data.text : "";
           if (!text) return;
+          appendTimelineText("reasoning", text);
+          if (!stream) return;
           emitAnswerChunk("", null, text);
           return;
         }
 
+        if (event === SseResponseEventEnum.toolCall) {
+          upsertTimelineTool({
+            id: typeof data.id === "string" ? data.id : undefined,
+            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+          });
+        } else if (event === SseResponseEventEnum.toolParams) {
+          upsertTimelineTool({
+            id: typeof data.id === "string" ? data.id : undefined,
+            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+            params: typeof data.params === "string" ? data.params : "",
+          });
+        } else if (event === SseResponseEventEnum.toolResponse) {
+          upsertTimelineTool({
+            id: typeof data.id === "string" ? data.id : undefined,
+            toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+            response: typeof data.response === "string" ? data.response : "",
+          });
+        }
+
+        if (!stream) return;
         sendSseEvent(res, event, JSON.stringify(data));
       },
     });
@@ -764,12 +830,60 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       totalPromptTokens: finalPromptUsedTokens,
     },
   };
-  const toolDetailsFromFlow = flowResponses.map((node, index) => ({
-    id: `${node.nodeId}-${index}`,
-    toolName: node.moduleName,
-    params: toStringValue(node.toolInput),
-    response: toStringValue(node.toolRes),
-  }));
+  const normalizeToolPayloadForMatch = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    try {
+      return JSON.stringify(JSON.parse(trimmed));
+    } catch {
+      return trimmed.replace(/\s+/g, " ");
+    }
+  };
+  const buildToolFingerprint = (toolName: string, params: string, response: string) =>
+    `${toolName.trim().toLowerCase()}::${normalizeToolPayloadForMatch(params)}::${normalizeToolPayloadForMatch(response)}`;
+  const timelineToolCandidates = persistedTimeline
+    .map((item, index) => ({ item, index }))
+    .filter(
+      (entry): entry is { item: { type: "tool"; id?: string; toolName?: string; params?: string; response?: string }; index: number } =>
+        entry.item.type === "tool"
+    );
+  const usedTimelineToolIndexes = new Set<number>();
+  const pickTimelineToolId = (toolName: string, params: string, response: string) => {
+    const targetFingerprint = buildToolFingerprint(toolName, params, response);
+    for (const candidate of timelineToolCandidates) {
+      if (usedTimelineToolIndexes.has(candidate.index)) continue;
+      if (!candidate.item.id) continue;
+      const candidateFingerprint = buildToolFingerprint(
+        candidate.item.toolName || "",
+        candidate.item.params || "",
+        candidate.item.response || ""
+      );
+      if (candidateFingerprint !== targetFingerprint) continue;
+      usedTimelineToolIndexes.add(candidate.index);
+      return candidate.item.id;
+    }
+    for (const candidate of timelineToolCandidates) {
+      if (usedTimelineToolIndexes.has(candidate.index)) continue;
+      if (!candidate.item.id) continue;
+      const sameName =
+        (candidate.item.toolName || "").trim().toLowerCase() === toolName.trim().toLowerCase();
+      if (!sameName) continue;
+      usedTimelineToolIndexes.add(candidate.index);
+      return candidate.item.id;
+    }
+    return undefined;
+  };
+  const toolDetailsFromFlow = flowResponses.map((node, index) => {
+    const toolName = node.moduleName || "";
+    const params = toStringValue(node.toolInput);
+    const response = toStringValue(node.toolRes);
+    return {
+      id: pickTimelineToolId(toolName, params, response) || `${node.nodeId}-${index}`,
+      toolName,
+      params,
+      response,
+    };
+  });
   const resolvedFinalMessage = (() => {
     if (finalMessage) return finalMessage;
     const assistantMessage =
@@ -826,6 +940,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...currentKwargs,
           reasoning_text: finalReasoning,
           toolDetails: existingToolDetails.length > 0 ? existingToolDetails : toolDetailsFromFlow,
+          ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
           responseData: flowResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
@@ -839,6 +954,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         additional_kwargs: {
           reasoning_text: finalReasoning,
           toolDetails: toolDetailsFromFlow,
+          ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
           responseData: flowResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
