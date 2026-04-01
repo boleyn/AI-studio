@@ -715,8 +715,21 @@ const ChatPanel = ({
               ) {
                 return;
               }
+              const phase = streamPayload.phase;
+              const prevUsage = contextUsageRef.current;
+              // Prevent visual "drop then recover": keep previous number during start phase
+              // when backend sends a transient lower snapshot before final usage is emitted.
+              if (
+                phase === "start" &&
+                prevUsage &&
+                typeof prevUsage.usedPercent === "number" &&
+                streamPayload.usedPercent < prevUsage.usedPercent
+              ) {
+                return;
+              }
               setContextUsageSnapshot({
                 model: typeof streamPayload.model === "string" ? streamPayload.model : model,
+                phase: phase === "start" || phase === "final" ? phase : undefined,
                 usedTokens: streamPayload.usedTokens,
                 maxContext: streamPayload.maxContext,
                 remainingTokens: streamPayload.remainingTokens,

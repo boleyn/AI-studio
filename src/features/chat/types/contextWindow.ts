@@ -1,5 +1,6 @@
 export interface ContextWindowUsage {
   model: string;
+  phase?: "start" | "final";
   totalPromptTokens?: number;
   currentInputTokens?: number;
   usedTokens: number;

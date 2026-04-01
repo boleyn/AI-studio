@@ -55,15 +55,18 @@ const ChatHeader = ({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [confirmClearAllOpen, setConfirmClearAllOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const hasUsage = Boolean(contextUsage);
   const isReady = contextStatus === "ready" && !!contextUsage;
   const isPending = contextStatus === "pending";
-  const usedPercent = Math.min(100, Math.max(0, isReady ? contextUsage.usedPercent || 0 : 0));
+  const usedPercent = Math.min(100, Math.max(0, hasUsage ? contextUsage?.usedPercent || 0 : 0));
   const usedPercentText = usedPercent.toFixed(1);
   const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
   const tooltipWithInput = isReady
     ? `剩余 ${remainingPercentText}%`
     : isPending
-    ? "计算中..."
+    ? hasUsage
+      ? `计算中...（当前显示上次快照：剩余 ${remainingPercentText}%）`
+      : "计算中..."
     : "继续提问后会自动更新";
   const ringColor = usedPercent < 60 ? "#72C284" : "#E58888";
   const ringTrackColor = usedPercent < 60 ? "#E3F3E7" : "#F7E3E3";
@@ -198,8 +201,8 @@ const ChatHeader = ({
         <MyTooltip label={tooltipWithInput}>
           <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
             <CircularProgress
-              color={isPending ? "#9CA3AF" : ringColor}
-              isIndeterminate={isPending}
+              color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
+              isIndeterminate={isPending && !hasUsage}
               size="32px"
               thickness="12px"
               trackColor={ringTrackColor}
@@ -211,7 +214,7 @@ const ChatHeader = ({
                 fontWeight="700"
                 lineHeight="1"
               >
-                {isReady ? usedPercentText : "--"}
+                {hasUsage ? usedPercentText : "--"}
               </CircularProgressLabel>
             </CircularProgress>
           </Box>

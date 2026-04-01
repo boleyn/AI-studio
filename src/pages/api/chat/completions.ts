@@ -676,6 +676,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const currentInputTokens = Math.max(0, promptUsedTokens - backgroundUsedTokens);
   const contextWindowUsage = {
     model: selectedModel,
+    phase: "start" as const,
     totalPromptTokens: promptUsedTokens,
     currentInputTokens,
     usedTokens: promptUsedTokens,
@@ -819,6 +820,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const finalCurrentInputTokens = Math.max(0, finalPromptUsedTokens - backgroundUsedTokens);
   const finalContextWindowUsage = {
     ...contextWindowUsage,
+    phase: "final" as const,
     totalPromptTokens: finalPromptUsedTokens,
     currentInputTokens: finalCurrentInputTokens,
     usedTokens: finalPromptUsedTokens,
