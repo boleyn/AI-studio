@@ -107,50 +107,94 @@ const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessagePa
     }
   };
 
-  const seenToolCallIds = new Set<string>();
   const sanitized: ChatCompletionMessageParam[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const message = messages[i];
 
-  for (const message of messages) {
-    if (message.role === 'assistant') {
-      const calls = (message as { tool_calls?: ChatCompletionMessageToolCall[] }).tool_calls;
-      if (Array.isArray(calls)) {
-        calls.forEach((call) => {
-          if (call?.id) seenToolCallIds.add(call.id);
-        });
-        const repairedCalls = calls.map((call) => {
-          if (!call || call.type !== 'function' || !call.function) return call;
-          return {
-            ...call,
-            function: {
-              ...call.function,
-              arguments: toSafeToolArguments(call.function.arguments, call.id || '')
-            }
-          } as ChatCompletionMessageToolCall;
-        });
-        sanitized.push({
-          ...message,
-          tool_calls: repairedCalls
-        } as ChatCompletionMessageParam);
-        continue;
-      }
-      sanitized.push(message);
-      continue;
-    }
-
-    if (message.role === 'tool') {
-      const toolCallId = (message as { tool_call_id?: string }).tool_call_id || '';
-      if (toolCallId && seenToolCallIds.has(toolCallId)) {
-        sanitized.push(message);
-      } else {
+    if (message.role !== 'assistant') {
+      if (message.role === 'tool') {
         addLog.warn('[LLM Request][drop-orphan-tool-result-before-provider]', {
-          tool_call_id: toolCallId,
-          reason: 'tool_call_id_not_found_in_previous_assistant_tool_calls'
+          tool_call_id: (message as { tool_call_id?: string }).tool_call_id || '',
+          reason: 'tool_message_without_immediately_preceding_assistant_tool_calls'
         });
+      } else {
+        sanitized.push(message);
       }
+      i += 1;
       continue;
     }
 
-    sanitized.push(message);
+    const calls = (message as { tool_calls?: ChatCompletionMessageToolCall[] }).tool_calls;
+    if (!Array.isArray(calls) || calls.length === 0) {
+      sanitized.push(message);
+      i += 1;
+      continue;
+    }
+
+    const repairedCalls = calls
+      .filter((call): call is ChatCompletionMessageToolCall => Boolean(call && call.id))
+      .map((call) => {
+        if (call.type !== 'function' || !call.function) return call;
+        return {
+          ...call,
+          function: {
+            ...call.function,
+            arguments: toSafeToolArguments(call.function.arguments, call.id || '')
+          }
+        } as ChatCompletionMessageToolCall;
+      });
+
+    const pendingIds = new Set(repairedCalls.map((call) => call.id).filter(Boolean));
+    const matchedToolIds = new Set<string>();
+    const matchedToolMessages: ChatCompletionMessageParam[] = [];
+
+    let j = i + 1;
+    while (j < messages.length && messages[j].role === 'tool') {
+      const toolMessage = messages[j] as ChatCompletionMessageParam & { tool_call_id?: string };
+      const toolCallId = toolMessage.tool_call_id || '';
+      if (toolCallId && pendingIds.has(toolCallId) && !matchedToolIds.has(toolCallId)) {
+        matchedToolIds.add(toolCallId);
+        matchedToolMessages.push(messages[j]);
+      } else {
+        addLog.warn('[LLM Request][drop-invalid-tool-result-before-provider]', {
+          tool_call_id: toolCallId,
+          reason: toolCallId
+            ? 'tool_call_id_not_found_or_duplicated_in_immediately_preceding_assistant_tool_calls'
+            : 'missing_tool_call_id'
+        });
+      }
+      j += 1;
+    }
+
+    const finalCalls = repairedCalls.filter((call) => matchedToolIds.has(call.id || ''));
+    if (finalCalls.length > 0) {
+      sanitized.push({
+        ...message,
+        tool_calls: finalCalls
+      } as ChatCompletionMessageParam);
+      sanitized.push(...matchedToolMessages);
+    } else {
+      const hasAssistantText = (() => {
+        const content = (message as { content?: unknown }).content;
+        if (typeof content === 'string') return content.trim().length > 0;
+        if (Array.isArray(content)) return content.length > 0;
+        return false;
+      })();
+      if (hasAssistantText) {
+        const { tool_calls: _ignore, ...rest } = message as ChatCompletionMessageParam & {
+          tool_calls?: ChatCompletionMessageToolCall[];
+        };
+        sanitized.push(rest as ChatCompletionMessageParam);
+      } else {
+        addLog.warn('[LLM Request][drop-incomplete-assistant-tool-call-before-provider]', {
+          tool_call_count: repairedCalls.length,
+          reason: 'assistant_tool_calls_without_following_tool_results'
+        });
+      }
+    }
+
+    i = j;
   }
 
   return sanitized;

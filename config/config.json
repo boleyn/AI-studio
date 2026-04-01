@@ -32,6 +32,42 @@
       "icon":"minimax.svg"
     } ,
     {
+      "id": "kimi-k2.5",
+      "label": "kimi-k2.5",
+      "maxContext": 192000,
+      "maxResponse": 120000,
+      "quoteMaxToken": 80000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"kimi.svg"
+    } ,
+    {
+      "id": "GLM-4.7",
+      "label": "GLM-4.7",
+      "maxContext": 192000,
+      "maxResponse": 120000,
+      "quoteMaxToken": 80000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"glm.svg"
+    } ,
+    {
+      "id": "GLM-5",
+      "label": "GLM-5",
+      "maxContext": 192000,
+      "maxResponse": 120000,
+      "quoteMaxToken": 80000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"glm.svg"
+    } ,
+    {
       "id": "openai/gpt-5.3-codex",
       "label": "gpt-5.3-codex",
       "maxContext": 400000,

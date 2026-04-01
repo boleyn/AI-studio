@@ -100,7 +100,7 @@ CHAT_MODEL_CONFIG_FILE=config/config.json
 # MCP（推荐 JSON 数组格式）
 MCP_SERVER_URLS=[{"name":"mcp-example","url":"http://127.0.0.1:8000/sse"}]
 
-# Agent 兼容模式 skill 文件（当项目 skills 不可用时）
+# Agent 全局规范 skill 文件（每次对话都会注入）
 AGENT_SKILL_FILE=skills/aistudio-mcp-code-workflow/SKILL.md
 
 # 对外访问地址（用于生成链接）

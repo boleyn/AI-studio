@@ -523,8 +523,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
-  const fallbackSkillPrompt =
-    allAvailableSkills.length === 0 ? await getAgentRuntimeSkillPrompt() : "";
+  const runtimeSkillPrompt = await getAgentRuntimeSkillPrompt();
   const buildCoreSystemPrompts = (): ChatCompletionMessageParam[] => [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: toolRoutingPrompt },
@@ -568,8 +567,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
       : []),
-    ...(fallbackSkillPrompt
-      ? [{ role: "system", content: fallbackSkillPrompt } as ChatCompletionMessageParam]
+    ...(runtimeSkillPrompt
+      ? [{ role: "system", content: runtimeSkillPrompt } as ChatCompletionMessageParam]
       : []),
   ];
   const baseAgentMessages = await toAgentMessages(contextMessages);
@@ -656,9 +655,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   console.info("[agent-skill] injection", {
-    enabled: Boolean(skillsCatalogPrompt || fallbackSkillPrompt),
+    enabled: Boolean(skillsCatalogPrompt || runtimeSkillPrompt),
     skillsCatalogEnabled: Boolean(skillsCatalogPrompt),
-    fallbackEnabled: Boolean(fallbackSkillPrompt),
+    runtimeSkillEnabled: Boolean(runtimeSkillPrompt),
     runtimeSkillCount: runtimeSkills.length,
     projectSkillCount: projectSkillsParsed.skills.length,
     availableSkillCount: allAvailableSkills.length,
@@ -666,7 +665,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     hasMcpTools,
     hasProjectKnowledgeTools,
     skillsCatalogPromptLength: skillsCatalogPrompt.length,
-    fallbackSkillPromptLength: fallbackSkillPrompt.length,
+    runtimeSkillPromptLength: runtimeSkillPrompt.length,
     userIntent,
     routeReason: routedTools.reason,
     toolChoiceMode,

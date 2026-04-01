@@ -24,6 +24,10 @@ Follow this skill for coding tasks in this repository.
 3. **Prototype after knowledge lookup**:
    - Build or refine the prototype only after KB facts are collected and aligned with user intent.
 4. Inspect local code with available local tools (shell/file search/read/edit) and keep reads minimal.
+   - For website/app creation tasks, you MUST do this sequence before coding:
+     - Call `list_files` to understand current project structure.
+     - Read `package.json` and `package-lock.json` (if present) to confirm tech stack and package manager conventions.
+     - Read existing page/component code to align coding style and architecture patterns.
 5. Implement with targeted file edits and keep scope strictly aligned to user intent.
 6. Validate with project build/tests when available.
 7. Summarize changed files and behavior impact.
@@ -38,6 +42,11 @@ Follow this skill for coding tasks in this repository.
 - Default implementation style for frontend output: `React + TypeScript`, functional components, and hook-based state management.
 - Keep edits scoped to user intent.
 - Never hard-code unavailable server/tool names; always bind workflow to discovered capabilities in the current turn.
+- Strictly follow existing project stack and directory conventions.
+- Do not create standalone files/boilerplate that conflicts with current project structure and conventions.
+- Exception policy:
+  - If user explicitly requests an unconstrained PoC/prototype, you may relax style/structure alignment constraints after completing minimum project discovery (`list_files` + package manifest read).
+  - For urgent hotfix/debug tasks, you may skip non-critical style alignment steps to reduce latency, but you must explicitly report skipped steps and rationale in the final summary.
 
 ## Tool Strategy
 

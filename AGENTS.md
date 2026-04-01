@@ -9,8 +9,11 @@ A skill is a set of local instructions stored in a `SKILL.md` file.
 
 ### How to use skills
 - Discovery: The list above is the available skills for this project.
-- Trigger rules: If the user names a skill (with `$SkillName` or plain text), use that skill in this turn.
-- Missing/blocked: If a named skill is unavailable, report briefly and continue with best fallback.
+- Trigger rules:
+  - If the user names a skill (with `$SkillName` or plain text), use that skill in this turn.
+  - For any coding request (实现/修复/重构/改代码/排查问题), default to `aistudio-mcp-code-workflow` even when the user does not explicitly name it.
+  - Before implementation on coding requests, run a project fact bootstrap pass via `project-context-bootstrap`.
+- Missing/blocked: If a required skill is unavailable, report briefly and continue with best fallback.
 - Progressive disclosure: Read only required parts of each skill and only load extra references when needed.
 - Coordination: If multiple skills apply, use the minimal set and state execution order.
 - Context hygiene: Keep loaded context small; avoid bulk-loading unrelated references.
