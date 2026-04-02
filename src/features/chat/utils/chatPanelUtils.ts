@@ -99,6 +99,14 @@ export const stripTagMarkersFromUserContent = (content: string): string => {
     .trim();
 };
 
+export const stripInlineImageMarkdown = (content: string): string => {
+  if (!content) return "";
+  return content
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
 export const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");
 
 export const toStableChatFileViewUrl = ({

@@ -53,6 +53,7 @@ import {
   buildConversationTitle,
   buildUserBubbleContent,
   stripTagMarkersFromUserContent,
+  stripInlineImageMarkdown,
   getLatestContextUsageFromMessages,
   getMessageFeedback,
   hydrateHistoryUserMessage,
@@ -950,7 +951,9 @@ const ChatPanel = ({
       const userMessage = snapshot[userIndex];
       if (userMessage.role !== "user") return;
 
-      const text = stripTagMarkersFromUserContent(extractText(userMessage.content));
+      const text = stripInlineImageMarkdown(
+        stripTagMarkersFromUserContent(extractText(userMessage.content))
+      );
       if (!text) return;
       const uploadedFiles =
         userMessage.artifact && typeof userMessage.artifact === "object"
