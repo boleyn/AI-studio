@@ -199,6 +199,10 @@ const ChatPanel = ({
     setThinkingEnabled(enabled);
     persistThinkingEnabled(enabled);
   }, []);
+  const selectedModelSupportsReasoning = useMemo(() => {
+    const selected = modelCatalog?.models?.find((item) => item.id === model);
+    return selected?.reasoning === true;
+  }, [model, modelCatalog]);
 
   const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
   const {
@@ -1306,6 +1310,7 @@ const ChatPanel = ({
           modelLoading={modelLoading}
           modelOptions={modelOptions}
           thinkingEnabled={thinkingEnabled}
+          showThinkingToggle={selectedModelSupportsReasoning}
           thinkingTooltipEnabled={thinkingTooltipEnabled}
           thinkingTooltipDisabled={thinkingTooltipDisabled}
           selectedSkill={selectedSkills[0]}

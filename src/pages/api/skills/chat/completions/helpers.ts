@@ -151,6 +151,14 @@ export const toSelectedSkills = (req: NextApiRequest) => {
   return Array.from(new Set(merged));
 };
 
+export const normalizeToolChoiceMode = (value: unknown): "auto" | "required" | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "auto") return "auto";
+  if (normalized === "required") return "required";
+  return undefined;
+};
+
 export const sendSseEvent = (res: NextApiResponse, event: string, data: string) => {
   res.write(`event: ${event}\n`);
   res.write(`data: ${data}\n\n`);

@@ -20,6 +20,7 @@ export interface ChatInputModelOption {
   label: string;
   channel: string;
   icon?: string;
+  reasoning?: boolean;
 }
 
 export interface ChatInputProps {
@@ -28,6 +29,7 @@ export interface ChatInputProps {
   modelOptions: ChatInputModelOption[];
   modelLoading?: boolean;
   thinkingEnabled?: boolean;
+  showThinkingToggle?: boolean;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
   selectedSkill?: string;

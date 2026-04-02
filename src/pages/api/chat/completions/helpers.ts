@@ -347,6 +347,14 @@ export const resolveToolChoice = (intent: UserIntent): "auto" | "required" => {
   return "auto";
 };
 
+export const normalizeToolChoiceMode = (value: unknown): "auto" | "required" | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "auto") return "auto";
+  if (normalized === "required") return "required";
+  return undefined;
+};
+
 export const buildToolRoutingSystemPrompt = (
   intent: UserIntent,
   route: ToolRouteResult,

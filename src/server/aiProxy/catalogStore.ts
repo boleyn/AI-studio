@@ -9,6 +9,7 @@ export interface ChatModelOption {
   channel: string;
   source: "aiproxy" | "env";
   icon?: string;
+  reasoning?: boolean;
 }
 
 export interface ChatModelChannel {
@@ -41,6 +42,9 @@ type ConfigModelItem = {
   reasoning?: unknown;
   vision?: unknown;
   visionModel?: unknown;
+  toolChoice?: unknown;
+  toolChoiceMode?: unknown;
+  forceToolChoice?: unknown;
   defaultConfig?: unknown;
   fieldMap?: unknown;
 };
@@ -118,6 +122,18 @@ const parseModels = (value: unknown) => {
           typeof record.visionModel === "string" && record.visionModel.trim()
             ? record.visionModel.trim()
             : undefined,
+        toolChoice:
+          typeof record.toolChoice === "string" && record.toolChoice.trim()
+            ? record.toolChoice.trim()
+            : undefined,
+        toolChoiceMode:
+          typeof record.toolChoiceMode === "string" && record.toolChoiceMode.trim()
+            ? record.toolChoiceMode.trim()
+            : undefined,
+        forceToolChoice:
+          typeof record.forceToolChoice === "string" && record.forceToolChoice.trim()
+            ? record.forceToolChoice.trim()
+            : undefined,
         defaultConfig:
           record.defaultConfig && typeof record.defaultConfig === "object" && !Array.isArray(record.defaultConfig)
             ? record.defaultConfig
@@ -163,6 +179,10 @@ const buildCatalog = (params: {
       id: item.id,
       label: item.label,
       icon: item.icon,
+      reasoning:
+        item.profile && typeof item.profile.reasoning === "boolean"
+          ? (item.profile.reasoning as boolean)
+          : undefined,
       channel: DEFAULT_CHANNEL,
       source: "aiproxy" as const,
     })),

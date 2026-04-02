@@ -29,7 +29,7 @@ export const useChatModels = (primaryModel?: string) => {
   const [channel, setChannel] = useState("aiproxy");
   const [model, setModel] = useState("agent");
   const [modelOptions, setModelOptions] = useState<
-    Array<{ value: string; label: string; channel: string; icon?: string }>
+    Array<{ value: string; label: string; channel: string; icon?: string; reasoning?: boolean }>
   >([{ value: "agent", label: "agent", channel: "aiproxy" }]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
   const appliedPrimaryModelRef = useRef<string | null>(null);
@@ -49,6 +49,7 @@ export const useChatModels = (primaryModel?: string) => {
                 label: item.label || item.id,
                 channel: item.channel,
                 icon: item.icon,
+                reasoning: item.reasoning,
               };
             })
           : [

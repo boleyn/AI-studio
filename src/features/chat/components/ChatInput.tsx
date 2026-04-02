@@ -32,6 +32,7 @@ const ChatInput = ({
   modelOptions,
   modelLoading,
   thinkingEnabled = true,
+  showThinkingToggle = true,
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
   selectedSkill,
@@ -407,7 +408,7 @@ const ChatInput = ({
       selectedSkill: selectedSkillList[0] || undefined,
       selectedSkills: selectedSkillList.length > 0 ? selectedSkillList : undefined,
       selectedFilePaths: selectedFilePaths.length > 0 ? selectedFilePaths : undefined,
-      thinkingEnabled,
+      thinkingEnabled: showThinkingToggle ? thinkingEnabled : undefined,
     };
 
     setIsSubmitting(true);
@@ -423,7 +424,7 @@ const ChatInput = ({
     Promise.resolve(onSend(payload)).finally(() => {
       setIsSubmitting(false);
     });
-  }, [canSend, files, onSend, resetTextareaHeight, selectedFilePaths, text, selectedSkillList]);
+  }, [canSend, files, onSend, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle]);
 
   return (
     <Box px={4} py={3}>
@@ -837,64 +838,66 @@ const ChatInput = ({
               modelOptions={modelOptions}
               onChangeModel={onChangeModel}
             />
-            <MyTooltip
-              fontSize="12px"
-              label={
-                thinkingEnabled
-                  ? thinkingTooltipEnabled || "思考模式：开启"
-                  : thinkingTooltipDisabled || "思考模式：关闭"
-              }
-              openDelay={150}
-            >
-              <IconButton
-                _hover={{
-                  bg: "rgba(0, 0, 0, 0.04)",
-                }}
-                aria-label={thinkingEnabled ? "关闭思考模式" : "开启思考模式"}
-                bg="transparent"
-                border="1px solid transparent"
-                borderRadius="8px"
-                h="30px"
-                icon={
-                  <Flex
-                    align="center"
-                    bg={thinkingEnabled ? "#16A34A" : "transparent"}
-                    border="1px solid"
-                    borderColor={thinkingEnabled ? "#16A34A" : "#CBD5E1"}
-                    borderRadius="999px"
-                    h="20px"
-                    justify="center"
-                    w="20px"
-                  >
-                    <Box
-                      as="svg"
-                      fill="none"
-                      h="13px"
-                      viewBox="0 0 24 24"
-                      w="13px"
-                    >
-                      <path
-                        d="M12 3.5a6.5 6.5 0 0 0-3.5 12v2.25a.75.75 0 0 0 .75.75h5.5a.75.75 0 0 0 .75-.75V15.5A6.5 6.5 0 0 0 12 3.5Z"
-                        stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                      />
-                      <path
-                        d="M9.5 21h5"
-                        stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
-                        strokeLinecap="round"
-                        strokeWidth="2"
-                      />
-                    </Box>
-                  </Flex>
+            {showThinkingToggle ? (
+              <MyTooltip
+                fontSize="12px"
+                label={
+                  thinkingEnabled
+                    ? thinkingTooltipEnabled || "思考模式：开启"
+                    : thinkingTooltipDisabled || "思考模式：关闭"
                 }
-                isDisabled={Boolean(modelLoading || isSending || isSubmitting)}
-                minW="30px"
-                onClick={() => onChangeThinkingEnabled?.(!thinkingEnabled)}
-                variant="ghost"
-              />
-            </MyTooltip>
+                openDelay={150}
+              >
+                <IconButton
+                  _hover={{
+                    bg: "rgba(0, 0, 0, 0.04)",
+                  }}
+                  aria-label={thinkingEnabled ? "关闭思考模式" : "开启思考模式"}
+                  bg="transparent"
+                  border="1px solid transparent"
+                  borderRadius="8px"
+                  h="30px"
+                  icon={
+                    <Flex
+                      align="center"
+                      bg={thinkingEnabled ? "#16A34A" : "transparent"}
+                      border="1px solid"
+                      borderColor={thinkingEnabled ? "#16A34A" : "#CBD5E1"}
+                      borderRadius="999px"
+                      h="20px"
+                      justify="center"
+                      w="20px"
+                    >
+                      <Box
+                        as="svg"
+                        fill="none"
+                        h="13px"
+                        viewBox="0 0 24 24"
+                        w="13px"
+                      >
+                        <path
+                          d="M12 3.5a6.5 6.5 0 0 0-3.5 12v2.25a.75.75 0 0 0 .75.75h5.5a.75.75 0 0 0 .75-.75V15.5A6.5 6.5 0 0 0 12 3.5Z"
+                          stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                        />
+                        <path
+                          d="M9.5 21h5"
+                          stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
+                          strokeLinecap="round"
+                          strokeWidth="2"
+                        />
+                      </Box>
+                    </Flex>
+                  }
+                  isDisabled={Boolean(modelLoading || isSending || isSubmitting)}
+                  minW="30px"
+                  onClick={() => onChangeThinkingEnabled?.(!thinkingEnabled)}
+                  variant="ghost"
+                />
+              </MyTooltip>
+            ) : null}
             {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">
                 {t("chat:uploading_files", { defaultValue: "文件上传中..." })}

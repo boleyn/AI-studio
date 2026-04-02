@@ -13,7 +13,7 @@ import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceToo
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
-import { getChatModelCatalog } from "@server/aiProxy/catalogStore";
+import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
 import {
   appendConversationMessages,
@@ -46,6 +46,7 @@ import {
   toMessages,
   toSelectedSkills,
   toStringValue,
+  normalizeToolChoiceMode,
 } from "./completions/helpers";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -213,6 +214,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (type === "disabled") return { type: "disabled" as const };
     return undefined;
   })();
+  const requestedToolChoiceMode = normalizeToolChoiceMode(
+    req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice
+  );
   const explicitRequestedModel =
     typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
   const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
@@ -235,6 +239,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : available.has(catalog.defaultModel)
       ? catalog.defaultModel
       : catalog.models[0]?.id || requestedModel;
+  const selectedModelProfile = getChatModelProfile(selectedModel, modelCatalogKey);
+  const profileToolChoiceMode = normalizeToolChoiceMode(
+    selectedModelProfile?.toolChoiceMode ??
+      selectedModelProfile?.toolChoice ??
+      selectedModelProfile?.forceToolChoice
+  );
+  const toolChoiceMode = requestedToolChoiceMode || profileToolChoiceMode || "auto";
 
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
@@ -245,7 +256,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...selectedResolvedSkills.map((item) => `- ${item.name}`),
           ...(selectedRuntimeSkills.length > 0
             ? [
-                'Before executing the task, call tool "skill_load" for each runtime skill (exact names), then follow those instructions.',
+                'You may call tool "skill_load" for runtime skills when full instructions are needed; do not force tool calls if the task is already clear.',
+                "Reason first, then decide whether loading each skill is necessary.",
               ]
             : []),
           ...(selectedProjectSkills.length > 0
@@ -392,7 +404,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           temperature: runtimeConfig.temperature,
           thinking,
           messages,
-          toolChoice: "auto",
+          toolChoice: toolChoiceMode,
           allTools,
           tools,
           abortSignal: workflowAbortController.signal,

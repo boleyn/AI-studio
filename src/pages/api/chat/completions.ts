@@ -15,7 +15,7 @@ import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspac
 import type { AgentToolDefinition, ChangeTracker } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
 import { getAgentRuntimeSkillPrompt } from "@server/agent/skillPrompt";
-import { getChatModelCatalog } from "@server/aiProxy/catalogStore";
+import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
 import {
   registerActiveConversationRun,
@@ -59,6 +59,7 @@ import {
   isMcpToolName,
   isModelUnavailableError,
   isProjectKnowledgeMcpTool,
+  normalizeToolChoiceMode,
   normalizeStoredMessages,
   resolveToolChoice,
   routeToolsByIntent,
@@ -116,6 +117,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (type === "disabled") return { type: "disabled" as const };
     return undefined;
   })();
+  const requestedToolChoiceMode = normalizeToolChoiceMode(
+    req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice
+  );
   const history = (() => {
     const value = req.body?.history;
     if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
@@ -368,14 +372,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return merged;
   })();
-  const toolChoiceMode = selectedTools.length > 0
-    ? selectedRuntimeSkill
-      ? "required"
-      : latestUserArtifactFiles.length > 0
-      ? "required"
-      : resolveToolChoice(userIntent)
-    : "auto";
-  const toolRoutingPrompt = buildToolRoutingSystemPrompt(userIntent, routedTools, toolChoiceMode);
   const hasMcpTools = selectedTools.some((tool) => isMcpToolName(tool.name));
   const hasProjectKnowledgeTools = selectedTools.some((tool) => isProjectKnowledgeMcpTool(tool.name));
   const explicitRequestedModel =
@@ -412,6 +408,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : availableFilteredModels.has(catalog.defaultModel)
       ? catalog.defaultModel
       : filteredCatalogModels[0]?.id || requestedModel;
+  const selectedModelProfile = getChatModelProfile(selectedModel, modelCatalogKey);
+  const profileToolChoiceMode = normalizeToolChoiceMode(
+    selectedModelProfile?.toolChoiceMode ??
+      selectedModelProfile?.toolChoice ??
+      selectedModelProfile?.forceToolChoice
+  );
+  const toolChoiceMode = selectedTools.length > 0
+    ? requestedToolChoiceMode ||
+      profileToolChoiceMode ||
+      (selectedRuntimeSkill
+        ? "required"
+        : latestUserArtifactFiles.length > 0
+        ? "required"
+        : resolveToolChoice(userIntent))
+    : "auto";
+  const toolRoutingPrompt = buildToolRoutingSystemPrompt(userIntent, routedTools, toolChoiceMode);
 
   const tools: ChatCompletionTool[] = selectedTools.map((tool) => ({
     type: "function",
@@ -514,8 +526,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             role: "system",
             content: [
               `User selected skill: ${selectedRuntimeSkill.name}`,
-              `You must call tool "skill_load" first with {"name":"${selectedRuntimeSkill.name}"} before executing the task.`,
-              "After loading, follow that skill instructions for the rest of the task.",
+              `You may call tool "skill_load" with {"name":"${selectedRuntimeSkill.name}"} when you need the full skill instructions.`,
+              "Do not force tool calls. If the task is clear, you can reason first and decide whether loading the skill is necessary.",
+              "If you load the skill, follow its instructions for the rest of the task.",
             ].join("\n"),
           } as ChatCompletionMessageParam,
         ]

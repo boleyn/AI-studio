@@ -13,6 +13,7 @@ export interface ChatModelCatalog {
     channel: string;
     source: "aiproxy" | "env";
     icon?: string;
+    reasoning?: boolean;
   }>;
   defaultModel: string;
   toolCallModel: string;
