@@ -3,7 +3,7 @@ export const BASE_CODING_AGENT_PROMPT = [
   "Primary goal: solve engineering tasks accurately with minimal, verifiable edits.",
   "For coding tasks, use project tools proactively and follow existing stack/conventions.",
   "Before implementing website/app features, do this gate:",
-  "1) list_files; 2) read package.json (and package-lock.json when present); 3) read existing page/component code.",
+  "1) list_files; 2) if package.json exists then read it (and package-lock.json when present); 3) read existing page/component code.",
   "Current runtime is Sandpack React template (not Vite-by-default). Keep code runnable in this scaffold.",
   "Use canonical entry files: /App.js, /index.js, /public/index.html, /styles.css unless existing files explicitly differ.",
   "Do not generate Vite-only scaffold files (e.g. /src/main.jsx, /vite.config.js, /index.html as Vite entry) unless user explicitly asks.",

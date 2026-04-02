@@ -38,6 +38,7 @@ import {
   getWorkspaceId,
   sendSseEvent,
   startSse,
+  startSseHeartbeat,
   STUDIO_PROMPT,
   TimelineItem,
   toAgentMessages,
@@ -100,9 +101,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const created = Math.floor(Date.now() / 1000);
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
   let streamStarted = false;
+  let stopStreamHeartbeat = () => {};
   const startStream = () => {
     if (streamStarted) return;
     startSse(res);
+    stopStreamHeartbeat = startSseHeartbeat(res);
     streamStarted = true;
   };
   const emitAnswerChunk = (selectedModel: string, text: string, reasoningText?: string) => {
@@ -201,7 +204,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const modelCatalogKey =
     typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
-  const requestedModel = model && model !== "agent" ? model : runtimeConfig.toolCallModel;
+  const explicitRequestedModel =
+    typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
+  const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
   const catalog = await getChatModelCatalog({ key: modelCatalogKey }).catch(() => ({
     models: [] as Array<{ id: string; label: string; channel: string; source: "aiproxy" | "env" }>,
     catalogKey: modelCatalogKey || "default",
@@ -214,7 +219,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }));
   const available = new Set(catalog.models.map((item) => item.id));
   const selectedModel =
-    available.has(requestedModel)
+    explicitRequestedModel && available.has(explicitRequestedModel)
+      ? explicitRequestedModel
+      : available.has(requestedModel)
       ? requestedModel
       : available.has(catalog.defaultModel)
       ? catalog.defaultModel
@@ -313,6 +320,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const workflowStartAt = Date.now();
     const workflowAbortController = new AbortController();
+    const abortOnClientDisconnect = () => {
+      if (!workflowAbortController.signal.aborted) {
+        workflowAbortController.abort(new Error("client_disconnected"));
+      }
+    };
+    req.once("close", abortOnClientDisconnect);
+    res.once("close", abortOnClientDisconnect);
     if (conversationId) {
       registerActiveConversationRun({
         token: runToken,
@@ -422,6 +436,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } finally {
+        req.off("close", abortOnClientDisconnect);
+        res.off("close", abortOnClientDisconnect);
         if (conversationId) {
           unregisterActiveConversationRun({
             token: runToken,
@@ -532,6 +548,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       );
       sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
+      stopStreamHeartbeat();
       res.end();
       return;
     }
@@ -571,6 +588,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       );
       sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
+      stopStreamHeartbeat();
       res.end();
       return;
     }

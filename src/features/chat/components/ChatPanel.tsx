@@ -68,6 +68,8 @@ import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import { updatePrimaryModel } from "../services/models";
 
+const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
+  `${conversationId}::${modelId}`;
 
 const ChatPanel = ({
   token,
@@ -126,6 +128,7 @@ const ChatPanel = ({
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
+  const messagesRef = useRef<ConversationMessage[]>([]);
   const { model, setModel, channel, modelOptions, modelLoading, modelCatalog } = useChatModels(
     user?.primaryModel
   );
@@ -175,12 +178,13 @@ const ChatPanel = ({
   } = useChatStreamFlusher(setMessages);
 
   const setContextUsageSnapshot = useCallback(
-    (next: ContextWindowUsage | null, conversationId?: string | null) => {
+    (next: ContextWindowUsage | null, conversationId?: string | null, modelId?: string | null) => {
       contextUsageRef.current = next;
       setContextUsage(next);
       if (next) {
-        if (conversationId) {
-          contextUsageCacheRef.current[conversationId] = next;
+        const cacheModelId = (modelId || next.model || "").trim();
+        if (conversationId && cacheModelId) {
+          contextUsageCacheRef.current[buildContextUsageCacheKey(conversationId, cacheModelId)] = next;
         }
         setContextStatus("ready");
         return;
@@ -189,6 +193,17 @@ const ChatPanel = ({
     },
     []
   );
+
+  const getCachedContextUsage = useCallback((conversationId?: string | null, modelId?: string | null) => {
+    const safeConversationId = (conversationId || "").trim();
+    const safeModelId = (modelId || "").trim();
+    if (!safeConversationId || !safeModelId) return null;
+    return contextUsageCacheRef.current[buildContextUsageCacheKey(safeConversationId, safeModelId)] || null;
+  }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     const nextMessages = activeConversation?.messages ?? [];
@@ -217,10 +232,33 @@ const ChatPanel = ({
     });
     shouldAutoScrollRef.current = true;
     const activeId = activeConversation?.id || "";
-    const cachedUsage = activeId ? contextUsageCacheRef.current[activeId] : null;
+    const cachedUsage = getCachedContextUsage(activeId || null, model);
     const recoveredUsage = getLatestContextUsageFromMessages(hydratedMessages, model);
-    setContextUsageSnapshot(cachedUsage || recoveredUsage || null, activeId || null);
-  }, [activeConversation?.id, activeConversation?.messages, model, setContextUsageSnapshot, token]);
+    const matchedRecoveredUsage =
+      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
+        ? recoveredUsage
+        : null;
+    setContextUsageSnapshot(cachedUsage || matchedRecoveredUsage || null, activeId || null, model);
+  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, setContextUsageSnapshot, token]);
+
+  useEffect(() => {
+    const activeId = activeConversation?.id || "";
+    if (!activeId) {
+      setContextUsageSnapshot(null);
+      return;
+    }
+    const cachedUsage = getCachedContextUsage(activeId, model);
+    if (cachedUsage) {
+      setContextUsageSnapshot(cachedUsage, activeId, model);
+      return;
+    }
+    const recoveredUsage = getLatestContextUsageFromMessages(messagesRef.current, model);
+    const matchedRecoveredUsage =
+      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
+        ? recoveredUsage
+        : null;
+    setContextUsageSnapshot(matchedRecoveredUsage || null, activeId, model);
+  }, [activeConversation?.id, getCachedContextUsage, model, setContextUsageSnapshot]);
 
 
 
@@ -543,7 +581,11 @@ const ChatPanel = ({
               ? (responsePayload.contextWindow as ContextWindowUsage)
               : null;
           if (contextWindowPayload) {
-            setContextUsageSnapshot(contextWindowPayload, conversationId || null);
+            setContextUsageSnapshot(
+              contextWindowPayload,
+              conversationId || null,
+              typeof contextWindowPayload.model === "string" ? contextWindowPayload.model : model
+            );
             setMessages((prev) =>
               prev.map((msg) => {
                 if (msg.id !== assistantMessageId) return msg;
@@ -735,7 +777,7 @@ const ChatPanel = ({
                 maxContext: streamPayload.maxContext,
                 remainingTokens: streamPayload.remainingTokens,
                 usedPercent: streamPayload.usedPercent,
-              }, conversationId || null);
+              }, conversationId || null, typeof streamPayload.model === "string" ? streamPayload.model : model);
               updateAssistantMetadata((current) => ({
                 ...current,
                 contextWindow: {
@@ -811,7 +853,11 @@ const ChatPanel = ({
             ? getLatestContextUsageFromMessages(latestConversation.messages || [], model)
             : null;
           if (recoveredUsage) {
-            setContextUsageSnapshot(recoveredUsage, conversationId);
+            setContextUsageSnapshot(
+              recoveredUsage,
+              conversationId,
+              typeof recoveredUsage.model === "string" ? recoveredUsage.model : model
+            );
           }
         }
         setStreamingMessageId(null);

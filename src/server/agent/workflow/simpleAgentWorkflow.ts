@@ -282,11 +282,9 @@ export const runSimpleAgentWorkflow = async ({
 
       onEvent?.(SseResponseEventEnum.flowNodeResponse, nodeResponse as unknown as Record<string, unknown>);
 
-      const toolContent = JSON.stringify({
-        toolName,
-        params,
-        response: modelResponse,
-      });
+      // Feed the model with direct tool output instead of an extra JSON wrapper.
+      // Some models (e.g. kimi series) are less robust when the actual payload is nested as a string field.
+      const toolContent = modelResponse;
 
       return {
         response: toolContent,

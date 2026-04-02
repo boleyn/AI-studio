@@ -2,6 +2,28 @@ import { useState, useEffect, useRef } from "react";
 import { getChatModels } from "../services/models";
 import type { ChatModelCatalog } from "../services/models";
 
+const PREFERRED_CHAT_MODEL_STORAGE_KEY = "aistudio.preferredChatModel";
+
+const readPreferredChatModel = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(PREFERRED_CHAT_MODEL_STORAGE_KEY)?.trim() || "";
+  } catch {
+    return "";
+  }
+};
+
+const persistPreferredChatModel = (model: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    const next = model.trim();
+    if (!next) return;
+    window.localStorage.setItem(PREFERRED_CHAT_MODEL_STORAGE_KEY, next);
+  } catch {
+    // Ignore storage failures in private mode or restricted contexts.
+  }
+};
+
 export const useChatModels = (primaryModel?: string) => {
   const [modelLoading, setModelLoading] = useState(false);
   const [channel, setChannel] = useState("aiproxy");
@@ -37,13 +59,19 @@ export const useChatModels = (primaryModel?: string) => {
               },
             ];
         setModelOptions(options);
+        const preferredModel = primaryModel?.trim() || readPreferredChatModel();
         const nextModel = (() => {
+          if (preferredModel) {
+            const preferredMatch = options.find((item) => item.value === preferredModel);
+            if (preferredMatch) return preferredMatch.value;
+          }
           const prevMatch = options.find((item) => item.value === model);
           if (prevMatch) return prevMatch.value;
           return catalog.defaultModel || catalog.toolCallModel || options[0]?.value || "agent";
         })();
 
         setModel(nextModel);
+        persistPreferredChatModel(nextModel);
         const selectedModel = options.find((item) => item.value === nextModel);
         setChannel(selectedModel?.channel || catalog.defaultChannel || "aiproxy");
       })
@@ -60,7 +88,7 @@ export const useChatModels = (primaryModel?: string) => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [primaryModel]);
 
   useEffect(() => {
     if (!modelCatalog) return;
@@ -79,8 +107,13 @@ export const useChatModels = (primaryModel?: string) => {
 
     appliedPrimaryModelRef.current = primaryModel;
     setModel(primaryModel);
+    persistPreferredChatModel(primaryModel);
     setChannel(selected.channel);
   }, [modelCatalog, primaryModel]);
+
+  useEffect(() => {
+    persistPreferredChatModel(model);
+  }, [model]);
 
   return {
     model,

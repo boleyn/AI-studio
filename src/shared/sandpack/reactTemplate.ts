@@ -1,6 +1,22 @@
 export type SandpackFileMap = Record<string, { code: string }>;
+export const DEFAULT_REACT_TEMPLATE_DEPENDENCIES: Record<string, string> = {
+  react: "^18.2.0",
+  "react-dom": "^18.2.0",
+};
 
 export const DEFAULT_REACT_TEMPLATE_FILES: SandpackFileMap = {
+  "/package.json": {
+    code: `{
+  "name": "ai-studio-app",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
+`,
+  },
   "/App.js": {
     code: `import { useState } from "react";
 
@@ -133,6 +149,8 @@ const VITE_SPECIFIC_FILES = [
   "/tsconfig.node.json",
 ] as const;
 
+const DEFAULT_PACKAGE_JSON_CONTENT = DEFAULT_REACT_TEMPLATE_FILES["/package.json"].code;
+
 const findExisting = (files: SandpackFileMap, paths: readonly string[]): string | null => {
   for (const path of paths) {
     if (files[path]) return path;
@@ -191,6 +209,10 @@ export const normalizeSandpackReactTemplateFiles = (
   }
   if (!files["/styles.css"]) {
     files["/styles.css"] = DEFAULT_REACT_TEMPLATE_FILES["/styles.css"];
+    changed = true;
+  }
+  if (!files["/package.json"]) {
+    files["/package.json"] = { code: DEFAULT_PACKAGE_JSON_CONTENT };
     changed = true;
   }
   if (!hasPublicIndex) {

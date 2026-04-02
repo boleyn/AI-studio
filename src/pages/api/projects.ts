@@ -1,6 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
-import { DEFAULT_REACT_TEMPLATE_FILES } from "@shared/sandpack/reactTemplate";
+import {
+  DEFAULT_REACT_TEMPLATE_DEPENDENCIES,
+  DEFAULT_REACT_TEMPLATE_FILES,
+} from "@shared/sandpack/reactTemplate";
 import {
   listProjects,
   getProject,
@@ -37,6 +40,7 @@ const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: strin
 // 默认项目模板（Node + React）
 const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
 const DEFAULT_FILES: Record<string, { code: string }> = DEFAULT_REACT_TEMPLATE_FILES;
+const DEFAULT_DEPENDENCIES: Record<string, string> = DEFAULT_REACT_TEMPLATE_DEPENDENCIES;
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   const auth = await requireAuth(req, res);
@@ -78,7 +82,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         template: body.template || DEFAULT_TEMPLATE,
         userId,
         files: hasNonEmptyFiles(body.files) ? body.files : DEFAULT_FILES,
-        dependencies: body.dependencies || {},
+        dependencies: body.dependencies || DEFAULT_DEPENDENCIES,
         createdAt: now,
         updatedAt: now,
       };

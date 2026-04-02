@@ -161,11 +161,16 @@ export class ProjectWorkspaceManager {
     };
   }
 
-  async hydrate(projectToken?: string): Promise<ProjectWorkspaceSummary> {
+  async hydrate(
+    projectToken?: string,
+    options?: {
+      force?: boolean;
+    }
+  ): Promise<ProjectWorkspaceSummary> {
     const startedAt = Date.now();
     const token = this.ensureToken(projectToken);
     const state = this.getState(token);
-    if (state.hydrated) {
+    if (state.hydrated && !options?.force) {
       return {
         projectToken: token,
         sessionId: this.safeSessionId,

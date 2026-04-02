@@ -444,6 +444,32 @@ const safeParse = <T>(
   return { ok: true, data: parsed.data as T };
 };
 
+const toVirtualPackageJsonContent = (input: {
+  projectName?: string;
+  dependencies?: Record<string, string>;
+}) => {
+  const name =
+    (input.projectName || "ai-studio-project")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "") || "ai-studio-project";
+  const dependencies =
+    input.dependencies && typeof input.dependencies === "object" ? input.dependencies : {};
+
+  return JSON.stringify(
+    {
+      name,
+      private: true,
+      version: "0.0.0",
+      dependencies,
+    },
+    null,
+    2
+  );
+};
+
 export function createProjectTools(
   token: string,
   changeTracker: ChangeTracker,
@@ -464,13 +490,17 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse(listFilesSchema, input, "list_files");
         if (!parsed.ok) throw new Error(parsed.error);
-        await workspaceManager.hydrate(token);
+        await workspaceManager.hydrate(token, { force: true });
         const files = await workspaceManager.listFiles(token);
+        const withVirtualPackageJson = (() => {
+          if (files.includes("/package.json")) return files;
+          return [...files, "/package.json"].sort((a, b) => a.localeCompare(b));
+        })();
         return {
           ok: true,
           action: "list",
-          message: `共 ${files.length} 个文件。`,
-          data: { files },
+          message: `共 ${withVirtualPackageJson.length} 个文件。`,
+          data: { files: withVirtualPackageJson },
         };
       },
     },
@@ -501,9 +531,27 @@ export function createProjectTools(
         const maxChars = parsed.data.maxChars ?? CHAT_FILE_MAX_CHARS;
         if (pathInput && !storagePathInput && !fileNameInput) {
           try {
-            await workspaceManager.hydrate(token);
+            await workspaceManager.hydrate(token, { force: true });
             const file = await workspaceManager.readFile(token, pathInput);
             if (!file) {
+              const normalizedPath = pathInput.startsWith("/") ? pathInput : `/${pathInput}`;
+              if (normalizedPath === "/package.json") {
+                const project = await getProject(token);
+                if (project) {
+                  return {
+                    ok: true,
+                    action: "read",
+                    message: "已读取 /package.json（运行时生成）。",
+                    data: {
+                      path: "/package.json",
+                      content: toVirtualPackageJsonContent({
+                        projectName: project.name,
+                        dependencies: project.dependencies || {},
+                      }),
+                    },
+                  };
+                }
+              }
               const skillRead = await readSkillFileIfAllowed({
                 pathInput,
                 skillBaseDirs: options?.skillBaseDirs || [],

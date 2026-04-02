@@ -32,6 +32,20 @@ export const startSse = (res: NextApiResponse) => {
   streamRes.flushHeaders?.();
 };
 
+export const startSseHeartbeat = (res: NextApiResponse, intervalMs = 15000) => {
+  const timer = setInterval(() => {
+    try {
+      res.write(`: ping\n\n`);
+      const streamRes = res as NextApiResponse & { flush?: () => void };
+      streamRes.flush?.();
+    } catch {
+      clearInterval(timer);
+    }
+  }, intervalMs);
+
+  return () => clearInterval(timer);
+};
+
 export const toIncomingMessages = (messages: unknown): IncomingMessage[] => {
   if (!Array.isArray(messages)) return [];
   return messages

@@ -63,6 +63,7 @@ import {
   routeToolsByIntent,
   sendSseEvent,
   startSse,
+  startSseHeartbeat,
   toIncomingMessages,
   toStringValue,
 } from "./completions/helpers";
@@ -123,6 +124,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
   const created = Math.floor(Date.now() / 1000);
   let streamStarted = false;
+  let stopStreamHeartbeat = () => {};
   const persistedTimeline: Array<{
     type: "reasoning" | "answer" | "tool";
     text?: string;
@@ -201,6 +203,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const startStream = () => {
     if (streamStarted) return;
     startSse(res);
+    stopStreamHeartbeat = startSseHeartbeat(res);
     streamStarted = true;
   };
 
@@ -366,7 +369,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const toolRoutingPrompt = buildToolRoutingSystemPrompt(userIntent, routedTools, toolChoiceMode);
   const hasMcpTools = selectedTools.some((tool) => isMcpToolName(tool.name));
   const hasProjectKnowledgeTools = selectedTools.some((tool) => isProjectKnowledgeMcpTool(tool.name));
-  const requestedModel = model && model !== "agent" ? model : runtimeConfig.toolCallModel;
+  const explicitRequestedModel =
+    typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
+  const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
   const catalog = await getChatModelCatalog({ key: modelCatalogKey }).catch(() => ({
     models: [] as Array<{ id: string; label: string; channel: string; source: "aiproxy" | "env" }>,
     catalogKey: modelCatalogKey || "default",
@@ -383,7 +388,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : catalog.models;
   const availableFilteredModels = new Set(filteredCatalogModels.map((item) => item.id));
   const selectedModel =
-    availableFilteredModels.size === 0
+    explicitRequestedModel && availableModels.has(explicitRequestedModel)
+      ? explicitRequestedModel
+      : availableFilteredModels.size === 0
       ? availableModels.size === 0
         ? requestedModel
         : availableModels.has(requestedModel)
@@ -637,6 +644,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workflowStartAt = Date.now();
   const workflowAbortController = new AbortController();
+  const abortOnClientDisconnect = () => {
+    if (!workflowAbortController.signal.aborted) {
+      workflowAbortController.abort(new Error("client_disconnected"));
+    }
+  };
+  req.once("close", abortOnClientDisconnect);
+  res.once("close", abortOnClientDisconnect);
   if (conversationId) {
     registerActiveConversationRun({
       token,
@@ -714,6 +728,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       throw error;
     } finally {
+      req.off("close", abortOnClientDisconnect);
+      res.off("close", abortOnClientDisconnect);
       if (conversationId) {
         unregisterActiveConversationRun({
           token,
@@ -899,6 +915,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   emitAnswerChunk("", "stop");
   sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
+  stopStreamHeartbeat();
   res.end();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error ?? "未知错误");
@@ -907,6 +924,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       emitAnswerChunk(`请求失败: ${message}`);
       emitAnswerChunk("", "stop");
       sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
+      stopStreamHeartbeat();
       res.end();
       return;
     }
