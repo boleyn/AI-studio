@@ -70,6 +70,28 @@ import { updatePrimaryModel } from "../services/models";
 
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
+const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
+
+const readThinkingEnabled = () => {
+  if (typeof window === "undefined") return true;
+  try {
+    const value = window.localStorage.getItem(THINKING_ENABLED_STORAGE_KEY);
+    if (value === "0") return false;
+    if (value === "1") return true;
+  } catch {
+    // ignore
+  }
+  return true;
+};
+
+const persistThinkingEnabled = (enabled: boolean) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THINKING_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // ignore
+  }
+};
 
 const ChatPanel = ({
   token,
@@ -88,6 +110,8 @@ const ChatPanel = ({
   fileOptions = [],
   skillsProjectToken,
   openSkillsSignal = 0,
+  thinkingTooltipEnabled,
+  thinkingTooltipDisabled,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -105,6 +129,8 @@ const ChatPanel = ({
   fileOptions?: string[];
   skillsProjectToken?: string;
   openSkillsSignal?: number;
+  thinkingTooltipEnabled?: string;
+  thinkingTooltipDisabled?: string;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -125,6 +151,7 @@ const ChatPanel = ({
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [thinkingEnabled, setThinkingEnabled] = useState(true);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
@@ -165,6 +192,13 @@ const ChatPanel = ({
     },
     [model, setModel]
   );
+  useEffect(() => {
+    setThinkingEnabled(readThinkingEnabled());
+  }, []);
+  const handleChangeThinkingEnabled = useCallback((enabled: boolean) => {
+    setThinkingEnabled(enabled);
+    persistThinkingEnabled(enabled);
+  }, []);
 
   const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
   const {
@@ -247,6 +281,12 @@ const ChatPanel = ({
       setContextUsageSnapshot(null);
       return;
     }
+    const activeMessages = activeConversation?.messages ?? [];
+    if (activeMessages.length === 0) {
+      // New/empty conversation should always start from a clean context usage state.
+      setContextUsageSnapshot(null, activeId, model);
+      return;
+    }
     const cachedUsage = getCachedContextUsage(activeId, model);
     if (cachedUsage) {
       setContextUsageSnapshot(cachedUsage, activeId, model);
@@ -258,7 +298,7 @@ const ChatPanel = ({
         ? recoveredUsage
         : null;
     setContextUsageSnapshot(matchedRecoveredUsage || null, activeId, model);
-  }, [activeConversation?.id, getCachedContextUsage, model, setContextUsageSnapshot]);
+  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot]);
 
 
 
@@ -427,25 +467,24 @@ const ChatPanel = ({
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
       streamingConversationIdRef.current = conversationId ?? null;
+      const updateAssistantMetadata = (
+        updater: (current: Record<string, unknown>) => Record<string, unknown>
+      ) => {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMessageId) return msg;
+            const current =
+              msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                ? msg.additional_kwargs
+                : {};
+            return {
+              ...msg,
+              additional_kwargs: updater(current),
+            };
+          })
+        );
+      };
       try {
-        const updateAssistantMetadata = (
-          updater: (current: Record<string, unknown>) => Record<string, unknown>
-        ) => {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== assistantMessageId) return msg;
-              const current =
-                msg.additional_kwargs && typeof msg.additional_kwargs === "object"
-                  ? msg.additional_kwargs
-                  : {};
-              return {
-                ...msg,
-                additional_kwargs: updater(current),
-              };
-            })
-          );
-        };
-
         const upsertToolMessage = (
           id: string,
           nextPartial: { toolName?: string; params?: string; response?: string }
@@ -564,6 +603,9 @@ const ChatPanel = ({
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
+              ...(model.toLowerCase().includes("kimi")
+                ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
+                : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
               ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
@@ -812,6 +854,9 @@ const ChatPanel = ({
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
+              ...(model.toLowerCase().includes("kimi")
+                ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
+                : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
               ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
@@ -842,6 +887,84 @@ const ChatPanel = ({
         }
         if (streamingReasoningRef.current) {
           flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
+        }
+        updateAssistantMetadata((current) => {
+          const details = Array.isArray(current.toolDetails)
+            ? (current.toolDetails as Array<{ response?: string }>)
+            : [];
+          const timeline = Array.isArray(current.timeline)
+            ? (current.timeline as Array<Record<string, unknown>>)
+            : [];
+          const pendingCount = details.filter(
+            (item) => !item?.response || String(item.response).trim().length === 0
+          ).length;
+          const pendingTimelineCount = timeline.filter(
+            (item) =>
+              item?.type === "tool" &&
+              (typeof item.response !== "string" || item.response.trim().length === 0)
+          ).length;
+          if (pendingCount === 0 && pendingTimelineCount === 0) return current;
+
+          const pendingMessage = abortCtrl.signal.aborted
+            ? "[已中断] 工具未返回结果"
+            : "[已结束] 工具未返回结果";
+          return {
+            ...current,
+            toolDetails: details.map((item) => ({
+              ...item,
+              response:
+                !item?.response || String(item.response).trim().length === 0
+                  ? pendingMessage
+                  : item.response,
+            })),
+            timeline: timeline.map((item) =>
+              item?.type === "tool" &&
+              (typeof item.response !== "string" || item.response.trim().length === 0)
+                ? { ...item, response: pendingMessage }
+                : item
+            ),
+          };
+        });
+        if (abortCtrl.signal.aborted && conversationId) {
+          const persistedMessages = (() => {
+            const snapshot = messagesRef.current.map((item) => ({ ...item }));
+            if (!snapshot.some((item) => item.id === userMessage.id)) {
+              snapshot.push(userMessage);
+            }
+            const assistantIndex = snapshot.findIndex((item) => item.id === assistantMessageId);
+            const finalAssistantText = streamingTextRef.current.trim();
+            const finalReasoningText = streamingReasoningRef.current.trim();
+
+            if (assistantIndex >= 0) {
+              const assistant = snapshot[assistantIndex];
+              const kwargs =
+                assistant.additional_kwargs && typeof assistant.additional_kwargs === "object"
+                  ? assistant.additional_kwargs
+                  : {};
+              snapshot[assistantIndex] = {
+                ...assistant,
+                content: finalAssistantText || extractText(assistant.content) || "[已中断]",
+                additional_kwargs: {
+                  ...kwargs,
+                  ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                },
+              };
+            } else if (finalAssistantText || finalReasoningText) {
+              snapshot.push({
+                role: "assistant",
+                id: assistantMessageId,
+                content: finalAssistantText || "[已中断]",
+                additional_kwargs: finalReasoningText
+                  ? { reasoning_text: finalReasoningText }
+                  : undefined,
+              });
+            }
+
+            return snapshot;
+          })();
+          if (persistedMessages.length > 0) {
+            await replaceConversationMessages(token, conversationId, persistedMessages).catch(() => false);
+          }
         }
         if (streamAbortRef.current === abortCtrl) {
           streamAbortRef.current = null;
@@ -1091,7 +1214,10 @@ const ChatPanel = ({
         onChangeModel={handleChangeModel}
         onDeleteAllConversations={() => deleteAllConversations()}
         onDeleteConversation={(id) => deleteConversation(id)}
-        onNewConversation={() => createNewConversation()}
+        onNewConversation={() => {
+          setContextUsageSnapshot(null);
+          void createNewConversation();
+        }}
         onOpenSkills={undefined}
         onSelectConversation={(id) => loadConversation(id)}
         title={activeConversationTitle}
@@ -1179,11 +1305,15 @@ const ChatPanel = ({
           model={model}
           modelLoading={modelLoading}
           modelOptions={modelOptions}
+          thinkingEnabled={thinkingEnabled}
+          thinkingTooltipEnabled={thinkingTooltipEnabled}
+          thinkingTooltipDisabled={thinkingTooltipDisabled}
           selectedSkill={selectedSkills[0]}
           selectedSkills={selectedSkills}
           skillOptions={skillOptions}
           fileOptions={fileOptions}
           onChangeModel={handleChangeModel}
+          onChangeThinkingEnabled={handleChangeThinkingEnabled}
           onChangeSelectedSkills={setSelectedSkills}
           onUploadFiles={prepareUploadFiles}
           onSend={handleSend}

@@ -24,6 +24,7 @@ import {
   registerActiveConversationRun,
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
+import { bindWorkflowAbortToConnection } from "@server/chat/completions/connectionLifecycle";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
 import { toWorkspacePublicFiles } from "@server/skills/workspaceStorage";
 import { createDataId } from "@shared/chat/ids";
@@ -204,6 +205,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const modelCatalogKey =
     typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
+  const thinking = (() => {
+    const raw = req.body?.thinking;
+    if (!raw || typeof raw !== "object") return undefined;
+    const type = (raw as { type?: unknown }).type;
+    if (type === "enabled") return { type: "enabled" as const };
+    if (type === "disabled") return { type: "disabled" as const };
+    return undefined;
+  })();
   const explicitRequestedModel =
     typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
   const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
@@ -320,13 +329,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const workflowStartAt = Date.now();
     const workflowAbortController = new AbortController();
-    const abortOnClientDisconnect = () => {
-      if (!workflowAbortController.signal.aborted) {
-        workflowAbortController.abort(new Error("client_disconnected"));
-      }
-    };
-    req.once("close", abortOnClientDisconnect);
-    res.once("close", abortOnClientDisconnect);
+    const cleanupDisconnectBinding = bindWorkflowAbortToConnection({
+      req,
+      res,
+      controller: workflowAbortController,
+      scope: "skills/chat/completions",
+    });
     if (conversationId) {
       registerActiveConversationRun({
         token: runToken,
@@ -382,6 +390,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           stream,
           recursionLimit: runtimeConfig.recursionLimit || 6,
           temperature: runtimeConfig.temperature,
+          thinking,
           messages,
           toolChoice: "auto",
           allTools,
@@ -436,8 +445,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } finally {
-        req.off("close", abortOnClientDisconnect);
-        res.off("close", abortOnClientDisconnect);
+        cleanupDisconnectBinding();
         if (conversationId) {
           unregisterActiveConversationRun({
             token: runToken,

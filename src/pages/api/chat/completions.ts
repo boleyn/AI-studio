@@ -21,6 +21,7 @@ import {
   registerActiveConversationRun,
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
+import { bindWorkflowAbortToConnection } from "@server/chat/completions/connectionLifecycle";
 import {
   getConversation,
   appendConversationMessages,
@@ -107,6 +108,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const channel = typeof req.body?.channel === "string" ? req.body.channel : "";
   const modelCatalogKey = typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
+  const thinking = (() => {
+    const raw = req.body?.thinking;
+    if (!raw || typeof raw !== "object") return undefined;
+    const type = (raw as { type?: unknown }).type;
+    if (type === "enabled") return { type: "enabled" as const };
+    if (type === "disabled") return { type: "disabled" as const };
+    return undefined;
+  })();
   const history = (() => {
     const value = req.body?.history;
     if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
@@ -644,13 +653,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workflowStartAt = Date.now();
   const workflowAbortController = new AbortController();
-  const abortOnClientDisconnect = () => {
-    if (!workflowAbortController.signal.aborted) {
-      workflowAbortController.abort(new Error("client_disconnected"));
-    }
-  };
-  req.once("close", abortOnClientDisconnect);
-  res.once("close", abortOnClientDisconnect);
+  const cleanupDisconnectBinding = bindWorkflowAbortToConnection({
+    req,
+    res,
+    controller: workflowAbortController,
+    scope: "chat/completions",
+  });
   if (conversationId) {
     registerActiveConversationRun({
       token,
@@ -665,6 +673,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       stream,
       recursionLimit: runtimeConfig.recursionLimit || 6,
       temperature: runtimeConfig.temperature,
+      thinking,
       messages: agentMessages,
       toolChoice: toolChoiceMode,
       allTools: selectedTools,
@@ -728,8 +737,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       throw error;
     } finally {
-      req.off("close", abortOnClientDisconnect);
-      res.off("close", abortOnClientDisconnect);
+      cleanupDisconnectBinding();
       if (conversationId) {
         unregisterActiveConversationRun({
           token,

@@ -36,6 +36,10 @@ Follow this skill for coding tasks in this repository.
 
 - Use function call and MCP tools only.
 - Avoid prompt-encoded pseudo tool-calling formats.
+- Before any tool call, provide a short clarification message (1-2 sentences) describing understanding + immediate plan.
+- Use "clarify first, then execute" cadence on coding tasks: brief intent alignment -> tool discovery/read -> implementation.
+- Before each major tool batch, provide a short progress update so users can understand why tools are being called.
+- Do not run long sequences of tool calls without visible explanatory text.
 - Read target files before claiming code changes.
 - Run MCP reference steps before implementation changes when relevant MCP exists.
 - For UI/prototype/code tasks, complete GitLab KB lookup before prototyping and implementation when GitLab KB tools are available.

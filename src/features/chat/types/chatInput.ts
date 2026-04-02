@@ -12,6 +12,7 @@ export interface ChatInputSubmitPayload {
   selectedSkill?: string;
   selectedSkills?: string[];
   selectedFilePaths?: string[];
+  thinkingEnabled?: boolean;
 }
 
 export interface ChatInputModelOption {
@@ -26,6 +27,9 @@ export interface ChatInputProps {
   model: string;
   modelOptions: ChatInputModelOption[];
   modelLoading?: boolean;
+  thinkingEnabled?: boolean;
+  thinkingTooltipEnabled?: string;
+  thinkingTooltipDisabled?: string;
   selectedSkill?: string;
   selectedSkills?: string[];
   skillOptions?: Array<{
@@ -36,6 +40,7 @@ export interface ChatInputProps {
   prefillText?: string;
   prefillVersion?: number;
   onChangeModel: (model: string) => void;
+  onChangeThinkingEnabled?: (enabled: boolean) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
   onChangeSelectedSkills?: (skillNames: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;

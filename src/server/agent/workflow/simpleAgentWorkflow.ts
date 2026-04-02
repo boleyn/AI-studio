@@ -23,6 +23,7 @@ interface RunSimpleAgentWorkflowInput {
   stream: boolean;
   recursionLimit: number;
   temperature: number;
+  thinking?: { type: "enabled" | "disabled" };
   toolChoice?: "auto" | "required";
   messages: ChatCompletionMessageParam[];
   allTools: AgentToolDefinition[];
@@ -115,6 +116,9 @@ const parseToolResponse = (response: string): unknown => {
   }
 };
 
+const toDebugSnippet = (value: string, maxChars = 2000) =>
+  value.length > maxChars ? `${value.slice(0, maxChars)}...[truncated ${value.length - maxChars} chars]` : value;
+
 const compactToolResponseForModel = (toolName: string, response: string): string => {
   let parsed: unknown;
   try {
@@ -176,6 +180,7 @@ export const runSimpleAgentWorkflow = async ({
   stream,
   recursionLimit,
   temperature,
+  thinking,
   toolChoice,
   messages,
   allTools,
@@ -184,6 +189,7 @@ export const runSimpleAgentWorkflow = async ({
   onEvent,
 }: RunSimpleAgentWorkflowInput): Promise<RunSimpleAgentWorkflowResult> => {
   const flowResponses: SimpleWorkflowNodeResponse[] = [];
+  const isKimiModel = /kimi/i.test(selectedModel || "");
 
   const runResult = await runAgentCall({
     maxRunAgentTimes: recursionLimit,
@@ -198,6 +204,7 @@ export const runSimpleAgentWorkflow = async ({
       requestOrigin: process.env.STORAGE_EXTERNAL_ENDPOINT || "http://127.0.0.1:3000",
       tool_choice: toolChoice,
       toolCallMode: "toolChoice",
+      ...(thinking ? { thinking } : {}),
     },
     isAborted: () => abortSignal?.aborted,
     handleInteractiveTool: async () => ({
@@ -214,19 +221,6 @@ export const runSimpleAgentWorkflow = async ({
       if (!text) return;
       onEvent?.(SseResponseEventEnum.reasoning, { text });
     },
-    onToolCall: ({ call }) => {
-      onEvent?.(SseResponseEventEnum.toolCall, {
-        id: call.id,
-        toolName: call.function?.name,
-      });
-    },
-    onToolParam: ({ tool, params }) => {
-      onEvent?.(SseResponseEventEnum.toolParams, {
-        id: tool.id,
-        toolName: tool.function?.name,
-        params,
-      });
-    },
     handleToolResponse: async ({ call }) => {
       if (abortSignal?.aborted) {
         return {
@@ -242,24 +236,63 @@ export const runSimpleAgentWorkflow = async ({
       let response = "";
       let status: "success" | "error" = "success";
 
-      if (!tool) {
-        status = "error";
-        response = `未找到工具: ${call.function.name}`;
-      } else {
-        try {
-          const parsed = toSafeToolArgs(call.function.arguments);
-          const result = await tool.run(parsed);
-          response = typeof result === "string" ? result : JSON.stringify(result);
-        } catch (error) {
+      const toolName = call.function.name;
+      const params = formatToolArgs(call.function.arguments);
+      // Emit tool lifecycle events from execution phase (after dedupe),
+      // so UI cards reflect what actually runs.
+      onEvent?.(SseResponseEventEnum.toolCall, {
+        id: call.id,
+        toolName,
+      });
+      if (params) {
+        onEvent?.(SseResponseEventEnum.toolParams, {
+          id: call.id,
+          toolName,
+          params,
+        });
+      }
+
+      if (!response) {
+        if (!tool) {
           status = "error";
-          response = error instanceof Error ? error.message : "工具执行失败";
+          response = `未找到工具: ${call.function.name}`;
+        } else {
+          try {
+            const parsed = toSafeToolArgs(call.function.arguments);
+            const result = await tool.run(parsed);
+            response = typeof result === "string" ? result : JSON.stringify(result);
+          } catch (error) {
+            status = "error";
+            response = error instanceof Error ? error.message : "工具执行失败";
+          }
         }
       }
 
-      const toolName = call.function.name;
-      const params = formatToolArgs(call.function.arguments);
       const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
       const modelResponse = compactToolResponseForModel(toolName, response);
+
+      console.info(
+        "[agent-debug][tool-call-result]",
+        JSON.stringify(
+          {
+            model: selectedModel,
+            isKimiModel,
+            toolCallId: call.id,
+            toolName,
+            status,
+            runningTime,
+            argsRawLength: (call.function.arguments || "").length,
+            argsDisplayLength: params.length,
+            rawResponseLength: response.length,
+            modelResponseLength: modelResponse.length,
+            paramsPreview: toDebugSnippet(params),
+            rawResponsePreview: toDebugSnippet(response),
+            modelResponsePreview: toDebugSnippet(modelResponse),
+          },
+          null,
+          2
+        )
+      );
 
       onEvent?.(SseResponseEventEnum.toolResponse, {
         id: call.id,

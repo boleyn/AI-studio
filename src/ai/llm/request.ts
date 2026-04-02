@@ -621,17 +621,21 @@ export const createStreamResponse = async ({
               filteredTools.find((item) => item.function.name === normalizedToolName);
             if (!matchTool) return;
 
+            const resolvedToolName = matchTool.function.name;
             const call: ChatCompletionMessageToolCall = {
               id: existingPending.id || getNanoid(),
               type: 'function',
               function: {
-                name: toolName || matchTool.function.name,
+                // Always emit the canonical local tool name so executor can resolve it reliably.
+                name: resolvedToolName,
                 arguments: existingPending.arguments
               } as ChatCompletionMessageToolCall['function']
             };
             addLog.info('[LLM ToolCall][stream]', {
               id: call.id,
-              name: call.function?.name
+              name: call.function?.name,
+              model: String(model),
+              argsLength: call.function?.arguments?.length || 0
             });
             toolCalls[index] = call;
             onToolCall?.({ call });
@@ -645,10 +649,32 @@ export const createStreamResponse = async ({
         }
       }
     } catch (error: any) {
-      updateError(error?.error || error);
+      const streamError = error?.error || error;
+      // Some providers may terminate stream with a transport-level error after tool calls
+      // were already emitted. Preserve those tool calls to avoid "tool started but no output".
+      if (toolCalls.filter((call) => !!call).length > 0) {
+        addLog.warn('[LLM ToolCall][stream][ignore-error-after-toolcall]', {
+          message: getErrText(streamError),
+          toolCallCount: toolCalls.filter((call) => !!call).length
+        });
+      } else {
+        updateError(streamError);
+      }
     }
 
     const { reasoningContent, content, finish_reason, usage, error } = getResponseData();
+    addLog.info('[LLM ToolCall][stream][summary]', {
+      model: String(model),
+      toolCallCount: toolCalls.filter((call) => !!call).length,
+      toolCalls: toolCalls
+        .filter((call): call is ChatCompletionMessageToolCall => Boolean(call))
+        .map((call) => ({
+          id: call.id,
+          name: call.function?.name,
+          argsLength: call.function?.arguments?.length || 0
+        })),
+      finish_reason
+    });
 
     return {
       error,
