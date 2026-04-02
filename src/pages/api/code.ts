@@ -14,6 +14,14 @@ import {
 } from "@server/projects/projectStorage";
 import { requireAuth } from "@server/auth/session";
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "50mb",
+    },
+  },
+};
+
 type PatchProjectRequest = {
   name?: string;
   description?: string;

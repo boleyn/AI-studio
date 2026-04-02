@@ -35,6 +35,7 @@ type FileTreeProps = {
   onCancelRename: () => void;
   onDeleteFile: (path: string) => void | Promise<void>;
   onDeleteFolder: (path: string) => void | Promise<void>;
+  onUploadAt: (folderPath: string) => void;
   onCopyPath: (path: string) => void;
   onDownloadFile: (path: string, name: string) => void;
 };
@@ -66,6 +67,7 @@ const FileTree = ({
   onCancelRename,
   onDeleteFile,
   onDeleteFolder,
+  onUploadAt,
   onCopyPath,
   onDownloadFile,
 }: FileTreeProps) => {
@@ -214,6 +216,7 @@ const FileTree = ({
           actions={[
             { label: "新建文件", onClick: () => onOpenCreateAt("file", folder.path) },
             { label: "新建文件夹", onClick: () => onOpenCreateAt("folder", folder.path) },
+            { label: "上传文件", onClick: () => onUploadAt(folder.path) },
             { label: "重命名", onClick: () => onStartRename(folder.path, "folder") },
             { label: "删除", onClick: () => void onDeleteFolder(folder.path) },
             { label: "复制路径", onClick: () => onCopyPath(folder.path) },

@@ -13,6 +13,7 @@ import {
   MenuButton,
   MenuItem,
   MenuList,
+  Spinner,
   Text,
   useToast,
 } from "@chakra-ui/react";
@@ -197,9 +198,13 @@ const FileExplorerPanel = ({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([defaultFolderPath, "/"]));
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetFolderRef = useRef<string | null>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
+  const creatingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const uploadToastIdRef = useRef("workspace-uploading");
+  const [isUploading, setIsUploading] = useState(false);
 
   const allFiles = sandpack.files as SandpackFilesPayload;
   const files = useMemo(() => {
@@ -332,12 +337,14 @@ const FileExplorerPanel = ({
       syncLocalFiles(nextFiles, nextActiveFile);
       try {
         await persistFullFiles(nextFiles);
+        return true;
       } catch (error) {
         toast({
           status: "error",
           title: "文件保存失败",
           description: error instanceof Error ? error.message : "请稍后重试",
         });
+        return false;
       }
     },
     [persistFullFiles, syncLocalFiles, toast]
@@ -373,37 +380,42 @@ const FileExplorerPanel = ({
   }, []);
 
   const confirmCreate = useCallback(async () => {
-    if (!createMode) return;
+    if (!createMode || creatingRef.current) return;
+    creatingRef.current = true;
 
-    const targetPath = joinPath(createParentPath, createDraftName);
-    if (!targetPath) {
-      toast({ status: "warning", title: "路径不合法" });
-      return;
-    }
-
-    const nextFiles: SandpackFilesPayload = { ...files };
-
-    if (createMode === "file") {
-      if (nextFiles[targetPath]) {
-        toast({ status: "warning", title: "文件已存在" });
+    try {
+      const targetPath = joinPath(createParentPath, createDraftName);
+      if (!targetPath) {
+        toast({ status: "warning", title: "路径不合法" });
         return;
       }
-      nextFiles[targetPath] = { code: buildInitialFileCode(targetPath) };
-      await applyFullFiles(nextFiles, targetPath);
+
+      const nextFiles: SandpackFilesPayload = { ...files };
+
+      if (createMode === "file") {
+        if (nextFiles[targetPath]) {
+          toast({ status: "warning", title: "文件已存在" });
+          return;
+        }
+        nextFiles[targetPath] = { code: buildInitialFileCode(targetPath) };
+        cancelCreate();
+        await applyFullFiles(nextFiles, targetPath);
+        return;
+      }
+
+      const folderMarker = `${targetPath.replace(/\/+$/, "")}/.gitkeep`;
+      if (nextFiles[folderMarker]) {
+        toast({ status: "warning", title: "文件夹已存在" });
+        return;
+      }
+
+      nextFiles[folderMarker] = { code: "" };
+      ensureFolderExpanded(targetPath);
       cancelCreate();
-      return;
+      await applyFullFiles(nextFiles);
+    } finally {
+      creatingRef.current = false;
     }
-
-    const folderMarker = `${targetPath.replace(/\/+$/, "")}/.gitkeep`;
-    if (nextFiles[folderMarker]) {
-      toast({ status: "warning", title: "文件夹已存在" });
-      return;
-    }
-
-    nextFiles[folderMarker] = { code: "" };
-    ensureFolderExpanded(targetPath);
-    await applyFullFiles(nextFiles);
-    cancelCreate();
   }, [
     applyFullFiles,
     cancelCreate,
@@ -521,29 +533,98 @@ const FileExplorerPanel = ({
     async (event: ChangeEvent<HTMLInputElement>) => {
       const selectedFiles = Array.from(event.target.files || []);
       event.currentTarget.value = "";
-      if (selectedFiles.length === 0) return;
-
-      const nextFiles: SandpackFilesPayload = { ...files };
-      const selectedParent =
-        selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath);
-      const selectedSkillRoot =
-        workspaceMode === "skills"
-          ? getSkillRootPath(selectedParent || skillsDisplayRootPath || selectedPath || "")
-          : "";
-      for (const file of selectedFiles) {
-        const rawPath = toSandpackPath(file.webkitRelativePath || file.name);
-        if (!rawPath) continue;
-        const path = workspaceMode === "skills" ? toSkillsScopedPath(rawPath, selectedSkillRoot || undefined) : rawPath;
-        if (!path) continue;
-        nextFiles[path] = { code: await readBrowserFileAsWorkspaceCode(file, path) };
+      if (selectedFiles.length === 0) {
+        uploadTargetFolderRef.current = null;
+        return;
       }
+      setIsUploading(true);
+      toast({
+        id: uploadToastIdRef.current,
+        position: "top-right",
+        duration: null,
+        isClosable: false,
+        render: () => (
+          <Flex
+            align="center"
+            gap={2}
+            px={3}
+            py={2.5}
+            borderRadius="10px"
+            border="1px solid"
+            borderColor="var(--ws-border)"
+            bg="var(--ws-surface-strong)"
+            color="var(--ws-text-main)"
+            boxShadow="0 8px 24px rgba(15,23,42,0.12)"
+          >
+            <Spinner size="sm" color="var(--ws-text-subtle)" />
+            <Text fontSize="sm" fontWeight={500}>
+              正在上传 {selectedFiles.length} 个文件...
+            </Text>
+          </Flex>
+        ),
+      });
 
-      const firstRawPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name);
-      const firstPath =
-        firstRawPath && workspaceMode === "skills"
-          ? toSkillsScopedPath(firstRawPath, selectedSkillRoot || undefined) || undefined
-          : firstRawPath || undefined;
-      await applyFullFiles(nextFiles, firstPath);
+      try {
+        const nextFiles: SandpackFilesPayload = { ...files };
+        const explicitTargetFolder = uploadTargetFolderRef.current;
+        uploadTargetFolderRef.current = null;
+        const selectedParent =
+          explicitTargetFolder ||
+          (selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath)) ||
+          "/";
+        const selectedSkillRoot =
+          workspaceMode === "skills"
+            ? getSkillRootPath(selectedParent || skillsDisplayRootPath || selectedPath || "")
+            : "";
+
+        let firstPath: string | undefined;
+        for (const file of selectedFiles) {
+          const rawPath = toSandpackPath(file.webkitRelativePath || file.name);
+          if (!rawPath) continue;
+          const relativePath = rawPath.replace(/^\/+/, "");
+          const pathInFolder = joinPath(selectedParent, relativePath);
+          if (!pathInFolder) continue;
+          const finalPath =
+            workspaceMode === "skills"
+              ? toSkillsScopedPath(pathInFolder, selectedSkillRoot || undefined)
+              : pathInFolder;
+          if (!finalPath) continue;
+          if (!firstPath) firstPath = finalPath;
+          nextFiles[finalPath] = { code: await readBrowserFileAsWorkspaceCode(file, finalPath) };
+        }
+
+        if (!firstPath) {
+          toast.close(uploadToastIdRef.current);
+          toast({
+            position: "top-right",
+            status: "warning",
+            title: "没有可上传的文件",
+            description: "请检查文件名或路径是否合法。",
+          });
+          return;
+        }
+
+        const persisted = await applyFullFiles(nextFiles, firstPath);
+        toast.close(uploadToastIdRef.current);
+        if (persisted) {
+          toast({
+            position: "top-right",
+            status: "success",
+            title: "上传完成",
+            description: `已上传 ${selectedFiles.length} 个文件`,
+          });
+        } else {
+          toast({
+            position: "top-right",
+            status: "warning",
+            title: "上传未持久化",
+            description: "文件在当前会话可见，但刷新后可能丢失，请重试。",
+          });
+        }
+      } finally {
+        uploadTargetFolderRef.current = null;
+        setIsUploading(false);
+      }
     },
     [
       applyFullFiles,
@@ -552,9 +633,15 @@ const FileExplorerPanel = ({
       selectedPath,
       selectedType,
       skillsDisplayRootPath,
+      toast,
       workspaceMode,
     ]
   );
+
+  const openUploadAt = useCallback((folderPath: string) => {
+    uploadTargetFolderRef.current = folderPath;
+    fileUploadInputRef.current?.click();
+  }, []);
 
   const handleToggleExpandAll = useCallback(() => {
     if (allExpanded) {
@@ -743,7 +830,15 @@ const FileExplorerPanel = ({
               ) : null}
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
               <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
-              <MenuItem onClick={() => fileUploadInputRef.current?.click()}>上传文件</MenuItem>
+              <MenuItem
+                isDisabled={isUploading}
+                onClick={() => {
+                  uploadTargetFolderRef.current = null;
+                  fileUploadInputRef.current?.click();
+                }}
+              >
+                {isUploading ? "上传中..." : "上传文件"}
+              </MenuItem>
             </MenuList>
           </Menu>
           <IconButton
@@ -866,6 +961,7 @@ const FileExplorerPanel = ({
           onCancelRename={cancelRename}
           onDeleteFile={handleDeleteFile}
           onDeleteFolder={handleDeleteFolder}
+          onUploadAt={openUploadAt}
           onCopyPath={handleCopyPath}
           onDownloadFile={handleDownloadFile}
         />

@@ -1,5 +1,5 @@
 import { Input } from "@chakra-ui/react";
-import type { RefObject } from "react";
+import { useRef, type RefObject } from "react";
 
 type TreeInlineInputProps = {
   inputRef: RefObject<HTMLInputElement>;
@@ -20,6 +20,8 @@ const TreeInlineInput = ({
   onConfirm,
   onCancel,
 }: TreeInlineInputProps) => {
+  const skipNextBlurConfirmRef = useRef(false);
+
   return (
     <Input
       ref={inputRef}
@@ -35,14 +37,20 @@ const TreeInlineInput = ({
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          skipNextBlurConfirmRef.current = true;
           void onConfirm();
         }
         if (event.key === "Escape") {
           event.preventDefault();
+          skipNextBlurConfirmRef.current = true;
           onCancel();
         }
       }}
       onBlur={() => {
+        if (skipNextBlurConfirmRef.current) {
+          skipNextBlurConfirmRef.current = false;
+          return;
+        }
         void onConfirm();
       }}
     />
