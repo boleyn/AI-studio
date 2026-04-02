@@ -43,10 +43,21 @@ export const toToolMemoryMessages = (message: ConversationMessage): ChatCompleti
   if (toolDetails.length === 0) return [];
 
   const baseId = message.id || createDataId();
-  const normalizedCalls = toolDetails.map((detail, index) => {
+  const normalizedCalls: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+    response: string;
+  }> = [];
+  const idToIndex = new Map<string, number>();
+
+  toolDetails.forEach((detail, index) => {
     const toolCallId = detail.id?.trim() || `${baseId}-tool-${index + 1}`;
     const functionName = detail.functionName?.trim() || detail.toolName?.trim() || "tool";
-    return {
+    const next = {
       id: toolCallId,
       type: "function" as const,
       function: {
@@ -54,6 +65,28 @@ export const toToolMemoryMessages = (message: ConversationMessage): ChatCompleti
         arguments: detail.params || "",
       },
       response: detail.response || "",
+    };
+
+    const existingIndex = idToIndex.get(toolCallId);
+    if (existingIndex == null) {
+      idToIndex.set(toolCallId, normalizedCalls.length);
+      normalizedCalls.push(next);
+      return;
+    }
+
+    // Stopped runs may leave duplicate shells sharing the same tool_call id.
+    // Merge duplicates into one canonical call before rebuilding tool memory messages.
+    const prev = normalizedCalls[existingIndex];
+    normalizedCalls[existingIndex] = {
+      ...prev,
+      function: {
+        name: prev.function.name && prev.function.name !== "tool" ? prev.function.name : next.function.name,
+        arguments:
+          next.function.arguments.length > prev.function.arguments.length
+            ? next.function.arguments
+            : prev.function.arguments,
+      },
+      response: next.response.length > prev.response.length ? next.response : prev.response,
     };
   });
 

@@ -144,8 +144,23 @@ const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessagePa
           }
         } as ChatCompletionMessageToolCall;
       });
+    const dedupedCalls: ChatCompletionMessageToolCall[] = [];
+    const seenCallIds = new Set<string>();
+    for (const call of repairedCalls) {
+      const id = call.id || '';
+      if (!id) continue;
+      if (seenCallIds.has(id)) {
+        addLog.warn('[LLM Request][drop-duplicated-assistant-tool-call-before-provider]', {
+          tool_call_id: id,
+          reason: 'duplicated_tool_call_id_in_single_assistant_message'
+        });
+        continue;
+      }
+      seenCallIds.add(id);
+      dedupedCalls.push(call);
+    }
 
-    const pendingIds = new Set(repairedCalls.map((call) => call.id).filter(Boolean));
+    const pendingIds = new Set(dedupedCalls.map((call) => call.id).filter(Boolean));
     const matchedToolIds = new Set<string>();
     const matchedToolMessages: ChatCompletionMessageParam[] = [];
 
@@ -167,7 +182,7 @@ const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessagePa
       j += 1;
     }
 
-    const finalCalls = repairedCalls.filter((call) => matchedToolIds.has(call.id || ''));
+    const finalCalls = dedupedCalls.filter((call) => matchedToolIds.has(call.id || ''));
     if (finalCalls.length > 0) {
       sanitized.push({
         ...message,
