@@ -9,7 +9,7 @@ import {
   useTheme,
 } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
-import { PencilIcon } from "@components/common/Icon";
+import { AgentSkillsIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +19,8 @@ import type { ChatInputFile, ChatInputProps, ChatInputSubmitPayload } from "../t
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { toFileTagLabel } from "../utils/chatPanelUtils";
 import ModelCascader from "./ModelCascader";
+import SlashFilePicker from "./SlashFilePicker";
+import SkillMentionPicker from "./SkillMentionPicker";
 
 type LocalInputFile = ChatInputFile & {
   uploadState: "uploading" | "ready" | "error";
@@ -533,9 +535,9 @@ const ChatInput = ({
 
         <Flex align="center" px={2}>
           <Box position="relative" w="100%">
-            {selectedSkillList.length > 0 ? (
+            {selectedSkillList.length > 0 || selectedFilePaths.length > 0 ? (
               <Flex px={2} pt={2}>
-                <Flex gap={1.5} wrap="wrap">
+                <Flex align="center" gap={1.5} wrap="wrap">
                   {selectedSkillList.map((skill) => (
                     <Flex
                       key={skill}
@@ -551,7 +553,7 @@ const ChatInput = ({
                       pl={2.5}
                       pr={1}
                     >
-                      <Box as={PencilIcon} color={skillTheme.labelColor || "adora.700"} h="13px" w="13px" />
+                      <Box as={AgentSkillsIcon} color={skillTheme.labelColor || "adora.700"} h="13px" w="13px" />
                       <Text fontSize="13px" fontWeight={600} noOfLines={1}>
                         {skill}
                       </Text>
@@ -567,45 +569,39 @@ const ChatInput = ({
                       />
                     </Flex>
                   ))}
-                </Flex>
-              </Flex>
-            ) : null}
-            {selectedFilePaths.length > 0 ? (
-              <Flex px={2} pt={selectedSkillList.length > 0 ? 1.5 : 2}>
-                <Flex gap={1.5} wrap="wrap">
                   {selectedFilePaths.map((filePath) => {
                     const fileLabel = toFileTagLabel(filePath);
                     const fileIcon = getFileIcon(fileLabel);
                     return (
-                    <Flex
-                      key={filePath}
-                      align="center"
-                      bg="white"
-                      border="1px solid"
-                      borderColor="#E2E8F0"
-                      borderRadius="8px"
-                      boxShadow="0px 2.571px 6.429px 0px rgba(19, 51, 107, 0.08), 0px 0px 0.643px 0px rgba(19, 51, 107, 0.08)"
-                      color="gray.700"
-                      gap={2}
-                      h="32px"
-                      maxW="320px"
-                      pl={2}
-                      pr={1}
-                    >
-                      <Box as="img" h="18px" src={`/icons/chat/${fileIcon}.svg`} w="18px" />
-                      <Text fontSize="12px" fontWeight={600} noOfLines={1}>
-                        {fileLabel}
-                      </Text>
-                      <CloseButton
-                        color="gray.500"
-                        onClick={() => {
-                          setSelectedFilePaths((prev) => prev.filter((item) => item !== filePath));
-                        }}
-                        aria-label={`移除文件 ${fileLabel}`}
-                        size="sm"
-                        transform="scale(0.88)"
-                      />
-                    </Flex>
+                      <Flex
+                        key={filePath}
+                        align="center"
+                        bg="white"
+                        border="1px solid"
+                        borderColor="#E2E8F0"
+                        borderRadius="10px"
+                        boxShadow="0px 2.571px 6.429px 0px rgba(19, 51, 107, 0.08), 0px 0px 0.643px 0px rgba(19, 51, 107, 0.08)"
+                        color="gray.700"
+                        gap={2}
+                        h="28px"
+                        maxW="320px"
+                        pl={2}
+                        pr={1}
+                      >
+                        <Box as="img" h="16px" src={`/icons/chat/${fileIcon}.svg`} w="16px" />
+                        <Text fontSize="12px" fontWeight={600} noOfLines={1}>
+                          {fileLabel}
+                        </Text>
+                        <CloseButton
+                          color="gray.500"
+                          onClick={() => {
+                            setSelectedFilePaths((prev) => prev.filter((item) => item !== filePath));
+                          }}
+                          aria-label={`移除文件 ${fileLabel}`}
+                          size="sm"
+                          transform="scale(0.88)"
+                        />
+                      </Flex>
                     );
                   })}
                 </Flex>
@@ -740,91 +736,20 @@ const ChatInput = ({
               whiteSpace="pre-wrap"
             />
             {showFilePicker ? (
-              <Box
-                ref={filePickerRef}
-                bg="white"
-                border="1px solid"
-                borderColor={skillTheme.pickerBorderColor || "adora.200"}
-                borderRadius="10px"
-                boxShadow="0 8px 24px rgba(15, 23, 42, 0.14)"
-                left={0}
-                maxH="220px"
-                overflowY="auto"
-                position="absolute"
-                right={0}
-                bottom="calc(100% + 4px)"
-                zIndex={31}
-              >
-                <Flex direction="column" p={1}>
-                  {filteredFileOptions.map((item, index) => {
-                    const isActive = index === activeFileIndex;
-                    return (
-                      <Box
-                        key={item}
-                        data-file-option-index={index}
-                        bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
-                        borderRadius="8px"
-                        cursor="pointer"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          applySelectedFile(item);
-                        }}
-                        px={2}
-                        py={1.5}
-                      >
-                        <Text color="myGray.900" fontSize="sm" fontWeight={600} noOfLines={1}>
-                          {item}
-                        </Text>
-                      </Box>
-                    );
-                  })}
-                </Flex>
-              </Box>
+              <SlashFilePicker
+                activeIndex={activeFileIndex}
+                onPick={applySelectedFile}
+                options={filteredFileOptions}
+                pickerRef={filePickerRef}
+              />
             ) : null}
             {showSkillPicker ? (
-              <Box
-                ref={skillPickerRef}
-                bg="white"
-                border="1px solid"
-                borderColor={skillTheme.pickerBorderColor || "adora.200"}
-                borderRadius="10px"
-                boxShadow="0 8px 24px rgba(15, 23, 42, 0.14)"
-                left={0}
-                maxH="220px"
-                overflowY="auto"
-                position="absolute"
-                right={0}
-                bottom="calc(100% + 4px)"
-                zIndex={30}
-              >
-                <Flex direction="column" p={1}>
-                  {filteredSkillOptions.map((item, index) => {
-                    const isActive = index === activeSkillIndex;
-                    return (
-                      <Box
-                        key={item.name}
-                        data-skill-option-index={index}
-                        bg={isActive ? skillTheme.pickerActiveBg || "adora.50" : "transparent"}
-                        borderRadius="8px"
-                        cursor="pointer"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          applySelectedSkill(item.name);
-                        }}
-                        px={2}
-                        py={1.5}
-                      >
-                        <Text color="myGray.900" fontSize="sm" fontWeight={700} noOfLines={1}>
-                          {item.name}
-                        </Text>
-                        <Text color="myGray.500" fontSize="11px" mt={0.5} noOfLines={1}>
-                          {item.description || "无描述"}
-                        </Text>
-                      </Box>
-                    );
-                  })}
-                </Flex>
-              </Box>
+              <SkillMentionPicker
+                activeIndex={activeSkillIndex}
+                onPick={applySelectedSkill}
+                options={filteredSkillOptions}
+                pickerRef={skillPickerRef}
+              />
             ) : null}
           </Box>
         </Flex>

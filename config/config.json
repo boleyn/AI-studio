@@ -26,7 +26,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": true,
+      "reasoning": false,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"minimax.svg"
@@ -52,7 +52,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": true,
+      "reasoning": false,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"glm.svg"
@@ -64,7 +64,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": true,
+      "reasoning": false,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"glm.svg"
