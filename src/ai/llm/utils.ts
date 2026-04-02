@@ -148,6 +148,17 @@ export const loadRequestMessages = async ({
     };
     // Load image to base64
     const loadUserContentImage = async (content: ChatCompletionContentPart[]) => {
+      const resolveChatStorageKeyFromInternalUrl = (url: string) => {
+        if (!url.startsWith('/api/core/chat/files/view?')) return '';
+        try {
+          const parsed = new URL(url, 'http://localhost');
+          const storagePath = parsed.searchParams.get('storagePath') || '';
+          return storagePath.trim().replace(/^\/+/, '');
+        } catch {
+          return '';
+        }
+      };
+
       return Promise.all(
         content.map(async (item) => {
           if (item.type === 'image_url') {
@@ -173,6 +184,16 @@ export const loadRequestMessages = async ({
                         return (
                           await getS3ChatSource().createGetChatFileURL({
                             key: item.key
+                          })
+                        ).url;
+                      } catch (error) {}
+                    }
+                    const storageKey = resolveChatStorageKeyFromInternalUrl(imgUrl);
+                    if (storageKey) {
+                      try {
+                        return (
+                          await getS3ChatSource().createGetChatFileURL({
+                            key: storageKey
                           })
                         ).url;
                       } catch (error) {}
