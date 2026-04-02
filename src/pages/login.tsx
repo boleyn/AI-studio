@@ -11,7 +11,7 @@ import RegisterForm from "../components/auth/RegisterForm";
 import FeishuForm from "../components/auth/FeishuForm";
 import ForgetPasswordForm from "../components/auth/ForgetPasswordForm";
 import { LoginPageTypeEnum } from "../components/auth/constants";
-import { getAuthToken, setAuthToken } from "@features/auth/client/authClient";
+import { clearAuthToken, getAuthToken, setAuthToken, withAuthHeaders } from "@features/auth/client/authClient";
 
 const getLastRoute = (value: string | string[] | undefined) => {
   if (!value) return "";
@@ -66,9 +66,29 @@ const Login = () => {
 
   useEffect(() => {
     const token = getAuthToken();
-    if (token) {
-      redirectWithReload(getLastRoute(lastRoute) || "/");
-    }
+    if (!token) return;
+
+    let cancelled = false;
+    const verifyAndRedirect = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { headers: withAuthHeaders() });
+        if (!response.ok) {
+          clearAuthToken();
+          return;
+        }
+        if (!cancelled) {
+          redirectWithReload(getLastRoute(lastRoute) || "/");
+        }
+      } catch {
+        clearAuthToken();
+      }
+    };
+
+    void verifyAndRedirect();
+
+    return () => {
+      cancelled = true;
+    };
   }, [lastRoute, redirectWithReload]);
 
   const loginSuccess = useCallback(
