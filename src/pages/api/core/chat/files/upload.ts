@@ -1,7 +1,8 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
-import { buildChatFileViewUrl, getObjectFromStorage } from "@server/storage/s3";
-import { updateBinaryFile } from "@server/projects/projectStorage";
+import { getProject, type ProjectFile, updateBinaryFile } from "@server/projects/projectStorage";
+import { buildChatFileViewUrl, deleteStorageObjects, getObjectFromStorage } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import {
@@ -39,21 +40,58 @@ const buildMirrorRawFilePath = ({
   return `/.files/${base}`;
 };
 
+const toMd5 = (value: Buffer | Uint8Array) =>
+  createHash("md5")
+    .update(Buffer.isBuffer(value) ? value : Buffer.from(value))
+    .digest("hex");
+
+const toProjectFileBuffer = (file: ProjectFile): Buffer => {
+  const code = typeof file?.code === "string" ? file.code : "";
+  const trimmed = code.trim();
+  if (trimmed.startsWith("data:")) {
+    const commaIndex = trimmed.indexOf(",");
+    if (commaIndex > 0) {
+      const header = trimmed.slice(0, commaIndex).toLowerCase();
+      if (header.includes(";base64")) {
+        try {
+          return Buffer.from(trimmed.slice(commaIndex + 1), "base64");
+        } catch {
+          // fallback to plain text buffer
+        }
+      }
+    }
+  }
+  return Buffer.from(code, "utf8");
+};
+
+const collectExistingAttachmentMd5 = async (token: string) => {
+  const project = await getProject(token);
+  const md5Set = new Set<string>();
+  if (!project?.files || typeof project.files !== "object") {
+    return md5Set;
+  }
+
+  for (const [projectPath, projectFile] of Object.entries(project.files)) {
+    if (!projectPath.startsWith("/.files/")) continue;
+    md5Set.add(toMd5(toProjectFileBuffer(projectFile)));
+  }
+
+  return md5Set;
+};
+
 const syncAttachmentRawToProject = async ({
   token,
   file,
   storagePath,
+  buffer,
 }: {
   token: string;
   file: UploadFileInput;
   storagePath: string;
+  buffer: Buffer;
 }) => {
   const mirrorPath = buildMirrorRawFilePath({
     storagePath,
-  });
-  const { buffer } = await getObjectFromStorage({
-    key: storagePath,
-    bucketType: "private",
   });
   const normalizedType = (file.type || "").trim().toLowerCase();
   const type =
@@ -101,6 +139,8 @@ export default async function handler(
 
   const now = Date.now();
   const results: UploadFileResult[] = [];
+  const existingAttachmentMd5 = await collectExistingAttachmentMd5(token);
+  const uploadedAttachmentMd5 = new Set<string>();
 
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
@@ -133,6 +173,36 @@ export default async function handler(
       chatId,
     });
 
+    let buffer: Buffer | null = null;
+    try {
+      const object = await getObjectFromStorage({
+        key: storagePath,
+        bucketType: "private",
+      });
+      buffer = object.buffer;
+    } catch (error) {
+      console.warn("[chat-files] read uploaded object failed", {
+        fileName: file.name,
+        storagePath,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
+
+    if (buffer) {
+      const fileMd5 = toMd5(buffer);
+      const isDuplicateInProject = existingAttachmentMd5.has(fileMd5);
+      const isDuplicateInCurrentBatch = uploadedAttachmentMd5.has(fileMd5);
+      if (isDuplicateInProject || isDuplicateInCurrentBatch) {
+        await deleteStorageObjects({
+          keys: [storagePath],
+          bucketType: "private",
+        }).catch(() => undefined);
+        continue;
+      }
+      uploadedAttachmentMd5.add(fileMd5);
+      existingAttachmentMd5.add(fileMd5);
+    }
+
     results.push({
       id: typeof file.id === "string" ? file.id : undefined,
       name: file.name,
@@ -145,11 +215,14 @@ export default async function handler(
     });
 
     try {
-      await syncAttachmentRawToProject({
-        token,
-        file,
-        storagePath,
-      });
+      if (buffer) {
+        await syncAttachmentRawToProject({
+          token,
+          file,
+          storagePath,
+          buffer,
+        });
+      }
     } catch (error) {
       console.warn("[chat-files] sync attachment raw to project failed", {
         fileName: file.name,

@@ -135,6 +135,7 @@ export const runAgentCall = async ({
   onToolParam
 }: RunAgentCallProps): Promise<RunAgentResponse> => {
   const modelData = getLLMModel(String(model));
+  const requestedMaxTokens = max_tokens ?? undefined;
 
   let runTimes = 0;
   let interactiveResponse: ToolCallChildrenInteractive | undefined;
@@ -142,7 +143,7 @@ export const runAgentCall = async ({
   // Init messages
   const maxTokens = computedMaxToken({
     model: modelData,
-    maxToken: max_tokens ?? undefined,
+    maxToken: requestedMaxTokens,
     min: 100
   });
 
@@ -288,7 +289,7 @@ export const runAgentCall = async ({
       throwError: false,
       body: {
         ...body,
-        max_tokens: maxTokens,
+        ...(requestedMaxTokens !== undefined ? { max_tokens: maxTokens } : {}),
         model,
         messages: requestMessages,
         tool_choice: body.tool_choice ?? 'auto',
