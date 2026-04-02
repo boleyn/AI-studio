@@ -36,11 +36,23 @@ type ProjectWorkspaceState = {
 };
 
 const ATTACHMENT_PATH_PREFIX = "/.files/";
-const TRANSIENT_WORKSPACE_PREFIXES = ["/.aistudio/"];
+const TRANSIENT_WORKSPACE_DIR_NAMES = new Set([
+  ".aistudio",
+  ".next",
+  ".git",
+  ".turbo",
+  ".cache",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  "out",
+]);
+const TRANSIENT_WORKSPACE_PREFIXES = [...TRANSIENT_WORKSPACE_DIR_NAMES].map((name) => `/${name}`);
 
 const isAttachmentPath = (normalizedPath: string) => normalizedPath.startsWith(ATTACHMENT_PATH_PREFIX);
 const isTransientWorkspacePath = (normalizedPath: string) =>
-  TRANSIENT_WORKSPACE_PREFIXES.some((prefix) => normalizedPath.startsWith(prefix));
+  TRANSIENT_WORKSPACE_PREFIXES.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`));
 
 const parseBase64DataUrl = (raw: string): Buffer | null => {
   const trimmed = raw.trim();
@@ -390,7 +402,9 @@ export class ProjectWorkspaceManager {
     const startedAt = Date.now();
     const { token, state } = await this.assertHydrated(projectToken);
 
-    const diskFiles = (await collectWorkspaceFiles(state.workspaceRoot)).filter(
+    const diskFiles = (await collectWorkspaceFiles(state.workspaceRoot, {
+      ignoreDirNames: TRANSIENT_WORKSPACE_DIR_NAMES,
+    })).filter(
       (item) => !isTransientWorkspacePath(item.path)
     );
     let codeTotalBytes = 0;
