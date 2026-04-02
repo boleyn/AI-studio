@@ -8,9 +8,9 @@ import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntime
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
-import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createProjectTools } from "@server/agent/tools";
 import { createBashTool } from "@server/agent/tools/bashTool";
+import { mergeAgentTools } from "@server/agent/tools/toolLoader";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
 import type { AgentToolDefinition, ChangeTracker } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
@@ -80,6 +80,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const auth = await requireAuth(req, res);
   if (!auth) return;
+  const userId = auth.user._id != null ? String(auth.user._id) : "";
+  if (!userId) {
+    res.status(401).json({ error: "用户身份无效" });
+    return;
+  }
 
   const token = getToken(req);
   if (!token) {
@@ -222,8 +227,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
   const project = await getProject(token);
-  if (!project) {
-    res.status(404).json({ error: "项目不存在" });
+  if (!project || project.userId !== userId) {
+    res.status(404).json({ error: "项目不存在或无权限访问" });
     return;
   }
 
@@ -327,7 +332,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : null;
   const selectedProjectSkill =
     selectedResolvedSkill && !selectedRuntimeSkill ? selectedResolvedSkill : null;
-  const toolSessionId = chatId || conversationId || `project-${token}`;
+  const toolSessionId = `${userId}:${chatId || conversationId || `project-${token}`}`;
   const projectWorkspaceManager = new ProjectWorkspaceManager({
     sessionId: toolSessionId,
     fallbackProjectToken: token,
@@ -337,28 +342,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     workspaceManager: projectWorkspaceManager,
     skillBaseDirs: allAvailableSkills.map((item) => item.baseDir),
   });
-  const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
-  const skillRunScriptTool =
-    allAvailableSkills.length > 0
-      ? await createSkillRunScriptTool({
-          skills: allAvailableSkills,
-          sessionId: toolSessionId,
-          workspaceFiles: project.files || {},
-        })
-      : null;
   const bashTool = createBashTool({
     sessionId: toolSessionId,
     workspaceManager: projectWorkspaceManager,
     fallbackProjectToken: token,
     allowedProjectToken: token,
   });
-  const allTools = [
-    ...localTools,
-    ...mcpTools,
-    ...(skillLoadTool ? [skillLoadTool] : []),
-    ...(skillRunScriptTool ? [skillRunScriptTool] : []),
+  const allTools = mergeAgentTools({
+    codingCoreTools: localTools,
     bashTool,
-  ];
+    mcpTools,
+  });
   const userIntent = detectUserIntent(contextMessages);
   const routedTools = routeToolsByIntent(allTools, userIntent);
   const selectedTools = (() => {
@@ -514,7 +508,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             role: "system",
             content: [
               "Current turn includes uploaded attachments.",
-              'Before giving the final answer, call tool "read_file" for uploaded attachments.',
+              'Before giving the final answer, call tool "Read" for uploaded attachments.',
               "For image attachments, use mode=vision (or mode=auto) with storagePath.",
             ].join("\n"),
           } as ChatCompletionMessageParam,
@@ -643,7 +637,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     runtimeSkillCount: runtimeSkills.length,
     projectSkillCount: projectSkillsParsed.skills.length,
     availableSkillCount: allAvailableSkills.length,
-    skillLoadToolEnabled: Boolean(skillLoadTool),
+    skillLoadToolEnabled: selectedTools.some((tool) => tool.name === "skill_load"),
     hasMcpTools,
     hasProjectKnowledgeTools,
     skillsCatalogPromptLength: skillsCatalogPrompt.length,

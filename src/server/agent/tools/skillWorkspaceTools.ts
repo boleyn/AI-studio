@@ -1,114 +1,46 @@
-import { z } from "zod";
 import type { AgentToolDefinition } from "./types";
 import {
   runWorkspaceAction,
   type WorkspaceActionInput,
 } from "@server/skills/workspaceStorage";
-import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
+import {
+  buildStructuredPatch,
+  claudeCompatSchemas,
+  editInputSchema,
+  globInputSchema,
+  grepInputSchema,
+  normalizeClaudeFilePath,
+  runClaudeGlob,
+  runClaudeGrep,
+  selectTextByLines,
+  writeInputSchema,
+  readInputSchema,
+  type EditInput,
+  type GlobInput,
+  type GrepInput,
+  type ReadInput,
+  type WriteInput,
+} from "./claudeCompat";
 
-const listFilesSchema = z.object({});
-const readFileSchema = z.object({ path: z.string() });
-const writeFileSchema = z.object({ path: z.string(), content: z.string() });
-const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
-
-const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
-  if (schema === listFilesSchema) return { type: "object", properties: {} };
-  if (schema === readFileSchema) {
-    return {
-      type: "object",
-      properties: { path: { type: "string", description: "以 / 开头的文件路径" } },
-      required: ["path"],
-    };
-  }
-  if (schema === writeFileSchema) {
-    return {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "以 / 开头的文件路径" },
-        content: { type: "string", description: "写入的完整内容" },
-      },
-      required: ["path", "content"],
-    };
-  }
-  if (schema === replaceInFileSchema) {
-    return {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "以 / 开头的文件路径" },
-        query: { type: "string", description: "需要替换的文本" },
-        replace: { type: "string", description: "替换后的文本" },
-      },
-      required: ["path", "query", "replace"],
-    };
-  }
-  return {
-    type: "object",
-    properties: {
-      query: { type: "string", description: "搜索关键词或正则" },
-      regex: { type: "boolean", description: "是否按正则处理，默认 true" },
-      caseSensitive: { type: "boolean", description: "是否区分大小写，默认 true" },
-      wholeWord: { type: "boolean", description: "是否整词匹配" },
-      includeGlobs: { type: "array", items: { type: "string" }, description: "只搜索匹配这些 glob 的路径" },
-      excludeGlobs: { type: "array", items: { type: "string" }, description: "排除匹配这些 glob 的路径" },
-      contextLines: { type: "integer", minimum: 0, maximum: 5, description: "返回前后上下文行数" },
-      maxResults: { type: "integer", minimum: 1, maximum: 500, description: "全局最大返回命中数" },
-    },
-    required: ["query"],
-  };
-};
-
-const describeInputType = (input: unknown) => {
-  if (input === null) return "null";
-  if (Array.isArray(input)) return "array";
-  return typeof input;
-};
-
-const toInputPreview = (input: unknown, maxLen = 200) => {
-  try {
-    const raw =
-      typeof input === "string" ? input : JSON.stringify(input);
-    if (!raw) return "";
-    return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
-  } catch {
-    return String(input);
-  }
-};
-
-const safeParse = <T>(
-  schema: z.ZodTypeAny,
+const parseJsonInput = <T>(
+  schema: {
+    safeParse: (
+      input: unknown
+    ) => { success: true; data: T } | { success: false; error: { issues: Array<{ message: string }> } };
+  },
   input: unknown,
-  toolName = "unknown_tool"
-): { ok: true; data: T } | { ok: false; error: string } => {
+  toolName: string
+): T => {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    const inputType = describeInputType(input);
-    const inputPreview = toInputPreview(input);
-    console.warn("[agent-tool][validation-error]", {
-      toolName,
-      inputType,
-      inputPreview,
-      issues: parsed.error.issues,
-    });
-
-    const invalidObjectIssue = parsed.error.issues.find(
-      (issue) =>
-        issue.code === "invalid_type" &&
-        "expected" in issue &&
-        issue.expected === "object"
-    );
-    if (invalidObjectIssue) {
-      const preview = toInputPreview(input);
-      const previewSuffix = preview ? `；收到片段: ${preview}` : "";
-      return {
-        ok: false,
-        error:
-          `工具入参类型错误：期望 JSON 对象(object)，实际收到 ${describeInputType(input)}。` +
-          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/App.js","content":"..."}${previewSuffix}`,
-      };
-    }
-    return { ok: false, error: parsed.error.issues.map((err) => err.message).join("; ") };
+    throw new Error(`${toolName} input validation failed: ${parsed.error.issues.map((item) => item.message).join("; ")}`);
   }
-  return { ok: true, data: parsed.data as T };
+  return parsed.data;
+};
+
+const countOccurrences = (source: string, needle: string) => {
+  if (!needle) return 0;
+  return source.split(needle).length - 1;
 };
 
 export const createSkillWorkspaceTools = ({
@@ -135,76 +67,200 @@ export const createSkillWorkspaceTools = ({
 
   return [
     {
-      name: "list_files",
-      description: "列出 workspace 中所有文件路径。",
-      parameters: toJsonSchema(listFilesSchema),
+      name: "Glob",
+      description: "Fast file pattern matching tool.",
+      parameters: claudeCompatSchemas.Glob,
       run: async (input) => {
-        const parsed = safeParse(listFilesSchema, input, "list_files");
-        if (!parsed.ok) throw new Error(parsed.error);
-        return run({ action: "list" });
+        const parsed = parseJsonInput<GlobInput>(globInputSchema, input, "Glob");
+        const listed = await run({ action: "list" });
+        const files =
+          listed &&
+          typeof listed === "object" &&
+          listed &&
+          (listed as { data?: { files?: string[] } }).data &&
+          Array.isArray((listed as { data?: { files?: string[] } }).data?.files)
+            ? (listed as { data?: { files?: string[] } }).data?.files || []
+            : [];
+        return runClaudeGlob(files, parsed);
       },
     },
     {
-      name: "read_file",
-      description: "读取 workspace 文件内容。",
-      parameters: toJsonSchema(readFileSchema),
+      name: "Read",
+      description: "Read file content with optional line ranges.",
+      parameters: claudeCompatSchemas.Read,
       run: async (input) => {
-        const parsed = safeParse<{ path: string }>(readFileSchema, input, "read_file");
-        if (!parsed.ok) throw new Error(parsed.error);
-        return run({ action: "read", path: parsed.data.path });
-      },
-    },
-    {
-      name: "write_file",
-      description: "写入或覆盖 workspace 文件。",
-      parameters: toJsonSchema(writeFileSchema),
-      run: async (input) => {
-        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input, "write_file");
-        if (!parsed.ok) throw new Error(parsed.error);
-        return run({
-          action: "write",
-          path: parsed.data.path,
-          content: parsed.data.content,
-        });
-      },
-    },
-    {
-      name: "replace_in_file",
-      description: "替换 workspace 文件中的指定文本。",
-      parameters: toJsonSchema(replaceInFileSchema),
-      run: async (input) => {
-        const parsed = safeParse<{ path: string; query: string; replace: string }>(
-          replaceInFileSchema,
-          input,
-          "replace_in_file"
+        const payload = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+        const parsed = parseJsonInput<ReadInput>(
+          readInputSchema,
+          {
+            ...payload,
+            ...(typeof payload.path === "string" && typeof payload.file_path !== "string"
+              ? { file_path: payload.path }
+              : {}),
+          },
+          "Read"
         );
-        if (!parsed.ok) throw new Error(parsed.error);
-        return run({
-          action: "replace",
-          path: parsed.data.path,
-          query: parsed.data.query,
-          replace: parsed.data.replace,
-        });
+        const filePath = normalizeClaudeFilePath({ file_path: parsed.file_path });
+        const result = await run({ action: "read", path: filePath });
+
+        const ok = Boolean(result && typeof result === "object" && (result as { ok?: boolean }).ok === true);
+        if (!ok) {
+          throw new Error(`File does not exist: ${filePath}`);
+        }
+
+        const content =
+          result && typeof result === "object"
+            ? typeof (result as { data?: { content?: string } }).data?.content === "string"
+              ? (result as { data?: { content?: string } }).data?.content || ""
+              : ""
+            : "";
+        const selected = selectTextByLines(content, parsed.offset, parsed.limit);
+        return {
+          type: "text",
+          file: {
+            filePath,
+            content: selected.content,
+            numLines: selected.numLines,
+            startLine: selected.startLine,
+            totalLines: selected.totalLines,
+          },
+        };
       },
     },
     {
-      name: "search_in_files",
-      description: "在 workspace 内按 rg 风格搜索（正则、glob、上下文）。",
-      parameters: toJsonSchema(searchInFilesSchema),
+      name: "Write",
+      description: "Create or overwrite a file.",
+      parameters: claudeCompatSchemas.Write,
       run: async (input) => {
-        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input, "search_in_files");
-        if (!parsed.ok) throw new Error(parsed.error);
-        return run({
-          action: "search",
-          query: parsed.data.query,
-          regex: parsed.data.regex,
-          caseSensitive: parsed.data.caseSensitive,
-          wholeWord: parsed.data.wholeWord,
-          includeGlobs: parsed.data.includeGlobs,
-          excludeGlobs: parsed.data.excludeGlobs,
-          contextLines: parsed.data.contextLines,
-          maxResults: parsed.data.maxResults,
-        });
+        const payload = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+        const parsed = parseJsonInput<WriteInput>(
+          writeInputSchema,
+          {
+            ...payload,
+            ...(typeof payload.path === "string" && typeof payload.file_path !== "string"
+              ? { file_path: payload.path }
+              : {}),
+          },
+          "Write"
+        );
+
+        const filePath = normalizeClaudeFilePath({ file_path: parsed.file_path });
+        const before = await run({ action: "read", path: filePath });
+        const beforeContent =
+          before && typeof before === "object" && (before as { ok?: boolean }).ok === true
+            ? typeof (before as { data?: { content?: string } }).data?.content === "string"
+              ? (before as { data?: { content?: string } }).data?.content || ""
+              : ""
+            : null;
+
+        const result = await run({ action: "write", path: filePath, content: parsed.content });
+        const ok = Boolean(result && typeof result === "object" && (result as { ok?: boolean }).ok === true);
+        if (!ok) {
+          throw new Error((result as { message?: string })?.message || `Write failed: ${filePath}`);
+        }
+
+        return {
+          type: beforeContent == null ? "create" : "update",
+          filePath,
+          content: parsed.content,
+          originalFile: beforeContent,
+          structuredPatch: buildStructuredPatch(beforeContent, parsed.content),
+        };
+      },
+    },
+    {
+      name: "Edit",
+      description: "Replace text in a file.",
+      parameters: claudeCompatSchemas.Edit,
+      run: async (input) => {
+        const payload = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+        const parsed = parseJsonInput<EditInput>(
+          editInputSchema,
+          {
+            ...payload,
+            ...(typeof payload.path === "string" && typeof payload.file_path !== "string"
+              ? { file_path: payload.path }
+              : {}),
+          },
+          "Edit"
+        );
+
+        const filePath = normalizeClaudeFilePath({ file_path: parsed.file_path });
+        const before = await run({ action: "read", path: filePath });
+        const beforeOk = Boolean(before && typeof before === "object" && (before as { ok?: boolean }).ok === true);
+        if (!beforeOk) {
+          throw new Error(`File does not exist: ${filePath}`);
+        }
+
+        const source =
+          typeof (before as { data?: { content?: string } }).data?.content === "string"
+            ? (before as { data?: { content?: string } }).data?.content || ""
+            : "";
+
+        if (parsed.old_string === parsed.new_string) {
+          throw new Error("No changes to make: old_string and new_string are exactly the same.");
+        }
+
+        const matchedCount = countOccurrences(source, parsed.old_string);
+        if (matchedCount === 0) {
+          throw new Error(`String to replace not found in file. String: ${parsed.old_string}`);
+        }
+
+        const replaceAll = parsed.replace_all === true;
+        if (matchedCount > 1 && !replaceAll) {
+          throw new Error(`Found ${matchedCount} matches of the string to replace, but replace_all is false.`);
+        }
+
+        const nextContent = replaceAll
+          ? source.split(parsed.old_string).join(parsed.new_string)
+          : source.replace(parsed.old_string, parsed.new_string);
+
+        const wrote = await run({ action: "write", path: filePath, content: nextContent });
+        const ok = Boolean(wrote && typeof wrote === "object" && (wrote as { ok?: boolean }).ok === true);
+        if (!ok) {
+          throw new Error((wrote as { message?: string })?.message || `Edit failed: ${filePath}`);
+        }
+
+        return {
+          filePath,
+          oldString: parsed.old_string,
+          newString: parsed.new_string,
+          originalFile: source,
+          structuredPatch: buildStructuredPatch(source, nextContent),
+          userModified: false,
+          replaceAll,
+        };
+      },
+    },
+    {
+      name: "Grep",
+      description: "Search file content with ripgrep-like options.",
+      parameters: claudeCompatSchemas.Grep,
+      run: async (input) => {
+        const parsed = parseJsonInput<GrepInput>(grepInputSchema, input, "Grep");
+        const listed = await run({ action: "list" });
+        const files =
+          listed &&
+          typeof listed === "object" &&
+          (listed as { data?: { files?: string[] } }).data &&
+          Array.isArray((listed as { data?: { files?: string[] } }).data?.files)
+            ? (listed as { data?: { files?: string[] } }).data?.files || []
+            : [];
+
+        const textFiles: Record<string, string> = {};
+        for (const filePath of files) {
+          const readResult = await run({ action: "read", path: filePath });
+          if (!readResult || typeof readResult !== "object" || (readResult as { ok?: boolean }).ok !== true) {
+            continue;
+          }
+          const content =
+            typeof (readResult as { data?: { content?: string } }).data?.content === "string"
+              ? (readResult as { data?: { content?: string } }).data?.content || ""
+              : "";
+          textFiles[filePath] = content;
+        }
+
+        return runClaudeGrep(textFiles, parsed);
       },
     },
   ];

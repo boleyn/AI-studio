@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
+import { validateWorkspaceArgv } from "./sandboxFsPolicy";
 
 const MAX_SCRIPT_SCAN_BYTES = 256 * 1024;
 const MAX_ARG_COUNT = 64;
@@ -198,6 +199,8 @@ export const validateStructuredCommand = async (input: {
     if (arg.length > MAX_ARG_LENGTH) return `参数长度过长（>${MAX_ARG_LENGTH}）。`;
     if (arg.includes("\0")) return "参数包含非法字符。";
   }
+  const workspaceArgError = validateWorkspaceArgv(input.args);
+  if (workspaceArgError) return workspaceArgError;
 
   if (FILE_OP_COMMANDS.has(cmd)) {
     const pathArgs = collectPathLikeArgs(cmd, input.args);

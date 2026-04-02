@@ -9,6 +9,7 @@ import { runSkillScript } from "./skillScriptRunner";
 import type { RuntimeSkill } from "./types";
 import type { AgentToolDefinition } from "../tools/types";
 import { DEFAULT_TOOL_TIMEOUT_MS, MAX_TOOL_TIMEOUT_MS, clampToolTimeout } from "../tools/commandRunner";
+import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 
 const NO_SKILL_PARAMETERS: Record<string, unknown> = {
   type: "object",
@@ -116,6 +117,9 @@ export const createSkillRunScriptTool = async (
     skills?: RuntimeSkill[];
     sessionId?: string;
     workspaceFiles?: Record<string, { code: string }>;
+    workspaceManager?: ProjectWorkspaceManager;
+    projectToken?: string;
+    persistWorkspaceFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   }
 ): Promise<AgentToolDefinition | null> => {
   const skills = options?.skills && options.skills.length > 0 ? options.skills : await getRuntimeSkills();
@@ -146,20 +150,59 @@ export const createSkillRunScriptTool = async (
       }
 
       const skill = resolveSkillByName(skills, name);
+      const hasBoundProjectWorkspace = Boolean(options?.workspaceManager && options?.projectToken);
+      const boundProjectToken = (options?.projectToken || "").trim();
+      let boundWorkspaceRoot = "";
+      if (hasBoundProjectWorkspace && options?.workspaceManager && boundProjectToken) {
+        const prepared = await options.workspaceManager.prepare(boundProjectToken);
+        await options.workspaceManager.hydrate(boundProjectToken);
+        boundWorkspaceRoot = prepared.workspaceRoot;
+      }
 
-      const result = await runSkillScript({
-        skill,
-        script,
-        args,
-        runtime: runtime as "auto" | "python" | "node" | "sh" | "bash",
-        cwd,
-        timeoutMs,
-        autoInstallDeps,
-        autoDownloadScript,
-        scriptDownloadUrl,
-        sessionId: options?.sessionId,
-        workspaceFiles: options?.workspaceFiles,
-      });
+      let changedFiles: string[] = [];
+      let persistedWorkspaceFiles = false;
+      const result = await (async () => {
+        try {
+          return await runSkillScript({
+            skill,
+            script,
+            args,
+            runtime: runtime as "auto" | "python" | "node" | "sh" | "bash",
+            cwd,
+            timeoutMs,
+            autoInstallDeps,
+            autoDownloadScript,
+            scriptDownloadUrl,
+            sessionId: options?.sessionId,
+            workspaceFiles: options?.workspaceFiles,
+            workspaceRoot: boundWorkspaceRoot || undefined,
+          });
+        } finally {
+          if (hasBoundProjectWorkspace && options?.workspaceManager && boundProjectToken) {
+            try {
+              const flushed = await options.workspaceManager.flushChangedFiles(boundProjectToken);
+              changedFiles = flushed.changedFiles;
+            } catch (flushError) {
+              console.warn("[skill_run_script][flush_failed]", {
+                projectToken: boundProjectToken,
+                error: flushError instanceof Error ? flushError.message : String(flushError),
+              });
+            }
+          }
+        }
+      })();
+      if (
+        options?.persistWorkspaceFiles &&
+        result &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        result.workspaceFiles &&
+        typeof result.workspaceFiles === "object"
+      ) {
+        const files = result.workspaceFiles as Record<string, { code: string }>;
+        await options.persistWorkspaceFiles(files);
+        persistedWorkspaceFiles = true;
+      }
 
       return {
         ok: result.ok,
@@ -177,6 +220,8 @@ export const createSkillRunScriptTool = async (
         stderr: result.stderr,
         error: result.error,
         dependencyInstall: result.dependencyInstall,
+        changedFiles,
+        persistedWorkspaceFiles,
       };
     },
   };

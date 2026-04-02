@@ -10,6 +10,7 @@ import { getRuntimeSkills } from "@server/agent/skills/registry";
 import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createBashTool } from "@server/agent/tools/bashTool";
 import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceTools";
+import { mergeAgentTools } from "@server/agent/tools/toolLoader";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
@@ -27,6 +28,7 @@ import {
 import { bindWorkflowAbortToConnection } from "@server/chat/completions/connectionLifecycle";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
 import { toWorkspacePublicFiles } from "@server/skills/workspaceStorage";
+import { replaceSkillWorkspaceFiles } from "@server/skills/workspaceStorage";
 import { createDataId } from "@shared/chat/ids";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -169,7 +171,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
   );
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
-  const toolSessionId = conversationId || `skill-${workspace.id}-${userId}`;
+  const toolSessionId = `${userId}:${conversationId || `skill-${workspace.id}`}`;
   const projectWorkspaceManager = new ProjectWorkspaceManager({
     sessionId: toolSessionId,
     fallbackProjectToken: workspace.projectToken,
@@ -180,6 +182,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           skills: allAvailableSkills,
           sessionId: toolSessionId,
           workspaceFiles: toWorkspacePublicFiles(workspace.files || {}),
+          workspaceManager: workspace.projectToken ? projectWorkspaceManager : undefined,
+          projectToken: workspace.projectToken || undefined,
+          persistWorkspaceFiles:
+            workspace.source === "skill"
+              ? async (files) => {
+                  await replaceSkillWorkspaceFiles({
+                    workspaceId: workspace.id,
+                    userId,
+                    skillId: workspace.skillId,
+                    files,
+                  });
+                }
+              : undefined,
         })
       : null;
   const bashTool = createBashTool({
@@ -188,12 +203,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     fallbackProjectToken: workspace.projectToken,
     allowedProjectToken: workspace.projectToken,
   });
-  const allTools: AgentToolDefinition[] = [
-    ...workspaceTools,
-    ...(skillLoadTool ? [skillLoadTool] : []),
-    ...(skillRunScriptTool ? [skillRunScriptTool] : []),
+  const allTools: AgentToolDefinition[] = mergeAgentTools({
+    codingCoreTools: workspaceTools,
     bashTool,
-  ];
+    extraTools: [
+      ...(skillLoadTool ? [skillLoadTool] : []),
+      ...(skillRunScriptTool ? [skillRunScriptTool] : []),
+    ],
+  });
 
   const tools: ChatCompletionTool[] = allTools.map((tool) => ({
     type: "function",

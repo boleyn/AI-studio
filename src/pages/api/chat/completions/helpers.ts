@@ -175,7 +175,7 @@ export const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
   const lines: string[] = ["【附件信息】"];
   if (imageCount > 0) {
     lines.push(
-      `- 本轮包含图片 ${imageCount} 张。请用 read_file(mode=vision, storagePath=...) 进行图片识别；也可用 mode=auto。需要特定识别目标时可传 prompt。`
+      `- 本轮包含图片 ${imageCount} 张。请用 Read(mode=vision, storagePath=...) 进行图片识别；也可用 mode=auto。需要特定识别目标时可传 prompt。`
     );
     const imagePreviews = imageFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";
@@ -187,7 +187,7 @@ export const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
   }
   if (docFiles.length > 0) {
     lines.push(
-      `- 本轮包含文档 ${docFiles.length} 个。优先用 read_file(path=/.files/<文件名>)；若用 bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
+      `- 本轮包含文档 ${docFiles.length} 个。优先用 Read(file_path=/.files/<文件名>)；若用 Bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
     );
     const previews = docFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";
@@ -219,30 +219,24 @@ export const isModelUnavailableError = (error: unknown) => {
 const CODE_INTENT_PATTERN =
   /(改|修改|修复|重构|实现|加个|排查|debug|fix|refactor|implement|code|代码|文件|函数|接口|api|bug|报错)/i;
 const TOOLING_INTENT_PATTERN =
-  /(写工具|工具开发|新增工具|两个工具|2个工具|build tool|create tool|tooling|tool|替换|replace|修改文件|write_file|replace_in_file)/i;
+  /(写工具|工具开发|新增工具|两个工具|2个工具|build tool|create tool|tooling|tool|替换|replace|修改文件|write_file|replace_in_file|\bwrite\b|\bedit\b|\bread\b|\bbash\b)/i;
 
 export const PROJECT_LOCAL_TOOL_NAMES = new Set([
-  "list_files",
-  "read_file",
-  "write_file",
-  "replace_in_file",
-  "search_in_files",
-  "compile_project",
-  "skill_load",
-  "skill_run_script",
-  "bash",
+  "Glob",
+  "Read",
+  "Write",
+  "Edit",
+  "Grep",
+  "Bash",
 ]);
 
 export const ALWAYS_KEEP_TOOL_NAMES = new Set([
-  "list_files",
-  "read_file",
-  "search_in_files",
-  "write_file",
-  "replace_in_file",
-  "compile_project",
-  "skill_load",
-  "skill_run_script",
-  "bash",
+  "Glob",
+  "Read",
+  "Grep",
+  "Write",
+  "Edit",
+  "Bash",
 ]);
 
 const MCP_TOOL_NAME_PREFIX = "mcp_";
@@ -306,15 +300,12 @@ export const routeToolsByIntent = (allTools: AgentToolDefinition[], intent: User
   if (intent === "tooling") {
     const toolBuildTools = allTools.filter((tool) =>
       [
-        "list_files",
-        "search_in_files",
-        "read_file",
-        "replace_in_file",
-        "write_file",
-        "compile_project",
-        "skill_load",
-        "skill_run_script",
-        "bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "Edit",
+        "Write",
+        "Bash",
       ].includes(tool.name)
     );
 
@@ -363,7 +354,7 @@ export const buildToolRoutingSystemPrompt = (
   const toolNames = route.selectedTools.map((tool) => tool.name).join(", ") || "(none)";
   const intentRule =
     intent === "tooling"
-      ? "Current task intent is tooling. Prefer replace_in_file/write_file/read_file/search_in_files/list_files and make concrete file edits. Do not do one-shot large file writes; split into smaller incremental edits."
+      ? "Current task intent is tooling. Prefer Edit/Write/Read/Grep/Glob and make concrete file edits. Do not do one-shot large file writes; split into smaller incremental edits."
       : intent === "coding"
       ? "Current task intent is coding. Prioritize project code tools and available MCP reference tools. Read/search before write. Do not do one-shot large file writes; split into multiple smaller files or incremental write/replace steps."
       : "Current task intent is general. Use tools only when they materially improve correctness.";

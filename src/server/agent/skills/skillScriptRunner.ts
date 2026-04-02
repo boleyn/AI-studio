@@ -4,6 +4,7 @@ import path from "path";
 import type { RuntimeSkill } from "./types";
 import { runExecFile } from "../tools/commandRunner";
 import { buildSessionIsolatedEnv } from "../tools/sessionEnv";
+import { validateWorkspaceArgv } from "../tools/sandboxFsPolicy";
 import { getObjectFromStorage } from "@server/storage/s3";
 
 const isPathInside = (baseDir: string, targetPath: string) => {
@@ -163,8 +164,56 @@ export const runSkillScript = async (input: {
   scriptDownloadUrl?: string;
   sessionId?: string;
   workspaceFiles?: Record<string, { code: string }>;
+  workspaceRoot?: string;
 }) => {
+  const resolvedWorkspaceRoot = input.workspaceRoot ? path.resolve(input.workspaceRoot) : "";
+  const shouldUseMountedWorkspaceRoot = Boolean(resolvedWorkspaceRoot);
+  const SYSTEM_ABSOLUTE_PATH_PREFIXES = [
+    "/tmp",
+    "/var",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/etc",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/opt",
+    "/private",
+    "/Users",
+    "/home",
+    "/Library",
+    "/Applications",
+  ];
+  const isSystemAbsolutePath = (absPath: string) =>
+    SYSTEM_ABSOLUTE_PATH_PREFIXES.some(
+      (prefix) => absPath === prefix || absPath.startsWith(`${prefix}/`)
+    );
+  const toWorkspaceMountedPath = (absPath: string) => {
+    if (!shouldUseMountedWorkspaceRoot) return absPath;
+    const normalized = absPath.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+    if (normalized === "/files" || normalized === "/.files") {
+      return path.join(resolvedWorkspaceRoot, ".files");
+    }
+    if (normalized.startsWith("/files/")) {
+      return path.join(resolvedWorkspaceRoot, ".files", normalized.slice("/files/".length));
+    }
+    if (normalized.startsWith("/.files/")) {
+      return path.join(resolvedWorkspaceRoot, ".files", normalized.slice("/.files/".length));
+    }
+    if (isSystemAbsolutePath(normalized)) return absPath;
+    return path.join(resolvedWorkspaceRoot, normalized.replace(/^\/+/, ""));
+  };
+
   const materializeWorkspaceFiles = async (files?: Record<string, { code: string }>) => {
+    if (shouldUseMountedWorkspaceRoot) {
+      await fs.mkdir(resolvedWorkspaceRoot, { recursive: true });
+      return {
+        tempRoot: resolvedWorkspaceRoot,
+        roots: new Set<string>(["."]),
+        mountedWorkspaceRoot: true,
+      };
+    }
     if (!files || Object.keys(files).length === 0) return null;
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skill-workspace-"));
     const roots = new Set<string>();
@@ -173,8 +222,8 @@ export const runSkillScript = async (input: {
       const normalized = filePath.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
       if (!normalized.startsWith("/") || normalized.includes("\0") || normalized.includes("..")) continue;
       const parts = normalized.split("/").filter(Boolean);
-      if (parts.length < 2) continue;
-      roots.add(parts[0]);
+      const root = parts[0] || ".";
+      roots.add(root);
       const target = path.join(tempRoot, ...parts);
       await fs.mkdir(path.dirname(target), { recursive: true });
       const code = typeof file?.code === "string" ? file.code : "";
@@ -192,7 +241,35 @@ export const runSkillScript = async (input: {
       return null;
     }
 
-    return { tempRoot, roots };
+    return { tempRoot, roots, mountedWorkspaceRoot: false };
+  };
+
+  const snapshotWorkspaceFiles = async (
+    mount: { tempRoot: string; roots: Set<string>; mountedWorkspaceRoot: boolean } | null
+  ) => {
+    if (!mount || mount.mountedWorkspaceRoot) return undefined;
+    const result: Record<string, { code: string }> = {};
+    const walk = async (dir: string) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(abs);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const rel = path.relative(mount.tempRoot, abs).split(path.sep).join("/");
+        if (!rel) continue;
+        const normalizedPath = `/${rel.replace(/^\/+/, "")}`;
+        const buffer = await fs.readFile(abs);
+        const isBinary = buffer.includes(0);
+        result[normalizedPath] = {
+          code: isBinary ? `data:application/octet-stream;base64,${buffer.toString("base64")}` : buffer.toString("utf8"),
+        };
+      }
+    };
+    await walk(mount.tempRoot);
+    return result;
   };
 
   const workspaceMount = await materializeWorkspaceFiles(input.workspaceFiles);
@@ -248,6 +325,9 @@ export const runSkillScript = async (input: {
     // Never remap real files under the skill directory.
     if (resolvedAbs === resolvedSkillBaseDir || resolvedAbs.startsWith(`${resolvedSkillBaseDir}${path.sep}`)) {
       return resolvedAbs;
+    }
+    if (shouldUseMountedWorkspaceRoot) {
+      return toWorkspaceMountedPath(resolvedAbs);
     }
     const normalized = resolvedAbs.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
     const parts = normalized.split("/").filter(Boolean);
@@ -405,6 +485,10 @@ export const runSkillScript = async (input: {
     sessionId: input.sessionId,
   });
   const detectedRuntime = detectRuntime(finalScriptPath, input.runtime);
+  const workspaceArgError = validateWorkspaceArgv(input.args.map((item) => String(item)));
+  if (workspaceArgError) {
+    throw new Error(`脚本参数不符合工作区沙盒约束: ${workspaceArgError}`);
+  }
   const resolvedArgs = (
     await Promise.all(
       input.args.map(async (item) => {
@@ -670,6 +754,7 @@ export const runSkillScript = async (input: {
         }
       }
       if (!result.enoent) {
+        const workspaceFilesSnapshot = await snapshotWorkspaceFiles(workspaceMount || null);
         return {
           ...result,
           skill: input.skill.name,
@@ -680,6 +765,7 @@ export const runSkillScript = async (input: {
           command: candidate.command,
           commandArgs: candidate.args,
           dependencyInstall,
+          workspaceFiles: workspaceFilesSnapshot,
         };
       }
     }
@@ -688,7 +774,7 @@ export const runSkillScript = async (input: {
       `未找到可用脚本解释器。请确认环境中已安装对应命令（尝试过: ${candidates.map((item) => item.command).join(", ")}）。`
     );
   } finally {
-    if (workspaceMount?.tempRoot) {
+    if (workspaceMount?.tempRoot && !workspaceMount.mountedWorkspaceRoot) {
       await fs.rm(workspaceMount.tempRoot, { recursive: true, force: true }).catch(() => undefined);
     }
     for (const tempRoot of extraTempRoots) {

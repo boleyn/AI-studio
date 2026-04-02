@@ -8,6 +8,7 @@ export const buildSkillsCatalogPrompt = (skills: RuntimeSkill[]): string => {
   return [
     "Project skills catalog (compact):",
     "If task matches one of these, call skill_load with exact skill name before continuing.",
+    "Skill scripts and tools share the same workspace sandbox view; generated files must be read via Read using workspace-relative paths.",
     ...body,
     "Only load skills needed for current task.",
   ].join("\n");
@@ -27,7 +28,7 @@ export const buildSkillContentBlock = (
           "<skill_runnable_scripts>",
           ...runnableScripts.map((file) => `<script>${file}</script>`),
           "</skill_runnable_scripts>",
-          "If you need to inspect script source, call read_file with path like:",
+          "If you need to inspect script source, call Read with file_path like:",
           ...runnableScripts.map((file) => `<read_path>skills/${skill.name}/${file}</read_path>`),
         ]
       : [
@@ -58,6 +59,7 @@ export const buildSkillContentBlock = (
     "",
     `Base directory for this skill: ${skill.baseDir}`,
     "Relative paths mentioned in this skill are relative to this base directory.",
+    "Sandbox rule: always pass workspace-relative paths to skill_run_script args/cwd (no absolute path, no .. traversal).",
     "Important: For skill_run_script, script must be an exact value from <skill_runnable_scripts>; do not guess names.",
     ...scriptBlock,
     ...treeBlock,

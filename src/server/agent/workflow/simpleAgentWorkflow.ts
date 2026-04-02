@@ -39,6 +39,15 @@ interface RunSimpleAgentWorkflowResult {
   flowResponses: SimpleWorkflowNodeResponse[];
 }
 
+const TOOL_NAME_ALIASES: Record<string, string> = {
+  list_files: "Glob",
+  read_file: "Read",
+  write_file: "Write",
+  replace_in_file: "Edit",
+  search_in_files: "Grep",
+  bash: "Bash",
+};
+
 const parsePossiblyNestedJson = (raw: string | undefined): unknown => {
   if (!raw) return {};
   let current: unknown = raw;
@@ -133,8 +142,8 @@ const compactToolResponseForModel = (toolName: string, response: string): string
   const payload = parsed as Record<string, unknown>;
   const action = typeof payload.action === "string" ? payload.action : "";
   const isWriteLikeTool =
-    toolName === "write_file" ||
-    toolName === "replace_in_file" ||
+    toolName === "Write" ||
+    toolName === "Edit" ||
     (toolName === "global" && (action === "write" || action === "replace"));
   if (!isWriteLikeTool) {
     return response;
@@ -232,11 +241,12 @@ export const runSimpleAgentWorkflow = async ({
       }
 
       const startAt = Date.now();
-      const tool = allTools.find((item) => item.name === call.function.name);
+      const resolvedToolName = TOOL_NAME_ALIASES[call.function.name] || call.function.name;
+      const tool = allTools.find((item) => item.name === resolvedToolName);
       let response = "";
       let status: "success" | "error" = "success";
 
-      const toolName = call.function.name;
+      const toolName = resolvedToolName;
       const params = formatToolArgs(call.function.arguments);
       // Emit tool lifecycle events from execution phase (after dedupe),
       // so UI cards reflect what actually runs.

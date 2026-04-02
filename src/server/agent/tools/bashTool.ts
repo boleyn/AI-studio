@@ -9,6 +9,7 @@ import {
 import { buildSessionIsolatedEnv } from "./sessionEnv";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 import { validateStructuredCommand } from "./bashValidation";
+import { getBashSandboxConfig, shouldUseProjectSandbox } from "./bashSandbox";
 
 const splitCommandTokens = (segment: string) =>
   segment.match(/"[^"]*"|'[^']*'|[^\s]+/g)?.map((token) => token.trim()).filter(Boolean) || [];
@@ -88,14 +89,26 @@ export const createBashTool = (options?: {
     });
 
   return {
-    name: "bash",
+    name: "Bash",
     description:
-      "Run query-oriented commands in a project-isolated workspace. Uses structured command input and non-shell execution.",
+      "Run shell commands in a project-isolated workspace with sandbox controls. Compatible with Claude-style Bash tool input.",
     parameters: {
       type: "object",
       properties: {
+        command: { type: "string", description: "Shell command text (Claude-compatible)." },
+        description: { type: "string", description: "Short description of what this command does." },
+        run_in_background: {
+          type: "boolean",
+          description: "Set true to run in background (not supported currently; command runs in foreground).",
+        },
         cmd: { type: "string", description: "Executable command name (whitelisted)." },
         args: { type: "array", items: { type: "string" }, description: "Command arguments." },
+        timeout: {
+          type: "integer",
+          minimum: 1000,
+          maximum: MAX_TOOL_TIMEOUT_MS,
+          description: `Timeout in milliseconds (Claude-compatible alias of timeoutMs).`,
+        },
         cwd: { type: "string", description: "Relative working directory inside project workspace." },
         timeoutMs: {
           type: "integer",
@@ -103,20 +116,26 @@ export const createBashTool = (options?: {
           maximum: MAX_TOOL_TIMEOUT_MS,
           description: `Execution timeout in milliseconds (optional, default ${DEFAULT_TOOL_TIMEOUT_MS}).`,
         },
+        dangerouslyDisableSandbox: {
+          type: "boolean",
+          description: "Set true to request unsandboxed execution. Only works when runtime policy allows it.",
+        },
       },
-      required: ["cmd"],
     },
     run: async (input) => {
       const payload = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
       const normalizedProjectToken = (options?.allowedProjectToken || options?.fallbackProjectToken || "").trim();
-      const cmdInput = typeof payload.cmd === "string" ? payload.cmd : "";
+      const commandInput = typeof payload.command === "string" ? payload.command.trim() : "";
+      const cmdInput = typeof payload.cmd === "string" ? payload.cmd : commandInput;
       const argsInput = Array.isArray(payload.args) ? payload.args.map((item) => String(item)) : [];
       const normalizedCommand = normalizeStructuredCommandInput(cmdInput, argsInput);
       const cmd = normalizedCommand.cmd;
       const args = normalizeStructuredArgs(cmd, normalizedCommand.args);
       const cwdInputRaw = typeof payload.cwd === "string" ? payload.cwd : "";
       const cwdInput = normalizeWorkspaceLikePath(cwdInputRaw);
-      const timeoutMs = clampToolTimeout(payload.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
+      const timeoutMs = clampToolTimeout(payload.timeoutMs ?? payload.timeout ?? DEFAULT_TOOL_TIMEOUT_MS);
+      const dangerouslyDisableSandbox = payload.dangerouslyDisableSandbox === true;
+      const runInBackground = payload.run_in_background === true;
 
       if (!normalizedProjectToken) {
         throw new Error("当前会话未绑定项目，无法执行 bash。");
@@ -141,10 +160,23 @@ export const createBashTool = (options?: {
         throw new Error(`${invalidReason} 允许示例: {"cmd":"ls","args":["-la"]}`);
       }
 
-      const isolatedEnv = await buildSessionIsolatedEnv({
-        sessionId: prepared.sessionId,
-        workspaceRoot: prepared.workspaceRoot,
+      const sandboxDecision = shouldUseProjectSandbox({
+        cmd,
+        commandText: commandInput || `${cmd} ${args.join(" ")}`.trim(),
+        dangerouslyDisableSandbox,
       });
+      if (dangerouslyDisableSandbox && !sandboxDecision.config.allowUnsandboxedCommands) {
+        throw new Error("dangerouslyDisableSandbox=true 但策略不允许（AI_BASH_ALLOW_UNSANDBOXED=false）。");
+      }
+      if (runInBackground) {
+        throw new Error("run_in_background is not supported in AI Studio runtime yet.");
+      }
+      const isolatedEnv = sandboxDecision.useSandbox
+        ? await buildSessionIsolatedEnv({
+            sessionId: prepared.sessionId,
+            workspaceRoot: prepared.workspaceRoot,
+          })
+        : process.env;
       const result = await runStructuredCommand({
         command: cmd,
         args,
@@ -180,18 +212,26 @@ export const createBashTool = (options?: {
 
       return {
         ok: finalResult.ok,
-        sandbox: "project_workspace",
+        sandbox: sandboxDecision.useSandbox ? "project_workspace" : "none",
+        sandboxReason: sandboxDecision.reason,
+        sandboxPolicy: getBashSandboxConfig(),
         sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
         projectToken: normalizedProjectToken,
         cwd: relativeCwd === "" ? "." : relativeCwd,
+        command: `${cmd}${args.length ? ` ${args.join(" ")}` : ""}`,
         cmd,
         args,
         exitCode: finalResult.exitCode,
         killed: finalResult.killed,
+        interrupted: finalResult.killed,
         signal: finalResult.signal,
         stdout: finalResult.stdout,
         stderr: finalResult.stderr,
         error: finalResult.error,
+        backgroundTaskId: undefined,
+        backgroundedByUser: false,
+        assistantAutoBackgrounded: false,
+        dangerouslyDisableSandbox,
         changedFiles: flushed.changedFiles,
       };
     },
