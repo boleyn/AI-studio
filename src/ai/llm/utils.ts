@@ -149,14 +149,15 @@ export const loadRequestMessages = async ({
     // Load image to base64
     const loadUserContentImage = async (content: ChatCompletionContentPart[]) => {
       const resolveChatStorageKeyFromInternalUrl = (url: string) => {
-        if (!url.startsWith('/api/core/chat/files/view?')) return '';
-        try {
-          const parsed = new URL(url, 'http://localhost');
-          const storagePath = parsed.searchParams.get('storagePath') || '';
-          return storagePath.trim().replace(/^\/+/, '');
-        } catch {
-          return '';
-        }
+        if (!url) return '';
+        const marker = '/api/core/chat/files/view?';
+        const markerIndex = url.indexOf(marker);
+        if (markerIndex < 0) return '';
+        const query = url.slice(markerIndex + marker.length);
+        const params = new URLSearchParams(query);
+        const storagePath = (params.get('storagePath') || '').trim();
+        if (!storagePath) return '';
+        return storagePath.replace(/^\/+/, '');
       };
 
       return Promise.all(
@@ -186,7 +187,11 @@ export const loadRequestMessages = async ({
                             key: item.key
                           })
                         ).url;
-                      } catch (error) {}
+                      } catch (error) {
+                        throw new Error(
+                          `failed to create signed URL from image key(${item.key}): ${getErrText(error)}`
+                        );
+                      }
                     }
                     const storageKey = resolveChatStorageKeyFromInternalUrl(imgUrl);
                     if (storageKey) {
@@ -196,7 +201,14 @@ export const loadRequestMessages = async ({
                             key: storageKey
                           })
                         ).url;
-                      } catch (error) {}
+                      } catch (error) {
+                        throw new Error(
+                          `failed to create signed URL from storagePath(${storageKey}): ${getErrText(error)}`
+                        );
+                      }
+                    }
+                    if (imgUrl.startsWith('/api/core/chat/files/view')) {
+                      throw new Error('missing storagePath in internal chat file URL');
                     }
                     return imgUrl;
                   })();
