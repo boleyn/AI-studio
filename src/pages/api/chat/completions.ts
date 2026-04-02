@@ -565,6 +565,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return chunks.flat();
   };
 
+  const logDuplicateToolCallIds = (label: string, messages: ChatCompletionMessageParam[]) => {
+    const idBuckets = new Map<string, { count: number; roles: string[]; indexes: number[] }>();
+    const pushId = (id: unknown, role: string, index: number) => {
+      if (typeof id !== "string" || !id.trim()) return;
+      const current = idBuckets.get(id) || { count: 0, roles: [], indexes: [] };
+      current.count += 1;
+      current.roles.push(role);
+      current.indexes.push(index);
+      idBuckets.set(id, current);
+    };
+
+    messages.forEach((message, index) => {
+      if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
+        message.tool_calls.forEach((call) => pushId(call?.id, "assistant.tool_calls", index));
+      }
+      if (message.role === "tool") {
+        pushId((message as { tool_call_id?: string }).tool_call_id, "tool.tool_call_id", index);
+      }
+    });
+
+    const duplicates = [...idBuckets.entries()]
+      .filter(([, value]) => value.count > 1)
+      .map(([id, value]) => ({
+        id,
+        count: value.count,
+        roles: value.roles,
+        indexes: value.indexes,
+      }));
+
+    if (duplicates.length > 0) {
+      console.warn("[agent-debug][duplicate-tool-call-id]", {
+        label,
+        duplicateCount: duplicates.length,
+        duplicates,
+        messageCount: messages.length,
+      });
+    }
+  };
+
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const runtimeSkillPrompt = await getAgentRuntimeSkillPrompt();
@@ -617,6 +656,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ];
   const baseAgentMessages = await toAgentMessages(contextMessages);
   const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
+  logDuplicateToolCallIds("baseAgentMessages", baseAgentMessages);
+  logDuplicateToolCallIds("historyBaseAgentMessages", historyBaseAgentMessages);
   const coreSystemPrompts = buildCoreSystemPrompts();
   const systemPrompts = [...coreSystemPrompts];
   const historySystemPrompts = [...coreSystemPrompts];
@@ -663,6 +704,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       afterMessageCount: agentMessages.length,
     });
   }
+  logDuplicateToolCallIds("agentMessages.preWorkflow", agentMessages);
   const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundAgentMessages, tools).catch(() => 0);
   const systemAndSkillsTokens = await countGptMessagesTokens(coreSystemPrompts).catch(() => 0);
