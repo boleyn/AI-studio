@@ -27,6 +27,8 @@ const STORAGE_S3_FORCE_PATH_STYLE = parseBoolean(process.env.STORAGE_S3_FORCE_PA
 const STORAGE_S3_MAX_RETRIES = Number.parseInt(process.env.STORAGE_S3_MAX_RETRIES || "3", 10) || 3;
 const STORAGE_PUBLIC_BUCKET = process.env.STORAGE_PUBLIC_BUCKET?.trim() || "";
 const STORAGE_PRIVATE_BUCKET = process.env.STORAGE_PRIVATE_BUCKET?.trim() || "";
+// AWS Signature V4 requires presigned URL expiration to be <= 7 days.
+const MAX_SIGV4_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60 - 1;
 
 let s3Client: S3Client | null = null;
 
@@ -39,6 +41,10 @@ const getBucketName = (bucketType: StorageBucketType) => {
 };
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
+const clampSigV4ExpiresIn = (expiresIn: number) => {
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) return 900;
+  return Math.min(Math.floor(expiresIn), MAX_SIGV4_EXPIRES_IN_SECONDS);
+};
 
 export const getS3Client = () => {
   if (s3Client) return s3Client;
@@ -283,7 +289,7 @@ export const createPutObjectPresignedUrl = async ({
   });
 
   const url = await getSignedUrl(client, command, {
-    expiresIn,
+    expiresIn: clampSigV4ExpiresIn(expiresIn),
   });
 
   return {
@@ -315,7 +321,7 @@ export const createGetObjectPresignedUrl = async ({
   });
 
   const url = await getSignedUrl(client, command, {
-    expiresIn,
+    expiresIn: clampSigV4ExpiresIn(expiresIn),
   });
 
   return {

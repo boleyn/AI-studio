@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { normalizeSandpackCompileInfo } from "@shared/sandpack/compileInfo";
+import { normalizeSandpackReactTemplateFiles } from "@shared/sandpack/reactTemplate";
 import JSZip from "jszip";
 import {
   createProjectFileViewUrl,
@@ -37,26 +38,6 @@ type UpdateFilesRequest = {
 const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: string }> => {
   if (!files || typeof files !== "object") return false;
   return Object.keys(files as Record<string, unknown>).length > 0;
-};
-
-const normalizeReactScaffoldFiles = (files: Record<string, { code: string }>) => {
-  const hasSrcApp = Boolean(files["/src/App.jsx"] || files["/src/App.js"]);
-  const hasSrcStyles = Boolean(files["/src/styles.css"] || files["/src/index.css"]);
-  const hasSrcEntry = Boolean(files["/src/main.jsx"] || files["/src/main.js"]);
-  if (!hasSrcApp && !hasSrcStyles && !hasSrcEntry) return files;
-  const indexHtml = files["/index.html"]?.code || "";
-  const usesSrcMainEntry = /src\s*=\s*["']\/src\/main\.(jsx|js)["']/i.test(indexHtml);
-
-  const next = { ...files };
-  delete next["/App.jsx"];
-  delete next["/App.js"];
-  delete next["/styles.css"];
-  delete next["/index.css"];
-  if (usesSrcMainEntry) {
-    delete next["/index.jsx"];
-    delete next["/index.js"];
-  }
-  return next;
 };
 
 const normalizeZipPath = (filePath: string): string | null => {
@@ -332,10 +313,10 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           return;
         }
 
-        const mergedFiles = normalizeReactScaffoldFiles({
+        const mergedFiles = normalizeSandpackReactTemplateFiles({
           ...project.files,
           ...body.files,
-        });
+        }).files;
 
         await updateFiles(token, mergedFiles);
         res.status(200).json({ success: true });
@@ -376,7 +357,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         });
       }
 
-      await updateFiles(token, normalizeReactScaffoldFiles(body.files));
+      await updateFiles(token, normalizeSandpackReactTemplateFiles(body.files).files);
       res.status(200).json({ success: true });
     } catch (error) {
       console.error("Failed to update files:", error);

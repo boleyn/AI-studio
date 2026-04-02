@@ -81,8 +81,6 @@ const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
   return files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
 };
 
-const hasImageInContent = (content: string) => /!\[[^\]]*\]\([^\)]*\)/.test(content);
-
 const isImageFile = (file: MessageFile) => {
   if (typeof file.type === "string" && file.type.startsWith("image/")) return true;
   const name = typeof file.name === "string" ? file.name.toLowerCase() : "";
@@ -458,7 +456,6 @@ const ChatItem = ({
     [hasAnswerText, isStreaming, latestReasoningIndex, timelineHasAnswer]
   );
   const showAssistantAnimation = Boolean(isStreaming && !isUser && !isSystem);
-  const containsImageMarkdown = isUser ? hasImageInContent(content) : false;
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
 
   return (
@@ -507,7 +504,7 @@ const ChatItem = ({
       >
         {isUser ? (
           <Flex direction="column" gap={2}>
-            {sortedFiles.length > 0 && !containsImageMarkdown ? (
+            {sortedFiles.length > 0 ? (
               <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }}>
                 {sortedFiles.map((file, index) => {
                   const isImage = isImageFile(file);

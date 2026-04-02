@@ -161,7 +161,7 @@ export const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
   const lines: string[] = ["【附件信息】"];
   if (imageCount > 0) {
     lines.push(
-      `- 本轮包含图片 ${imageCount} 张。优先用 read_file(path=/.files/<文件名>)；若用 bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
+      `- 本轮包含图片 ${imageCount} 张。请用 read_file(mode=vision, storagePath=...) 进行图片识别；也可用 mode=auto。需要特定识别目标时可传 prompt。`
     );
     const imagePreviews = imageFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";

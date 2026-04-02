@@ -240,6 +240,10 @@ export const runAgentCall = async ({
 
   // 自循环运行
   while (runTimes < maxRunAgentTimes) {
+    if (isAborted?.()) {
+      finish_reason = 'stop';
+      break;
+    }
     // TODO: 费用检测
 
     runTimes++;
@@ -319,6 +323,11 @@ export const runAgentCall = async ({
     // 4. Call tools
     let toolCallStep = false;
     for await (const tool of toolCalls) {
+      if (isAborted?.()) {
+        toolCallStep = true;
+        finish_reason = 'stop';
+        break;
+      }
       const {
         response,
         assistantMessages: toolAssistantMessages,
@@ -357,6 +366,9 @@ export const runAgentCall = async ({
       }
       if (stop) {
         toolCallStep = true;
+        if (isAborted?.()) {
+          finish_reason = 'stop';
+        }
       }
     }
 

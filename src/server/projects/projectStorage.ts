@@ -3,6 +3,10 @@ import { promises as fs } from "fs";
 import path from "path";
 import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
+import {
+  DEFAULT_REACT_TEMPLATE_FILES,
+  normalizeSandpackReactTemplateFiles,
+} from "@shared/sandpack/reactTemplate";
 import { getMongoDb } from "../db/mongo";
 import {
   createGetObjectPresignedUrl,
@@ -80,147 +84,7 @@ const PROJECT_STORAGE_FILES_SEGMENT = "files";
 const CHAT_UPLOAD_ROOT = "chat_uploads";
 const LEGACY_PROJECT_FILES_ROOT = path.join(process.cwd(), "data", "projects");
 
-const DEFAULT_PROJECT_FILES: Record<string, ProjectFile> = {
-  "/index.html": {
-    code: `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
-`,
-  },
-  "/src/main.jsx": {
-    code: `import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./styles.css";
-
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-`,
-  },
-  "/src/App.jsx": {
-    code: `import { useState } from "react";
-
-export default function App() {
-  const [count, setCount] = useState(0);
-  return (
-    <main className="app">
-      <header>
-        <p className="badge">Node + React Starter</p>
-        <h1>欢迎来到 AI Studio</h1>
-        <p className="subtle">从这里开始构建你的全栈组件。</p>
-      </header>
-      <section className="card">
-        <h2>交互示例</h2>
-        <p>点击计数器：{count}</p>
-        <button onClick={() => setCount((prev) => prev + 1)}>Click me</button>
-      </section>
-    </main>
-  );
-}`,
-  },
-  "/src/styles.css": {
-    code: `.app {
-  font-family: "Sora", sans-serif;
-  color: #f7f5ff;
-  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
-  min-height: 100vh;
-  padding: 64px;
-}
-
-h1 {
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  margin: 16px 0;
-}
-
-p {
-  opacity: 0.7;
-  margin-top: 12px;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f7f5ff;
-}
-
-.subtle {
-  opacity: 0.75;
-  max-width: 520px;
-}
-
-.card {
-  margin-top: 32px;
-  padding: 24px;
-  border-radius: 16px;
-  background: rgba(16, 16, 24, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 60px rgba(8, 8, 16, 0.3);
-}
-
-button {
-  margin-top: 12px;
-  border: 0;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: #f7f5ff;
-  color: #111018;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-h2 {
-  margin: 0 0 8px;
-}
-
-}`,
-  },
-};
-
-const normalizeReactScaffoldFiles = (
-  files: Record<string, ProjectFile>
-): { files: Record<string, ProjectFile>; changed: boolean } => {
-  const hasSrcApp = Boolean(files["/src/App.jsx"] || files["/src/App.js"]);
-  const hasSrcStyles = Boolean(files["/src/styles.css"] || files["/src/index.css"]);
-  const hasSrcEntry = Boolean(files["/src/main.jsx"] || files["/src/main.js"]);
-  const hasRootApp = Boolean(files["/App.jsx"] || files["/App.js"]);
-  const hasRootStyles = Boolean(files["/styles.css"] || files["/index.css"]);
-  const hasRootEntry = Boolean(files["/index.jsx"] || files["/index.js"]);
-  const indexHtml = files["/index.html"]?.code || "";
-  const usesSrcMainEntry = /src\s*=\s*["']\/src\/main\.(jsx|js)["']/i.test(indexHtml);
-
-  // If both root scaffold and src scaffold exist, keep src scaffold and remove root duplicates.
-  const hasMixedDuplicateScaffold =
-    (hasSrcApp && hasRootApp) || (hasSrcStyles && hasRootStyles) || (hasSrcEntry && hasRootEntry);
-  if (!hasMixedDuplicateScaffold) return { files, changed: false };
-
-  const next = { ...files };
-  delete next["/App.jsx"];
-  delete next["/App.js"];
-  delete next["/styles.css"];
-  delete next["/index.css"];
-  if (usesSrcMainEntry) {
-    delete next["/index.jsx"];
-    delete next["/index.js"];
-  }
-  return { files: next, changed: true };
-};
+const DEFAULT_PROJECT_FILES: Record<string, ProjectFile> = DEFAULT_REACT_TEMPLATE_FILES;
 
 async function getCollection() {
   const db = await getMongoDb();
@@ -543,7 +407,7 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
     await cleanupLegacyDir(doc.token);
   }
 
-  const normalized = normalizeReactScaffoldFiles(files);
+  const normalized = normalizeSandpackReactTemplateFiles(files);
   if (normalized.changed) {
     files = normalized.files;
     await replaceProjectFilesInStorage(doc.token, files);

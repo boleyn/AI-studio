@@ -39,6 +39,8 @@ type ConfigModelItem = {
   quoteMaxToken?: unknown;
   maxTemperature?: unknown;
   reasoning?: unknown;
+  vision?: unknown;
+  visionModel?: unknown;
   defaultConfig?: unknown;
   fieldMap?: unknown;
 };
@@ -111,6 +113,11 @@ const parseModels = (value: unknown) => {
         quoteMaxToken: toNumber(record.quoteMaxToken),
         maxTemperature: toNumber(record.maxTemperature),
         reasoning: toBoolean(record.reasoning),
+        vision: toBoolean(record.vision),
+        visionModel:
+          typeof record.visionModel === "string" && record.visionModel.trim()
+            ? record.visionModel.trim()
+            : undefined,
         defaultConfig:
           record.defaultConfig && typeof record.defaultConfig === "object" && !Array.isArray(record.defaultConfig)
             ? record.defaultConfig

@@ -16,7 +16,12 @@ export const registerActiveConversationRun = ({
   chatId: string;
   controller: AbortController;
 }) => {
-  activeRuns.set(getRunKey(token, chatId), {
+  const key = getRunKey(token, chatId);
+  const previous = activeRuns.get(key);
+  if (previous && previous.controller !== controller && !previous.controller.signal.aborted) {
+    previous.controller.abort(new Error("superseded"));
+  }
+  activeRuns.set(key, {
     controller,
     createdAt: Date.now(),
   });
@@ -52,4 +57,3 @@ export const stopActiveConversationRun = ({
   }
   return true;
 };
-

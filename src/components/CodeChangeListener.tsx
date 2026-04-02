@@ -56,19 +56,23 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   const pruneDuplicateReactScaffoldFiles = useCallback(() => {
     const files = sandpack.files as Record<string, { code: string }> | undefined;
     if (!files) return;
-    const hasSrcApp = Boolean(files["/src/App.jsx"] || files["/src/App.js"]);
-    const hasSrcStyles = Boolean(files["/src/styles.css"] || files["/src/index.css"]);
-    const hasSrcEntry = Boolean(files["/src/main.jsx"] || files["/src/main.js"]);
-    if (!hasSrcApp && !hasSrcStyles && !hasSrcEntry) return;
-    const indexHtml = files["/index.html"]?.code || "";
-    const usesSrcMainEntry = /src\s*=\s*["']\/src\/main\.(jsx|js)["']/i.test(indexHtml);
+    const hasRootReactScaffold =
+      Boolean(files["/App.js"] || files["/index.js"] || files["/public/index.html"]) ||
+      Boolean(files["/styles.css"]);
+    if (!hasRootReactScaffold) return;
 
     const duplicates = [
-      "/App.jsx",
-      "/App.js",
-      "/styles.css",
-      "/index.css",
-      ...(usesSrcMainEntry ? ["/index.jsx", "/index.js"] : []),
+      "/src/App.jsx",
+      "/src/App.js",
+      "/src/main.jsx",
+      "/src/main.js",
+      "/src/styles.css",
+      "/src/index.css",
+      "/index.html",
+      "/vite.config.js",
+      "/vite.config.ts",
+      "/vite-env.d.ts",
+      "/tsconfig.node.json",
     ].filter((path) => Boolean(files[path]));
     if (duplicates.length === 0) return;
 

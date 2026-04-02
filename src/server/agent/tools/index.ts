@@ -1,18 +1,28 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { z } from "zod";
-import type { ChangeTracker } from "../globalTools";
-import type { AgentToolDefinition } from "./types";
+import type { AgentToolDefinition, ChangeTracker } from "./types";
 import { getProject } from "@server/projects/projectStorage";
 import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
+import { getObjectFromStorage, listStorageObjectKeysByPrefix } from "@server/storage/s3";
+import { assertChatScopedStoragePath, getChatUploadRoot } from "../../../pages/api/core/chat/files/shared";
+import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
+import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
+import { getAIApi } from "@aistudio/ai/config";
 
 const listFilesSchema = z.object({});
 const readFileSchema = z
   .object({
-    path: z.string(),
-    mode: z.enum(["auto", "raw"]).optional(),
+    path: z.string().optional(),
+    storagePath: z.string().optional(),
+    fileName: z.string().optional(),
+    mode: z.enum(["auto", "raw", "vision"]).optional(),
+    prompt: z.string().max(4000).optional(),
     maxChars: z.number().int().min(500).max(50000).optional(),
+  })
+  .refine((value) => Boolean(value.path || value.storagePath || value.fileName), {
+    message: "path / storagePath / fileName 至少提供一个",
   });
 const writeFileSchema = z.object({ path: z.string(), content: z.string() });
 const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
@@ -23,6 +33,9 @@ const sandpackCompileInfoSchema = z.object({
 });
 const CHAT_FILE_MAX_CHARS = 12000;
 const CHAT_FILE_BASE64_MAX_BYTES = 200 * 1024;
+const CHAT_FILE_VISION_MAX_BYTES = 4 * 1024 * 1024;
+const DEFAULT_READ_FILE_VISION_PROMPT =
+  "你是图片理解助手。请准确提取图片中的文字与关键信息，若是界面截图请给出主要内容和状态，输出中文。";
 
 const toUtf8Snippet = (buffer: Buffer, maxChars: number) => {
   const raw = buffer.toString("utf8");
@@ -45,29 +58,187 @@ const isLikelyTextContentType = (contentType: string) =>
     "application/x-yaml",
   ].some((item) => contentType.startsWith(item));
 
+const inferImageContentTypeFromPath = (filePath: string) => {
+  const ext = path.extname(filePath || "").toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".png") return "image/png";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".svg") return "image/svg+xml";
+  return "application/octet-stream";
+};
+
+const toStorageCandidates = (normalizedPath: string) => {
+  const result = new Set<string>([normalizedPath]);
+  const marker = "/.files/files/";
+  if (normalizedPath.includes(marker)) {
+    result.add(normalizedPath.replace(marker, "/.files/"));
+  } else if (normalizedPath.includes("/.files/")) {
+    result.add(normalizedPath.replace("/.files/", marker));
+  }
+  return [...result];
+};
+
+const resolveReadFileVisionModelCandidates = async () => {
+  const runtime = getAgentRuntimeConfig();
+  const toolProfile = getChatModelProfile(runtime.toolCallModel) as Record<string, unknown> | undefined;
+  const normalProfile = getChatModelProfile(runtime.normalModel) as Record<string, unknown> | undefined;
+  const fromProfile = (profile?: Record<string, unknown>) =>
+    typeof profile?.visionModel === "string" && profile.visionModel.trim()
+      ? profile.visionModel.trim()
+      : undefined;
+  const catalog = await getChatModelCatalog().catch(() => null);
+  const visionModels = (catalog?.models || [])
+    .filter((item) => {
+    const profile = getChatModelProfile(item.id) as Record<string, unknown> | undefined;
+    return profile?.vision === true;
+    })
+    .map((item) => item.id);
+
+  const candidates = [
+    fromProfile(toolProfile),
+    fromProfile(normalProfile),
+    ...visionModels,
+    runtime.toolCallModel,
+    runtime.normalModel,
+    catalog?.defaultModel,
+    catalog?.models?.[0]?.id,
+  ].filter((item): item is string => Boolean(item && item.trim()));
+
+  return Array.from(new Set(candidates));
+};
+
+const isModelUnavailableError = (error: unknown) => {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /does not exist|do not have access|model.*not found|404/i.test(text);
+};
+
+const resolveReadFileVisionPrompt = ({
+  modelId,
+  runtimePrompt,
+}: {
+  modelId: string;
+  runtimePrompt?: string;
+}) => {
+  void modelId;
+  const toolPrompt = (runtimePrompt || "").trim();
+  if (toolPrompt) return toolPrompt;
+  return DEFAULT_READ_FILE_VISION_PROMPT;
+};
+
+const readImageByVision = async ({
+  storagePath,
+  buffer,
+  contentType,
+  maxChars,
+  prompt,
+}: {
+  storagePath: string;
+  buffer: Buffer;
+  contentType: string;
+  maxChars: number;
+  prompt?: string;
+}) => {
+  if (buffer.byteLength > CHAT_FILE_VISION_MAX_BYTES) {
+    return {
+      ok: false,
+      mode: "vision",
+      storagePath,
+      contentType,
+      fileSizeBytes: buffer.byteLength,
+      maxVisionBytes: CHAT_FILE_VISION_MAX_BYTES,
+      message: `图片过大（${buffer.byteLength} bytes），超过视觉识别限制。`,
+    };
+  }
+
+  const modelCandidates = await resolveReadFileVisionModelCandidates();
+  if (modelCandidates.length === 0) {
+    throw new Error("未找到可用的视觉模型候选");
+  }
+  const ai = getAIApi({ timeout: 120000 });
+  const mime = (contentType || "").startsWith("image/") ? contentType : inferImageContentTypeFromPath(storagePath);
+  const imageDataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+  let response: Awaited<ReturnType<typeof ai.chat.completions.create>> | null = null;
+  let usedModel = "";
+  let lastError: unknown = null;
+  for (const candidate of modelCandidates) {
+    try {
+      response = await ai.chat.completions.create({
+        model: candidate,
+        temperature: 0,
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content: resolveReadFileVisionPrompt({
+              modelId: candidate,
+              runtimePrompt: prompt,
+            })
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "请识别这张图片并给出要点。" },
+              { type: "image_url", image_url: { url: imageDataUrl } },
+            ],
+          },
+        ],
+      } as any);
+      usedModel = candidate;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (isModelUnavailableError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (!response) {
+    throw new Error(
+      `视觉模型不可用，候选: ${modelCandidates.join(", ")}; lastError: ${String(
+        lastError instanceof Error ? lastError.message : lastError
+      )}`
+    );
+  }
+
+  const content = (response.choices?.[0]?.message?.content || "").trim();
+  const snippet = content.slice(0, maxChars);
+  return {
+    ok: true,
+    mode: "vision",
+    storagePath,
+    contentType: mime,
+    model: usedModel,
+    content: content.length > maxChars ? `${snippet}\n\n...[truncated]` : content,
+    truncated: content.length > maxChars,
+  };
+};
+
 const toReadFilePayload = ({
   mode,
-  path,
+  storagePath,
   buffer,
   contentType,
   maxChars,
 }: {
-  mode: "auto" | "raw";
-  path: string;
+  mode: "auto" | "raw" | "vision";
+  storagePath: string;
   buffer: Buffer;
   contentType: string;
   maxChars: number;
 }) => {
   const normalizedType = (contentType || "").toLowerCase();
   const isImage = normalizedType.startsWith("image/");
-  const resolvedMode = mode === "auto" ? "raw" : mode;
+  const resolvedMode = mode === "vision" ? "raw" : mode === "auto" ? "raw" : mode;
   const shouldUseUtf8 = !isImage && isLikelyTextContentType(normalizedType);
   const shouldUseBase64 = !shouldUseUtf8;
   if (shouldUseBase64 && buffer.byteLength > CHAT_FILE_BASE64_MAX_BYTES) {
     return {
       ok: false,
       mode: resolvedMode,
-      path,
+      storagePath,
       contentType,
       fileSizeBytes: buffer.byteLength,
       maxBase64Bytes: CHAT_FILE_BASE64_MAX_BYTES,
@@ -79,7 +250,7 @@ const toReadFilePayload = ({
   return {
     ok: true,
     mode: resolvedMode,
-    path,
+    storagePath,
     contentType,
     content,
     contentEncoding: shouldUseBase64 ? "base64" : "utf8",
@@ -142,11 +313,23 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
           type: "string",
           description: "项目/skill 文件路径（以 / 开头）；附件使用 path=/.files/<文件名>",
         },
+        storagePath: {
+          type: "string",
+          description: "附件存储路径（chat_uploads/...）",
+        },
+        fileName: {
+          type: "string",
+          description: "按文件名模糊匹配会话附件",
+        },
         mode: {
           type: "string",
-          enum: ["auto", "raw"],
+          enum: ["auto", "raw", "vision"],
           description:
-            "附件读取模式。auto/raw: 图片/二进制返回 base64，文本返回 UTF-8。",
+            "附件读取模式。auto: 图片优先视觉识别，文本返回 UTF-8；raw: 图片/二进制返回 base64；vision: 强制图片视觉识别。",
+        },
+        prompt: {
+          type: "string",
+          description: "仅图片视觉识别时可选。自定义本次识别提示词；不传则使用模型配置或默认提示词。",
         },
         maxChars: {
           type: "integer",
@@ -155,7 +338,6 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
           description: "附件内容最大返回字符数（默认 12000）",
         },
       },
-      required: ["path"],
     };
   }
   if (schema === writeFileSchema) {
@@ -254,7 +436,7 @@ const safeParse = <T>(
         ok: false,
         error:
           `工具入参类型错误：期望 JSON 对象(object)，实际收到 ${describeInputType(input)}。` +
-          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/src/App.jsx","content":"..."}${previewSuffix}`,
+          `请把 arguments 作为对象传入，而不是字符串。示例：{"path":"/App.js","content":"..."}${previewSuffix}`,
       };
     }
     return { ok: false, error: parsed.error.issues.map((err) => err.message).join("; ") };
@@ -295,14 +477,15 @@ export function createProjectTools(
     {
       name: "read_file",
       description:
-        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。附件默认按 raw 返回（文本 UTF-8，二进制 base64）。",
+        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。图片附件支持视觉识别（mode=vision/auto）。",
       parameters: toJsonSchema(readFileSchema),
       run: async (input) => {
         const parsed = safeParse<{
           path?: string;
           storagePath?: string;
           fileName?: string;
-          mode?: "auto" | "raw";
+          mode?: "auto" | "raw" | "vision";
+          prompt?: string;
           maxChars?: number;
         }>(readFileSchema, input, "read_file");
         if (!parsed.ok) throw new Error(parsed.error);
@@ -420,6 +603,16 @@ export function createProjectTools(
         }
         if (!buffer) {
           throw (lastError instanceof Error ? lastError : new Error("附件读取失败"));
+        }
+        const normalizedContentType = (contentType || inferImageContentTypeFromPath(loadedPath)).toLowerCase();
+        if (normalizedContentType.startsWith("image/") && mode !== "raw") {
+          return await readImageByVision({
+            storagePath: loadedPath,
+            buffer,
+            contentType: normalizedContentType,
+            maxChars,
+            prompt: parsed.data.prompt,
+          });
         }
         return toReadFilePayload({
           mode,

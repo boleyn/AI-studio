@@ -48,13 +48,13 @@ Follow this skill for coding tasks in this repository.
 - Always infer conventions from the current target project's files and dependencies first; never force a framework layout.
 - Framework detection priority:
   - If `package.json` has `next`, follow Next.js Pages Router conventions (`src/pages/**`, `src/pages/api/**`, etc.).
-  - If `package.json` indicates Vite React/React SPA (and no `next`), follow this workspace default scaffold.
+  - If target is Sandpack React SPA (and no `next`), follow this workspace default scaffold.
 - Workspace default React scaffold (authoritative):
-  - root: `/index.html`, `/package.json`, `/vite.config.js`
-  - source: `/src/main.jsx`, `/src/App.jsx`, `/src/styles.css`
-- When `/src/*` scaffold exists, do not create duplicate root entry files such as `/App.jsx`, `/index.jsx`, `/styles.css`.
+  - root: `/App.js`, `/index.js`, `/public/index.html`, `/styles.css`
+  - avoid Vite-only files by default (`/src/main.jsx`, `/vite.config.js`, `/index.html` as Vite entry)
 - Do not apply Next.js folder rules to a React SPA scaffold.
 - Do not create a second conflicting source root when an existing one is already established.
+- Before finishing coding tasks, call `compile_project` to verify runtime/compile status and fix blocking errors.
 
 ## Tool Strategy
 

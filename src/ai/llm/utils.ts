@@ -9,11 +9,6 @@ import type {
 } from '@aistudio/ai/compat/global/core/ai/type.d';
 import { ChatCompletionRequestMessageRoleEnum } from '@aistudio/ai/compat/global/core/ai/constants';
 import { i18nT } from '@aistudio/ai/compat/web/i18n/utils';
-import { addLog } from '@aistudio/ai/compat/common/system/log';
-import { getImageBase64 } from '@aistudio/ai/compat/common/file/image/utils';
-import { getS3ChatSource } from '@aistudio/ai/compat/common/s3/sources/chat';
-import { isInternalAddress } from '@aistudio/ai/compat/common/system/utils';
-import { getErrText } from '@aistudio/ai/compat/global/common/error/utils';
 
 export const filterGPTMessageByMaxContext = async ({
   messages = [],
@@ -84,9 +79,8 @@ export const filterGPTMessageByMaxContext = async ({
 
 /*
   Format requested messages
-  1. If not useVision, only retain text.
-  2. Remove file_url
-  3. If useVision, parse url from question, and load image from url(Local url)
+  1. Keep text-only user content.
+  2. Remove file_url and image_url from model request.
 */
 export const loadRequestMessages = async ({
   messages,
@@ -114,151 +108,11 @@ export const loadRequestMessages = async ({
   };
   // Parse user content(text and img) Store history => api messages
   const parseUserContent = async (content: string | ChatCompletionContentPart[]) => {
-    // Split question text and image
-    const parseStringWithImages = (input: string): ChatCompletionContentPart[] => {
-      if (!useVision || input.length > 500) {
-        return [{ type: 'text', text: input }];
-      }
-
-      // 正则表达式匹配图片URL
-      const imageRegex =
-        /(https?:\/\/[^\s/$.?#].[^\s]*\.(?:png|jpe?g|gif|webp|bmp|tiff?|svg|ico|heic|avif))/gi;
-
-      const result: ChatCompletionContentPart[] = [];
-
-      // 提取所有HTTPS图片URL并添加到result开头
-      const httpsImages = Array.from(new Set(input.matchAll(imageRegex)), (m) => m[0]);
-      httpsImages.forEach((url) => {
-        result.push({
-          type: 'image_url',
-          image_url: {
-            url: url
-          }
-        });
-      });
-
-      // Too many images return text
-      if (httpsImages.length > 4) {
-        return [{ type: 'text', text: input }];
-      }
-
-      // 添加原始input作为文本
-      result.push({ type: 'text', text: input });
-      return result;
-    };
-    // Load image to base64
-    const loadUserContentImage = async (content: ChatCompletionContentPart[]) => {
-      const resolveChatStorageKeyFromInternalUrl = (url: string) => {
-        if (!url) return '';
-        const marker = '/api/core/chat/files/view?';
-        const markerIndex = url.indexOf(marker);
-        if (markerIndex < 0) return '';
-        const query = url.slice(markerIndex + marker.length);
-        const params = new URLSearchParams(query);
-        const storagePath = (params.get('storagePath') || '').trim();
-        if (!storagePath) return '';
-        return storagePath.replace(/^\/+/, '');
-      };
-
-      return Promise.all(
-        content.map(async (item) => {
-          if (item.type === 'image_url') {
-            // Remove url origin
-            const imgUrl = item.image_url.url;
-
-            // base64 image
-            if (imgUrl.startsWith('data:image/')) {
-              return item;
-            }
-
-            try {
-              // If imgUrl is a local path, load image from local, and set url to base64
-              if (
-                imgUrl.startsWith('/') ||
-                process.env.MULTIPLE_DATA_TO_BASE64 !== 'false' ||
-                isInternalAddress(imgUrl)
-              ) {
-                try {
-                  const url = await (async () => {
-                    if (item.key) {
-                      try {
-                        return (
-                          await getS3ChatSource().createGetChatFileURL({
-                            key: item.key
-                          })
-                        ).url;
-                      } catch (error) {
-                        throw new Error(
-                          `failed to create signed URL from image key(${item.key}): ${getErrText(error)}`
-                        );
-                      }
-                    }
-                    const storageKey = resolveChatStorageKeyFromInternalUrl(imgUrl);
-                    if (storageKey) {
-                      try {
-                        return (
-                          await getS3ChatSource().createGetChatFileURL({
-                            key: storageKey
-                          })
-                        ).url;
-                      } catch (error) {
-                        throw new Error(
-                          `failed to create signed URL from storagePath(${storageKey}): ${getErrText(error)}`
-                        );
-                      }
-                    }
-                    if (imgUrl.startsWith('/api/core/chat/files/view')) {
-                      throw new Error('missing storagePath in internal chat file URL');
-                    }
-                    return imgUrl;
-                  })();
-                  const { completeBase64: base64 } = await getImageBase64(url);
-
-                  return {
-                    ...item,
-                    image_url: {
-                      ...item.image_url,
-                      url: base64
-                    }
-                  };
-                } catch (error) {
-                  return Promise.reject(
-                    `Cannot load image ${imgUrl}, because ${getErrText(error)}`
-                  );
-                }
-              }
-
-              // 检查下这个图片是否可以被访问，如果不行的话，则过滤掉
-              if (item.key || /(?:X-Amz-Signature|Signature|Expires)=/i.test(imgUrl)) {
-                return item;
-              }
-              const response = await fetch(imgUrl, {
-                method: 'HEAD'
-              });
-              if (!response.ok) {
-                addLog.info(`Filter invalid image: ${imgUrl}`);
-                return;
-              }
-            } catch (error: any) {
-              if (error?.response?.status === 405 || error?.response?.status === 403) {
-                return item;
-              }
-              addLog.warn(`Filter invalid image: ${imgUrl}`, { error });
-              return;
-            }
-          }
-          return item;
-        })
-      ).then((res) => res.filter(Boolean) as ChatCompletionContentPart[]);
-    };
-
     if (content === undefined) return;
     if (typeof content === 'string') {
-      if (content === '') return;
-
-      const loadImageContent = await loadUserContentImage(parseStringWithImages(content));
-      if (loadImageContent.length === 0) return;
-      return loadImageContent;
+      const text = content.trim();
+      if (!text) return;
+      return [{ type: 'text', text }];
     }
 
     const result = (
@@ -271,10 +125,7 @@ export const loadRequestMessages = async ({
           }
           if (item.type === 'file_url') return; // LLM not support file_url
           if (item.type === 'image_url') {
-            // close vision, remove image_url
-            if (!useVision) return;
-            // remove empty image_url
-            if (!item.image_url.url) return;
+            return;
           }
 
           return item;
@@ -284,10 +135,8 @@ export const loadRequestMessages = async ({
       .flat()
       .filter(Boolean) as ChatCompletionContentPart[];
 
-    const loadImageContent = await loadUserContentImage(result);
-
-    if (loadImageContent.length === 0) return;
-    return loadImageContent;
+    if (result.length === 0) return;
+    return result;
   };
 
   const formatAssistantItem = (item: ChatCompletionAssistantMessageParam) => {

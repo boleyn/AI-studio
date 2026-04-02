@@ -26,7 +26,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": false,
+      "reasoning": true,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"minimax.svg"
@@ -34,6 +34,7 @@
     {
       "id": "kimi-k2.5",
       "label": "kimi-k2.5",
+      "vision": true,
       "maxContext": 192000,
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
@@ -50,7 +51,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": false,
+      "reasoning": true,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"glm.svg"
@@ -62,7 +63,7 @@
       "maxResponse": 120000,
       "quoteMaxToken": 80000,
       "maxTemperature": 1.2,
-      "reasoning": false,
+      "reasoning": true,
       "defaultConfig": {},
       "fieldMap": {},
       "icon":"glm.svg"

@@ -28,6 +28,7 @@ import type { SaveStatus } from "./CodeChangeListener";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
+import { DEFAULT_REACT_TEMPLATE_FILES } from "@shared/sandpack/reactTemplate";
 import { listConversations } from "@features/chat/services/conversations";
 
 type SandpackFile = { code: string };
@@ -49,50 +50,9 @@ type StudioShellProps = {
 type ActiveView = "preview" | "code" | "logs";
 type ShareMode = "editable" | "preview";
 
-const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "vite-react";
+const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
 
-const fallbackFiles: SandpackFiles = {
-  "/src/main.jsx": {
-    code: `import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./styles.css";
-
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-`,
-  },
-  "/src/App.jsx": {
-    code: `import "./styles.css";
-
-export default function App() {
-  return (
-    <main className="app">
-      <h1>AI Studio Proxy</h1>
-      <p>Paste a code token in the top bar to load a remote project.</p>
-    </main>
-  );
-}`,
-  },
-  "/src/styles.css": {
-    code: `.app {
-  font-family: "Sora", sans-serif;
-  color: #f7f5ff;
-  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
-  min-height: 100vh;
-  padding: 64px;
-}
-
-h1 {
-  font-size: 40px;
-  letter-spacing: -0.02em;
-}
-
-p {
-  opacity: 0.7;
-  margin-top: 12px;
-}`,
-  },
-};
+const fallbackFiles: SandpackFiles = DEFAULT_REACT_TEMPLATE_FILES;
 
 const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
   if (!rawFiles || typeof rawFiles !== "object") {
@@ -178,6 +138,10 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
       const payload = (await response.json()) as Record<string, unknown>;
       const nextTemplate = payload.template || (payload.sandpack as Record<string, unknown>)?.template;
+      const normalizedTemplate =
+        nextTemplate === "vite-react" || nextTemplate === "vite-react-ts"
+          ? DEFAULT_TEMPLATE
+          : ((nextTemplate as SandpackPredefinedTemplate) || DEFAULT_TEMPLATE);
       const nextFiles = normalizeFiles(
         (payload as Record<string, unknown>).files ||
           (payload as Record<string, { files?: unknown }>).sandpack?.files
@@ -189,7 +153,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         {};
       const nextName = (payload.name as string) || "未命名项目";
 
-      setTemplate((nextTemplate as SandpackPredefinedTemplate) || DEFAULT_TEMPLATE);
+      setTemplate(normalizedTemplate);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
       setChatFileOptions(toSortedFilePaths(nextFiles));
@@ -573,6 +537,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
           theme={githubLight}
           options={{
             autorun: true,
+            recompileMode: "delayed",
+            recompileDelay: 600,
           }}
         >
           <CodeChangeListener

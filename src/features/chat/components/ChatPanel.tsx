@@ -840,15 +840,13 @@ const ChatPanel = ({
   );
 
   const handleStop = useCallback(() => {
-    const chatId = streamingConversationIdRef.current;
+    const chatId = streamingConversationIdRef.current || activeConversation?.id || null;
     const abortCtrl = streamAbortRef.current;
-    if (!abortCtrl) return;
-
-    // 立即停止前端流，确保按钮点击立刻生效
-    abortCtrl.abort(new Error("stop"));
-
+    if (abortCtrl && !abortCtrl.signal.aborted) {
+      // 立即停止前端流，确保按钮点击立刻生效
+      abortCtrl.abort(new Error("stop"));
+    }
     if (!chatId) return;
-    if (!completionsStream) return;
 
     // 后端停止异步执行，避免网络慢导致前端停不下来
     const stopApiAbort = new AbortController();
@@ -868,7 +866,7 @@ const ChatPanel = ({
       .finally(() => {
         clearTimeout(timeout);
       });
-  }, [completionsStream, token]);
+  }, [activeConversation?.id, token]);
 
   const handleRateMessage = useCallback(
     async (messageId: string, nextRating: MessageRating) => {

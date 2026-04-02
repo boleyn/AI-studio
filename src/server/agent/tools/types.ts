@@ -10,3 +10,8 @@ export type ToolRunResult = {
   content: string;
   raw?: unknown;
 };
+
+export type ChangeTracker = {
+  changed: boolean;
+  paths: Set<string>;
+};

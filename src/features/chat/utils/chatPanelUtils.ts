@@ -54,7 +54,7 @@ export const normalizeProjectFiles = (rawFiles: unknown): Record<string, { code:
 
 export const buildUserBubbleContent = ({
   text,
-  files,
+  files: _files,
   selectedSkills,
   selectedFilePaths,
 }: {
@@ -76,12 +76,8 @@ export const buildUserBubbleContent = ({
           .map((path) => `[${toFileTagLabel(path)}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
           .join(" ")
       : "";
-  const imageMarkdown = files
-    .filter((file) => (file.type || "").startsWith("image/") && (file.publicUrl || file.previewUrl))
-    .map((file) => `![${file.name || "image"}](${file.publicUrl || file.previewUrl || ""})`)
-    .join("\n\n");
-
-  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
+  // User image previews are rendered from artifact.files in ChatItem to avoid stale markdown URLs in history.
+  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText].filter(Boolean).join("\n\n");
 };
 
 export const stripTagMarkersFromUserContent = (content: string): string => {

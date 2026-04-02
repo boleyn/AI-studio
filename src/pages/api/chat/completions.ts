@@ -2,8 +2,6 @@ import type { ChatCompletionTool, ChatCompletionMessageParam } from "@aistudio/a
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { compressRequestMessages } from "@aistudio/ai/llm/compress";
 import { getLLMModel } from "@aistudio/ai/model";
-import { formatGlobalResult } from "@server/agent/globalResultFormatter";
-import { parseGlobalCommand, runGlobalAction, type ChangeTracker } from "@server/agent/globalTools";
 import { loadMcpTools } from "@server/agent/mcpClient";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
@@ -14,7 +12,7 @@ import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/ski
 import { createProjectTools } from "@server/agent/tools";
 import { createBashTool } from "@server/agent/tools/bashTool";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
-import type { AgentToolDefinition } from "@server/agent/tools/types";
+import type { AgentToolDefinition, ChangeTracker } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
 import { getAgentRuntimeSkillPrompt } from "@server/agent/skillPrompt";
 import { getChatModelCatalog } from "@server/aiProxy/catalogStore";
@@ -30,9 +28,7 @@ import {
 } from "@server/conversations/conversationStorage";
 import { getProject } from "@server/projects/projectStorage";
 import {
-  isImageInputPart,
   toArtifactFileParts,
-  type UserInputPart,
 } from "@server/chat/completions/multimodalMemory";
 import {
   getHistories,
@@ -288,78 +284,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await appendConversationMessages(token, conversationId, newMessages, nextTitleFromInput);
   }
 
-  if (incomingMessages[incomingMessages.length - 1]?.role === "user") {
-    const lastText = extractText(incomingMessages[incomingMessages.length - 1].content);
-    const parsed = parseGlobalCommand(lastText);
-    if (parsed) {
-      if (!parsed.ok) {
-        await appendAssistantError(parsed.message + (parsed.hint ? `\n${parsed.hint}` : ""));
-        if (stream) {
-          startStream();
-          emitAnswerChunk(parsed.message + (parsed.hint ? `\n${parsed.hint}` : ""));
-          emitAnswerChunk("", "stop");
-          sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
-          res.end();
-          return;
-        }
-        res.status(200).json({
-          id: `chatcmpl-${Date.now()}`,
-          object: "chat.completion",
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content: parsed.message + (parsed.hint ? `\n${parsed.hint}` : ""),
-              },
-              finish_reason: "stop",
-            },
-          ],
-        });
-        return;
-      }
-
-      const tracker: ChangeTracker = { changed: false, paths: new Set() };
-      const result = await runGlobalAction(token, parsed.input, tracker);
-      const assistantResponse = formatGlobalResult(result);
-
-      if (conversationId) {
-        await appendConversationMessages(
-          token,
-          conversationId,
-          [{ role: "assistant", content: assistantResponse }],
-          nextTitleFromInput
-        );
-      }
-
-      if (stream) {
-        startStream();
-        emitAnswerChunk(assistantResponse);
-        emitAnswerChunk("", "stop");
-        sendSseEvent(res, SseResponseEventEnum.answer, "[DONE]");
-        res.end();
-        return;
-      }
-
-      res.status(200).json({
-        id: `chatcmpl-${Date.now()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: assistantResponse },
-            finish_reason: "stop",
-          },
-        ],
-      });
-      return;
-    }
-  }
-
   const runtimeConfig = getAgentRuntimeConfig();
   if (!runtimeConfig.apiKey) {
     const errorMessage = "缺少 AIPROXY_API_TOKEN/CHAT_API_KEY，无法调用模型。";
@@ -503,19 +427,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         attachmentHintText && baseText.trim()
           ? `${baseText}\n\n${attachmentHintText}`
           : attachmentHintText || baseText;
-      const imageInputParts =
-        message.role === "user" && message.additional_kwargs
-          ? Array.isArray((message.additional_kwargs as Record<string, unknown>).imageInputParts)
-            ? ((message.additional_kwargs as Record<string, unknown>).imageInputParts as unknown[]).filter(
-                (item): item is { type: "image_url"; image_url: { url: string }; key?: string } =>
-                  isImageInputPart(item)
-              )
-            : []
-          : [];
       const artifactFileParts = message.role === "user" ? toArtifactFileParts(message.artifact) : [];
-      const mergedInputParts = [...imageInputParts, ...artifactFileParts].filter(
-        (item): item is UserInputPart => item.type === "image_url"
-      );
 
       if (message.role === "assistant") {
         const toolMemoryMessages = toToolMemoryMessages(message);
@@ -535,15 +447,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return [...toolMemoryMessages, ...assistantContentMessage];
       }
 
-      if (message.role === "user" && mergedInputParts.length > 0) {
+      if (message.role === "user" && artifactFileParts.length > 0) {
         const textForImage = content.trim() || "用户上传了图片和附件，请结合内容理解并回答。";
-        const resolvedParts: UserInputPart[] = mergedInputParts.filter(
-          (part) => part.type === "image_url" && Boolean(part.image_url.url || part.key)
-        );
         return [
           {
             role: message.role,
-            content: [{ type: "text", text: textForImage }, ...resolvedParts],
+            content: textForImage,
             name: message.name,
             tool_call_id: message.tool_call_id,
             tool_calls: message.tool_calls,
@@ -565,45 +474,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return chunks.flat();
   };
 
-  const logDuplicateToolCallIds = (label: string, messages: ChatCompletionMessageParam[]) => {
-    const idBuckets = new Map<string, { count: number; roles: string[]; indexes: number[] }>();
-    const pushId = (id: unknown, role: string, index: number) => {
-      if (typeof id !== "string" || !id.trim()) return;
-      const current = idBuckets.get(id) || { count: 0, roles: [], indexes: [] };
-      current.count += 1;
-      current.roles.push(role);
-      current.indexes.push(index);
-      idBuckets.set(id, current);
-    };
-
-    messages.forEach((message, index) => {
-      if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
-        message.tool_calls.forEach((call) => pushId(call?.id, "assistant.tool_calls", index));
-      }
-      if (message.role === "tool") {
-        pushId((message as { tool_call_id?: string }).tool_call_id, "tool.tool_call_id", index);
-      }
-    });
-
-    const duplicates = [...idBuckets.entries()]
-      .filter(([, value]) => value.count > 1)
-      .map(([id, value]) => ({
-        id,
-        count: value.count,
-        roles: value.roles,
-        indexes: value.indexes,
-      }));
-
-    if (duplicates.length > 0) {
-      console.warn("[agent-debug][duplicate-tool-call-id]", {
-        label,
-        duplicateCount: duplicates.length,
-        duplicates,
-        messageCount: messages.length,
-      });
-    }
-  };
-
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const runtimeSkillPrompt = await getAgentRuntimeSkillPrompt();
@@ -616,9 +486,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             role: "system",
             content: [
               "Current turn includes uploaded attachments.",
-              'Before giving the final answer, you must call tool "read_file" at least once for an uploaded file.',
-              "Use storagePath from attachment metadata.",
-              "Use mode=raw for attachments.",
+              'Before giving the final answer, call tool "read_file" for uploaded attachments.',
+              "For image attachments, use mode=vision (or mode=auto) with storagePath.",
             ].join("\n"),
           } as ChatCompletionMessageParam,
         ]
@@ -656,8 +525,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ];
   const baseAgentMessages = await toAgentMessages(contextMessages);
   const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
-  logDuplicateToolCallIds("baseAgentMessages", baseAgentMessages);
-  logDuplicateToolCallIds("historyBaseAgentMessages", historyBaseAgentMessages);
   const coreSystemPrompts = buildCoreSystemPrompts();
   const systemPrompts = [...coreSystemPrompts];
   const historySystemPrompts = [...coreSystemPrompts];
@@ -704,7 +571,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       afterMessageCount: agentMessages.length,
     });
   }
-  logDuplicateToolCallIds("agentMessages.preWorkflow", agentMessages);
   const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundAgentMessages, tools).catch(() => 0);
   const systemAndSkillsTokens = await countGptMessagesTokens(coreSystemPrompts).catch(() => 0);
