@@ -274,7 +274,13 @@ export function AccountModelConfigPanel() {
           flex={1}
         >
           <Box px={4} py={2}>
-            <Grid templateColumns="56px minmax(240px, 1fr) 120px 120px 90px 90px 110px" gap={2} py={2} borderBottom="1px solid" borderColor="myGray.200">
+            <Grid
+              templateColumns="64px minmax(260px, 2.2fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr) minmax(110px, 1fr)"
+              gap={3}
+              py={2}
+              borderBottom="1px solid"
+              borderColor="myGray.200"
+            >
               <Text fontSize="sm" fontWeight="600" color="myGray.500">图标</Text>
               <Text fontSize="sm" fontWeight="600" color="myGray.500">名称</Text>
               <Text fontSize="sm" fontWeight="600" color="myGray.500" textAlign="center">协议</Text>
@@ -285,11 +291,21 @@ export function AccountModelConfigPanel() {
             </Grid>
           </Box>
 
-          <Box px={4} flex={1} minH="220px" maxH="38vh" overflowY="auto">
+          <Box
+            px={4}
+            flex={1}
+            minH="280px"
+            maxH="38vh"
+            overflowY={loading || models.length === 0 ? "hidden" : "auto"}
+            display="flex"
+            flexDirection="column"
+          >
             {loading ? (
-              <Text py={6} fontSize="sm" color="myGray.500">加载中...</Text>
+              <Flex flex={1} align="center" justify="center">
+                <Text fontSize="sm" color="myGray.500">加载中...</Text>
+              </Flex>
             ) : models.length === 0 ? (
-              <Flex direction="column" align="center" justify="center" h="100%" minH="260px">
+              <Flex direction="column" align="center" justify="center" flex={1}>
                 <Box mb={5}>
                   <Box as={EmptyIcon} w="140px" h="116px" />
                 </Box>
@@ -304,8 +320,8 @@ export function AccountModelConfigPanel() {
               models.map((item, index) => (
                 <Grid
                   key={`${item.id}-${index}`}
-                  templateColumns="56px minmax(240px, 1fr) 120px 120px 90px 90px 110px"
-                  gap={2}
+                  templateColumns="64px minmax(260px, 2.2fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr) minmax(110px, 1fr)"
+                  gap={3}
                   py={2}
                   alignItems="center"
                   borderBottom={index === models.length - 1 ? "none" : "1px solid"}
