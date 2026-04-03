@@ -69,6 +69,38 @@ const inferImageContentTypeFromPath = (filePath: string) => {
   return "application/octet-stream";
 };
 
+const inferContentTypeFromPath = (filePath: string) => {
+  const ext = path.extname(filePath || "").toLowerCase();
+  if (
+    [
+      ".txt",
+      ".md",
+      ".markdown",
+      ".json",
+      ".xml",
+      ".yaml",
+      ".yml",
+      ".csv",
+      ".tsv",
+      ".js",
+      ".mjs",
+      ".cjs",
+      ".ts",
+      ".tsx",
+      ".jsx",
+      ".css",
+      ".html",
+      ".htm",
+      ".py",
+      ".sh",
+      ".sql",
+    ].includes(ext)
+  ) {
+    return "text/plain";
+  }
+  return inferImageContentTypeFromPath(filePath);
+};
+
 const toStorageCandidates = (normalizedPath: string) => {
   const result = new Set<string>([normalizedPath]);
   const marker = "/.files/files/";
@@ -568,7 +600,7 @@ export function createProjectTools(
                 mode,
                 storagePath: file.path,
                 buffer,
-                contentType: "",
+                contentType: inferContentTypeFromPath(absPath),
                 maxChars,
               });
             }

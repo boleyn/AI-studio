@@ -75,3 +75,10 @@ data/projects/*
 # System files
 .DS_Store
 .aistudio
+
+# DOCX skill temp artifacts
+skills/docx/tmp/
+tmp/docx/
+
+# Read-file bridge outputs for parsed attachments
+.files/derived/

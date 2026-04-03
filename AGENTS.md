@@ -17,3 +17,5 @@ A skill is a set of local instructions stored in a `SKILL.md` file.
 - Progressive disclosure: Read only required parts of each skill and only load extra references when needed.
 - Coordination: If multiple skills apply, use the minimal set and state execution order.
 - Context hygiene: Keep loaded context small; avoid bulk-loading unrelated references.
+- DOCX parsing output contract: generated extraction files must be written to workspace `.files/derived/`; user-facing responses should prefer workspace-relative paths (for example `.files/derived/x.txt`), while absolute paths may be included only for debug/tool interoperability.
+- Skill path health check: if `project-context-bootstrap` is declared but missing under `~/.codex/skills/`, report it once in the turn and continue with fallback workflow.

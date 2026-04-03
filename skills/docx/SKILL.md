@@ -14,9 +14,17 @@ A .docx file is a ZIP archive containing XML files.
 
 | Task | Approach |
 |------|----------|
-| Read/analyze content | `pandoc` or unpack for raw XML |
+| Read/analyze content | First try `extract_text.py` + `read_file`; fallback to `unpack.py` + raw XML |
 | Create new document | Use `docx-js` - see Creating New Documents below |
 | Edit existing document | Unpack → edit XML → repack - see Editing Existing Documents below |
+
+## Execution Rules (Important)
+
+- `skill_run_script` executes from the skill directory (`skills/docx`), not project root. Use absolute input paths whenever possible.
+- For parsing/summarization workflows, always write extracted text to workspace `.files/derived/` so `read_file` can read it directly.
+- Default first try must be `extract_text.py`. Do not probe with `pandoc` unless the user explicitly asks for it or extractor output is insufficient.
+- One-shot sequence for summaries: (1) run `extract_text.py`; (2) call `read_file` using `READ_FILE_PATH_REL` (preferred) or `READ_FILE_PATH`.
+- If `read_file` returns `contentEncoding`, decode by the declared encoding in the response metadata; do not assume document text itself is base64.
 
 ### Converting .doc to .docx
 
@@ -29,11 +37,18 @@ python scripts/office/soffice.py --headless --convert-to docx document.doc
 ### Reading Content
 
 ```bash
-# Text extraction with tracked changes
-pandoc --track-changes=all document.docx -o output.md
+# Recommended plain-text extraction for summaries/review
+python scripts/extract_text.py --input-docx /abs/path/to/document.docx --output /abs/workspace/.files/derived/document.txt
+# The script prints:
+# - READ_FILE_PATH_REL: .files/derived/document.txt
+# - READ_FILE_PATH_ABS: /abs/workspace/.files/derived/document.txt
+# - READ_FILE_PATH: preferred path for downstream read_file call
 
-# Raw XML access
+# Raw XML access fallback
 python scripts/office/unpack.py document.docx unpacked/
+
+# Optional (only if explicitly requested): text extraction with tracked changes via pandoc
+pandoc --track-changes=all document.docx -o output.md
 ```
 
 ### Converting to Images

@@ -19,12 +19,12 @@ const stripWrappingQuotes = (token: string) =>
 const normalizeStructuredCommandInput = (cmdRaw: string, argsRaw: string[]) => {
   const cmdTrimmed = cmdRaw.trim();
   const args = [...argsRaw];
-  if (args.length === 0 && /\s/.test(cmdTrimmed)) {
+  if (/\s/.test(cmdTrimmed)) {
     const tokens = splitCommandTokens(cmdTrimmed).map(stripWrappingQuotes);
     if (tokens.length > 0) {
       return {
         cmd: tokens[0] || "",
-        args: tokens.slice(1),
+        args: [...tokens.slice(1), ...args],
       };
     }
   }
