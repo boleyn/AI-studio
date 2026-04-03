@@ -180,6 +180,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           skills: allAvailableSkills,
           sessionId: toolSessionId,
           workspaceFiles: toWorkspacePublicFiles(workspace.files || {}),
+          workspaceManager: projectWorkspaceManager,
+          projectToken: workspace.projectToken,
         })
       : null;
   const bashTool = createBashTool({

@@ -1,7 +1,12 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
-import { getProject, type ProjectFile, updateBinaryFile } from "@server/projects/projectStorage";
+import {
+  getProject,
+  getProjectAccessState,
+  type ProjectFile,
+  updateBinaryFile,
+} from "@server/projects/projectStorage";
 import { buildChatFileViewUrl, deleteStorageObjects, getObjectFromStorage } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -124,6 +129,15 @@ export default async function handler(
   const chatId = getChatId(req);
   if (!token || !chatId) {
     res.status(400).json({ error: "缺少 token 或 chatId 参数" });
+    return;
+  }
+  const access = await getProjectAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (access !== "ok") {
+    res.status(403).json({ error: "无权访问该项目" });
     return;
   }
 

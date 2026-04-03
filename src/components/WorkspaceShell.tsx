@@ -320,19 +320,6 @@ const WorkspaceShell = ({
     };
   }, []);
 
-  useEffect(() => {
-    if (activeView !== "preview") return;
-    const timer = window.setTimeout(() => {
-      const host = previewLayerRef.current;
-      if (!host) return;
-      const iframe = host.querySelector("iframe[title='Sandpack Preview']") as HTMLIFrameElement | null;
-      if (!iframe) return;
-      iframe.setAttribute("scrolling", "no");
-      iframe.style.overflow = "hidden";
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [activeView, sandpack.activeFile]);
-
   const handleTogglePreviewFullscreen = useCallback(async () => {
     const target = previewLayerRef.current;
     if (!target) return;
@@ -939,6 +926,7 @@ const WorkspaceShell = ({
                       minHeight: "0 !important",
                       maxHeight: "100% !important",
                       display: "block !important",
+                      overflow: "auto !important",
                     },
                     "& .sp-stack": {
                       minHeight: "0 !important",
@@ -950,7 +938,7 @@ const WorkspaceShell = ({
                     showRefreshButton={false}
                     showRestartButton={false}
                     showOpenInCodeSandbox={false}
-                    style={{ width: "100%", height: "100%", overflow: "hidden" }}
+                    style={{ width: "100%", height: "100%", overflow: "auto" }}
                   />
                 </Box>
               )}

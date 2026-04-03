@@ -9,6 +9,7 @@ import { runSkillScript } from "./skillScriptRunner";
 import type { RuntimeSkill } from "./types";
 import type { AgentToolDefinition } from "../tools/types";
 import { DEFAULT_TOOL_TIMEOUT_MS, MAX_TOOL_TIMEOUT_MS, clampToolTimeout } from "../tools/commandRunner";
+import type { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 
 const NO_SKILL_PARAMETERS: Record<string, unknown> = {
   type: "object",
@@ -116,6 +117,8 @@ export const createSkillRunScriptTool = async (
     skills?: RuntimeSkill[];
     sessionId?: string;
     workspaceFiles?: Record<string, { code: string }>;
+    workspaceManager?: ProjectWorkspaceManager;
+    projectToken?: string;
   }
 ): Promise<AgentToolDefinition | null> => {
   const skills = options?.skills && options.skills.length > 0 ? options.skills : await getRuntimeSkills();
@@ -138,6 +141,23 @@ export const createSkillRunScriptTool = async (
       const autoDownloadScript = payload.autoDownloadScript !== false;
       const scriptDownloadUrl =
         typeof payload.scriptDownloadUrl === "string" ? payload.scriptDownloadUrl.trim() : "";
+      const projectToken = (options?.projectToken || "").trim();
+      const workspaceManager = options?.workspaceManager;
+
+      let workspaceRoot = "";
+      let workspaceRoots: string[] = [];
+      if (workspaceManager && projectToken) {
+        const hydrated = await workspaceManager.hydrate(projectToken);
+        workspaceRoot = hydrated.workspaceRoot;
+        const existingFiles = await workspaceManager.listFiles(projectToken);
+        workspaceRoots = [
+          ...new Set(
+            existingFiles
+              .map((filePath) => filePath.replace(/\\/g, "/").split("/").filter(Boolean)[0] || "")
+              .filter(Boolean)
+          ),
+        ];
+      }
 
       if (!name) throw new Error("缺少 name 参数。");
       if (!script) throw new Error("缺少 script 参数。");
@@ -159,7 +179,13 @@ export const createSkillRunScriptTool = async (
         scriptDownloadUrl,
         sessionId: options?.sessionId,
         workspaceFiles: options?.workspaceFiles,
+        workspaceRoot,
+        workspaceRoots,
       });
+      const changedFiles =
+        workspaceManager && projectToken
+          ? (await workspaceManager.flushChangedFiles(projectToken)).changedFiles
+          : [];
 
       return {
         ok: result.ok,
@@ -177,6 +203,7 @@ export const createSkillRunScriptTool = async (
         stderr: result.stderr,
         error: result.error,
         dependencyInstall: result.dependencyInstall,
+        changedFiles,
       };
     },
   };

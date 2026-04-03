@@ -1,5 +1,6 @@
 import { requireAuth } from "@server/auth/session";
 import { CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS } from "@server/chat/presign";
+import { getProjectAccessState } from "@server/projects/projectStorage";
 import { createGetObjectPresignedUrl, normalizeStorageKey } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -29,8 +30,17 @@ export default async function handler(
 
   const token = getToken(req).trim();
   const keyInput = getKey(req).trim();
-  if (!keyInput) {
-    res.status(400).json({ error: "缺少 key 参数" });
+  if (!token || !keyInput) {
+    res.status(400).json({ error: "缺少 token 或 key 参数" });
+    return;
+  }
+  const access = await getProjectAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (access !== "ok") {
+    res.status(403).json({ error: "无权访问该项目" });
     return;
   }
 
@@ -42,12 +52,10 @@ export default async function handler(
     return;
   }
 
-  if (token) {
-    const expectedPrefix = `${getTokenUploadPrefix(token)}/`;
-    if (!key.startsWith(expectedPrefix)) {
-      res.status(403).json({ error: "无权限访问该文件" });
-      return;
-    }
+  const expectedPrefix = `${getTokenUploadPrefix(token)}/`;
+  if (!key.startsWith(expectedPrefix)) {
+    res.status(403).json({ error: "无权限访问该文件" });
+    return;
   }
 
   try {

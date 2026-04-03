@@ -1,6 +1,7 @@
 
 import { requireAuth } from "@server/auth/session";
 import { deleteConversation } from "@server/conversations/conversationStorage";
+import { getProjectAccessState } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 const getToken = (req: NextApiRequest): string | null => {
@@ -25,6 +26,15 @@ export default async function handler(
   const token = getToken(req);
   if (!token) {
     res.status(400).json({ error: "缺少 token 参数" });
+    return;
+  }
+  const access = await getProjectAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (access !== "ok") {
+    res.status(403).json({ error: "无权访问该项目" });
     return;
   }
 

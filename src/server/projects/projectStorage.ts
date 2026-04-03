@@ -389,6 +389,13 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
       );
       files = legacyDiskFiles;
     } else {
+      // 当元数据声明已有文件但对象存储为空时，通常是存储配置错误（例如 bucket 指向错误）。
+      // 此时不应静默回退默认模板，否则会掩盖问题并造成“看起来成功但项目文件不对”的假象。
+      const declaredFileCount =
+        typeof doc.fileCount === "number" && Number.isFinite(doc.fileCount) ? Math.max(0, Math.trunc(doc.fileCount)) : 0;
+      if (declaredFileCount > 0) {
+        throw new Error(`项目文件缺失：token=${doc.token}, declaredFileCount=${declaredFileCount}`);
+      }
       await syncFilesToStorage(doc.token, DEFAULT_PROJECT_FILES);
       await coll.updateOne(
         { token: doc.token },
@@ -671,6 +678,27 @@ export async function listProjectOverviewItems(userId: string): Promise<ProjectO
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   }));
+}
+
+export async function getProjectAccessState(
+  token: string,
+  userId: string
+): Promise<"ok" | "not_found" | "forbidden"> {
+  const safeToken = typeof token === "string" ? token.trim() : "";
+  const safeUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!safeToken || !safeUserId) {
+    return "forbidden";
+  }
+
+  const coll = await getCollection();
+  const doc = await coll.findOne({ token: safeToken }, { projection: { userId: 1 } });
+  if (!doc) {
+    return "not_found";
+  }
+  if (doc.userId !== safeUserId) {
+    return "forbidden";
+  }
+  return "ok";
 }
 
 /**

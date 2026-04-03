@@ -163,8 +163,25 @@ export const runSkillScript = async (input: {
   scriptDownloadUrl?: string;
   sessionId?: string;
   workspaceFiles?: Record<string, { code: string }>;
+  workspaceRoot?: string;
+  workspaceRoots?: string[];
 }) => {
   const materializeWorkspaceFiles = async (files?: Record<string, { code: string }>) => {
+    if (input.workspaceRoot) {
+      const tempRoot = path.resolve(input.workspaceRoot);
+      await fs.mkdir(tempRoot, { recursive: true });
+      const roots = new Set<string>(Array.isArray(input.workspaceRoots) ? input.workspaceRoots : []);
+      if (roots.size === 0) {
+        const topEntries = await fs.readdir(tempRoot, { withFileTypes: true }).catch(() => []);
+        topEntries.forEach((entry) => {
+          if (entry.name && !entry.name.startsWith(".")) roots.add(entry.name);
+        });
+        if (topEntries.some((entry) => entry.name === ".files")) {
+          roots.add(".files");
+        }
+      }
+      return { tempRoot, roots, persistent: true };
+    }
     if (!files || Object.keys(files).length === 0) return null;
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skill-workspace-"));
     const roots = new Set<string>();
@@ -192,7 +209,7 @@ export const runSkillScript = async (input: {
       return null;
     }
 
-    return { tempRoot, roots };
+    return { tempRoot, roots, persistent: false };
   };
 
   const workspaceMount = await materializeWorkspaceFiles(input.workspaceFiles);
@@ -395,7 +412,9 @@ export const runSkillScript = async (input: {
   }
 
   const mappedCwd = mapWorkspacePath(input.cwd || "");
-  const defaultSkillCwd = mapWorkspacePath(path.resolve(input.skill.baseDir));
+  const defaultSkillCwd = input.workspaceRoot
+    ? path.resolve(input.workspaceRoot)
+    : mapWorkspacePath(path.resolve(input.skill.baseDir));
   const execCwd = input.cwd
     ? mappedCwd && path.isAbsolute(mappedCwd)
       ? mappedCwd
@@ -417,6 +436,44 @@ export const runSkillScript = async (input: {
       })
     )
   ).filter((item) => Boolean(item));
+  const absoluteArgSnapshot = await Promise.all(
+    resolvedArgs.map(async (item) => {
+      if (!path.isAbsolute(item)) return null;
+      const absPath = path.resolve(item);
+      const stat = await fs.stat(absPath).catch(() => null);
+      return {
+        absPath,
+        existedBefore: Boolean(stat),
+      };
+    })
+  );
+
+  const isInsideOrEqual = (baseDir: string, candidate: string) => {
+    const relative = path.relative(baseDir, candidate);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  };
+  const importExternalOutputsIntoWorkspace = async () => {
+    if (!workspaceMount?.persistent) return;
+    const workspaceRoot = path.resolve(workspaceMount.tempRoot);
+    for (const snapshot of absoluteArgSnapshot) {
+      if (!snapshot) continue;
+      if (snapshot.existedBefore) continue;
+      const sourcePath = snapshot.absPath;
+      if (isInsideOrEqual(workspaceRoot, sourcePath)) continue;
+      const stat = await fs.stat(sourcePath).catch(() => null);
+      if (!stat) continue;
+      const relative = sourcePath.replace(/^\/+/, "");
+      if (!relative) continue;
+      const targetPath = path.join(workspaceRoot, relative);
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      if (stat.isDirectory()) {
+        await fs.cp(sourcePath, targetPath, { recursive: true, force: true });
+      } else {
+        await fs.copyFile(sourcePath, targetPath);
+      }
+    }
+  };
+
   const scriptInvocationArgs = [finalScriptPath, ...resolvedArgs];
   const dependencyInstall: {
     attempted: boolean;
@@ -670,6 +727,7 @@ export const runSkillScript = async (input: {
         }
       }
       if (!result.enoent) {
+        await importExternalOutputsIntoWorkspace();
         return {
           ...result,
           skill: input.skill.name,
@@ -688,7 +746,7 @@ export const runSkillScript = async (input: {
       `未找到可用脚本解释器。请确认环境中已安装对应命令（尝试过: ${candidates.map((item) => item.command).join(", ")}）。`
     );
   } finally {
-    if (workspaceMount?.tempRoot) {
+    if (workspaceMount?.tempRoot && !workspaceMount.persistent) {
       await fs.rm(workspaceMount.tempRoot, { recursive: true, force: true }).catch(() => undefined);
     }
     for (const tempRoot of extraTempRoots) {

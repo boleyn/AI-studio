@@ -344,6 +344,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           skills: allAvailableSkills,
           sessionId: toolSessionId,
           workspaceFiles: project.files || {},
+          workspaceManager: projectWorkspaceManager,
+          projectToken: token,
         })
       : null;
   const bashTool = createBashTool({

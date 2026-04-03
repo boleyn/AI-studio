@@ -1,4 +1,5 @@
 import { requireAuth } from "@server/auth/session";
+import { getProjectAccessState } from "@server/projects/projectStorage";
 import { createPutObjectPresignedUrl } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -40,6 +41,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
   if (!token || !chatId || !filename) {
     res.status(400).json({ error: "缺少 token/chatId/filename 参数" });
+    return;
+  }
+  const access = await getProjectAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (access !== "ok") {
+    res.status(403).json({ error: "无权访问该项目" });
     return;
   }
 

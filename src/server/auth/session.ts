@@ -11,9 +11,6 @@ const shouldUseSecureCookie = () => {
 };
 
 export const getAuthTokenFromRequest = (req: NextApiRequest) => {
-  const cookieToken = req.cookies?.auth_token;
-  if (cookieToken) return cookieToken;
-
   const header = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
   if (header.startsWith("Bearer ")) {
     return header.replace("Bearer ", "").trim();
@@ -22,6 +19,8 @@ export const getAuthTokenFromRequest = (req: NextApiRequest) => {
   if (headerToken) return headerToken;
   const legacyToken = typeof req.headers["token"] === "string" ? req.headers["token"] : null;
   if (legacyToken) return legacyToken;
+  const cookieToken = req.cookies?.auth_token;
+  if (cookieToken) return cookieToken;
   return null;
 };
 
