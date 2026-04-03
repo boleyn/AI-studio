@@ -156,7 +156,7 @@ const ChatPanel = ({
     {}
   );
   const messagesRef = useRef<ConversationMessage[]>([]);
-  const { model, setModel, channel, modelOptions, modelLoading, modelCatalog } = useChatModels(
+  const { model, setModel, channel, modelOptions, modelGroups, modelLoading, modelCatalog } = useChatModels(
     user?.primaryModel
   );
   
@@ -1309,6 +1309,7 @@ const ChatPanel = ({
           model={model}
           modelLoading={modelLoading}
           modelOptions={modelOptions}
+          modelGroups={modelGroups}
           thinkingEnabled={thinkingEnabled}
           showThinkingToggle={selectedModelSupportsReasoning}
           thinkingTooltipEnabled={thinkingTooltipEnabled}

@@ -3,6 +3,7 @@ import type {
   ChatCompletionTool,
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { runAgentCall } from "@aistudio/ai/llm/agentCall";
+import type { OpenaiAccountType } from "@aistudio/ai/compat/global/support/user/team/type";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import type { SseEventName } from "@shared/network/sseEvents";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
@@ -23,6 +24,7 @@ interface RunSimpleAgentWorkflowInput {
   stream: boolean;
   recursionLimit: number;
   temperature: number;
+  userKey?: OpenaiAccountType;
   thinking?: { type: "enabled" | "disabled" };
   toolChoice?: "auto" | "required";
   messages: ChatCompletionMessageParam[];
@@ -180,6 +182,7 @@ export const runSimpleAgentWorkflow = async ({
   stream,
   recursionLimit,
   temperature,
+  userKey,
   thinking,
   toolChoice,
   messages,
@@ -206,6 +209,7 @@ export const runSimpleAgentWorkflow = async ({
       toolCallMode: "toolChoice",
       ...(thinking ? { thinking } : {}),
     },
+    userKey,
     isAborted: () => abortSignal?.aborted,
     handleInteractiveTool: async () => ({
       response: "",

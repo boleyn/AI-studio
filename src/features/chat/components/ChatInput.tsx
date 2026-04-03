@@ -32,6 +32,7 @@ const ChatInput = ({
   isSending,
   model,
   modelOptions,
+  modelGroups,
   modelLoading,
   thinkingEnabled = true,
   showThinkingToggle = true,
@@ -766,6 +767,7 @@ const ChatInput = ({
               loading={modelLoading}
               model={model}
               modelOptions={modelOptions}
+              modelGroups={modelGroups}
               onChangeModel={onChangeModel}
             />
             {showThinkingToggle ? (

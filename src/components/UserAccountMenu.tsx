@@ -90,6 +90,9 @@ export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
             <MenuItem fontSize="sm" px={3} py={2} borderRadius="sm" onClick={() => openAccountModal("password")}>
               修改密码
             </MenuItem>
+            <MenuItem fontSize="sm" px={3} py={2} borderRadius="sm" onClick={() => openAccountModal("modelConfig")}>
+              模型配置
+            </MenuItem>
             <MenuItem
               fontSize="sm"
               px={3}

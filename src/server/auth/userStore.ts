@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "../db/mongo";
+import type { UserModelConfig } from "./userModelConfig";
 
 export type UserDoc = {
   _id: ObjectId;
@@ -9,6 +10,7 @@ export type UserDoc = {
   contact?: string;
   avatar?: string;
   primaryModel?: string;
+  customModels?: UserModelConfig[];
   provider?: "password" | "feishu";
   feishuOpenId?: string;
   feishuUnionId?: string;
@@ -76,6 +78,7 @@ export const updateUserProfile = async (
     contact?: string;
     avatar?: string;
     primaryModel?: string;
+    customModels?: UserModelConfig[];
     feishuOpenId?: string;
     feishuUnionId?: string;
   }
@@ -94,6 +97,9 @@ export const updateUserProfile = async (
   if (typeof patch.primaryModel === "string") {
     setDoc.primaryModel = patch.primaryModel;
   }
+  if (Array.isArray(patch.customModels)) {
+    setDoc.customModels = patch.customModels;
+  }
   if (typeof patch.feishuOpenId === "string") {
     setDoc.feishuOpenId = patch.feishuOpenId;
   }
@@ -102,6 +108,15 @@ export const updateUserProfile = async (
   }
   const result = await users.updateOne({ _id: new ObjectId(userId) }, { $set: setDoc });
   return result.modifiedCount > 0;
+};
+
+export const updateUserCustomModels = async (userId: string, customModels: UserModelConfig[]) => {
+  const users = await getUsersCollection();
+  const result = await users.updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { customModels, updatedAt: new Date() } }
+  );
+  return result.matchedCount > 0;
 };
 
 export const updateUserPrimaryModel = async (userId: string, primaryModel: string) => {

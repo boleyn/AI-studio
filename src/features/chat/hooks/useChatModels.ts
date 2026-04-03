@@ -29,8 +29,11 @@ export const useChatModels = (primaryModel?: string) => {
   const [channel, setChannel] = useState("aiproxy");
   const [model, setModel] = useState("agent");
   const [modelOptions, setModelOptions] = useState<
-    Array<{ value: string; label: string; channel: string; icon?: string; reasoning?: boolean }>
-  >([{ value: "agent", label: "agent", channel: "aiproxy" }]);
+    Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }>
+  >([{ value: "agent", label: "agent", channel: "aiproxy", scope: "system" }]);
+  const [modelGroups, setModelGroups] = useState<
+    Array<{ id: "user" | "system"; label: string; options: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }> }>
+  >([]);
   const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
   const appliedPrimaryModelRef = useRef<string | null>(null);
 
@@ -48,6 +51,7 @@ export const useChatModels = (primaryModel?: string) => {
                 value: item.id,
                 label: item.label || item.id,
                 channel: item.channel,
+                scope: item.scope || "system",
                 icon: item.icon,
                 reasoning: item.reasoning,
               };
@@ -57,9 +61,38 @@ export const useChatModels = (primaryModel?: string) => {
                 value: catalog.defaultModel || catalog.toolCallModel || "agent",
                 label: catalog.defaultModel || catalog.toolCallModel || "agent",
                 channel: catalog.defaultChannel || "aiproxy",
+                scope: "system" as const,
               },
             ];
         setModelOptions(options);
+        const groupFromCatalog = Array.isArray(catalog.groups)
+          ? catalog.groups
+              .filter((group): group is { id: "user" | "system"; label: string; models: string[] } =>
+                group.id === "user" || group.id === "system"
+              )
+              .map((group) => ({
+                id: group.id,
+                label: group.label,
+                options: options.filter((item) => group.models.includes(item.value)),
+              }))
+              .filter((group) => group.options.length > 0)
+          : [];
+        const derivedGroups =
+          groupFromCatalog.length > 0
+            ? groupFromCatalog
+            : [
+                {
+                  id: "user" as const,
+                  label: "用户模型",
+                  options: options.filter((item) => item.scope === "user"),
+                },
+                {
+                  id: "system" as const,
+                  label: "系统模型",
+                  options: options.filter((item) => item.scope !== "user"),
+                },
+              ].filter((group) => group.options.length > 0);
+        setModelGroups(derivedGroups);
         const preferredModel = primaryModel?.trim() || readPreferredChatModel();
         const nextModel = (() => {
           if (preferredModel) {
@@ -80,7 +113,8 @@ export const useChatModels = (primaryModel?: string) => {
         if (!active) return;
         setModelCatalog(null);
         setChannel("aiproxy");
-        setModelOptions([{ value: "agent", label: "agent", channel: "aiproxy" }]);
+        setModelOptions([{ value: "agent", label: "agent", channel: "aiproxy", scope: "system" }]);
+        setModelGroups([{ id: "system", label: "系统模型", options: [{ value: "agent", label: "agent", channel: "aiproxy", scope: "system" }] }]);
       })
       .finally(() => {
         if (active) setModelLoading(false);
@@ -121,6 +155,7 @@ export const useChatModels = (primaryModel?: string) => {
     setModel,
     channel,
     modelOptions,
+    modelGroups,
     modelLoading,
     modelCatalog,
   };

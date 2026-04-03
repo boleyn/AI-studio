@@ -15,8 +15,9 @@ import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspac
 import type { AgentToolDefinition, ChangeTracker } from "@server/agent/tools/types";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
 import { getAgentRuntimeSkillPrompt } from "@server/agent/skillPrompt";
-import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
+import { getChatModelCatalog, getChatModelProfile, runWithRequestModelProfiles } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
+import { getUserModelConfigsFromUser, toUserModelProfileMap } from "@server/auth/userModelConfig";
 import {
   registerActiveConversationRun,
   unregisterActiveConversationRun,
@@ -70,6 +71,12 @@ import {
   toStringValue,
 } from "./completions/helpers";
 const CONTEXT_PRECOMPRESS_RATIO = 0.9;
+const isImageInputPart = (value: unknown) => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "";
+  return type === "image_url" || type === "image";
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -136,6 +143,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedSkillInput =
     typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
   const created = Math.floor(Date.now() / 1000);
+  const userModelConfigs = getUserModelConfigsFromUser(auth.user);
+  const userModelProfiles = toUserModelProfileMap(userModelConfigs);
   let streamStarted = false;
   let stopStreamHeartbeat = () => {};
   const persistedTimeline: Array<{
@@ -389,10 +398,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     fetchedAt: new Date().toISOString(),
     warning: "models_catalog_fetch_failed",
   }));
-  const availableModels = new Set(catalog.models.map((item) => item.id));
+  const userCatalogModels = userModelConfigs.map((item) => ({
+    id: item.id,
+    label: item.label || item.id,
+    channel: "user",
+    source: "user" as const,
+  }));
+  const combinedCatalogModels = [...userCatalogModels, ...catalog.models];
+  const availableModels = new Set(combinedCatalogModels.map((item) => item.id));
   const filteredCatalogModels = channel
-    ? catalog.models.filter((item) => item.channel === channel)
-    : catalog.models;
+    ? combinedCatalogModels.filter((item) => item.channel === channel)
+    : combinedCatalogModels;
   const availableFilteredModels = new Set(filteredCatalogModels.map((item) => item.id));
   const selectedModel =
     explicitRequestedModel && availableModels.has(explicitRequestedModel)
@@ -404,28 +420,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? requestedModel
         : availableModels.has(catalog.defaultModel)
         ? catalog.defaultModel
-        : catalog.models[0]?.id || requestedModel
+        : combinedCatalogModels[0]?.id || requestedModel
       : availableFilteredModels.has(requestedModel)
       ? requestedModel
       : availableFilteredModels.has(catalog.defaultModel)
       ? catalog.defaultModel
       : filteredCatalogModels[0]?.id || requestedModel;
-  const selectedModelProfile = getChatModelProfile(selectedModel, modelCatalogKey);
+  const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
   const profileToolChoiceMode = normalizeToolChoiceMode(
     selectedModelProfile?.toolChoiceMode ??
       selectedModelProfile?.toolChoice ??
       selectedModelProfile?.forceToolChoice
   );
-  const toolChoiceMode = selectedTools.length > 0
-    ? requestedToolChoiceMode ||
-      profileToolChoiceMode ||
-      (selectedRuntimeSkill
-        ? "required"
-        : latestUserArtifactFiles.length > 0
-        ? "required"
-        : resolveToolChoice(userIntent))
-    : "auto";
-  const toolRoutingPrompt = buildToolRoutingSystemPrompt(userIntent, routedTools, toolChoiceMode);
+  const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
+
+  const toolChoiceForWorkflow: "auto" | "required" | undefined =
+    isGoogleModel || requestedToolChoiceMode === "none" || profileToolChoiceMode === "none"
+      ? undefined
+      : selectedTools.length > 0
+      ? (requestedToolChoiceMode || profileToolChoiceMode || (selectedRuntimeSkill
+          ? "required"
+          : latestUserArtifactFiles.length > 0
+          ? "required"
+          : resolveToolChoice(userIntent)))
+      : undefined;
+
+  const resolvedToolChoiceMode = toolChoiceForWorkflow ?? "auto";
+  const finalToolChoiceModeForPrompt = isGoogleModel || requestedToolChoiceMode === "none" || profileToolChoiceMode === "none"
+    ? "none"
+    : resolvedToolChoiceMode;
+
+  const toolRoutingPrompt = buildToolRoutingSystemPrompt(
+    userIntent,
+    routedTools,
+    finalToolChoiceModeForPrompt
+  );
 
   const tools: ChatCompletionTool[] = selectedTools.map((tool) => ({
     type: "function",
@@ -441,7 +470,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     routeReason: routedTools.reason,
     totalTools: tools.length,
     totalCandidates: allTools.length,
-    toolChoiceMode,
+    toolChoiceMode: finalToolChoiceModeForPrompt,
     toolNames: tools.map((tool) => tool.function.name),
   });
 
@@ -564,7 +593,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ...historySystemPrompts,
     ...historyBaseAgentMessages,
   ] as ChatCompletionMessageParam[];
-  const selectedModelInfo = getLLMModel(selectedModel);
+  const selectedModelInfo = await runWithRequestModelProfiles(userModelProfiles, async () => getLLMModel(selectedModel));
   const calcContextUsage = async (messages: ChatCompletionMessageParam[]) => {
     const usedTokens = await countGptMessagesTokens(messages).catch(() => 0);
     const maxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
@@ -652,7 +681,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     runtimeSkillPromptLength: runtimeSkillPrompt.length,
     userIntent,
     routeReason: routedTools.reason,
-    toolChoiceMode,
+    toolChoiceMode: finalToolChoiceModeForPrompt,
     selectedSkillRequested,
     selectedSkillResolved: selectedResolvedSkill?.name || "",
     selectedSkillSource: selectedProjectSkill ? "project" : selectedRuntimeSkill ? "runtime" : "",
@@ -683,18 +712,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const tryRunWorkflow = async (modelToUse: string) =>
-    runSimpleAgentWorkflow({
-      selectedModel: modelToUse,
-      stream,
-      recursionLimit: runtimeConfig.recursionLimit || 6,
-      temperature: runtimeConfig.temperature,
-      thinking,
-      messages: agentMessages,
-      toolChoice: toolChoiceMode,
-      allTools: selectedTools,
-      tools,
-      abortSignal: workflowAbortController.signal,
-      onEvent: (event, data) => {
+    runWithRequestModelProfiles(userModelProfiles, async () =>
+      runSimpleAgentWorkflow({
+        selectedModel: modelToUse,
+        stream,
+        recursionLimit: runtimeConfig.recursionLimit || 6,
+        temperature: runtimeConfig.temperature,
+        userKey: (() => {
+          const profile = userModelProfiles.get(modelToUse);
+          const baseUrl = typeof profile?.baseUrl === "string" ? profile.baseUrl.trim() : undefined;
+          const key = typeof profile?.key === "string" ? profile.key.trim() : undefined;
+          return baseUrl || key ? { baseUrl, key } : undefined;
+        })(),
+        thinking,
+        messages: agentMessages,
+        toolChoice: modelToUse.trim().toLowerCase().startsWith("google") ? undefined : toolChoiceForWorkflow,
+        allTools: selectedTools,
+        tools,
+        abortSignal: workflowAbortController.signal,
+        onEvent: (event, data) => {
         if (event === SseResponseEventEnum.answer) {
           const text = typeof data.text === "string" ? data.text : "";
           if (!text) return;
@@ -733,9 +769,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         if (!stream) return;
-        sendSseEvent(res, event, JSON.stringify(data));
-      },
-    });
+          sendSseEvent(res, event, JSON.stringify(data));
+        },
+      })
+    );
 
   const fallbackModelCandidates = [
     catalog.defaultModel,

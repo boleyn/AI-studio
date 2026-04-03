@@ -2,6 +2,7 @@ import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { promises as fs } from "fs";
 import JSON5 from "json5";
 import path from "path";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export interface ChatModelOption {
   id: string;
@@ -69,6 +70,15 @@ let catalogCache:
       profiles: Record<string, Map<string, Record<string, unknown>>>;
     }
   | undefined;
+
+const requestModelProfileContext = new AsyncLocalStorage<Map<string, Record<string, unknown>>>();
+
+export const runWithRequestModelProfiles = async <T>(
+  profiles: Map<string, Record<string, unknown>>,
+  fn: () => Promise<T>
+) => {
+  return requestModelProfileContext.run(profiles, fn);
+};
 
 const resolveConfigFilePath = () => {
   const configured = process.env.CHAT_MODEL_CONFIG_FILE?.trim();
@@ -310,7 +320,11 @@ const resolveKey = (requestedKey: string | undefined) => {
 };
 
 export const getChatModelProfile = (modelId: string, key?: string) => {
-  if (!modelId || !catalogCache) return undefined;
+  if (!modelId) return undefined;
+  const requestProfiles = requestModelProfileContext.getStore();
+  const requestScoped = requestProfiles?.get(modelId);
+  if (requestScoped) return requestScoped;
+  if (!catalogCache) return undefined;
   const resolvedKey = resolveKey(key) || catalogCache.defaultKey;
   const selectedProfileMap =
     (resolvedKey && catalogCache.profiles[resolvedKey] ? catalogCache.profiles[resolvedKey] : undefined) ||

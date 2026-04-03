@@ -13,8 +13,9 @@ import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceToo
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
 import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
-import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
+import { getChatModelCatalog, getChatModelProfile, runWithRequestModelProfiles } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
+import { getUserModelConfigsFromUser, toUserModelProfileMap } from "@server/auth/userModelConfig";
 import {
   appendConversationMessages,
   getConversation,
@@ -102,6 +103,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const runToken = getRunToken(req, conversationToken);
   const created = Math.floor(Date.now() / 1000);
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
+  const userModelConfigs = getUserModelConfigsFromUser(auth.user);
+  const userModelProfiles = toUserModelProfileMap(userModelConfigs);
   let streamStarted = false;
   let stopStreamHeartbeat = () => {};
   const startStream = () => {
@@ -232,7 +235,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     fetchedAt: new Date().toISOString(),
     warning: "models_catalog_fetch_failed",
   }));
-  const available = new Set(catalog.models.map((item) => item.id));
+  const userCatalogModels = userModelConfigs.map((item) => ({
+    id: item.id,
+    label: item.label || item.id,
+    channel: "user",
+    source: "user" as const,
+  }));
+  const combinedCatalogModels = [...userCatalogModels, ...catalog.models];
+  const available = new Set(combinedCatalogModels.map((item) => item.id));
   const selectedModel =
     explicitRequestedModel && available.has(explicitRequestedModel)
       ? explicitRequestedModel
@@ -240,14 +250,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? requestedModel
       : available.has(catalog.defaultModel)
       ? catalog.defaultModel
-      : catalog.models[0]?.id || requestedModel;
-  const selectedModelProfile = getChatModelProfile(selectedModel, modelCatalogKey);
+      : combinedCatalogModels[0]?.id || requestedModel;
+  const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
   const profileToolChoiceMode = normalizeToolChoiceMode(
     selectedModelProfile?.toolChoiceMode ??
       selectedModelProfile?.toolChoice ??
       selectedModelProfile?.forceToolChoice
   );
-  const toolChoiceMode = requestedToolChoiceMode || profileToolChoiceMode || "auto";
+  const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
+  const omitToolChoice =
+    isGoogleModel ||
+    (requestedToolChoiceMode as any) === "none" ||
+    (profileToolChoiceMode as any) === "none";
+  const toolChoiceForWorkflow: "auto" | "required" | undefined = omitToolChoice
+    ? undefined
+    : requestedToolChoiceMode === "auto" || requestedToolChoiceMode === "required"
+      ? requestedToolChoiceMode
+      : profileToolChoiceMode === "auto" || profileToolChoiceMode === "required"
+        ? profileToolChoiceMode
+        : "auto";
 
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
@@ -303,7 +324,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ...systemMessages,
     ...historyOnlyMessages,
   ];
-  const selectedModelInfo = getLLMModel(selectedModel);
+  const selectedModelInfo = await runWithRequestModelProfiles(userModelProfiles, async () => getLLMModel(selectedModel));
   const promptUsedTokens = await countGptMessagesTokens(messages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundMessages, tools).catch(() => 0);
   const systemAndSkillsTokens = await countGptMessagesTokens(systemMessages).catch(() => 0);
@@ -399,65 +420,73 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const result = await (async () => {
       try {
-        return await runSimpleAgentWorkflow({
-          selectedModel,
-          stream,
-          recursionLimit: runtimeConfig.recursionLimit || 6,
-          temperature: runtimeConfig.temperature,
-          thinking,
-          messages,
-          toolChoice: toolChoiceMode,
-          allTools,
-          tools,
-          abortSignal: workflowAbortController.signal,
-          onEvent: (event, data) => {
-            if (!stream) return;
-            if (event === SseResponseEventEnum.answer) {
-              const text = typeof data.text === "string" ? data.text : "";
-              if (text) {
-                appendTimelineText("answer", text);
-                emitAnswerChunk(selectedModel, text);
+        return await runWithRequestModelProfiles(userModelProfiles, async () =>
+          runSimpleAgentWorkflow({
+            selectedModel,
+            stream,
+            recursionLimit: runtimeConfig.recursionLimit || 6,
+            temperature: runtimeConfig.temperature,
+            userKey: (() => {
+              const profile = userModelProfiles.get(selectedModel);
+              const baseUrl = typeof profile?.baseUrl === "string" ? profile.baseUrl.trim() : undefined;
+              const key = typeof profile?.key === "string" ? profile.key.trim() : undefined;
+              return baseUrl || key ? { baseUrl, key } : undefined;
+            })(),
+            thinking,
+            messages,
+            toolChoice: toolChoiceForWorkflow,
+            allTools,
+            tools,
+            abortSignal: workflowAbortController.signal,
+            onEvent: (event, data) => {
+              if (!stream) return;
+              if (event === SseResponseEventEnum.answer) {
+                const text = typeof data.text === "string" ? data.text : "";
+                if (text) {
+                  appendTimelineText("answer", text);
+                  emitAnswerChunk(selectedModel, text);
+                }
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.reasoning) {
-              const text = typeof data.text === "string" ? data.text : "";
-              if (text) {
-                appendTimelineText("reasoning", text);
-                emitAnswerChunk(selectedModel, "", text);
+              if (event === SseResponseEventEnum.reasoning) {
+                const text = typeof data.text === "string" ? data.text : "";
+                if (text) {
+                  appendTimelineText("reasoning", text);
+                  emitAnswerChunk(selectedModel, "", text);
+                }
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolCall) {
-              upsertToolTimeline({
-                id: typeof data.id === "string" ? data.id : undefined,
-                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
-              });
+              if (event === SseResponseEventEnum.toolCall) {
+                upsertToolTimeline({
+                  id: typeof data.id === "string" ? data.id : undefined,
+                  toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+                });
+                sendSseEvent(res, event, JSON.stringify(data));
+                return;
+              }
+              if (event === SseResponseEventEnum.toolParams) {
+                upsertToolTimeline({
+                  id: typeof data.id === "string" ? data.id : undefined,
+                  toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+                  params: typeof data.params === "string" ? data.params : undefined,
+                });
+                sendSseEvent(res, event, JSON.stringify(data));
+                return;
+              }
+              if (event === SseResponseEventEnum.toolResponse) {
+                upsertToolTimeline({
+                  id: typeof data.id === "string" ? data.id : undefined,
+                  toolName: typeof data.toolName === "string" ? data.toolName : undefined,
+                  params: typeof data.params === "string" ? data.params : undefined,
+                  response: typeof data.response === "string" ? data.response : undefined,
+                });
+                sendSseEvent(res, event, JSON.stringify(data));
+                return;
+              }
               sendSseEvent(res, event, JSON.stringify(data));
-              return;
-            }
-            if (event === SseResponseEventEnum.toolParams) {
-              upsertToolTimeline({
-                id: typeof data.id === "string" ? data.id : undefined,
-                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
-                params: typeof data.params === "string" ? data.params : undefined,
-              });
-              sendSseEvent(res, event, JSON.stringify(data));
-              return;
-            }
-            if (event === SseResponseEventEnum.toolResponse) {
-              upsertToolTimeline({
-                id: typeof data.id === "string" ? data.id : undefined,
-                toolName: typeof data.toolName === "string" ? data.toolName : undefined,
-                params: typeof data.params === "string" ? data.params : undefined,
-                response: typeof data.response === "string" ? data.response : undefined,
-              });
-              sendSseEvent(res, event, JSON.stringify(data));
-              return;
-            }
-            sendSseEvent(res, event, JSON.stringify(data));
-          },
-        });
+            },
+          })
+        );
       } finally {
         cleanupDisconnectBinding();
         if (conversationId) {

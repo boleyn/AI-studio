@@ -19,14 +19,22 @@ export interface ChatInputModelOption {
   value: string;
   label: string;
   channel: string;
+  scope?: "user" | "system";
   icon?: string;
   reasoning?: boolean;
+}
+
+export interface ChatInputModelGroup {
+  id: "user" | "system";
+  label: string;
+  options: ChatInputModelOption[];
 }
 
 export interface ChatInputProps {
   isSending: boolean;
   model: string;
   modelOptions: ChatInputModelOption[];
+  modelGroups?: ChatInputModelGroup[];
   modelLoading?: boolean;
   thinkingEnabled?: boolean;
   showThinkingToggle?: boolean;
