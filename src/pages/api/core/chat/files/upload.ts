@@ -38,9 +38,15 @@ const inferContentTypeFromName = (fileName: string) => {
 };
 const buildMirrorRawFilePath = ({
   storagePath,
+  originalName,
 }: {
   storagePath: string;
+  originalName?: string;
 }) => {
+  const fromOriginalName = toSafeFileName(originalName || "");
+  if (fromOriginalName && fromOriginalName !== "file") {
+    return `/.files/${fromOriginalName}`;
+  }
   const base = toSafeFileName(path.posix.basename(storagePath));
   return `/.files/${base}`;
 };
@@ -97,6 +103,7 @@ const syncAttachmentRawToProject = async ({
 }) => {
   const mirrorPath = buildMirrorRawFilePath({
     storagePath,
+    originalName: file.name,
   });
   const normalizedType = (file.type || "").trim().toLowerCase();
   const type =

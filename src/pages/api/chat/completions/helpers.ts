@@ -5,6 +5,7 @@ import { extractText, type IncomingMessage } from "@shared/chat/messages";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { ConversationMessage } from "@server/conversations/conversationStorage";
 import path from "node:path";
+import { toSafeFileName } from "../../core/chat/files/shared";
 
 export const getToken = (req: NextApiRequest): string | null => {
   const headerToken =
@@ -146,7 +147,7 @@ export const getUserArtifactFiles = (message: ConversationMessage): UserArtifact
       const name = typeof item.name === "string" ? item.name : "file";
       const type = typeof item.type === "string" ? item.type : "";
       const storagePath = typeof item.storagePath === "string" ? item.storagePath : "";
-      const workspacePath = `/.files/${path.posix.basename(storagePath || name)}`;
+      const workspacePath = `/.files/${toSafeFileName(name || path.posix.basename(storagePath))}`;
       return {
         name,
         type,
