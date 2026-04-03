@@ -5,6 +5,11 @@ import type { LLMModelItemType } from './compat/global/core/ai/model.d';
 
 const DEFAULT_MAX_RESPONSE = 8192;
 const DEFAULT_QUOTE_MAX_TOKEN = 2000;
+const normalizeString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
 
 const resolveModelId = (input: string | LLMModelItemType | undefined, fallback: string): string => {
   if (typeof input === 'string' && input.trim()) return input.trim();
@@ -38,10 +43,19 @@ export const getLLMModel = (input: string | LLMModelItemType): LLMModelItemType 
       : undefined) ||
     DEFAULT_QUOTE_MAX_TOKEN;
 
+  const profileProtocol = normalizeString(profile?.protocol)?.toLowerCase();
+  const protocol =
+    !profileProtocol || profileProtocol === "openai" ? "openai" : profileProtocol;
+  const baseUrl = normalizeString(profile?.baseUrl);
+  const key = normalizeString(profile?.key);
+
   return {
     provider: config.provider,
     model,
     name: model,
+    protocol,
+    baseUrl,
+    key,
     type: 'llm',
     maxContext,
     maxResponse,

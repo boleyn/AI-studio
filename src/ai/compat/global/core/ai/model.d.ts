@@ -12,6 +12,9 @@ type BaseModelItemType = {
   model: string;
   name: string;
   avatar?: string; // model icon, from provider
+  protocol?: 'openai' | 'anthropic' | string;
+  baseUrl?: string;
+  key?: string;
 
   isActive?: boolean;
   isCustom?: boolean;

@@ -16,6 +16,7 @@ import {
   parseLLMStreamResponse,
   parseReasoningContent
 } from '@aistudio/ai/utils';
+import Anthropic from '@anthropic-ai/sdk';
 import { removeDatasetCiteText } from '@aistudio/ai/compat/global/core/ai/llm/utils';
 import { getAIApi } from '@aistudio/ai/config';
 import type { OpenaiAccountType } from '@aistudio/ai/compat/global/support/user/team/type';
@@ -929,6 +930,438 @@ export const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
     modelData
   };
 };
+
+const resolveModelProtocol = (modelData: LLMModelItemType) => {
+  const protocol = String((modelData as { protocol?: unknown }).protocol || '')
+    .trim()
+    .toLowerCase();
+  return !protocol || protocol === 'openai' ? 'openai' : protocol;
+};
+
+const toAnthropicFinishReason = (reason: unknown): CompletionFinishReason => {
+  switch (reason) {
+    case 'end_turn':
+      return 'stop';
+    case 'max_tokens':
+      return 'length';
+    case 'tool_use':
+      return 'tool_calls';
+    case 'stop_sequence':
+      return 'stop';
+    default:
+      return null;
+  }
+};
+
+const toAnthropicText = (content: unknown): string => {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      const record = item as Record<string, unknown>;
+      if (record.type === 'text') return typeof record.text === 'string' ? record.text : '';
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const parseToolInput = (raw: unknown) => {
+  if (raw && typeof raw === 'object') return raw;
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {}
+  return {};
+};
+
+const toAnthropicMessages = (messages: ChatCompletionMessageParam[]) => {
+  const systemParts: string[] = [];
+  const output: Array<{ role: 'user' | 'assistant'; content: unknown[] }> = [];
+  const pushMessage = (role: 'user' | 'assistant', blocks: unknown[]) => {
+    if (blocks.length === 0) return;
+    const last = output[output.length - 1];
+    if (last && last.role === role) {
+      last.content.push(...blocks);
+      return;
+    }
+    output.push({ role, content: blocks });
+  };
+
+  messages.forEach((message) => {
+    if (!message || typeof message !== 'object') return;
+    if (message.role === 'system') {
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      if (text.trim()) systemParts.push(text);
+      return;
+    }
+
+    if (message.role === 'user') {
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      pushMessage('user', text ? [{ type: 'text', text }] : []);
+      return;
+    }
+
+    if (message.role === 'assistant') {
+      const blocks: unknown[] = [];
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      if (text) blocks.push({ type: 'text', text });
+
+      const toolCalls = (message as { tool_calls?: ChatCompletionMessageToolCall[] }).tool_calls;
+      if (Array.isArray(toolCalls)) {
+        toolCalls.forEach((call) => {
+          const id = typeof call?.id === 'string' && call.id ? call.id : getNanoid();
+          const name =
+            typeof call?.function?.name === 'string' && call.function.name
+              ? call.function.name
+              : 'tool';
+          blocks.push({
+            type: 'tool_use',
+            id,
+            name,
+            input: parseToolInput(call?.function?.arguments),
+          });
+        });
+      }
+      pushMessage('assistant', blocks);
+      return;
+    }
+
+    if (message.role === 'tool') {
+      const toolCallId =
+        typeof (message as { tool_call_id?: unknown }).tool_call_id === 'string'
+          ? ((message as { tool_call_id?: string }).tool_call_id as string)
+          : '';
+      if (!toolCallId) return;
+      pushMessage('user', [
+        {
+          type: 'tool_result',
+          tool_use_id: toolCallId,
+          content: toAnthropicText((message as { content?: unknown }).content),
+        },
+      ]);
+    }
+  });
+
+  return {
+    system: systemParts.join('\n\n').trim(),
+    messages: output,
+  };
+};
+
+const toAnthropicTools = (tools?: ChatCompletionTool[]) => {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  const mapped = tools
+    .filter((tool) => tool?.type === 'function' && tool.function)
+    .map((tool) => ({
+      name: tool.function.name,
+      description: tool.function.description || '',
+      input_schema:
+        tool.function.parameters && typeof tool.function.parameters === 'object'
+          ? tool.function.parameters
+          : { type: 'object', properties: {} },
+    }));
+  return mapped.length > 0 ? mapped : undefined;
+};
+
+const toAnthropicToolChoice = (toolChoice: unknown) => {
+  if (toolChoice === 'required') return { type: 'any' };
+  if (toolChoice === 'auto' || toolChoice == null) return { type: 'auto' };
+  if (typeof toolChoice === 'object' && toolChoice) {
+    const fnName = (toolChoice as { function?: { name?: unknown } }).function?.name;
+    if (typeof fnName === 'string' && fnName.trim()) {
+      return { type: 'tool', name: fnName.trim() };
+    }
+  }
+  return { type: 'auto' };
+};
+
+const createAnthropicRequestBody = (
+  body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming
+) => {
+  const safeMessages = Array.isArray(body.messages)
+    ? sanitizeToolResultMessagesForProvider(body.messages)
+    : [];
+  const converted = toAnthropicMessages(safeMessages);
+  const tools = toAnthropicTools(body.tools);
+  const toolChoice = tools ? toAnthropicToolChoice((body as { tool_choice?: unknown }).tool_choice) : undefined;
+  const maxTokens =
+    typeof body.max_tokens === 'number' && Number.isFinite(body.max_tokens) && body.max_tokens > 0
+      ? Math.floor(body.max_tokens)
+      : 4096;
+
+  return {
+    model: body.model,
+    max_tokens: maxTokens,
+    temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
+    stream: body.stream === true,
+    thinking:
+      (body as { thinking?: unknown }).thinking &&
+      typeof (body as { thinking?: unknown }).thinking === 'object'
+        ? (body as { thinking?: unknown }).thinking
+        : undefined,
+    ...(converted.system ? { system: converted.system } : {}),
+    messages: converted.messages,
+    ...(tools ? { tools } : {}),
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
+  };
+};
+
+const createAnthropicStreamResponse = (
+  stream: AsyncIterable<unknown>,
+  created: number,
+  model: string,
+  onDone: () => void
+) => {
+  const pendingTools = new Map<number, { id?: string; name?: string; arguments: string; started: boolean }>();
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  const makeChunk = (delta: Record<string, unknown>, finishReason: CompletionFinishReason = null) =>
+    ({
+      id: `chatcmpl-${Date.now()}`,
+      object: 'chat.completion.chunk',
+      created,
+      model,
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+      usage:
+        promptTokens || completionTokens
+          ? {
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: promptTokens + completionTokens,
+            }
+          : undefined,
+    }) as unknown;
+
+  const iterable = {
+    async *[Symbol.asyncIterator]() {
+      try {
+        for await (const streamEvent of stream) {
+          const event = streamEvent as any;
+          if (!event || typeof event !== 'object') continue;
+
+          if (event?.type === 'message_start') {
+            promptTokens = Number(event?.message?.usage?.input_tokens || 0);
+            continue;
+          }
+          if (event?.type === 'content_block_start') {
+            const block = event?.content_block;
+            if (block?.type === 'tool_use') {
+              pendingTools.set(Number(event.index || 0), {
+                id: typeof block.id === 'string' ? block.id : getNanoid(),
+                name: typeof block.name === 'string' ? block.name : '',
+                arguments: '',
+                started: false,
+              });
+            }
+            continue;
+          }
+          if (event?.type === 'content_block_delta') {
+            const deltaType = event?.delta?.type;
+            if (deltaType === 'text_delta' && typeof event?.delta?.text === 'string') {
+              yield makeChunk({ content: event.delta.text });
+              continue;
+            }
+            if (deltaType === 'thinking_delta' && typeof event?.delta?.thinking === 'string') {
+              yield makeChunk({ reasoning_content: event.delta.thinking });
+              continue;
+            }
+            if (deltaType === 'input_json_delta') {
+              const index = Number(event.index || 0);
+              const tool = pendingTools.get(index);
+              if (!tool) continue;
+              const partial = String(event?.delta?.partial_json || '');
+              tool.arguments += partial;
+              const toolDelta = tool.started
+                ? {
+                    tool_calls: [
+                      {
+                        index,
+                        function: { arguments: partial },
+                      },
+                    ],
+                  }
+                : {
+                    tool_calls: [
+                      {
+                        index,
+                        id: tool.id,
+                        type: 'function',
+                        function: {
+                          name: tool.name || '',
+                          arguments: partial,
+                        },
+                      },
+                    ],
+                  };
+              tool.started = true;
+              pendingTools.set(index, tool);
+              yield makeChunk(toolDelta);
+            }
+            continue;
+          }
+          if (event?.type === 'message_delta') {
+            completionTokens = Number(event?.usage?.output_tokens || completionTokens || 0);
+            const finishReason = toAnthropicFinishReason(event?.delta?.stop_reason);
+            if (finishReason) {
+              yield makeChunk({}, finishReason);
+            }
+            continue;
+          }
+          if (event?.type === 'error') {
+            yield ({
+              error: event?.error || event,
+              choices: [{ delta: {}, finish_reason: 'error' }],
+            } as unknown);
+          }
+        }
+      } finally {
+        onDone();
+      }
+    },
+  } as AsyncIterable<unknown> & { controller?: AbortController };
+
+  return iterable;
+};
+
+const createAnthropicChatCompletion = async ({
+  modelData,
+  body,
+  timeout,
+  options,
+}: {
+  modelData: LLMModelItemType;
+  body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming;
+  timeout?: number;
+  options?: OpenAI.RequestOptions;
+}) => {
+  const rawBaseUrl = String((modelData as { baseUrl?: unknown }).baseUrl || '').trim();
+  const apiKey = String((modelData as { key?: unknown }).key || '').trim();
+  if (!rawBaseUrl) {
+    throw new Error('Anthropic 协议模型缺少 baseUrl 配置');
+  }
+  if (!apiKey) {
+    throw new Error('Anthropic 协议模型缺少 key 配置');
+  }
+
+  const baseUrl = rawBaseUrl.replace(/\/$/, '');
+  const requestBody = createAnthropicRequestBody(body);
+  const requestHeaders = {
+    'anthropic-version': '2023-06-01',
+    ...(options?.headers || {}),
+  } as Record<string, string>;
+  const client = new Anthropic({
+    apiKey,
+    baseURL: baseUrl,
+    timeout: timeout ? timeout : 600000,
+    maxRetries: 2,
+    defaultHeaders: requestHeaders,
+  });
+  const formatTimeout = timeout ? timeout : 600000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), formatTimeout);
+  let keepTimerForStream = false;
+
+  try {
+    const requestMeta = {
+      baseUrl,
+      path: '/v1/messages',
+      headers: sanitizeHeaders(requestHeaders) as Record<string, string>,
+    };
+
+    if (requestBody.stream) {
+      const stream = (await client.messages.create(
+        requestBody as any,
+        {
+          signal: controller.signal,
+          timeout: formatTimeout,
+        }
+      )) as AsyncIterable<unknown>;
+      keepTimerForStream = true;
+      const streamResponse = createAnthropicStreamResponse(
+        stream,
+        Math.floor(Date.now() / 1000),
+        String(body.model || modelData.model),
+        () => clearTimeout(timer)
+      ) as StreamChatType;
+      streamResponse.controller = controller;
+      return {
+        response: streamResponse,
+        isStreamResponse: true as const,
+        requestMeta,
+      };
+    }
+
+    const json = (await client.messages.create(requestBody as any, {
+      signal: controller.signal,
+      timeout: formatTimeout,
+    })) as any;
+    const text = Array.isArray(json?.content)
+      ? json.content
+          .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+          .map((item: any) => item.text)
+          .join('\n')
+      : '';
+    const reasoning = Array.isArray(json?.content)
+      ? json.content
+          .filter((item: any) => item?.type === 'thinking' && typeof item?.thinking === 'string')
+          .map((item: any) => item.thinking)
+          .join('\n')
+      : '';
+    const toolCalls = Array.isArray(json?.content)
+      ? json.content
+          .filter((item: any) => item?.type === 'tool_use')
+          .map((item: any) => ({
+            id: typeof item.id === 'string' && item.id ? item.id : getNanoid(),
+            type: 'function',
+            function: {
+              name: typeof item.name === 'string' ? item.name : '',
+              arguments: JSON.stringify(item.input || {}),
+            },
+          }))
+      : [];
+
+    const completion = {
+      id: json?.id || `chatcmpl-${Date.now()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: String(body.model || modelData.model),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: text,
+            ...(reasoning ? { reasoning_content: reasoning } : {}),
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason: toAnthropicFinishReason(json?.stop_reason),
+        },
+      ],
+      usage: {
+        prompt_tokens: Number(json?.usage?.input_tokens || 0),
+        completion_tokens: Number(json?.usage?.output_tokens || 0),
+        total_tokens:
+          Number(json?.usage?.input_tokens || 0) + Number(json?.usage?.output_tokens || 0),
+      },
+    } as unknown as UnStreamChatType;
+
+    return {
+      response: completion,
+      isStreamResponse: false as const,
+      requestMeta,
+    };
+  } finally {
+    if (!keepTimerForStream) {
+      clearTimeout(timer);
+    }
+  }
+};
+
 export const createChatCompletion = async ({
   modelData,
   body,
@@ -961,12 +1394,26 @@ export const createChatCompletion = async ({
       };
     }
 > => {
+  const protocol = resolveModelProtocol(modelData);
   let ai: ReturnType<typeof getAIApi> | undefined;
   try {
     if (!modelData) {
       return Promise.reject(`${body.model} not found`);
     }
     body.model = modelData.model;
+    addLog.info('[LLM Request][Protocol]', {
+      model: body.model,
+      protocol
+    });
+
+    if (protocol === 'anthropic') {
+      return createAnthropicChatCompletion({
+        modelData,
+        body,
+        timeout,
+        options,
+      });
+    }
 
     const formatTimeout = timeout ? timeout : 600000;
     ai = getAIApi({
@@ -1008,7 +1455,7 @@ export const createChatCompletion = async ({
         : body.messages
     };
 
-    const response = await ai.chat.completions.create(safeBody, {
+    const response = await ai.chat.completions.create(safeBody as any, {
       ...options,
       ...(modelData.requestUrl ? { path: modelData.requestUrl } : {}),
       headers: {

@@ -188,7 +188,7 @@ export const buildAttachmentHintText = (files: UserArtifactFileMeta[]) => {
   }
   if (docFiles.length > 0) {
     lines.push(
-      `- 本轮包含文档 ${docFiles.length} 个。优先用 read_file(path=/.files/<文件名>)；若用 bash/python，请用相对路径 .files/<文件名>（不要 /files 或 /.files）。`
+      `- 本轮包含文档 ${docFiles.length} 个。统一使用 /.files/<文件名> 作为附件路径；若用 bash/python，请用相对路径 .files/<文件名>。/files/<文件名> 仅历史兼容别名，不要作为最终回答路径。`
     );
     const previews = docFiles.slice(0, 8).map((file) => {
       const typePart = file.type ? ` | type=${file.type}` : "";

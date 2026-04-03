@@ -22,6 +22,9 @@
     {
       "id": "MiniMax-M2.7",
       "label": "MiniMax-M2.7",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.minimaxi.com/anthropic",
+      "key": "sk-cp-pCTsvHH4sJ632gt28wqtzFSka3Dw06_mbx89pc6ZzlCvO_r3dJD4mqoOvyGJAIMBDpyzqiSh_ehLjFemIYbbbvnf1MesnptN4NxyDv7kmb3G772h0msIXPA",
       "maxContext": 192000,
       "maxResponse": 120000,
       "quoteMaxToken": 80000,

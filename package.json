@@ -12,6 +12,7 @@
     "test:workspace": "tsx --test src/server/agent/workspace/projectWorkspaceManager.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@apidevtools/swagger-parser": "^12.1.0",
     "@aws-sdk/client-s3": "^3.922.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",

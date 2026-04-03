@@ -17,7 +17,7 @@ import MyTooltip from "@/components/ui/MyTooltip";
 
 import type { ChatInputFile, ChatInputProps, ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import { toFileTagLabel } from "../utils/chatPanelUtils";
+import { normalizeAttachmentWorkspacePath, toFileTagLabel } from "../utils/chatPanelUtils";
 import ModelCascader from "./ModelCascader";
 import SlashFilePicker from "./SlashFilePicker";
 import SkillMentionPicker from "./SkillMentionPicker";
@@ -161,7 +161,11 @@ const ChatInput = ({
   const filteredFileOptions = useMemo(() => {
     const keyword = fileQuery.trim();
     const selectedSet = new Set(selectedFilePaths);
-    const available = fileOptions.filter((item) => !selectedSet.has(item));
+    const available = fileOptions
+      .map((item) => normalizeAttachmentWorkspacePath(item))
+      .filter(Boolean)
+      .filter((item, index, arr) => arr.indexOf(item) === index)
+      .filter((item) => !selectedSet.has(item));
     if (!keyword) return available.slice(0, 10);
     return available
       .filter((item) => item.toLowerCase().includes(keyword))
@@ -281,10 +285,11 @@ const ChatInput = ({
   const applySelectedFile = useCallback(
     (filePath: string) => {
       if (!fileRange) return;
+      const normalizedPath = normalizeAttachmentWorkspacePath(filePath);
       const nextText = `${text.slice(0, fileRange.start)}${text.slice(fileRange.end)}`.replace(/\s{2,}/g, " ");
       const nextCursor = fileRange.start;
       setText(nextText);
-      setSelectedFilePaths((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
+      setSelectedFilePaths((prev) => (prev.includes(normalizedPath) ? prev : [...prev, normalizedPath]));
       setFileRange(null);
       setFileQuery("");
       window.requestAnimationFrame(() => {

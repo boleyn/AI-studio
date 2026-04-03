@@ -72,9 +72,12 @@ Example:
 {
   "name": "pdf-text-extractor",
   "script": "index.js",
-  "args": ["chat_uploads/.../file.pdf", "markdown"]
+  "args": [".files/file.pdf", "markdown"]
 }
 ```
+
+Inside AI Studio, prefer workspace-relative attachment paths (for example `.files/你的文件.pdf`).
+Only use full `chat_uploads/<token>/<chatId>/...` when you already have the exact storage key.
 
 To inspect source before running, read:
 - `skills/pdf-text-extractor/index.js`

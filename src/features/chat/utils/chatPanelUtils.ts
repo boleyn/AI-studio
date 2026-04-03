@@ -14,6 +14,14 @@ import type { MessageRating } from "../components/message/MessageActionBar";
 export const FILE_TAG_MARKER_PREFIX = "FILETAG:";
 export const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 
+export const normalizeAttachmentWorkspacePath = (filePath: string): string => {
+  const normalized = (filePath || "").replace(/\\/g, "/").trim();
+  if (!normalized) return normalized;
+  if (normalized === "/files") return "/.files";
+  if (normalized.startsWith("/files/")) return `/.files/${normalized.slice("/files/".length)}`;
+  return normalized;
+};
+
 export const toFileTagLabel = (filePath: string): string => {
   const normalized = (filePath || "").replace(/\\/g, "/");
   const base = normalized.split("/").filter(Boolean).pop() || filePath;
@@ -73,6 +81,8 @@ export const buildUserBubbleContent = ({
   const fileTagsMarkdown =
     selectedFilePaths && selectedFilePaths.length > 0
       ? selectedFilePaths
+          .map((path) => normalizeAttachmentWorkspacePath(path))
+          .filter(Boolean)
           .map((path) => `[${toFileTagLabel(path)}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
           .join(" ")
       : "";

@@ -62,7 +62,9 @@ const extractChatUploadStorageKey = (value: string) => {
       : normalized.startsWith("chat_uploads/")
       ? normalized
       : "";
-  return /^chat_uploads\/.+/.test(storageKey) ? storageKey : "";
+  // Require at least chat_uploads/<token>/<chatId>/... to avoid treating
+  // shorthand like "chat_uploads/.files/xxx.pdf" as real object keys.
+  return /^chat_uploads\/[^/]+\/[^/]+\/.+/.test(storageKey) ? storageKey : "";
 };
 
 const parseBase64DataUrl = (raw: string): Buffer | null => {

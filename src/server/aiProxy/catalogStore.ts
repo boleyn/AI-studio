@@ -35,6 +35,9 @@ type ConfigModelItem = {
   id?: unknown;
   label?: unknown;
   icon?: unknown;
+  protocol?: unknown;
+  baseUrl?: unknown;
+  key?: unknown;
   maxContext?: unknown;
   maxResponse?: unknown;
   quoteMaxToken?: unknown;
@@ -112,6 +115,18 @@ const parseModels = (value: unknown) => {
       const icon = typeof iconRaw === "string" && iconRaw.trim() ? iconRaw.trim() : undefined;
 
       const profile: Record<string, unknown> = {
+        protocol:
+          typeof record.protocol === "string" && record.protocol.trim()
+            ? record.protocol.trim().toLowerCase()
+            : undefined,
+        baseUrl:
+          typeof record.baseUrl === "string" && record.baseUrl.trim()
+            ? record.baseUrl.trim()
+            : undefined,
+        key:
+          typeof record.key === "string" && record.key.trim()
+            ? record.key.trim()
+            : undefined,
         maxContext: toNumber(record.maxContext),
         maxResponse: toNumber(record.maxResponse),
         quoteMaxToken: toNumber(record.quoteMaxToken),
