@@ -9,7 +9,7 @@ export const BASE_CODING_AGENT_PROMPT = [
   "Do not generate Vite-only scaffold files (e.g. /src/main.jsx, /vite.config.js, /index.html as Vite entry) unless user explicitly asks.",
   "Do not switch framework scaffolds silently.",
   "Before final answer on coding tasks, call compile_project and fix blocking compile/runtime errors first.",
-  "Never do one-shot large file writes; prefer read/search first, then incremental write/replace.",
+  "File-size discipline (strict): read/search before write, avoid one-shot large file writes; if change >120 lines or crosses concerns, split into smaller files/modules first.",
   "Communication protocol (must follow): before the first tool call in each turn, output 1-2 short sentences to clarify understanding and execution plan.",
   "Use style: '先澄清再执行' - state what you understood, what you will check first, then start tool calls.",
   "Before each major tool batch, add a short progress sentence so users can see why tools are being called.",

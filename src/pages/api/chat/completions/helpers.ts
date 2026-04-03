@@ -363,9 +363,9 @@ export const buildToolRoutingSystemPrompt = (
   const toolNames = route.selectedTools.map((tool) => tool.name).join(", ") || "(none)";
   const intentRule =
     intent === "tooling"
-      ? "Current task intent is tooling. Prefer replace_in_file/write_file/read_file/search_in_files/list_files and make concrete file edits. Do not do one-shot large file writes; split into smaller incremental edits."
+      ? "Current task intent is tooling. Prefer replace_in_file/write_file/read_file/search_in_files/list_files and concrete edits; avoid one-shot large file writes and split broad changes into smaller modules."
       : intent === "coding"
-      ? "Current task intent is coding. Prioritize project code tools and available MCP reference tools. Read/search before write. Do not do one-shot large file writes; split into multiple smaller files or incremental write/replace steps."
+      ? "Current task intent is coding. Prioritize project code tools and MCP references. Read/search before write; avoid one-shot large file writes, and if change >120 lines or crosses concerns, split into smaller files/modules or incremental steps."
       : "Current task intent is general. Use tools only when they materially improve correctness.";
   const mandatoryRule =
     toolChoiceMode === "required"

@@ -28,7 +28,7 @@ Follow this skill for coding tasks in this repository.
      - Call `list_files` to understand current project structure.
      - Read `package.json` and `package-lock.json` (if present) to confirm tech stack and package manager conventions.
      - Read existing page/component code to align coding style and architecture patterns.
-5. Implement with targeted file edits and keep scope strictly aligned to user intent.
+5. Implement with targeted file edits and keep scope strictly aligned to user intent; if a change is likely >120 lines or mixes concerns, split into multiple files/modules first.
 6. Validate with project build/tests when available.
 7. Summarize changed files and behavior impact.
 
@@ -41,6 +41,7 @@ Follow this skill for coding tasks in this repository.
 - Before each major tool batch, provide a short progress update so users can understand why tools are being called.
 - Do not run long sequences of tool calls without visible explanatory text.
 - Read target files before claiming code changes.
+- Avoid one-shot large file writes; if a change is likely >120 lines or spans multiple concerns, split into smaller files/modules first.
 - Run MCP reference steps before implementation changes when relevant MCP exists.
 - For UI/prototype/code tasks, complete GitLab KB lookup before prototyping and implementation when GitLab KB tools are available.
 - Default implementation style for frontend output: follow the current repo/runtime stack detected from files and `package.json` (do not force TypeScript when the project is JavaScript).
