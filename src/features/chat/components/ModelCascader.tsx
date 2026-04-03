@@ -118,7 +118,7 @@ const ModelCascader = ({
         </Box>
       </PopoverTrigger>
 
-      <PopoverContent borderRadius="12px" maxW="420px" minW="260px" p={0}>
+      <PopoverContent borderRadius="12px" maxW="420px" minW="260px" w="fit-content" p={0}>
         <PopoverBody p={2}>
           {modelOptions.length === 0 ? (
             <Box px={2} py={1.5}>
@@ -129,7 +129,7 @@ const ModelCascader = ({
               </Text>
             </Box>
           ) : (
-            <Flex minW="320px">
+            <Flex w="fit-content">
               <VStack align="stretch" maxH="320px" minW="108px" overflowY="auto" spacing={1}>
                 {computedGroups.map((group) => (
                   <Box
@@ -152,7 +152,7 @@ const ModelCascader = ({
 
               <Divider orientation="vertical" mx={2} />
 
-              <VStack align="stretch" maxH="320px" minW="210px" overflowY="auto" spacing={1}>
+              <VStack align="flex-start" maxH="320px" overflowY="auto" spacing={1}>
                 {currentOptions.map((item) => (
                   <Box
                     key={item.value}
@@ -162,12 +162,13 @@ const ModelCascader = ({
                     cursor="pointer"
                     px={3}
                     py={2}
+                    w="fit-content"
                     onClick={() => {
                       onChangeModel(item.value);
                       onClose();
                     }}
                   >
-                    <Flex align="center" gap={2} minW={0}>
+                    <Flex align="center" gap={2}>
                       <Box
                         alt={item.label}
                         as="img"
@@ -178,7 +179,12 @@ const ModelCascader = ({
                         src={resolveModelIcon(item)}
                         w="16px"
                       />
-                      <Text className="textEllipsis" fontSize="sm" fontWeight={item.value === model ? "700" : "500"}>
+                      <Text
+                        flexShrink={0}
+                        fontSize="sm"
+                        fontWeight={item.value === model ? "700" : "500"}
+                        whiteSpace="nowrap"
+                      >
                         {item.label}
                       </Text>
                     </Flex>
