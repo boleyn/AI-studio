@@ -3,6 +3,7 @@ import { extractText } from "@shared/chat/messages";
 import React from "react";
 import { useCopyData } from "@/hooks/useCopyData";
 import type { ConversationMessage } from "@/types/conversation";
+import type { MessageExecutionSummary } from "../../utils/executionSummary";
 import ChatItem from "../ChatItem";
 import MessageActionBar, { type MessageRating } from "./MessageActionBar";
 
@@ -10,6 +11,10 @@ interface ChatMessageBlockProps {
   message: ConversationMessage;
   messageId: string;
   isStreaming?: boolean;
+  summary?: MessageExecutionSummary | null;
+  requestMessage?: ConversationMessage;
+  requestContent?: string;
+  isLatestRun?: boolean;
   rating?: MessageRating;
   canRegenerate?: boolean;
   onRegenerate?: (messageId: string) => void;
@@ -21,6 +26,10 @@ const ChatMessageBlock = ({
   message,
   messageId,
   isStreaming,
+  summary,
+  requestMessage,
+  requestContent,
+  isLatestRun,
   rating,
   canRegenerate,
   onRegenerate,
@@ -33,7 +42,7 @@ const ChatMessageBlock = ({
 
   return (
     <Flex
-      align={message.role === "user" ? "flex-end" : "flex-start"}
+      align="flex-start"
       direction="column"
       position="relative"
       w="full"
@@ -56,7 +65,7 @@ const ChatMessageBlock = ({
         <Box
           className="message-action-anchor"
           position="absolute"
-          {...(isUser ? { right: 0 } : { left: 0 })}
+          left={0}
           top={0}
           transform="translateY(calc(-100% - 6px))"
           zIndex={60}
@@ -74,7 +83,15 @@ const ChatMessageBlock = ({
         </Box>
       ) : null}
 
-      <ChatItem isStreaming={isStreaming} message={message} messageId={messageId} />
+      <ChatItem
+        executionSummary={summary}
+        isLatestRun={isLatestRun}
+        isStreaming={isStreaming}
+        message={message}
+        messageId={messageId}
+        requestMessage={requestMessage}
+        requestContent={requestContent}
+      />
     </Flex>
   );
 };
@@ -85,6 +102,11 @@ export default React.memo(
     prevProps.message === nextProps.message &&
     prevProps.messageId === nextProps.messageId &&
     prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.summary?.nodeCount === nextProps.summary?.nodeCount &&
+    prevProps.summary?.durationSeconds === nextProps.summary?.durationSeconds &&
+    prevProps.requestMessage === nextProps.requestMessage &&
+    prevProps.requestContent === nextProps.requestContent &&
+    prevProps.isLatestRun === nextProps.isLatestRun &&
     prevProps.rating === nextProps.rating &&
     prevProps.canRegenerate === nextProps.canRegenerate &&
     prevProps.onRegenerate === nextProps.onRegenerate &&

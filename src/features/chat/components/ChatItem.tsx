@@ -12,6 +12,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
+  Spinner,
   Text,
   useDisclosure,
 } from "@chakra-ui/react";
@@ -20,6 +21,7 @@ import { extractText } from "@shared/chat/messages";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "@/components/Markdown";
 import { useCopyData } from "@/hooks/useCopyData";
+import type { MessageExecutionSummary } from "../utils/executionSummary";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -153,6 +155,32 @@ const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
       params: typeof item.params === "string" ? item.params : undefined,
       response: typeof item.response === "string" ? item.response : undefined,
     }));
+};
+
+const getRunStatus = (
+  message: ConversationMessage,
+  isStreaming?: boolean
+): "running" | "success" | "error" => {
+  if (isStreaming) return "running";
+  if (message.status === "error") return "error";
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "success";
+  const responseData = Array.isArray((message.additional_kwargs as { responseData?: unknown }).responseData)
+    ? ((message.additional_kwargs as { responseData?: Array<{ status?: string }> }).responseData ?? [])
+    : [];
+  if (responseData.some((item) => item && typeof item === "object" && item.status === "error")) {
+    return "error";
+  }
+  return "success";
+};
+
+const getPathTailLabel = (value: string): string => {
+  const normalized = (value || "").replace(/\\/g, "/");
+  const base = normalized.split("/").filter(Boolean).pop() || value;
+  try {
+    return decodeURIComponent(base);
+  } catch {
+    return base;
+  }
 };
 
 const composeTimelineItems = ({
@@ -356,14 +384,23 @@ const ChatItem = ({
   message,
   isStreaming,
   messageId,
+  executionSummary,
+  requestMessage,
+  requestContent,
+  isLatestRun,
 }: {
   message: ConversationMessage;
   isStreaming?: boolean;
   messageId: string;
+  executionSummary?: MessageExecutionSummary | null;
+  requestMessage?: ConversationMessage;
+  requestContent?: string;
+  isLatestRun?: boolean;
 }) => {
   const content = extractText(message.content);
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const isAssistant = !isUser && !isSystem;
 
   const files = useMemo(() => getMessageFiles(message), [message]);
   const sortedFiles = useMemo(() => {
@@ -374,6 +411,15 @@ const ChatItem = ({
       return aImage ? 1 : -1;
     });
   }, [files]);
+  const requestFiles = useMemo(() => (requestMessage ? getMessageFiles(requestMessage) : []), [requestMessage]);
+  const sortedRequestFiles = useMemo(() => {
+    return [...requestFiles].sort((a, b) => {
+      const aImage = isImageFile(a);
+      const bImage = isImageFile(b);
+      if (aImage === bImage) return 0;
+      return aImage ? 1 : -1;
+    });
+  }, [requestFiles]);
   const toolDetails = useMemo(() => getToolDetails(message), [message]);
   const reasoningText = useMemo(() => getReasoningText(message), [message]);
   const rawTimelineItems = useMemo(() => getTimelineItems(message), [message]);
@@ -456,20 +502,97 @@ const ChatItem = ({
     [hasAnswerText, isStreaming, latestReasoningIndex, timelineHasAnswer]
   );
   const showAssistantAnimation = Boolean(isStreaming && !isUser && !isSystem);
+  const hasRunningTool = useMemo(
+    () => timelineItems.some((item) => item.type === "tool" && !item.response),
+    [timelineItems]
+  );
+  const headerStatusText = useMemo(() => {
+    if (!isAssistant || !isStreaming) return "";
+    if (hasRunningTool) return "调用工具中...";
+    return hasAnswerText || timelineHasAnswer ? "回复中..." : "思考中...";
+  }, [hasAnswerText, hasRunningTool, isAssistant, isStreaming, timelineHasAnswer]);
+  const runStatus = useMemo(() => getRunStatus(message, isStreaming), [isStreaming, message]);
+  const roleTitle = isUser ? "输入" : isSystem ? "系统消息" : "执行记录";
+  const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
+  const hasRequestContent = Boolean(requestContent?.trim());
+  const requestPreview = useMemo(
+    () =>
+      (requestContent || "")
+        .replace(/\[[^\]]+\]\((?:FILETAG|SKILLTAG):[^)]+\)/g, " ")
+        .replace(/(?:FILETAG|SKILLTAG):[^\s)\]]+/g, " ")
+        .replace(/(?:^|\s)(?:FILETAG|SKILLTAG):\S+/g, " ")
+        .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+        .replace(/[`*_>#\[\]\(\)\-!]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    [requestContent]
+  );
+  const requestImageCount = useMemo(
+    () => sortedRequestFiles.filter((file) => isImageFile(file)).length,
+    [sortedRequestFiles]
+  );
+  const requestFileCount = useMemo(
+    () => sortedRequestFiles.length - requestImageCount,
+    [requestImageCount, sortedRequestFiles.length]
+  );
+  const requestFileNamePreview = useMemo(() => {
+    const names = sortedRequestFiles
+      .map((file) => (file.name || "").trim())
+      .filter(Boolean)
+      .slice(0, 2);
+    return names.join("、");
+  }, [sortedRequestFiles]);
+  const requestSelectedProjectFiles = useMemo(() => {
+    if (!requestMessage?.additional_kwargs || typeof requestMessage.additional_kwargs !== "object") return [];
+    const raw = (requestMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim());
+  }, [requestMessage]);
+  const requestSelectedProjectFileLabel = useMemo(() => {
+    if (requestSelectedProjectFiles.length === 0) return "";
+    const labels = requestSelectedProjectFiles.map((path) => getPathTailLabel(path)).filter(Boolean);
+    const unique = Array.from(new Set(labels)).slice(0, 2);
+    return unique.join("、");
+  }, [requestSelectedProjectFiles]);
+  const headerDotColor = isUser
+    ? "adora.500"
+    : isSystem
+    ? "myGray.500"
+    : runStatus === "running"
+    ? "green.500"
+    : runStatus === "error"
+    ? "red.500"
+    : "blue.500";
+  const [isRunExpanded, setIsRunExpanded] = useState(() => !isAssistant || Boolean(isStreaming));
+  useEffect(() => {
+    if (!isAssistant) {
+      setIsRunExpanded(true);
+      return;
+    }
+    if (isStreaming || isLatestRun) {
+      setIsRunExpanded(true);
+      return;
+    }
+    setIsRunExpanded(false);
+  }, [isAssistant, isLatestRun, isStreaming, messageId]);
+
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
 
   return (
-    <Flex justify={isUser ? "flex-end" : "flex-start"} w="full">
+    <Flex justify="flex-start" w="full">
       <Box
-        bg={isUser ? "primary.1" : "myWhite.100"}
+        bg={isUser ? "primary.50" : "myWhite.100"}
         border="1px solid"
-        borderColor={isUser ? "primary.3" : "myGray.250"}
-        borderRadius={isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px"}
+        borderColor={isUser ? "primary.200" : "myGray.250"}
+        borderRadius="14px"
         boxShadow="sm"
         className="chat-message"
         color="myGray.700"
         fontSize="sm"
-        maxW="92%"
+        maxW="100%"
+        w="full"
         minW="88px"
         minH="0"
         px={4}
@@ -498,6 +621,140 @@ const ChatItem = ({
           },
         }}
       >
+        {!isSystem ? (
+          <Flex
+            align="center"
+            borderBottom="1px solid"
+            borderColor={isUser ? "primary.200" : "myGray.200"}
+            gap={2}
+            justify="space-between"
+            mb={3}
+            pb={2}
+          >
+            <Flex align="center" gap={2}>
+              {!isAssistant ? (
+                <Box
+                  bg={headerDotColor}
+                  borderRadius="full"
+                  h="8px"
+                  w="8px"
+                />
+              ) : null}
+              <Text color="myGray.800" fontSize="12px" fontWeight="700" letterSpacing="0.02em">
+                {roleTitle}
+              </Text>
+            </Flex>
+            {isAssistant ? (
+              <Flex align="center" gap={2}>
+                {headerStatusText ? (
+                  <Flex align="center" color="green.600" fontSize="11px" fontWeight="700" gap={1}>
+                    <Spinner color="green.500" size="xs" speed="0.7s" thickness="2px" />
+                    <Text color="green.600" fontSize="11px" fontWeight="700">
+                      {headerStatusText}
+                    </Text>
+                  </Flex>
+                ) : null}
+                <IconButton
+                  aria-label={isRunExpanded ? "收起执行结果" : "展开执行结果"}
+                  icon={
+                    <Icon
+                      boxSize={4}
+                      color="myGray.500"
+                      transform={isRunExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                      transition="transform 0.2s ease"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M6 9L12 15L18 9"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      />
+                    </Icon>
+                  }
+                  h="24px"
+                  minW="24px"
+                  onClick={() => setIsRunExpanded((prev) => !prev)}
+                  size="xs"
+                  variant="ghost"
+                  _focusVisible={{ boxShadow: "none", bg: "myGray.100" }}
+                />
+              </Flex>
+            ) : null}
+          </Flex>
+        ) : null}
+        {isAssistant && !isRunExpanded ? (
+          <Flex color="myGray.600" direction="column" fontSize="11px" gap={1.5} mb={1} minW={0}>
+            <Flex align="center" gap={2} minW={0} wrap="wrap">
+              <Text color="myGray.500" flexShrink={0}>
+                输入
+              </Text>
+              {requestImageCount > 0 ? (
+                <Text
+                  bg="blue.50"
+                  border="1px solid"
+                  borderColor="blue.200"
+                  borderRadius="999px"
+                  color="blue.700"
+                  flexShrink={0}
+                  px={2}
+                  py="1px"
+                >
+                  图片
+                </Text>
+              ) : null}
+              {requestFileCount > 0 ? (
+                <Text
+                  bg="adora.50"
+                  border="1px solid"
+                  borderColor="adora.200"
+                  borderRadius="999px"
+                  color="adora.700"
+                  flexShrink={0}
+                  px={2}
+                  py="1px"
+                >
+                  文件
+                </Text>
+              ) : null}
+              {requestSelectedProjectFiles.length > 0 ? (
+                <Text
+                  bg="primary.50"
+                  border="1px solid"
+                  borderColor="primary.200"
+                  borderRadius="999px"
+                  color="primary.700"
+                  flexShrink={0}
+                  px={2}
+                  py="1px"
+                >
+                  项目文件
+                </Text>
+              ) : null}
+              <Text
+                minW={0}
+                noOfLines={1}
+                title={
+                  requestPreview ||
+                  requestFileNamePreview ||
+                  requestSelectedProjectFileLabel ||
+                  "无输入摘要"
+                }
+              >
+                {requestPreview || requestFileNamePreview || requestSelectedProjectFileLabel || "无输入摘要"}
+              </Text>
+            </Flex>
+            <Flex align="center" gap={3} wrap="wrap">
+              <Text>调用工具: {executionSummary?.nodeCount ?? 0}</Text>
+              {executionSummary?.durationSeconds !== undefined ? (
+                <Text>耗时: {executionSummary.durationSeconds.toFixed(2)}s</Text>
+              ) : null}
+            </Flex>
+          </Flex>
+        ) : null}
+        <Collapse animateOpacity in={!isAssistant || isRunExpanded}>
         {isUser ? (
           <Flex direction="column" gap={2}>
             {sortedFiles.length > 0 ? (
@@ -550,19 +807,107 @@ const ChatItem = ({
           </Text>
         ) : (
           <Flex direction="column" gap={2}>
-            {timelineItems.length > 0 ? (
-              <Flex direction="column" gap={2}>
+            {(hasRequestContent || timelineItems.length > 0) ? (
+              <Box position="relative">
+                <Box
+                  bg="myGray.200"
+                  borderRadius="999px"
+                  bottom={2}
+                  left="5px"
+                  position="absolute"
+                  top={2}
+                  w="1px"
+                />
+                <Flex direction="column" gap={2} position="relative">
+                  {hasRequestContent ? (
+                    <Flex align="stretch" gap={2}>
+                      <Flex align="center" direction="column" w="12px">
+                        <Box bg="adora.500" borderRadius="full" h="7px" mt="7px" w="7px" />
+                      </Flex>
+                      <Box bg="myGray.50" border="1px solid" borderColor="myGray.250" borderRadius="10px" flex="1" minW={0} p={2.5}>
+                        {sortedRequestFiles.length > 0 ? (
+                          <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} mb={2}>
+                            {sortedRequestFiles.map((file, index) => {
+                              const isImage = isImageFile(file);
+                              const icon = getFileIcon(file.name || "");
+                              const fileUrl = file.previewUrl || file.downloadUrl || "";
+                              return (
+                                <Box
+                                  key={`${file.name || "request-file"}-${index}`}
+                                  bg="myWhite.100"
+                                  borderRadius="md"
+                                  overflow="hidden"
+                                >
+                                  {isImage ? (
+                                    fileUrl ? (
+                                      <Box
+                                        alt={file.name || `文件 ${index + 1}`}
+                                        as="img"
+                                        maxH="220px"
+                                        objectFit="contain"
+                                        src={fileUrl}
+                                        w="100%"
+                                      />
+                                    ) : null
+                                  ) : (
+                                    <Flex
+                                      alignItems="center"
+                                      cursor={fileUrl ? "pointer" : "default"}
+                                      onClick={() => {
+                                        if (!fileUrl) return;
+                                        window.open(fileUrl);
+                                      }}
+                                      p={2}
+                                      w="100%"
+                                    >
+                                      <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />
+                                      <Text
+                                        fontSize="xs"
+                                        ml={2}
+                                        overflow="hidden"
+                                        textOverflow="ellipsis"
+                                        whiteSpace="nowrap"
+                                      >
+                                        {file.name || fileUrl || `文件 ${index + 1}`}
+                                      </Text>
+                                    </Flex>
+                                  )}
+                                </Box>
+                              );
+                            })}
+                          </Grid>
+                        ) : null}
+                        <Box
+                          color="myGray.700"
+                          sx={{
+                            "& .markdown p": {
+                              marginTop: "4px",
+                              marginBottom: "4px",
+                            },
+                          }}
+                        >
+                          <Markdown source={requestContent || ""} />
+                        </Box>
+                      </Box>
+                    </Flex>
+                  ) : null}
+                  {timelineItems.length > 0 ? (
+                    <Flex direction="column" gap={2}>
                 {timelineItems.map((item, index) => {
                   if (item.type === "reasoning") {
                     const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
-                    const isLastStep = timelineStepIndexes[timelineStepIndexes.length - 1] === index;
                     const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
                     const reasoningPhaseText = getReasoningPhaseText(index);
+                    const isReasoningRunning =
+                      Boolean(reasoningPhaseText) && !hasRunningTool && !hasAnswerText && !timelineHasAnswer;
                     return (
                       <Flex key={reasoningKey} align="stretch" gap={2}>
                         <Flex align="center" direction="column" w="12px">
-                          <Box bg="primary.500" borderRadius="full" h="7px" mt="7px" w="7px" />
-                          {!isLastStep ? <Box bg="myGray.300" flex="1" mt={1} w="1px" /> : null}
+                          {isReasoningRunning ? (
+                            <Spinner color="green.500" mt="5px" size="xs" speed="0.7s" thickness="2.5px" />
+                          ) : (
+                            <Box bg="primary.500" borderRadius="full" h="7px" mt="7px" w="7px" />
+                          )}
                         </Flex>
                         <Box
                           bg="primary.50"
@@ -577,11 +922,6 @@ const ChatItem = ({
                             <Text color="myGray.700" flex="1" fontSize="12px" fontWeight="700" noOfLines={1}>
                               思考过程
                             </Text>
-                            {reasoningPhaseText ? (
-                              <Text color="primary.600" fontSize="11px">
-                                {reasoningPhaseText}
-                              </Text>
-                            ) : null}
                             <IconButton
                               aria-label={isExpanded ? "收起思考内容" : "展开思考内容"}
                               icon={
@@ -633,7 +973,6 @@ const ChatItem = ({
                     const toolKey = `${messageId}-timeline-tool-${item.id || "unknown"}-${index}`;
                     const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
                     const isRunning = isStreaming && !item.response;
-                    const isLastStep = timelineStepIndexes[timelineStepIndexes.length - 1] === index;
                     const truncatedParams = truncateDetailText(item.params);
                     const truncatedResponse = truncateDetailText(item.response);
                     const paramsTruncated = isDetailTruncated(item.params);
@@ -641,14 +980,17 @@ const ChatItem = ({
                     return (
                       <Flex key={toolKey} align="stretch" gap={2}>
                         <Flex align="center" direction="column" w="12px">
-                          <Box
-                            bg={isRunning ? "blue.500" : "primary.500"}
-                            borderRadius="full"
-                            h="7px"
-                            mt="7px"
-                            w="7px"
-                          />
-                          {!isLastStep ? <Box bg="myGray.300" flex="1" mt={1} w="1px" /> : null}
+                          {isRunning ? (
+                            <Spinner color="green.500" mt="5px" size="xs" speed="0.7s" thickness="2.5px" />
+                          ) : (
+                            <Box
+                              bg="primary.500"
+                              borderRadius="full"
+                              h="7px"
+                              mt="7px"
+                              w="7px"
+                            />
+                          )}
                         </Flex>
                         <Box
                           bg="myGray.25"
@@ -772,13 +1114,37 @@ const ChatItem = ({
                     </Box>
                   );
                 })}
-              </Flex>
+                    </Flex>
+                  ) : null}
+                </Flex>
+              </Box>
             ) : null}
             {(!timelineHasAnswer || timelineItems.length === 0) && content ? (
               <Markdown showAnimation={showAssistantAnimation} source={content} />
             ) : null}
+            {shouldShowExecutionMeta ? (
+              <Flex
+                align="center"
+                borderTop="1px solid"
+                borderColor="myGray.200"
+                color="myGray.600"
+                fontSize="11px"
+                gap={3}
+                mt={1}
+                pt={2}
+                wrap="wrap"
+              >
+                <Text>
+                  调用工具: {executionSummary?.nodeCount ?? 0}
+                </Text>
+                {executionSummary?.durationSeconds !== undefined ? (
+                  <Text>耗时: {executionSummary.durationSeconds.toFixed(2)}s</Text>
+                ) : null}
+              </Flex>
+            ) : null}
           </Flex>
         )}
+        </Collapse>
       </Box>
 
       <Modal isOpen={isDetailModalOpen} onClose={handleCloseDetailModal} size="xl">
@@ -817,5 +1183,9 @@ export default React.memo(
   (prevProps, nextProps) =>
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.messageId === nextProps.messageId &&
-    prevProps.message === nextProps.message
+    prevProps.message === nextProps.message &&
+    prevProps.executionSummary?.nodeCount === nextProps.executionSummary?.nodeCount &&
+    prevProps.executionSummary?.durationSeconds === nextProps.executionSummary?.durationSeconds &&
+    prevProps.requestContent === nextProps.requestContent &&
+    prevProps.isLatestRun === nextProps.isLatestRun
 );

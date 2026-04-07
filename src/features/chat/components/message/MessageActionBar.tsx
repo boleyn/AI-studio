@@ -39,11 +39,12 @@ const MessageActionBar = ({
   return (
     <Flex
       align="center"
-      bg="white"
+      bg="myWhite.100"
       border="1px solid"
-      borderColor="gray.200"
-      borderRadius="sm"
-      color="gray.500"
+      borderColor="myGray.250"
+      borderRadius="10px"
+      color="myGray.500"
+      boxShadow="sm"
       sx={{
         "& > *:last-child": {
           borderRight: "none",
@@ -54,7 +55,7 @@ const MessageActionBar = ({
         <Box
           _hover={{ color: "primary.600" }}
           borderRight="1px solid"
-          borderRightColor="gray.200"
+          borderRightColor="myGray.200"
           cursor="pointer"
           onClick={onCopy}
           p="5px"
@@ -66,9 +67,9 @@ const MessageActionBar = ({
       {canRegenerate ? (
         <MyTooltip label="重新生成">
           <Box
-            _hover={{ color: "green.500" }}
+            _hover={{ color: "primary.600" }}
             borderRight="1px solid"
-            borderRightColor="gray.200"
+            borderRightColor="myGray.200"
             cursor="pointer"
             onClick={onRegenerate}
             p="5px"
@@ -83,7 +84,7 @@ const MessageActionBar = ({
           <Box
             _hover={{ color: "red.600" }}
             borderRight="1px solid"
-            borderRightColor="gray.200"
+            borderRightColor="myGray.200"
             cursor="pointer"
             onClick={onDelete}
             p="5px"
@@ -97,10 +98,10 @@ const MessageActionBar = ({
         <>
           <MyTooltip label="赞">
             <Box
-              _hover={{ color: "green.600" }}
+              _hover={{ color: "primary.600" }}
               borderRight="1px solid"
-              borderRightColor="gray.200"
-              color={rating === "up" ? "green.500" : undefined}
+              borderRightColor="myGray.200"
+              color={rating === "up" ? "primary.600" : undefined}
               cursor="pointer"
               onClick={() => onRate?.("up")}
               p="5px"

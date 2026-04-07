@@ -27,7 +27,6 @@ import ChatInput from "./ChatInput";
 import SkillsManagerModal from "./SkillsManagerModal";
 import ChatMessageBlock from "./message/ChatMessageBlock";
 import type { MessageRating } from "./message/MessageActionBar";
-import ExecutionSummaryRow from "./ExecutionSummaryRow";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -1267,33 +1266,102 @@ const ChatPanel = ({
             </Flex>
           ) : (
             <Flex direction="column" gap={3} pt={14}>
-              {messages.map((message, index) => {
-                const messageId = message.id ?? `${message.role}-${index}`;
-                const summary = getExecutionSummary(message);
-                const canRegenerate =
-                  message.role === "user" &&
-                  messages.slice(index + 1).some((item) => item.role === "assistant");
-                return (
-                  <Box key={messageId}>
-                    <ChatMessageBlock
-                      isStreaming={message.id === streamingMessageId}
-                      message={message}
-                      messageId={messageId}
-                      canRegenerate={canRegenerate}
-                      onDelete={handleDeleteMessage}
-                      onRate={handleRateMessage}
-                      onRegenerate={handleRegenerateMessage}
-                      rating={messageRatings[messageId]}
-                    />
-                    {summary ? (
-                      <ExecutionSummaryRow
-                        durationSeconds={summary.durationSeconds}
-                        nodeCount={summary.nodeCount}
-                      />
-                    ) : null}
-                  </Box>
-                );
-              })}
+              {(() => {
+                const rows: Array<{
+                  key: string;
+                  message: ConversationMessage;
+                  messageId: string;
+                  requestMessage?: ConversationMessage;
+                  requestContent?: string;
+                  summary: ReturnType<typeof getExecutionSummary>;
+                  isStreaming: boolean;
+                  canRegenerate: boolean;
+                  rating?: MessageRating;
+                }> = [];
+                for (let index = 0; index < messages.length; index += 1) {
+                  const message = messages[index];
+                  const nextMessage = messages[index + 1];
+                  if (message.role === "user" && nextMessage?.role === "assistant") {
+                    const userMessageId = message.id ?? `user-${index}`;
+                    const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
+                    const summary = getExecutionSummary(nextMessage);
+                    const canRegenerate = messages
+                      .slice(index + 2)
+                      .some((item) => item.role === "assistant");
+                    rows.push({
+                      key: `${userMessageId}__${assistantMessageId}`,
+                      message: nextMessage,
+                      messageId: assistantMessageId,
+                      requestMessage: message,
+                      requestContent: extractText(message.content),
+                      summary,
+                      isStreaming: nextMessage.id === streamingMessageId,
+                      canRegenerate,
+                      rating: messageRatings[assistantMessageId],
+                    });
+                    index += 1;
+                    continue;
+                  }
+
+                  const messageId = message.id ?? `${message.role}-${index}`;
+                  const summary = getExecutionSummary(message);
+                  const canRegenerate =
+                    message.role === "user" &&
+                    messages.slice(index + 1).some((item) => item.role === "assistant");
+                  rows.push({
+                    key: messageId,
+                    message,
+                    messageId,
+                    summary,
+                    isStreaming: message.id === streamingMessageId,
+                    canRegenerate,
+                    rating: messageRatings[messageId],
+                  });
+                }
+                return rows.map((row, rowIndex) => {
+                  const isLastRow = rowIndex === rows.length - 1;
+                  const rowStatusColor =
+                    row.isStreaming
+                      ? "green.500"
+                      : row.message.status === "error"
+                      ? "red.500"
+                      : "blue.500";
+                  return (
+                    <Flex key={row.key} align="stretch" gap={3} w="full">
+                      <Flex align="center" direction="column" w="16px">
+                        {row.isStreaming ? (
+                          <Spinner color="green.500" mt="8px" size="xs" speed="0.7s" thickness="2.5px" />
+                        ) : (
+                          <Box
+                            bg={rowStatusColor}
+                            borderRadius="full"
+                            h="9px"
+                            mt="10px"
+                            w="9px"
+                          />
+                        )}
+                        {!isLastRow ? <Box bg="myGray.200" flex="1" mt={1} w="2px" /> : null}
+                      </Flex>
+                      <Box flex="1" minW={0}>
+                        <ChatMessageBlock
+                          isLatestRun={isLastRow}
+                          isStreaming={row.isStreaming}
+                          message={row.message}
+                          messageId={row.messageId}
+                          requestMessage={row.requestMessage}
+                          requestContent={row.requestContent}
+                          summary={row.summary}
+                          canRegenerate={row.canRegenerate}
+                          onDelete={handleDeleteMessage}
+                          onRate={handleRateMessage}
+                          onRegenerate={handleRegenerateMessage}
+                          rating={row.rating}
+                        />
+                      </Box>
+                    </Flex>
+                  );
+                });
+              })()}
               {isLoadingConversation ? (
                 <Flex align="center" color="gray.500" gap={2} justify="center" py={1}>
                   <Spinner size="xs" />
