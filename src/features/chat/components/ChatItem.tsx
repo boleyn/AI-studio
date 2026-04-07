@@ -461,15 +461,11 @@ const ChatItem = ({
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="full">
       <Box
-        bg={
-          isUser
-            ? "linear-gradient(135deg, rgba(64,124,255,0.12) 0%, rgba(148,163,184,0.08) 100%)"
-            : "rgba(255,255,255,0.92)"
-        }
+        bg={isUser ? "primary.1" : "myWhite.100"}
         border="1px solid"
-        borderColor={isUser ? "rgba(52,122,255,0.34)" : "rgba(203,213,225,0.92)"}
+        borderColor={isUser ? "primary.3" : "myGray.250"}
         borderRadius={isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px"}
-        boxShadow="0 8px 16px -14px rgba(15,23,42,0.28)"
+        boxShadow="sm"
         className="chat-message"
         color="myGray.700"
         fontSize="sm"
@@ -511,7 +507,7 @@ const ChatItem = ({
                   const icon = getFileIcon(file.name || "");
                   const fileUrl = file.previewUrl || file.downloadUrl || "";
                   return (
-                    <Box key={`${file.name || "file"}-${index}`} bg="white" borderRadius="md" overflow="hidden">
+                    <Box key={`${file.name || "file"}-${index}`} bg="myWhite.100" borderRadius="md" overflow="hidden">
                       {isImage ? (
                         fileUrl ? (
                           <Box
@@ -549,7 +545,7 @@ const ChatItem = ({
             {content ? <Markdown source={content} /> : null}
           </Flex>
         ) : isSystem ? (
-          <Text color="gray.500" fontSize="xs">
+          <Text color="myGray.500" fontSize="xs">
             {content}
           </Text>
         ) : (
@@ -565,24 +561,24 @@ const ChatItem = ({
                     return (
                       <Flex key={reasoningKey} align="stretch" gap={2}>
                         <Flex align="center" direction="column" w="12px">
-                          <Box bg="cyan.500" borderRadius="full" h="7px" mt="7px" w="7px" />
-                          {!isLastStep ? <Box bg="gray.300" flex="1" mt={1} w="1px" /> : null}
+                          <Box bg="primary.500" borderRadius="full" h="7px" mt="7px" w="7px" />
+                          {!isLastStep ? <Box bg="myGray.300" flex="1" mt={1} w="1px" /> : null}
                         </Flex>
                         <Box
-                          bg="rgba(247,250,252,0.96)"
+                          bg="primary.50"
                           border="1px solid"
-                          borderColor="rgba(186,230,253,0.95)"
+                          borderColor="primary.200"
                           borderRadius="10px"
                           flex="1"
                           minW={0}
                           p={2.5}
                         >
                           <Flex align="center" gap={2}>
-                            <Text color="gray.700" flex="1" fontSize="12px" fontWeight="700" noOfLines={1}>
+                            <Text color="myGray.700" flex="1" fontSize="12px" fontWeight="700" noOfLines={1}>
                               思考过程
                             </Text>
                             {reasoningPhaseText ? (
-                              <Text color="blue.500" fontSize="11px">
+                              <Text color="primary.600" fontSize="11px">
                                 {reasoningPhaseText}
                               </Text>
                             ) : null}
@@ -591,7 +587,7 @@ const ChatItem = ({
                               icon={
                                 <Icon
                                   boxSize={4}
-                                  color="gray.500"
+                                  color="myGray.500"
                                   transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                                   transition="transform 0.2s ease"
                                   viewBox="0 0 24 24"
@@ -615,7 +611,7 @@ const ChatItem = ({
                           </Flex>
                           <Collapse animateOpacity in={isExpanded}>
                             <Box
-                              color="gray.700"
+                              color="myGray.700"
                               mt={2}
                               sx={{
                                 "& .markdown blockquote": {
@@ -645,20 +641,26 @@ const ChatItem = ({
                     return (
                       <Flex key={toolKey} align="stretch" gap={2}>
                         <Flex align="center" direction="column" w="12px">
-                          <Box bg={isRunning ? "blue.400" : "green.400"} borderRadius="full" h="7px" mt="7px" w="7px" />
-                          {!isLastStep ? <Box bg="gray.300" flex="1" mt={1} w="1px" /> : null}
+                          <Box
+                            bg={isRunning ? "blue.500" : "primary.500"}
+                            borderRadius="full"
+                            h="7px"
+                            mt="7px"
+                            w="7px"
+                          />
+                          {!isLastStep ? <Box bg="myGray.300" flex="1" mt={1} w="1px" /> : null}
                         </Flex>
                         <Box
-                          bg="rgba(248,250,252,0.95)"
+                          bg="myGray.25"
                           border="1px solid"
-                          borderColor="rgba(203,213,225,0.9)"
+                          borderColor="myGray.250"
                           borderRadius="10px"
                           flex="1"
                           minW={0}
                           p={2.5}
                         >
                           <Flex align="center" gap={2}>
-                            <Text color="gray.800" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
+                            <Text color="myGray.800" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
                               {item.toolName || `工具 ${index + 1}`}
                             </Text>
                             <IconButton
@@ -666,7 +668,7 @@ const ChatItem = ({
                               icon={
                                 <Icon
                                   boxSize={4}
-                                  color="gray.500"
+                                  color="myGray.500"
                                   transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                                   transition="transform 0.2s ease"
                                   viewBox="0 0 24 24"
@@ -690,7 +692,7 @@ const ChatItem = ({
                           </Flex>
                           <Collapse animateOpacity in={isExpanded}>
                             <Flex direction="column" gap={2} mt={2}>
-                              <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
+                              <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
                                 <Flex align="center" justify="space-between" mb={1}>
                                   <Text color="blue.700" fontSize="10px" fontWeight="700">
                                     入参
@@ -712,20 +714,20 @@ const ChatItem = ({
                                   ) : null}
                                 </Flex>
                                 <ToolStreamText
-                                  color="gray.600"
+                                  color="myGray.600"
                                   isStreaming={isStreaming}
                                   value={truncatedParams || "{}"}
                                 />
                               </Box>
 
-                              <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" p={2}>
+                              <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
                                 <Flex align="center" justify="space-between" mb={1}>
-                                  <Text color="green.700" fontSize="10px" fontWeight="700">
+                                  <Text color="primary.700" fontSize="10px" fontWeight="700">
                                     出参
                                   </Text>
                                   {responseTruncated ? (
                                     <Button
-                                      colorScheme="green"
+                                      colorScheme="primary"
                                       h="20px"
                                       minW="auto"
                                       onClick={() =>
@@ -741,16 +743,16 @@ const ChatItem = ({
                                 </Flex>
                                 {truncatedResponse ? (
                                   <ToolStreamText
-                                    color="gray.800"
+                                    color="myGray.800"
                                     isStreaming={isStreaming}
                                     value={truncatedResponse}
                                   />
                                 ) : isRunning ? (
-                                  <Text color="gray.500" fontSize="12px">
+                                  <Text color="myGray.500" fontSize="12px">
                                     执行中...
                                   </Text>
                                 ) : (
-                                  <Text color="gray.400" fontSize="12px">
+                                  <Text color="myGray.400" fontSize="12px">
                                     暂无输出
                                   </Text>
                                 )}
@@ -787,7 +789,7 @@ const ChatItem = ({
           <ModalBody pb={4}>
             <Flex justify="flex-end" mb={2}>
               <Button
-                colorScheme="blue"
+                colorScheme="primary"
                 onClick={() => copyData(detailModalData?.content || "")}
                 size="xs"
                 variant="outline"
@@ -795,9 +797,9 @@ const ChatItem = ({
                 复制
               </Button>
             </Flex>
-            <Box bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="8px" maxH="60vh" overflow="auto" p={3}>
+            <Box bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="8px" maxH="60vh" overflow="auto" p={3}>
               <ToolStreamText
-                color="gray.800"
+                color="myGray.800"
                 fontSize="12px"
                 isStreaming={isStreaming}
                 value={detailModalData?.content || ""}

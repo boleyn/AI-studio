@@ -1,0 +1,4 @@
+interface:
+  display_name: "B-Admin UI Style"
+  short_description: "Modern enterprise dashboard visual style"
+  default_prompt: "Use this skill to implement consistent B-end admin UI style with Ant Design-like color, spacing, cards, forms, tables, and iconography."
