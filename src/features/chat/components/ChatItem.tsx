@@ -619,6 +619,19 @@ const ChatItem = ({
             marginTop: "2px",
             marginBottom: "2px",
           },
+          ...(isStreaming
+            ? {
+                "&, & *": {
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                },
+                "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
+                  width: "0px",
+                  height: "0px",
+                  display: "none",
+                },
+              }
+            : {}),
         }}
       >
         {!isSystem ? (
