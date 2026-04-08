@@ -94,6 +94,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
   const stream = req.body?.stream !== false;
+  const persistIncomingMessages = req.body?.persistIncomingMessages !== false;
   const conversationId = getConversationId(req);
   const conversationToken = getConversationToken(
     req,
@@ -500,7 +501,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })();
 
     const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
-    if (conversationId && newConversationMessages.length > 0) {
+    if (persistIncomingMessages && conversationId && newConversationMessages.length > 0) {
       await appendConversationMessages(conversationToken, conversationId, newConversationMessages);
     }
     if (conversationId) {

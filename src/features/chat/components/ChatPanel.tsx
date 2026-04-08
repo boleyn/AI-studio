@@ -369,6 +369,7 @@ const ChatPanel = ({
       payload: ChatInputSubmitPayload,
       options?: {
         echoUserMessage?: boolean;
+        persistIncomingMessages?: boolean;
       }
     ) => {
       const text = payload.text.trim();
@@ -378,6 +379,7 @@ const ChatPanel = ({
       const hasArtifacts = finalArtifacts.length > 0;
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
+      const persistIncomingMessages = options?.persistIncomingMessages ?? true;
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
@@ -608,6 +610,7 @@ const ChatPanel = ({
             body: JSON.stringify({
               token,
               messages: historyMessages,
+              persistIncomingMessages,
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -859,6 +862,7 @@ const ChatPanel = ({
               token,
               messages: [requestMessage],
               stream: true,
+              persistIncomingMessages,
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -1113,19 +1117,51 @@ const ChatPanel = ({
     [activeConversation?.id, token]
   );
 
-  const handleDeleteMessage = useCallback((messageId: string) => {
-    setMessages((prev) => prev.filter((message) => message.id !== messageId));
-  }, []);
-
-  const handleRegenerateMessage = useCallback(
-    async (userMessageId: string) => {
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
       if (isSending) return;
       const snapshot = [...messages];
-      const userIndex = snapshot.findIndex((message) => message.id === userMessageId);
-      if (userIndex < 0) return;
+      const targetIndex = snapshot.findIndex((message) => message.id === messageId);
+      if (targetIndex < 0) return;
 
+      const remainedMessages = snapshot.filter((message) => message.id !== messageId);
+      const conversationId = activeConversation?.id;
+      if (conversationId) {
+        const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
+        if (!replaced) return;
+      }
+
+      setMessages(remainedMessages);
+      setMessageRatings((prev) => {
+        const next = { ...prev };
+        delete next[messageId];
+        return next;
+      });
+      if (streamingMessageId === messageId) {
+        setStreamingMessageId(null);
+      }
+    },
+    [activeConversation?.id, isSending, messages, streamingMessageId, token]
+  );
+
+  const handleRegenerateMessage = useCallback(
+    async (assistantMessageId: string) => {
+      if (isSending) return;
+      const snapshot = [...messages];
+      const assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
+      if (assistantIndex < 0) return;
+      const assistantMessage = snapshot[assistantIndex];
+      if (assistantMessage.role !== "assistant") return;
+
+      let userIndex = -1;
+      for (let i = assistantIndex - 1; i >= 0; i -= 1) {
+        if (snapshot[i].role === "user") {
+          userIndex = i;
+          break;
+        }
+      }
+      if (userIndex < 0) return;
       const userMessage = snapshot[userIndex];
-      if (userMessage.role !== "user") return;
 
       const text = stripInlineImageMarkdown(
         stripTagMarkersFromUserContent(extractText(userMessage.content))
@@ -1140,22 +1176,25 @@ const ChatPanel = ({
       const conversationId = activeConversation?.id;
       if (!conversationId) return;
 
-      // Step 1: 删除当前用户消息及其以下所有消息（持久化到后端）
-      const remainedMessages = snapshot.slice(0, userIndex);
+      // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
+      const remainedMessages = snapshot.slice(0, assistantIndex);
       const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
       if (!replaced) return;
 
-      setMessages((prev) => prev.slice(0, userIndex));
+      setMessages((prev) => prev.slice(0, assistantIndex));
       setMessageRatings((prev) => {
         const next = { ...prev };
-        for (const message of snapshot.slice(userIndex)) {
+        for (const message of snapshot.slice(assistantIndex)) {
           if (!message.id) continue;
           delete next[message.id];
         }
         return next;
       });
+      if (streamingMessageId && snapshot.slice(assistantIndex).some((message) => message.id === streamingMessageId)) {
+        setStreamingMessageId(null);
+      }
 
-      // Step 2: 重新发送当前用户消息，走 completions 生成新回复
+      // Step 2: 重新回答当前 user 消息，避免重复持久化 user 记录。
       await handleSend({
         text,
         files: [],
@@ -1169,9 +1208,12 @@ const ChatPanel = ({
             ? ((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
                 .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
             : undefined,
+      }, {
+        echoUserMessage: false,
+        persistIncomingMessages: false,
       });
     },
-    [activeConversation?.id, handleSend, isSending, messages, selectedSkills, token]
+    [activeConversation?.id, handleSend, isSending, messages, selectedSkills, streamingMessageId, token]
   );
 
   const activeConversationTitle = useMemo(
@@ -1291,9 +1333,6 @@ const ChatPanel = ({
                     const userMessageId = message.id ?? `user-${index}`;
                     const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
                     const summary = getExecutionSummary(nextMessage);
-                    const canRegenerate = messages
-                      .slice(index + 2)
-                      .some((item) => item.role === "assistant");
                     rows.push({
                       key: `${userMessageId}__${assistantMessageId}`,
                       message: nextMessage,
@@ -1302,7 +1341,7 @@ const ChatPanel = ({
                       requestContent: extractText(message.content),
                       summary,
                       isStreaming: nextMessage.id === streamingMessageId,
-                      canRegenerate,
+                      canRegenerate: true,
                       rating: messageRatings[assistantMessageId],
                     });
                     index += 1;
@@ -1311,9 +1350,10 @@ const ChatPanel = ({
 
                   const messageId = message.id ?? `${message.role}-${index}`;
                   const summary = getExecutionSummary(message);
-                  const canRegenerate =
-                    message.role === "user" &&
-                    messages.slice(index + 1).some((item) => item.role === "assistant");
+                  let canRegenerate = false;
+                  if (message.role === "assistant") {
+                    canRegenerate = messages.slice(0, index).some((item) => item.role === "user");
+                  }
                   rows.push({
                     key: messageId,
                     message,

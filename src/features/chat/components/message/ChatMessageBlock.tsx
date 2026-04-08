@@ -38,6 +38,7 @@ const ChatMessageBlock = ({
 }: ChatMessageBlockProps) => {
   const { copyData } = useCopyData();
   const isUser = message.role === "user";
+  const isAssistant = message.role === "assistant";
   const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
 
   return (
@@ -71,12 +72,12 @@ const ChatMessageBlock = ({
           zIndex={60}
         >
           <MessageActionBar
-            canDelete={isUser}
-            canRegenerate={isUser && canRegenerate}
+            canDelete={isUser || isAssistant}
+            canRegenerate={isAssistant && canRegenerate}
             onCopy={() => copyData(extractText(message.content))}
-            onDelete={isUser ? () => onDelete?.(messageId) : undefined}
+            onDelete={isUser || isAssistant ? () => onDelete?.(messageId) : undefined}
             onRate={isUser ? undefined : (rating) => onRate?.(messageId, rating)}
-            onRegenerate={isUser ? () => onRegenerate?.(messageId) : undefined}
+            onRegenerate={isAssistant ? () => onRegenerate?.(messageId) : undefined}
             rating={rating}
             showRating={!isUser}
           />

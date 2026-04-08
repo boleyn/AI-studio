@@ -113,6 +113,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? req.body.chat_id
       : conversationId;
   const stream = req.body?.stream === true;
+  const persistIncomingMessages = req.body?.persistIncomingMessages !== false;
   const channel = typeof req.body?.channel === "string" ? req.body.channel : "";
   const modelCatalogKey = typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : "agent";
@@ -305,7 +306,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ]);
   };
 
-  if (conversationId && newMessages.length > 0) {
+  if (persistIncomingMessages && conversationId && newMessages.length > 0) {
     await appendConversationMessages(token, conversationId, newMessages, nextTitleFromInput);
   }
 

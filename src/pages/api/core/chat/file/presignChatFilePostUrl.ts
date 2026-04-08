@@ -54,11 +54,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   const safeName = toSafeFileName(filename);
-  const ts = Date.now();
   const prefix = getChatUploadRoot(token, chatId);
   const key = isImageFile(filename, contentType)
-    ? `${prefix}/images/${ts}-${safeName}`
-    : `${prefix}/files/${ts}-${safeName}`;
+    ? `${prefix}/images/${safeName}`
+    : `${prefix}/files/${safeName}`;
 
   try {
     const result = await createPutObjectPresignedUrl({
