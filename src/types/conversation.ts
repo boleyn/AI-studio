@@ -10,6 +10,11 @@ export type ToolCall = {
 export type ConversationMessage = {
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
+  /**
+   * Message creation time used for UI display (e.g. "刚刚/几分钟前/年月日").
+   * Some backend payloads attach this as ISO string.
+   */
+  time?: Date | string;
   id?: string;
   name?: string;
   tool_call_id?: string;

@@ -419,7 +419,17 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.error || `模型测试失败: ${response.status}`);
+        toast({
+          title: payload?.error || `模型测试失败: ${response.status}`,
+          description:
+            (typeof payload?.hint === "string" && payload.hint.trim()) ||
+            (typeof payload?.detail === "string" && payload.detail.trim())
+              ? `${String(payload?.hint || "").trim()}${payload?.hint && payload?.detail ? " | " : ""}${String(payload?.detail || "").trim()}`
+              : undefined,
+          status: "error",
+          duration: 4200,
+        });
+        return;
       }
       toast({
         title: payload?.message || "模型测试通过",

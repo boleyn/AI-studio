@@ -173,6 +173,53 @@ const getRunStatus = (
   return "success";
 };
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const toValidDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Heuristic: treat small values as seconds.
+    const ms = value < 1e12 ? value * 1000 : value;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+};
+
+const formatExecutionTimeForHeader = (value: unknown): string | null => {
+  const d = toValidDate(value);
+  if (!d) return null;
+
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+
+  const isSameDay =
+    now.getFullYear() === d.getFullYear() && now.getMonth() === d.getMonth() && now.getDate() === d.getDate();
+
+  const formatHMS = (date: Date) => `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  const formatYMD = (date: Date) =>
+    `${date.getFullYear()}年${pad2(date.getMonth() + 1)}月${pad2(date.getDate())}日`;
+
+  // Future timestamps: fall back to the actual time.
+  if (diffMs < 0) return formatHMS(d);
+
+  // Relative phrases should take priority for fresh messages, even if
+  // upstream timestamp timezone formatting is inconsistent.
+  if (diffMs <= 10_000) return "刚刚";
+  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}秒前`;
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}分钟前`;
+
+  if (isSameDay) {
+    return formatHMS(d);
+  }
+
+  return formatYMD(d);
+};
+
 const getPathTailLabel = (value: string): string => {
   const normalized = (value || "").replace(/\\/g, "/");
   const base = normalized.split("/").filter(Boolean).pop() || value;
@@ -512,7 +559,14 @@ const ChatItem = ({
     return hasAnswerText || timelineHasAnswer ? "回复中..." : "思考中...";
   }, [hasAnswerText, hasRunningTool, isAssistant, isStreaming, timelineHasAnswer]);
   const runStatus = useMemo(() => getRunStatus(message, isStreaming), [isStreaming, message]);
-  const roleTitle = isUser ? "输入" : isSystem ? "系统消息" : "执行记录";
+  const executionTimeText = useMemo(() => formatExecutionTimeForHeader((message as { time?: unknown }).time), [message]);
+  const roleTitle = isUser
+    ? "输入"
+    : isSystem
+    ? "系统消息"
+    : executionTimeText
+    ? `${executionTimeText}`
+    : "执行时间";
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
   const hasRequestContent = Boolean(requestContent?.trim());
   const requestPreview = useMemo(

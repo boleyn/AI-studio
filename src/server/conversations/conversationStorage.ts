@@ -12,6 +12,11 @@ import { getMongoDb } from "../db/mongo";
 export type ConversationMessage = {
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
+  /**
+   * Message creation time (used for display like "刚刚/几分钟前/年月日").
+   * Stored in DB as `time` and attached to the returned message payload.
+   */
+  time?: Date;
   id?: string;
   name?: string;
   tool_call_id?: string;
@@ -201,6 +206,7 @@ const messageToDoc = ({
 const docToMessage = (doc: ConversationItemDoc): ConversationMessage => ({
   role: doc.role,
   content: doc.content,
+  time: doc.time,
   id: doc.dataId,
   name: doc.name,
   tool_call_id: doc.tool_call_id,

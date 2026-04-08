@@ -387,6 +387,7 @@ const ChatPanel = ({
         (payload.selectedFilePaths?.length ? `已选择 ${payload.selectedFilePaths.length} 个文件` : "") ||
         `已上传 ${finalArtifacts.length} 个文件`;
       const nextConversationTitle = buildConversationTitle(text);
+      const userCreatedAt = new Date().toISOString();
 
       const userMessageId = createDataId();
       if (echoUserMessage) {
@@ -397,6 +398,7 @@ const ChatPanel = ({
             role: "user",
             content: displayText,
             id: userMessageId,
+            time: userCreatedAt,
             artifact:
               hasArtifacts
                 ? {
@@ -424,6 +426,7 @@ const ChatPanel = ({
         role: "user",
         content: userBubbleContent || displayText,
         id: userMessageId,
+        time: userCreatedAt,
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: payload.selectedFilePaths
           ? { selectedFilePaths: payload.selectedFilePaths }
@@ -453,6 +456,7 @@ const ChatPanel = ({
       };
 
       const assistantMessageId = createDataId();
+      const assistantCreatedAt = new Date().toISOString();
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
       cancelPendingFlushes();
@@ -464,6 +468,7 @@ const ChatPanel = ({
           role: "assistant",
           content: "",
           id: assistantMessageId,
+          time: assistantCreatedAt,
         },
       ]);
 
@@ -956,6 +961,7 @@ const ChatPanel = ({
               snapshot.push({
                 role: "assistant",
                 id: assistantMessageId,
+                time: assistantCreatedAt,
                 content: finalAssistantText || "[已中断]",
                 additional_kwargs: finalReasoningText
                   ? { reasoning_text: finalReasoningText }
