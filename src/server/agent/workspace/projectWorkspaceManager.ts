@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { Volume } from "memfs";
 import {
+  deleteFile,
   getProject,
   hasProjectFilesDir,
   updateBinaryFile,
@@ -377,6 +378,44 @@ export class ProjectWorkspaceManager {
       replaced,
       bytes: writeResult.bytes,
     };
+  }
+
+  async deleteFile(projectToken: string, filePath: string) {
+    const { token, state } = await this.assertHydrated(projectToken);
+    const normalized = normalizeProjectPath(filePath);
+    if (!state.vol.existsSync(normalized)) {
+      return { ok: false as const, message: `未找到文件 ${normalized}` };
+    }
+
+    const prevRaw = state.vol.readFileSync(normalized) as Buffer | string;
+    const prevBuffer = Buffer.isBuffer(prevRaw) ? prevRaw : Buffer.from(String(prevRaw), "utf8");
+    const prevContent = isLikelyBinaryBuffer(prevBuffer)
+      ? `[binary file omitted: ${prevBuffer.byteLength} bytes]`
+      : prevBuffer.toString("utf8");
+
+    const absPath = path.join(state.workspaceRoot, normalized.replace(/^\/+/, ""));
+    ensureInside(state.workspaceRoot, absPath, "文件路径");
+    await fs.rm(absPath, { force: true }).catch(() => undefined);
+
+    try {
+      state.vol.unlinkSync(normalized);
+    } catch {
+      // ignore
+    }
+    state.fileSizeByPath.delete(normalized);
+    if (!isAttachmentPath(normalized)) {
+      state.totalBytes = Math.max(0, state.totalBytes - prevBuffer.byteLength);
+    }
+
+    await deleteFile(token, normalized);
+    await fs.utimes(state.workspaceRoot, new Date(), new Date()).catch(() => undefined);
+    logWorkspaceEvent("delete_file", {
+      projectToken: token,
+      sessionId: this.safeSessionId,
+      path: normalized,
+      workspaceBytes: state.totalBytes,
+    });
+    return { ok: true as const, path: normalized, originalFile: prevContent };
   }
 
   async searchInFiles(projectToken: string, input: SearchInFilesInput) {

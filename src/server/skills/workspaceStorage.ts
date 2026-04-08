@@ -19,7 +19,8 @@ export type WorkspaceActionInput =
   | { action: "list" }
   | { action: "read"; path: string }
   | { action: "write"; path: string; content: string }
-  | { action: "replace"; path: string; query: string; replace: string }
+  | { action: "replace"; path: string; query: string; replace: string; replaceAll?: boolean }
+  | { action: "delete"; path: string }
   | ({ action: "search" } & SearchInFilesInput);
 
 const SKILLS_ROOT = "/skills";
@@ -127,6 +128,16 @@ const replaceAll = (haystack: string, needle: string, replacement: string) => {
   const count = countOccurrences(haystack, needle);
   const content = haystack.split(needle).join(replacement);
   return { content, count };
+};
+
+const replaceFirst = (haystack: string, needle: string, replacement: string) => {
+  if (!needle) throw new Error("替换内容不能为空");
+  const index = haystack.indexOf(needle);
+  if (index < 0) return { content: haystack, count: 0 };
+  return {
+    content: `${haystack.slice(0, index)}${replacement}${haystack.slice(index + needle.length)}`,
+    count: 1,
+  };
 };
 
 const skillToFiles = (name: string, content: string): Record<string, SkillWorkspaceFile> => ({
@@ -429,7 +440,26 @@ export const runWorkspaceAction = async (
     if (!source) {
       return { ok: false, action: "replace", message: `未找到文件 ${toSafeAbsolutePath(input.path)}` };
     }
-    const { content, count } = replaceAll(source, input.query, input.replace);
+    const occurrenceCount = countOccurrences(source, input.query);
+    if (occurrenceCount === 0) {
+      return {
+        ok: false,
+        action: "replace",
+        message: `String to replace not found in file.\nString: ${input.query}`,
+      };
+    }
+    if (occurrenceCount > 1 && !input.replaceAll) {
+      return {
+        ok: false,
+        action: "replace",
+        message:
+          `Found ${occurrenceCount} matches of the string to replace, but replaceAll is false. ` +
+          "To replace all occurrences, set replaceAll to true. To replace only one occurrence, provide more context.",
+      };
+    }
+    const { content, count } = input.replaceAll
+      ? replaceAll(source, input.query, input.replace)
+      : replaceFirst(source, input.query, input.replace);
     const updatedFiles = await writeSkillWorkspaceFile({
       workspaceId: workspace.id,
       userId: workspace.userId,
@@ -450,6 +480,32 @@ export const runWorkspaceAction = async (
         [toSafeAbsolutePath(input.path)]: {
           code: updatedFiles[filePath]?.code || content,
         },
+      },
+    };
+  }
+
+  if (input.action === "delete") {
+    if (workspace.source === "project") {
+      return { ok: false, action: "delete", message: "项目绑定 workspace 为兼容只读模式，无法写入" };
+    }
+    const filePath = toWorkspaceStoredPath(input.path, skillFiles);
+    if (!skillFiles[filePath]) {
+      return { ok: false, action: "delete", message: `未找到文件 ${toSafeAbsolutePath(input.path)}` };
+    }
+    const originalFile = skillFiles[filePath]?.code || "";
+    await deleteSkillWorkspaceFile({
+      workspaceId: workspace.id,
+      userId: workspace.userId,
+      skillId: workspace.skillId,
+      path: filePath,
+    });
+    return {
+      ok: true,
+      action: "delete",
+      message: `已删除 ${toSafeAbsolutePath(input.path)}`,
+      data: {
+        path: toSafeAbsolutePath(input.path),
+        originalFile,
       },
     };
   }

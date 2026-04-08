@@ -220,6 +220,7 @@ export const runAgentCall = async ({
   let requestError: any;
   const subAppUsages: ChatNodeUsageType[] = [];
   const isKimiModel = /kimi/i.test(String(model || ""));
+  const isMiniMaxModel = /minimax/i.test(String(model || ""));
 
   // 处理 tool 里的交互
   if (childrenInteractiveParams) {
@@ -325,14 +326,14 @@ export const runAgentCall = async ({
       throwError: false,
       body: {
         ...body,
-        ...(requestedMaxTokens !== undefined ? { max_tokens: maxTokens } : {}),
         model,
         messages: requestMessages,
         tool_choice: body.tool_choice ?? 'auto',
         toolCallMode: 'toolChoice',
         tools,
         // Kimi often emits duplicate batched tool calls; run sequential tool planning for stability.
-        parallel_tool_calls: !isKimiModel
+        // MiniMax also shows instability on large multi-file write_file payloads.
+        parallel_tool_calls: !isKimiModel && !isMiniMaxModel
       },
       userKey,
       isAborted,

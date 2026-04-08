@@ -546,8 +546,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             role: "system",
             content: [
               "Current turn includes uploaded attachments.",
-              'Before giving the final answer, call tool "read_file" for uploaded attachments.',
-              "For image attachments, use mode=vision (or mode=auto) with storagePath.",
+              'Before giving the final answer, call tool "Read" for uploaded attachments.',
+              'Use Read with file_path (for example "/.files/<filename>").',
             ].join("\n"),
           } as ChatCompletionMessageParam,
         ]

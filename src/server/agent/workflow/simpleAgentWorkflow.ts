@@ -99,6 +99,43 @@ const coerceToolArgs = (raw: string | undefined): unknown => {
 
 const toSafeToolArgs = (raw: string | undefined): unknown => coerceToolArgs(raw);
 
+const toRawToolArgSnippet = (raw: string | undefined, maxChars = 240) => {
+  const value = (raw || "").trim();
+  if (!value) return "";
+  return value.length > maxChars ? `${value.slice(0, maxChars)}...[truncated]` : value;
+};
+
+const inspectRawToolArgs = (raw: string | undefined) => {
+  const trimmed = (raw || "").trim();
+  const rawLength = trimmed.length;
+  const rawTail = rawLength > 160 ? trimmed.slice(-160) : trimmed;
+  const endsWithJsonCloser = /[}\]]\s*$/.test(trimmed);
+  let jsonValid = false;
+  if (trimmed) {
+    try {
+      JSON.parse(trimmed);
+      jsonValid = true;
+    } catch {
+      jsonValid = false;
+    }
+  }
+  const hasJsonOpen = trimmed.includes("{") || trimmed.includes("[");
+  const likelyTruncated = Boolean(trimmed) && hasJsonOpen && !endsWithJsonCloser && !jsonValid;
+  return {
+    rawLength,
+    rawTail,
+    endsWithJsonCloser,
+    jsonValid,
+    likelyTruncated,
+  };
+};
+
+const isValidWriteFileArgs = (input: unknown): input is { file_path: string; content: string } => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const value = input as { file_path?: unknown; content?: unknown };
+  return typeof value.file_path === "string" && typeof value.content === "string";
+};
+
 const formatToolArgs = (raw: string | undefined): string => {
   if (!raw) return "";
   const parsed = parsePossiblyNestedJson(raw);
@@ -135,8 +172,8 @@ const compactToolResponseForModel = (toolName: string, response: string): string
   const payload = parsed as Record<string, unknown>;
   const action = typeof payload.action === "string" ? payload.action : "";
   const isWriteLikeTool =
-    toolName === "write_file" ||
-    toolName === "replace_in_file" ||
+    toolName === "Write" ||
+    toolName === "Edit" ||
     (toolName === "global" && (action === "write" || action === "replace"));
   if (!isWriteLikeTool) {
     return response;
@@ -193,6 +230,8 @@ export const runSimpleAgentWorkflow = async ({
 }: RunSimpleAgentWorkflowInput): Promise<RunSimpleAgentWorkflowResult> => {
   const flowResponses: SimpleWorkflowNodeResponse[] = [];
   const isKimiModel = /kimi/i.test(selectedModel || "");
+  const streamedToolCallIds = new Set<string>();
+  const streamedToolParamIds = new Set<string>();
 
   const runResult = await runAgentCall({
     maxRunAgentTimes: recursionLimit,
@@ -225,6 +264,27 @@ export const runSimpleAgentWorkflow = async ({
       if (!text) return;
       onEvent?.(SseResponseEventEnum.reasoning, { text });
     },
+    onToolCall: ({ call }) => {
+      const toolCallId = typeof call?.id === "string" ? call.id : "";
+      const toolName = typeof call?.function?.name === "string" ? call.function.name : "";
+      if (!toolCallId || !toolName) return;
+      streamedToolCallIds.add(toolCallId);
+      onEvent?.(SseResponseEventEnum.toolCall, {
+        id: toolCallId,
+        toolName,
+      });
+    },
+    onToolParam: ({ tool, params }) => {
+      const toolCallId = typeof tool?.id === "string" ? tool.id : "";
+      const toolName = typeof tool?.function?.name === "string" ? tool.function.name : "";
+      if (!toolCallId || !toolName || !params) return;
+      streamedToolParamIds.add(toolCallId);
+      onEvent?.(SseResponseEventEnum.toolParams, {
+        id: toolCallId,
+        toolName,
+        params,
+      });
+    },
     handleToolResponse: async ({ call }) => {
       if (abortSignal?.aborted) {
         return {
@@ -241,14 +301,17 @@ export const runSimpleAgentWorkflow = async ({
       let status: "success" | "error" = "success";
 
       const toolName = call.function.name;
+      const argDiagnosis = inspectRawToolArgs(call.function.arguments);
       const params = formatToolArgs(call.function.arguments);
       // Emit tool lifecycle events from execution phase (after dedupe),
       // so UI cards reflect what actually runs.
-      onEvent?.(SseResponseEventEnum.toolCall, {
-        id: call.id,
-        toolName,
-      });
-      if (params) {
+      if (!streamedToolCallIds.has(call.id)) {
+        onEvent?.(SseResponseEventEnum.toolCall, {
+          id: call.id,
+          toolName,
+        });
+      }
+      if (params && !streamedToolParamIds.has(call.id)) {
         onEvent?.(SseResponseEventEnum.toolParams, {
           id: call.id,
           toolName,
@@ -263,8 +326,18 @@ export const runSimpleAgentWorkflow = async ({
         } else {
           try {
             const parsed = toSafeToolArgs(call.function.arguments);
+            if (toolName === "Write" && !isValidWriteFileArgs(parsed)) {
+              status = "error";
+              response = [
+                "Write 参数不完整或被截断：需要完整 JSON 且必须包含字符串字段 file_path、content。",
+                "请重试该工具调用，并只写一个文件（不要并行多个 Write），必要时缩短单次 content 长度。",
+                `raw_args_snippet=${toRawToolArgSnippet(call.function.arguments) || "<empty>"}`,
+                `diagnosis=${JSON.stringify(argDiagnosis)}`,
+              ].join(" ");
+            } else {
             const result = await tool.run(parsed);
             response = typeof result === "string" ? result : JSON.stringify(result);
+            }
           } catch (error) {
             status = "error";
             response = error instanceof Error ? error.message : "工具执行失败";
@@ -287,6 +360,10 @@ export const runSimpleAgentWorkflow = async ({
             runningTime,
             argsRawLength: (call.function.arguments || "").length,
             argsDisplayLength: params.length,
+            argsJsonValid: argDiagnosis.jsonValid,
+            argsEndsWithJsonCloser: argDiagnosis.endsWithJsonCloser,
+            argsLikelyTruncated: argDiagnosis.likelyTruncated,
+            argsTail: argDiagnosis.rawTail,
             rawResponseLength: response.length,
             modelResponseLength: modelResponse.length,
             paramsPreview: toDebugSnippet(params),

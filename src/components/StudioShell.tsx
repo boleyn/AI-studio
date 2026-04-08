@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Box,
   Button,
@@ -376,24 +376,6 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     setChatFileOptions(toSortedFilePaths(nextFiles));
   }, []);
 
-  useEffect(() => {
-    const handleMove = (event: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const containerLeft = containerRef.current?.getBoundingClientRect().left || 0;
-      const next = Math.min(728, Math.max(300, event.clientX - containerLeft));
-      setChatWidth(next);
-    };
-    const handleUp = () => {
-      resizingRef.current = false;
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-  }, []);
-
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
     const merged = {
       ...(latestFilesRef.current || files || {}),
@@ -442,6 +424,46 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [workspaceHeight, setWorkspaceHeight] = useState("100%");
   const [chatWidth, setChatWidth] = useState(546);
   const resizingRef = useRef(false);
+
+  const updateChatWidthByClientX = useCallback((clientX: number) => {
+    const containerLeft = containerRef.current?.getBoundingClientRect().left || 0;
+    const next = Math.min(728, Math.max(300, clientX - containerLeft));
+    setChatWidth(next);
+  }, []);
+
+  const finishResizing = useCallback(() => {
+    resizingRef.current = false;
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+  }, []);
+
+  const handleResizerPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizingRef.current = true;
+    updateChatWidthByClientX(event.clientX);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [updateChatWidthByClientX]);
+
+  const handleResizerPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    updateChatWidthByClientX(event.clientX);
+  }, [updateChatWidthByClientX]);
+
+  const handleResizerPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    finishResizing();
+  }, [finishResizing]);
+
+  useEffect(() => {
+    return () => {
+      finishResizing();
+    };
+  }, [finishResizing]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -568,24 +590,18 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               />
             </Box>
             <Box
-              w="0"
+              w="10px"
+              ml="-5px"
+              mr="-5px"
               cursor="col-resize"
               bg="transparent"
               position="relative"
               flexShrink={0}
-              _before={{
-                content: '""',
-                position: "absolute",
-                left: "-5px",
-                top: 0,
-                width: "10px",
-                height: "100%",
-                cursor: "col-resize",
-              }}
               _hover={{ bg: "transparent" }}
-              onMouseDown={() => {
-                resizingRef.current = true;
-              }}
+              onPointerDown={handleResizerPointerDown}
+              onPointerMove={handleResizerPointerMove}
+              onPointerUp={handleResizerPointerUp}
+              onLostPointerCapture={finishResizing}
             />
             <WorkspaceShell
               token={token}

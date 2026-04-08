@@ -535,6 +535,24 @@ export async function updateBinaryFile(
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
 
+export async function deleteFile(token: string, filePath: string): Promise<void> {
+  const coll = await getCollection();
+  const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
+  if (!exists) throw new Error("项目不存在");
+
+  const key = toProjectStorageFileKey(token, filePath);
+  await deleteProjectStorageFilesByKeys([key]);
+  await cleanupLegacyDir(token);
+
+  const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
+  const result = await coll.updateOne(
+    { token },
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
+  );
+  if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
 export async function readProjectFile(
   token: string,
   filePath: string

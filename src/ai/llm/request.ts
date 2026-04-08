@@ -76,6 +76,32 @@ const extractErrorResponseInfo = (error: any) => {
   };
 };
 
+const inspectToolArguments = (raw: unknown) => {
+  const text = typeof raw === 'string' ? raw : String(raw ?? '');
+  const trimmed = text.trim();
+  const argsLength = trimmed.length;
+  const argsTail = argsLength > 160 ? trimmed.slice(-160) : trimmed;
+  const endsWithJsonCloser = /[}\]]\s*$/.test(trimmed);
+  let jsonValid = false;
+  if (trimmed) {
+    try {
+      JSON.parse(trimmed);
+      jsonValid = true;
+    } catch {
+      jsonValid = false;
+    }
+  }
+  const hasJsonOpen = trimmed.includes('{') || trimmed.includes('[');
+  const likelyTruncated = Boolean(trimmed) && hasJsonOpen && !endsWithJsonCloser && !jsonValid;
+  return {
+    argsLength,
+    argsTail,
+    endsWithJsonCloser,
+    jsonValid,
+    likelyTruncated
+  };
+};
+
 const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessageParam[]) => {
   const toSafeToolArguments = (raw: unknown, toolCallId: string) => {
     const value = typeof raw === 'string' ? raw : String(raw ?? '');
@@ -102,8 +128,10 @@ const sanitizeToolResultMessagesForProvider = (messages: ChatCompletionMessagePa
           // fall through
         }
       }
+      const diagnosis = inspectToolArguments(trimmed);
       addLog.warn('[LLM Request][invalid-tool-arguments-json-fallback]', {
         tool_call_id: toolCallId,
+        ...diagnosis
       });
       return '{}';
     }
@@ -624,13 +652,14 @@ export const createStreamResponse = async ({
             if (!matchTool) return;
 
             const resolvedToolName = matchTool.function.name;
+            const bufferedArgs = existingPending.arguments;
             const call: ChatCompletionMessageToolCall = {
               id: existingPending.id || getNanoid(),
               type: 'function',
               function: {
                 // Always emit the canonical local tool name so executor can resolve it reliably.
                 name: resolvedToolName,
-                arguments: existingPending.arguments
+                arguments: bufferedArgs
               } as ChatCompletionMessageToolCall['function']
             };
             addLog.info('[LLM ToolCall][stream]', {
@@ -641,12 +670,13 @@ export const createStreamResponse = async ({
             });
             toolCalls[index] = call;
             onToolCall?.({ call });
+            // Emit buffered argument prefix collected before tool name was fully resolved.
+            if (bufferedArgs) {
+              onToolParam?.({ tool: call, params: bufferedArgs });
+            }
             // call 已创建后，arguments 的后续分片由 onToolParam 继续追加。
             existingPending.arguments = '';
             pendingTools.set(index, existingPending);
-            if (argChunk) {
-              onToolParam?.({ tool: call, params: argChunk });
-            }
           });
         }
       }
@@ -673,7 +703,7 @@ export const createStreamResponse = async ({
         .map((call) => ({
           id: call.id,
           name: call.function?.name,
-          argsLength: call.function?.arguments?.length || 0
+          ...inspectToolArguments(call.function?.arguments)
         })),
       finish_reason
     });
@@ -1069,11 +1099,13 @@ const toAnthropicMessages = (messages: ChatCompletionMessageParam[]) => {
 
 const toAnthropicTools = (tools?: ChatCompletionTool[]) => {
   if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  const strictToolUseEnabled = process.env.ANTHROPIC_STRICT_TOOL_USE !== "0";
   const mapped = tools
     .filter((tool) => tool?.type === 'function' && tool.function)
     .map((tool) => ({
       name: tool.function.name,
       description: tool.function.description || '',
+      ...(strictToolUseEnabled ? { strict: true } : {}),
       input_schema:
         tool.function.parameters && typeof tool.function.parameters === 'object'
           ? tool.function.parameters

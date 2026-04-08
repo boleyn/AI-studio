@@ -70,6 +70,7 @@ import { updatePrimaryModel } from "../services/models";
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
 const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
+const VIRTUAL_FAILED_ASSISTANT_PREFIX = "virtual-failed-assistant:";
 
 const readThinkingEnabled = () => {
   if (typeof window === "undefined") return true;
@@ -413,8 +414,8 @@ const ChatPanel = ({
 
       const imageInputParts = await getImageInputParts(finalArtifacts);
 
-      if (echoUserMessage && conversationId && nextConversationTitle) {
-        updateConversationTitle(conversationId, nextConversationTitle);
+      if (echoUserMessage && conversationId) {
+        updateConversationTitle(conversationId, nextConversationTitle || "历史记录");
       }
 
       const userBubbleContent = buildUserBubbleContent({
@@ -459,6 +460,7 @@ const ChatPanel = ({
 
       const assistantMessageId = createDataId();
       const assistantCreatedAt = new Date().toISOString();
+      let assistantFailureText: string | null = null;
       streamingTextRef.current = "";
       streamingReasoningRef.current = "";
       cancelPendingFlushes();
@@ -885,10 +887,15 @@ const ChatPanel = ({
         if (abortCtrl.signal.aborted) {
           return;
         }
+        assistantFailureText = `请求失败: ${error instanceof Error ? error.message : "未知错误"}`;
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, content: `请求失败: ${error instanceof Error ? error.message : "未知错误"}` }
+              ? {
+                  ...msg,
+                  content: assistantFailureText,
+                  status: "error",
+                }
               : msg
           )
         );
@@ -937,7 +944,7 @@ const ChatPanel = ({
             ),
           };
         });
-        if (abortCtrl.signal.aborted && conversationId) {
+        if ((abortCtrl.signal.aborted || assistantFailureText) && conversationId) {
           const persistedMessages = (() => {
             const snapshot = messagesRef.current.map((item) => ({ ...item }));
             if (!snapshot.some((item) => item.id === userMessage.id)) {
@@ -955,18 +962,24 @@ const ChatPanel = ({
                   : {};
               snapshot[assistantIndex] = {
                 ...assistant,
-                content: finalAssistantText || extractText(assistant.content) || "[已中断]",
+                content:
+                  finalAssistantText ||
+                  extractText(assistant.content) ||
+                  assistantFailureText ||
+                  "[已中断]",
+                ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: {
                   ...kwargs,
                   ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
                 },
               };
-            } else if (finalAssistantText || finalReasoningText) {
+            } else if (finalAssistantText || finalReasoningText || assistantFailureText) {
               snapshot.push({
                 role: "assistant",
                 id: assistantMessageId,
                 time: assistantCreatedAt,
-                content: finalAssistantText || "[已中断]",
+                content: finalAssistantText || assistantFailureText || "[已中断]",
+                ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: finalReasoningText
                   ? { reasoning_text: finalReasoningText }
                   : undefined,
@@ -1148,17 +1161,21 @@ const ChatPanel = ({
     async (assistantMessageId: string) => {
       if (isSending) return;
       const snapshot = [...messages];
-      const assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
-      if (assistantIndex < 0) return;
-      const assistantMessage = snapshot[assistantIndex];
-      if (assistantMessage.role !== "assistant") return;
-
       let userIndex = -1;
-      for (let i = assistantIndex - 1; i >= 0; i -= 1) {
-        if (snapshot[i].role === "user") {
-          userIndex = i;
-          break;
+      let assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
+      if (assistantIndex >= 0) {
+        const assistantMessage = snapshot[assistantIndex];
+        if (assistantMessage.role !== "assistant") return;
+        for (let i = assistantIndex - 1; i >= 0; i -= 1) {
+          if (snapshot[i].role === "user") {
+            userIndex = i;
+            break;
+          }
         }
+      } else if (assistantMessageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX)) {
+        const failedUserId = assistantMessageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length);
+        userIndex = snapshot.findIndex((message) => message.role === "user" && message.id === failedUserId);
+        assistantIndex = userIndex >= 0 ? userIndex + 1 : -1;
       }
       if (userIndex < 0) return;
       const userMessage = snapshot[userIndex];
@@ -1177,20 +1194,21 @@ const ChatPanel = ({
       if (!conversationId) return;
 
       // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
-      const remainedMessages = snapshot.slice(0, assistantIndex);
+      const cutIndex = Math.max(0, Math.min(assistantIndex, snapshot.length));
+      const remainedMessages = snapshot.slice(0, cutIndex);
       const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
       if (!replaced) return;
 
-      setMessages((prev) => prev.slice(0, assistantIndex));
+      setMessages((prev) => prev.slice(0, cutIndex));
       setMessageRatings((prev) => {
         const next = { ...prev };
-        for (const message of snapshot.slice(assistantIndex)) {
+        for (const message of snapshot.slice(cutIndex)) {
           if (!message.id) continue;
           delete next[message.id];
         }
         return next;
       });
-      if (streamingMessageId && snapshot.slice(assistantIndex).some((message) => message.id === streamingMessageId)) {
+      if (streamingMessageId && snapshot.slice(cutIndex).some((message) => message.id === streamingMessageId)) {
         setStreamingMessageId(null);
       }
 
@@ -1345,6 +1363,28 @@ const ChatPanel = ({
                       rating: messageRatings[assistantMessageId],
                     });
                     index += 1;
+                    continue;
+                  }
+                  if (message.role === "user" && !nextMessage && !isSending) {
+                    const userMessageId = message.id ?? `user-${index}`;
+                    const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
+                    const virtualMessage: ConversationMessage = {
+                      role: "assistant",
+                      id: virtualAssistantId,
+                      time: message.time,
+                      content: "请求失败（历史记录未保存回复），可点击重新生成。",
+                      status: "error",
+                    };
+                    rows.push({
+                      key: `${userMessageId}__${virtualAssistantId}`,
+                      message: virtualMessage,
+                      messageId: virtualAssistantId,
+                      requestMessage: message,
+                      requestContent: extractText(message.content),
+                      summary: getExecutionSummary(virtualMessage),
+                      isStreaming: false,
+                      canRegenerate: true,
+                    });
                     continue;
                   }
 

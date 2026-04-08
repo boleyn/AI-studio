@@ -27,7 +27,7 @@ export const buildSkillContentBlock = (
           "<skill_runnable_scripts>",
           ...runnableScripts.map((file) => `<script>${file}</script>`),
           "</skill_runnable_scripts>",
-          "If you need to inspect script source, call read_file with path like:",
+          "If you need to inspect script source, call Read with path like:",
           ...runnableScripts.map((file) => `<read_path>skills/${skill.name}/${file}</read_path>`),
         ]
       : [

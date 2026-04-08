@@ -3,29 +3,64 @@ import path from "path";
 import { z } from "zod";
 import type { AgentToolDefinition, ChangeTracker } from "./types";
 import { getProject } from "@server/projects/projectStorage";
-import { searchInFilesSchema, type SearchInFilesInput } from "@server/agent/searchInFiles";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
-import { getObjectFromStorage, listStorageObjectKeysByPrefix } from "@server/storage/s3";
-import { assertChatScopedStoragePath, getChatUploadRoot } from "../../../pages/api/core/chat/files/shared";
+import { getObjectFromStorage } from "@server/storage/s3";
+import { assertChatScopedStoragePath } from "../../../pages/api/core/chat/files/shared";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { getAIApi } from "@aistudio/ai/config";
 
-const listFilesSchema = z.object({});
+const listFilesSchema = z
+  .object({
+    pattern: z.string(),
+    path: z.string().optional(),
+  })
+  .strict();
 const readFileSchema = z
   .object({
-    path: z.string().optional(),
-    storagePath: z.string().optional(),
-    fileName: z.string().optional(),
-    mode: z.enum(["auto", "raw", "vision"]).optional(),
-    prompt: z.string().max(4000).optional(),
-    maxChars: z.number().int().min(500).max(50000).optional(),
+    file_path: z.string(),
+    offset: z.number().int().nonnegative().optional(),
+    limit: z.number().int().positive().optional(),
+    pages: z.string().optional(),
   })
-  .refine((value) => Boolean(value.path || value.storagePath || value.fileName), {
-    message: "path / storagePath / fileName 至少提供一个",
-  });
-const writeFileSchema = z.object({ path: z.string(), content: z.string() });
-const replaceInFileSchema = z.object({ path: z.string(), query: z.string(), replace: z.string() });
+  .strict();
+const writeFileSchema = z
+  .object({
+    file_path: z.string(),
+    content: z.string(),
+  })
+  .strict();
+const replaceInFileSchema = z
+  .object({
+    file_path: z.string(),
+    old_string: z.string(),
+    new_string: z.string(),
+    replace_all: z.boolean().optional(),
+  })
+  .strict();
+const deleteFileSchema = z
+  .object({
+    file_path: z.string(),
+  })
+  .strict();
+const grepSchema = z
+  .object({
+    pattern: z.string(),
+    path: z.string().optional(),
+    glob: z.string().optional(),
+    output_mode: z.enum(["content", "files_with_matches", "count"]).optional(),
+    "-B": z.number().optional(),
+    "-A": z.number().optional(),
+    "-C": z.number().optional(),
+    context: z.number().optional(),
+    "-n": z.boolean().optional(),
+    "-i": z.boolean().optional(),
+    type: z.string().optional(),
+    head_limit: z.number().optional(),
+    offset: z.number().optional(),
+    multiline: z.boolean().optional(),
+  })
+  .strict();
 const sandpackCompileInfoSchema = z.object({
   includeLogs: z.boolean().optional(),
   includeEvents: z.boolean().optional(),
@@ -336,77 +371,103 @@ const readSkillFileIfAllowed = async ({
 };
 
 const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
-  if (schema === listFilesSchema) return { type: "object", properties: {} };
+  if (schema === listFilesSchema) {
+    return {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "Claude Glob: glob 匹配模式，如 **/*.ts" },
+        path: {
+          type: "string",
+          description: "Claude Glob: 搜索目录（可选）。不传则在当前工作区根目录搜索",
+        },
+      },
+      required: ["pattern"],
+    };
+  }
   if (schema === readFileSchema) {
     return {
       type: "object",
       properties: {
-        path: {
+        file_path: {
           type: "string",
-          description: "项目/skill 文件路径（以 / 开头）；附件使用 path=/.files/<文件名>",
+          description: "Claude Read: 要读取的绝对文件路径",
         },
-        storagePath: {
-          type: "string",
-          description: "附件存储路径（chat_uploads/...）",
-        },
-        fileName: {
-          type: "string",
-          description: "按文件名模糊匹配会话附件",
-        },
-        mode: {
-          type: "string",
-          enum: ["auto", "raw", "vision"],
-          description:
-            "附件读取模式。auto: 图片优先视觉识别，文本返回 UTF-8；raw: 图片/二进制返回 base64；vision: 强制图片视觉识别。",
-        },
-        prompt: {
-          type: "string",
-          description: "仅图片视觉识别时可选。自定义本次识别提示词；不传则使用模型配置或默认提示词。",
-        },
-        maxChars: {
+        offset: {
           type: "integer",
-          minimum: 500,
-          maximum: 50000,
-          description: "附件内容最大返回字符数（默认 12000）",
+          minimum: 0,
+          description: "Claude 风格字段：读取起始行号（默认 1）",
         },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          description: "Claude 风格字段：读取行数限制",
+        },
+        pages: { type: "string", description: "Claude Read: PDF 页码范围（可选），当前预留字段" },
       },
+      required: ["file_path"],
     };
   }
   if (schema === writeFileSchema) {
     return {
       type: "object",
       properties: {
-        path: { type: "string", description: "以 / 开头的文件路径" },
-        content: { type: "string", description: "写入的完整内容" },
+        file_path: {
+          type: "string",
+          description: "Claude Write: 要写入的绝对文件路径",
+        },
+        content: {
+          type: "string",
+          description:
+            "写入的完整内容。仅用于新文件或完整重写；不要在同一轮并行多个 Write，尽量拆分为小文件/多次调用。",
+        },
       },
-      required: ["path", "content"],
+      required: ["file_path", "content"],
     };
   }
   if (schema === replaceInFileSchema) {
     return {
       type: "object",
       properties: {
-        path: { type: "string", description: "以 / 开头的文件路径" },
-        query: { type: "string", description: "需要替换的文本" },
-        replace: { type: "string", description: "替换后的文本" },
+        file_path: {
+          type: "string",
+          description: "Claude Edit: 要修改的文件绝对路径",
+        },
+        old_string: { type: "string", description: "Claude Edit: 被替换原文" },
+        new_string: { type: "string", description: "Claude Edit: 替换后文本" },
+        replace_all: { type: "boolean", description: "Claude Edit: 是否替换全部匹配（默认 false）" },
       },
-      required: ["path", "query", "replace"],
+      required: ["file_path", "old_string", "new_string"],
     };
   }
-  if (schema === searchInFilesSchema) {
+  if (schema === deleteFileSchema) {
     return {
       type: "object",
       properties: {
-        query: { type: "string", description: "搜索关键词或正则" },
-        regex: { type: "boolean", description: "是否将 query 按正则处理，默认 true（接近 rg）" },
-        caseSensitive: { type: "boolean", description: "是否区分大小写，默认 true（接近 rg）" },
-        wholeWord: { type: "boolean", description: "是否整词匹配（类似 rg -w）" },
-        includeGlobs: { type: "array", items: { type: "string" }, description: "只搜索匹配这些 glob 的路径" },
-        excludeGlobs: { type: "array", items: { type: "string" }, description: "排除匹配这些 glob 的路径" },
-        contextLines: { type: "integer", minimum: 0, maximum: 5, description: "每条命中返回前后上下文行数" },
-        maxResults: { type: "integer", minimum: 1, maximum: 500, description: "全局最大返回命中数" },
+        file_path: { type: "string", description: "要删除的文件绝对路径" },
       },
-      required: ["query"],
+      required: ["file_path"],
+    };
+  }
+  if (schema === grepSchema) {
+    return {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "Claude Grep: 正则模式（ripgrep 语义）" },
+        path: { type: "string", description: "Claude Grep: 搜索目录/文件（可选）" },
+        glob: { type: "string", description: "Claude Grep: 文件过滤 glob（可选）" },
+        output_mode: { type: "string", enum: ["content", "files_with_matches", "count"] },
+        "-B": { type: "number", description: "前文行数" },
+        "-A": { type: "number", description: "后文行数" },
+        "-C": { type: "number", description: "上下文行数" },
+        context: { type: "number", description: "上下文行数（同 -C）" },
+        "-n": { type: "boolean", description: "content 模式显示行号，默认 true" },
+        "-i": { type: "boolean", description: "忽略大小写（case-insensitive）" },
+        type: { type: "string", description: "文件类型过滤（当前仅透传保留）" },
+        head_limit: { type: "number", description: "最多返回条目数，默认 250，0 代表不主动截断（仍受系统上限）" },
+        offset: { type: "number", description: "跳过前 N 条后返回" },
+        multiline: { type: "boolean", description: "多行匹配（当前仅透传保留）" },
+      },
+      required: ["pattern"],
     };
   }
   if (schema === sandpackCompileInfoSchema) {
@@ -476,6 +537,66 @@ const safeParse = <T>(
   return { ok: true, data: parsed.data as T };
 };
 
+const sliceContentByLineRange = (content: string, offset?: number, limit?: number) => {
+  const allLines = content.split("\n");
+  const totalLines = allLines.length;
+  const startLine = offset && offset > 0 ? offset : 1;
+  const startIndex = Math.max(0, startLine - 1);
+  const endIndex = typeof limit === "number" ? startIndex + Math.max(0, limit) : undefined;
+  const selectedLines = allLines.slice(startIndex, endIndex);
+  return {
+    content: selectedLines.join("\n"),
+    startLine,
+    numLines: selectedLines.length,
+    totalLines,
+  };
+};
+
+const globToRegExp = (glob: string) => {
+  let out = "^";
+  for (let i = 0; i < glob.length; i += 1) {
+    const ch = glob[i];
+    const next = glob[i + 1];
+    if (ch === "*" && next === "*") {
+      out += ".*";
+      i += 1;
+      continue;
+    }
+    if (ch === "*") {
+      out += "[^/]*";
+      continue;
+    }
+    if (ch === "?") {
+      out += "[^/]";
+      continue;
+    }
+    out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  out += "$";
+  return new RegExp(out);
+};
+
+const normalizeSearchRoot = (value?: string) => {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  return raw.startsWith("/") ? raw.replace(/\/+$/, "") : `/${raw.replace(/^\/+/, "").replace(/\/+$/, "")}`;
+};
+
+const splitGlobPatterns = (value?: string) =>
+  (value || "")
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const replaceAtMostOnce = (source: string, oldString: string, newString: string) => {
+  const index = source.indexOf(oldString);
+  if (index < 0) return { content: source, replaced: 0 };
+  return {
+    content: `${source.slice(0, index)}${newString}${source.slice(index + oldString.length)}`,
+    replaced: 1,
+  };
+};
+
 const toVirtualPackageJsonContent = (input: {
   projectName?: string;
   dependencies?: Record<string, string>;
@@ -516,11 +637,11 @@ export function createProjectTools(
 
   return [
     {
-      name: "list_files",
+      name: "Glob",
       description: "列出项目中的所有文件路径。",
       parameters: toJsonSchema(listFilesSchema),
       run: async (input) => {
-        const parsed = safeParse(listFilesSchema, input, "list_files");
+        const parsed = safeParse<{ pattern: string; path?: string }>(listFilesSchema, input, "Glob");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token, { force: true });
         const files = await workspaceManager.listFiles(token);
@@ -528,40 +649,48 @@ export function createProjectTools(
           if (files.includes("/package.json")) return files;
           return [...files, "/package.json"].sort((a, b) => a.localeCompare(b));
         })();
+        const matcher = globToRegExp(parsed.data.pattern);
+        const root = normalizeSearchRoot(parsed.data.path);
+        const filenames = withVirtualPackageJson.filter((filePath) => {
+          if (root && !(filePath === root || filePath.startsWith(`${root}/`))) return false;
+          const relative = root ? filePath.slice(root.length).replace(/^\/+/, "") : filePath.replace(/^\/+/, "");
+          return matcher.test(relative) || matcher.test(filePath);
+        });
         return {
           ok: true,
           action: "list",
-          message: `共 ${withVirtualPackageJson.length} 个文件。`,
-          data: { files: withVirtualPackageJson },
+          message: `匹配到 ${filenames.length} 个文件。`,
+          durationMs: 0,
+          numFiles: filenames.length,
+          filenames,
+          truncated: false,
+          data: { files: filenames },
         };
       },
     },
     {
-      name: "read_file",
+      name: "Read",
       description:
-        "读取项目文件、已加载 skill 文件或当前会话附件。项目/skill 文件使用 path；附件使用 storagePath 或 fileName。图片附件支持视觉识别（mode=vision/auto）。",
+        "读取项目文件或当前会话附件（Claude Read 风格）。",
       parameters: toJsonSchema(readFileSchema),
       run: async (input) => {
         const parsed = safeParse<{
-          path?: string;
-          storagePath?: string;
-          fileName?: string;
-          mode?: "auto" | "raw" | "vision";
-          prompt?: string;
-          maxChars?: number;
-        }>(readFileSchema, input, "read_file");
+          file_path: string;
+          offset?: number;
+          limit?: number;
+          pages?: string;
+        }>(readFileSchema, input, "Read");
         if (!parsed.ok) throw new Error(parsed.error);
 
-        const pathInput = (parsed.data.path || "").trim();
-        const storagePathInput = (parsed.data.storagePath || "").trim();
-        const fileNameInput = (parsed.data.fileName || "").trim();
+        const pathInput = parsed.data.file_path.trim();
         const looksLikeScopedStoragePath = /^\/?chat_uploads\//i.test(pathInput);
-        const shouldReadAttachment =
-          Boolean(storagePathInput || fileNameInput) || looksLikeScopedStoragePath;
+        const shouldReadAttachment = looksLikeScopedStoragePath;
 
-        const mode = parsed.data.mode || "auto";
-        const maxChars = parsed.data.maxChars ?? CHAT_FILE_MAX_CHARS;
-        if (pathInput && !storagePathInput && !fileNameInput) {
+        const mode: "auto" = "auto";
+        const maxChars = CHAT_FILE_MAX_CHARS;
+        const offset = parsed.data.offset;
+        const limit = parsed.data.limit;
+        if (!shouldReadAttachment) {
           try {
             await workspaceManager.hydrate(token, { force: true });
             const file = await workspaceManager.readFile(token, pathInput);
@@ -570,16 +699,26 @@ export function createProjectTools(
               if (normalizedPath === "/package.json") {
                 const project = await getProject(token);
                 if (project) {
+                  const packageJsonContent = toVirtualPackageJsonContent({
+                    projectName: project.name,
+                    dependencies: project.dependencies || {},
+                  });
+                  const packageJsonLines = packageJsonContent.split("\n");
                   return {
                     ok: true,
                     action: "read",
                     message: "已读取 /package.json（运行时生成）。",
+                    type: "text",
+                    file: {
+                      filePath: "/package.json",
+                      content: packageJsonContent,
+                      numLines: packageJsonLines.length,
+                      startLine: 1,
+                      totalLines: packageJsonLines.length,
+                    },
                     data: {
                       path: "/package.json",
-                      content: toVirtualPackageJsonContent({
-                        projectName: project.name,
-                        dependencies: project.dependencies || {},
-                      }),
+                      content: packageJsonContent,
                     },
                   };
                 }
@@ -604,11 +743,20 @@ export function createProjectTools(
                 maxChars,
               });
             }
+            const ranged = sliceContentByLineRange(String(file.content || ""), offset, limit);
             return {
               ok: true,
               action: "read",
               message: `已读取 ${file.path}。`,
-              data: { path: file.path, content: file.content },
+              type: "text",
+              file: {
+                filePath: file.path,
+                content: ranged.content,
+                numLines: ranged.numLines,
+                startLine: ranged.startLine,
+                totalLines: ranged.totalLines,
+              },
+              data: { path: file.path, content: ranged.content },
             };
           } catch (error) {
             const skillRead = await readSkillFileIfAllowed({
@@ -620,42 +768,10 @@ export function createProjectTools(
             throw error;
           }
         }
-        if (!shouldReadAttachment) {
-          throw new Error("请提供 path（工作区路径）或 storagePath/fileName（会话附件）。");
-        }
 
         const chatId = (options?.chatId || "").trim();
         if (!chatId) throw new Error("当前会话缺少 chatId，无法读取附件");
-
-        const explicitStorageLooksScoped =
-          /^\/?chat_uploads\//i.test(storagePathInput) ||
-          /^\/?\.?files\//i.test(storagePathInput);
-        let storagePath = storagePathInput || (looksLikeScopedStoragePath ? pathInput.replace(/^\/+/, "") : "");
-        if (storagePathInput && !explicitStorageLooksScoped) {
-          storagePath = "";
-        }
-        if (!storagePath) {
-          const keyword = (fileNameInput || storagePathInput).toLowerCase();
-          const prefix = getChatUploadRoot(token, chatId);
-          const allKeys = await listStorageObjectKeysByPrefix({
-            prefix,
-            bucketType: "private",
-          });
-          const fileKeys = allKeys.filter(
-            (key) => key.includes("/.files/files/") || key.includes("/.files/")
-          );
-          const matched = fileKeys
-            .filter((key) => {
-              if (!keyword) return true;
-              const fileName = key.split("/").pop()?.toLowerCase() || "";
-              return fileName.includes(keyword);
-            })
-            .sort((a, b) => b.localeCompare(a));
-          if (matched.length === 0) {
-            throw new Error("未找到匹配的会话附件");
-          }
-          storagePath = matched[0];
-        }
+        const storagePath = pathInput.replace(/^\/+/, "");
 
         const normalizedPath = assertChatScopedStoragePath({
           storagePath,
@@ -685,13 +801,13 @@ export function createProjectTools(
           throw (lastError instanceof Error ? lastError : new Error("附件读取失败"));
         }
         const normalizedContentType = (contentType || inferImageContentTypeFromPath(loadedPath)).toLowerCase();
-        if (normalizedContentType.startsWith("image/") && mode !== "raw") {
+        if (normalizedContentType.startsWith("image/")) {
           return await readImageByVision({
             storagePath: loadedPath,
             buffer,
             contentType: normalizedContentType,
             maxChars,
-            prompt: parsed.data.prompt,
+            prompt: undefined,
           });
         }
         return toReadFilePayload({
@@ -704,71 +820,237 @@ export function createProjectTools(
       },
     },
     {
-      name: "write_file",
-      description: "在项目中创建或覆盖文件内容。",
+      name: "Write",
+      description:
+        "在项目中创建或覆盖文件内容。优先用于新文件或完整重写；修改已有文件优先使用 Edit。若写已有文件，先用 Read 读取当前内容再写回。禁止在同一轮并行多个 Write；一次只写一个文件，复杂改动拆分到多个小文件/多次调用。",
       parameters: toJsonSchema(writeFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; content: string }>(writeFileSchema, input, "write_file");
+        const parsed = safeParse<{ file_path: string; content: string }>(
+          writeFileSchema,
+          input,
+          "Write"
+        );
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        const result = await workspaceManager.writeFile(token, parsed.data.path, parsed.data.content);
+        const targetPath = parsed.data.file_path;
+        const previous = await workspaceManager.readFile(token, targetPath);
+        const result = await workspaceManager.writeFile(token, targetPath, parsed.data.content);
+        const type = previous ? "update" : "create";
         changeTracker.paths.add(result.path);
         changeTracker.changed = true;
         return {
           ok: true,
           action: "write",
           message: `已写入 ${result.path}。`,
+          type,
+          filePath: result.path,
+          content: parsed.data.content,
+          structuredPatch: [],
+          originalFile: previous?.content ?? null,
           data: { path: result.path, bytes: result.bytes },
           uiFiles: { [result.path]: { code: parsed.data.content } },
         };
       },
     },
     {
-      name: "replace_in_file",
-      description: "替换文件中的指定文本。",
+      name: "Edit",
+      description:
+        "替换文件中的指定文本（优先用于修改已有文件，避免整文件重写）。请先 Read 确认上下文后再替换；保持单次替换聚焦，跨关注点改动拆分为多次调用。",
       parameters: toJsonSchema(replaceInFileSchema),
       run: async (input) => {
-        const parsed = safeParse<{ path: string; query: string; replace: string }>(
+        const parsed = safeParse<{
+          file_path: string;
+          old_string: string;
+          new_string: string;
+          replace_all?: boolean;
+        }>(
           replaceInFileSchema,
           input,
-          "replace_in_file"
+          "Edit"
         );
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        const result = await workspaceManager.replaceInFile(
-          token,
-          parsed.data.path,
-          parsed.data.query,
-          parsed.data.replace
-        );
-        if (!result.ok) {
+        const targetPath = parsed.data.file_path;
+        const oldString = parsed.data.old_string;
+        const newString = parsed.data.new_string;
+        const replaceAll = parsed.data.replace_all ?? false;
+        const existing = await workspaceManager.readFile(token, targetPath);
+        if (!existing) {
           return {
             ok: false,
             action: "replace",
-            message: result.message,
+            message: `未找到文件 ${targetPath}`,
           };
         }
-        const latest = await workspaceManager.readFile(token, result.path);
-        changeTracker.paths.add(result.path);
+        const originalFile = String(existing.content || "");
+        const occurrences = oldString ? originalFile.split(oldString).length - 1 : 0;
+        if (!oldString || occurrences === 0) {
+          return {
+            ok: false,
+            action: "replace",
+            message: `String to replace not found in file.\nString: ${oldString}`,
+          };
+        }
+        if (occurrences > 1 && !replaceAll) {
+          return {
+            ok: false,
+            action: "replace",
+            message:
+              `Found ${occurrences} matches of the string to replace, but replace_all is false. ` +
+              "To replace all occurrences, set replace_all to true. To replace only one occurrence, provide more context.",
+          };
+        }
+        const next = replaceAll
+          ? { content: originalFile.split(oldString).join(newString), replaced: occurrences }
+          : replaceAtMostOnce(originalFile, oldString, newString);
+        const writeResult = await workspaceManager.writeFile(token, existing.path, next.content);
+        const latest = await workspaceManager.readFile(token, writeResult.path);
+        changeTracker.paths.add(writeResult.path);
         changeTracker.changed = true;
         return {
           ok: true,
           action: "replace",
-          message: `已在 ${result.path} 中替换 ${result.replaced} 处。`,
-          data: { path: result.path, replaced: result.replaced, bytes: result.bytes },
-          uiFiles: latest ? { [result.path]: { code: latest.content } } : {},
+          message: `已在 ${writeResult.path} 中替换 ${next.replaced} 处。`,
+          filePath: writeResult.path,
+          oldString,
+          newString,
+          originalFile,
+          structuredPatch: [],
+          userModified: false,
+          replaceAll,
+          data: { path: writeResult.path, replaced: next.replaced, bytes: writeResult.bytes },
+          uiFiles: latest ? { [writeResult.path]: { code: latest.content } } : {},
         };
       },
     },
     {
-      name: "search_in_files",
-      description: "在项目中按 rg 风格搜索（支持正则、大小写、glob 过滤、上下文）。",
-      parameters: toJsonSchema(searchInFilesSchema),
+      name: "Delete",
+      description: "删除指定文件（Claude Delete：仅支持 file_path）。",
+      parameters: toJsonSchema(deleteFileSchema),
       run: async (input) => {
-        const parsed = safeParse<SearchInFilesInput>(searchInFilesSchema, input, "search_in_files");
+        const parsed = safeParse<{ file_path: string }>(deleteFileSchema, input, "Delete");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        return workspaceManager.searchInFiles(token, parsed.data);
+        const targetPath = parsed.data.file_path;
+        const result = await workspaceManager.deleteFile(token, targetPath);
+        if (!result.ok) {
+          return {
+            ok: false,
+            action: "delete",
+            message: result.message,
+          };
+        }
+        changeTracker.paths.add(result.path);
+        changeTracker.changed = true;
+        return {
+          ok: true,
+          action: "delete",
+          message: `已删除 ${result.path}。`,
+          type: "delete",
+          filePath: result.path,
+          originalFile: result.originalFile,
+          data: { path: result.path },
+        };
+      },
+    },
+    {
+      name: "Grep",
+      description: "在项目中按 rg 风格搜索（支持正则、大小写、glob 过滤、上下文）。",
+      parameters: toJsonSchema(grepSchema),
+      run: async (input) => {
+        const parsed = safeParse<{
+          pattern: string;
+          path?: string;
+          glob?: string;
+          output_mode?: "content" | "files_with_matches" | "count";
+          "-A"?: number;
+          "-B"?: number;
+          "-C"?: number;
+          context?: number;
+          "-n"?: boolean;
+          "-i"?: boolean;
+          head_limit?: number;
+          offset?: number;
+        }>(grepSchema, input, "Grep");
+        if (!parsed.ok) throw new Error(parsed.error);
+        await workspaceManager.hydrate(token);
+        const outputMode = parsed.data.output_mode || "files_with_matches";
+        const includeGlobs: string[] = [];
+        const root = normalizeSearchRoot(parsed.data.path);
+        if (root) {
+          includeGlobs.push(root, `${root}/**`);
+        }
+        includeGlobs.push(...splitGlobPatterns(parsed.data.glob));
+
+        const contextFromFlags =
+          typeof parsed.data["-C"] === "number"
+            ? parsed.data["-C"]
+            : typeof parsed.data.context === "number"
+            ? parsed.data.context
+            : Math.max(parsed.data["-A"] || 0, parsed.data["-B"] || 0);
+        const headLimit =
+          typeof parsed.data.head_limit === "number"
+            ? parsed.data.head_limit
+            : 250;
+        const maxResults = headLimit <= 0 ? 500 : Math.min(Math.max(1, Math.floor(headLimit)), 500);
+        const offset = Math.max(0, Math.floor(parsed.data.offset || 0));
+        const searchResult = await workspaceManager.searchInFiles(token, {
+          query: parsed.data.pattern,
+          regex: true,
+          caseSensitive: parsed.data["-i"] ? false : true,
+          wholeWord: false,
+          includeGlobs: includeGlobs.length > 0 ? includeGlobs : undefined,
+          excludeGlobs: undefined,
+          contextLines: Math.min(5, Math.max(0, Math.floor(contextFromFlags || 0))),
+          maxResults,
+        });
+        const rawResults = (searchResult as any)?.data?.results || [];
+        const slicedResults = rawResults.slice(offset);
+        const filenames = slicedResults.map((item: any) => item.path);
+
+        if (outputMode === "count") {
+          const content = slicedResults
+            .map((item: any) => `${item.path}:${Array.isArray(item.matches) ? item.matches.length : 0}`)
+            .join("\n");
+          return {
+            mode: "count",
+            numFiles: filenames.length,
+            filenames,
+            numMatches: slicedResults.reduce(
+              (acc: number, item: any) => acc + (Array.isArray(item.matches) ? item.matches.length : 0),
+              0
+            ),
+            content,
+            appliedLimit: maxResults,
+            appliedOffset: offset || undefined,
+          };
+        }
+        if (outputMode === "content") {
+          const showLineNumber = parsed.data["-n"] !== false;
+          const content = slicedResults
+            .flatMap((item: any) =>
+              (item.matches || []).map((match: any) =>
+                showLineNumber ? `${item.path}:${match.line}:${match.snippet}` : `${item.path}:${match.snippet}`
+              )
+            )
+            .join("\n");
+          return {
+            mode: "content",
+            numFiles: filenames.length,
+            filenames,
+            content,
+            numLines: content ? content.split("\n").length : 0,
+            appliedLimit: maxResults,
+            appliedOffset: offset || undefined,
+          };
+        }
+        return {
+          mode: "files_with_matches",
+          numFiles: filenames.length,
+          filenames,
+          appliedLimit: maxResults,
+          appliedOffset: offset || undefined,
+        };
       },
     },
     {
