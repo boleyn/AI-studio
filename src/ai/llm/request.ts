@@ -17,6 +17,7 @@ import {
   parseReasoningContent
 } from '@aistudio/ai/utils';
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { removeDatasetCiteText } from '@aistudio/ai/compat/global/core/ai/llm/utils';
 import { getAIApi } from '@aistudio/ai/config';
 import type { OpenaiAccountType } from '@aistudio/ai/compat/global/support/user/team/type';
@@ -938,6 +939,20 @@ const resolveModelProtocol = (modelData: LLMModelItemType) => {
   return !protocol || protocol === 'openai' ? 'openai' : protocol;
 };
 
+const toGoogleFinishReason = (reason: unknown): CompletionFinishReason => {
+  const value = String(reason || '').trim().toUpperCase();
+  switch (value) {
+    case 'STOP':
+      return 'stop';
+    case 'MAX_TOKENS':
+      return 'length';
+    case 'SAFETY':
+      return 'content_filter';
+    default:
+      return null;
+  }
+};
+
 const toAnthropicFinishReason = (reason: unknown): CompletionFinishReason => {
   switch (reason) {
     case 'end_turn':
@@ -1362,6 +1377,370 @@ const createAnthropicChatCompletion = async ({
   }
 };
 
+const toGoogleTools = (tools?: ChatCompletionTool[]) => {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  const declarations = tools
+    .filter((tool) => tool?.type === 'function' && tool.function)
+    .map((tool) => ({
+      name: tool.function.name,
+      description: tool.function.description || '',
+      parametersJsonSchema:
+        tool.function.parameters && typeof tool.function.parameters === 'object'
+          ? tool.function.parameters
+          : { type: 'object', properties: {} },
+    }));
+  if (declarations.length === 0) return undefined;
+  return [{ functionDeclarations: declarations }];
+};
+
+const toGoogleToolConfig = (toolChoice: unknown, hasTools: boolean) => {
+  if (!hasTools) return undefined;
+  if (toolChoice === 'required') {
+    return {
+      functionCallingConfig: {
+        mode: 'ANY',
+      },
+    };
+  }
+  if (typeof toolChoice === 'object' && toolChoice) {
+    const fnName = (toolChoice as { function?: { name?: unknown } }).function?.name;
+    if (typeof fnName === 'string' && fnName.trim()) {
+      return {
+        functionCallingConfig: {
+          mode: 'ANY',
+          allowedFunctionNames: [fnName.trim()],
+        },
+      };
+    }
+  }
+  return {
+    functionCallingConfig: {
+      mode: 'AUTO',
+    },
+  };
+};
+
+const toGoogleMessages = (messages: ChatCompletionMessageParam[]) => {
+  const safeMessages = sanitizeToolResultMessagesForProvider(messages);
+  const systemParts: string[] = [];
+  const output: Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }> = [];
+  const toolNameByCallId = new Map<string, string>();
+
+  const pushMessage = (role: 'user' | 'model', parts: Array<Record<string, unknown>>) => {
+    if (parts.length === 0) return;
+    output.push({ role, parts });
+  };
+
+  safeMessages.forEach((message) => {
+    if (!message || typeof message !== 'object') return;
+    if (message.role === 'system') {
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      if (text.trim()) systemParts.push(text);
+      return;
+    }
+    if (message.role === 'user') {
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      pushMessage('user', text ? [{ text }] : []);
+      return;
+    }
+    if (message.role === 'assistant') {
+      const parts: Array<Record<string, unknown>> = [];
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      if (text) parts.push({ text });
+      const toolCalls = (message as { tool_calls?: ChatCompletionMessageToolCall[] }).tool_calls;
+      if (Array.isArray(toolCalls)) {
+        toolCalls.forEach((call) => {
+          const id = typeof call?.id === 'string' ? call.id : '';
+          const name = typeof call?.function?.name === 'string' ? call.function.name : 'tool';
+          if (id) toolNameByCallId.set(id, name);
+          parts.push({
+            functionCall: {
+              name,
+              args: parseToolInput(call?.function?.arguments),
+            },
+          });
+        });
+      }
+      pushMessage('model', parts);
+      return;
+    }
+    if (message.role === 'tool') {
+      const toolCallId =
+        typeof (message as { tool_call_id?: unknown }).tool_call_id === 'string'
+          ? ((message as { tool_call_id?: string }).tool_call_id as string)
+          : '';
+      if (!toolCallId) return;
+      const name = toolNameByCallId.get(toolCallId) || 'tool';
+      const text = toAnthropicText((message as { content?: unknown }).content);
+      let responsePayload: unknown = { result: text };
+      if (text.trim()) {
+        try {
+          responsePayload = JSON.parse(text);
+        } catch {
+          responsePayload = { result: text };
+        }
+      }
+      pushMessage('user', [
+        {
+          functionResponse: {
+            name,
+            response: responsePayload,
+          },
+        },
+      ]);
+    }
+  });
+
+  return {
+    systemInstruction: systemParts.join('\n\n').trim(),
+    contents: output,
+  };
+};
+
+const createGoogleStreamResponse = (
+  stream: AsyncIterable<unknown>,
+  created: number,
+  model: string,
+  onDone: () => void
+) => {
+  const emittedCalls = new Set<string>();
+  const makeChunk = (delta: Record<string, unknown>, finishReason: CompletionFinishReason = null) =>
+    ({
+      id: `chatcmpl-${Date.now()}`,
+      object: 'chat.completion.chunk',
+      created,
+      model,
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    }) as unknown;
+
+  const iterable = {
+    async *[Symbol.asyncIterator]() {
+      let finalReason: CompletionFinishReason = null;
+      try {
+        for await (const rawChunk of stream) {
+          const chunk = rawChunk as any;
+          const text = typeof chunk?.text === 'string' ? chunk.text : '';
+          if (text) {
+            yield makeChunk({ content: text });
+          }
+
+          const functionCalls = Array.isArray(chunk?.functionCalls) ? chunk.functionCalls : [];
+          functionCalls.forEach((call: any, index: number) => {
+            const name = typeof call?.name === 'string' ? call.name : '';
+            const argsObj = call?.args && typeof call.args === 'object' ? call.args : {};
+            if (!name) return;
+            const key = `${name}::${JSON.stringify(argsObj)}`;
+            if (emittedCalls.has(key)) return;
+            emittedCalls.add(key);
+            const id = getNanoid();
+            const delta = {
+              tool_calls: [
+                {
+                  index,
+                  id,
+                  type: 'function',
+                  function: {
+                    name,
+                    arguments: JSON.stringify(argsObj),
+                  },
+                },
+              ],
+            };
+            // eslint-disable-next-line no-void
+            void (delta && 0);
+          });
+          for (const [index, call] of functionCalls.entries()) {
+            const name = typeof call?.name === 'string' ? call.name : '';
+            const argsObj = call?.args && typeof call.args === 'object' ? call.args : {};
+            if (!name) continue;
+            const key = `${name}::${JSON.stringify(argsObj)}`;
+            if (!emittedCalls.has(key)) continue;
+            yield makeChunk({
+              tool_calls: [
+                {
+                  index,
+                  id: getNanoid(),
+                  type: 'function',
+                  function: {
+                    name,
+                    arguments: JSON.stringify(argsObj),
+                  },
+                },
+              ],
+            });
+            emittedCalls.delete(key);
+          }
+
+          const reason =
+            chunk?.candidates?.[0]?.finishReason ??
+            chunk?.finishReason ??
+            chunk?.candidates?.[0]?.finish_reason;
+          const mapped = toGoogleFinishReason(reason);
+          if (mapped) finalReason = mapped;
+        }
+        yield makeChunk({}, finalReason || 'stop');
+      } finally {
+        onDone();
+      }
+    },
+  } as AsyncIterable<unknown> & { controller?: AbortController };
+
+  return iterable;
+};
+
+const createGoogleChatCompletion = async ({
+  modelData,
+  body,
+  timeout,
+  options,
+}: {
+  modelData: LLMModelItemType;
+  body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming;
+  timeout?: number;
+  options?: OpenAI.RequestOptions;
+}) => {
+  const apiKey = String((modelData as { key?: unknown }).key || '').trim();
+  const rawBaseUrl = String((modelData as { baseUrl?: unknown }).baseUrl || '').trim();
+  if (!apiKey) {
+    throw new Error('Google 协议模型缺少 key 配置');
+  }
+
+  const formatTimeout = timeout ? timeout : 600000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), formatTimeout);
+  let keepTimerForStream = false;
+
+  const headers = sanitizeHeaders((options?.headers || {}) as Record<string, string>) as Record<
+    string,
+    string
+  >;
+  const requestMeta = {
+    baseUrl: rawBaseUrl || 'https://generativelanguage.googleapis.com',
+    path: '/v1beta/models/*:generateContent',
+    headers,
+  };
+
+  const client = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      ...(rawBaseUrl ? { baseUrl: rawBaseUrl } : {}),
+      headers: (options?.headers || {}) as Record<string, string>,
+      timeout: formatTimeout,
+    } as any,
+  } as any);
+
+  const converted = toGoogleMessages(Array.isArray(body.messages) ? body.messages : []);
+  const googleTools = toGoogleTools(body.tools);
+  const requestConfig: Record<string, unknown> = {
+    temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
+    topP: typeof body.top_p === 'number' ? body.top_p : undefined,
+    maxOutputTokens:
+      typeof body.max_tokens === 'number' && Number.isFinite(body.max_tokens) && body.max_tokens > 0
+        ? Math.floor(body.max_tokens)
+        : undefined,
+    stopSequences: Array.isArray(body.stop)
+      ? body.stop
+      : typeof body.stop === 'string'
+      ? [body.stop]
+      : undefined,
+    ...(converted.systemInstruction ? { systemInstruction: converted.systemInstruction } : {}),
+    ...(googleTools
+      ? {
+          tools: googleTools,
+          toolConfig: toGoogleToolConfig((body as { tool_choice?: unknown }).tool_choice, true),
+        }
+      : {}),
+  };
+
+  const params = {
+    model: String(body.model || modelData.model),
+    contents: converted.contents,
+    config: Object.fromEntries(
+      Object.entries(requestConfig).filter(([, value]) => value !== undefined && value !== null)
+    ),
+  };
+
+  try {
+    if (body.stream) {
+      const stream = (await (client.models as any).generateContentStream(params)) as AsyncIterable<unknown> & {
+        [key: string]: unknown;
+      };
+      keepTimerForStream = true;
+      const streamResponse = createGoogleStreamResponse(
+        stream,
+        Math.floor(Date.now() / 1000),
+        String(body.model || modelData.model),
+        () => clearTimeout(timer)
+      ) as StreamChatType;
+      streamResponse.controller = controller;
+      return {
+        response: streamResponse,
+        isStreamResponse: true as const,
+        requestMeta,
+      };
+    }
+
+    const json = (await (client.models as any).generateContent(params)) as any;
+    const text = typeof json?.text === 'string' ? json.text : '';
+    const functionCalls = Array.isArray(json?.functionCalls) ? json.functionCalls : [];
+    const toolCalls = functionCalls
+      .map((call: any) => {
+        const name = typeof call?.name === 'string' ? call.name : '';
+        if (!name) return null;
+        return {
+          id: getNanoid(),
+          type: 'function',
+          function: {
+            name,
+            arguments: JSON.stringify(
+              call?.args && typeof call.args === 'object' ? call.args : {}
+            ),
+          },
+        };
+      })
+      .filter(Boolean);
+
+    const usageMeta = json?.usageMetadata || {};
+    const completion = {
+      id: `chatcmpl-${Date.now()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: String(body.model || modelData.model),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: text,
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason: toGoogleFinishReason(
+            json?.candidates?.[0]?.finishReason || json?.finishReason
+          ),
+        },
+      ],
+      usage: {
+        prompt_tokens: Number(usageMeta?.promptTokenCount || 0),
+        completion_tokens: Number(usageMeta?.candidatesTokenCount || 0),
+        total_tokens:
+          Number(usageMeta?.totalTokenCount || 0) ||
+          Number(usageMeta?.promptTokenCount || 0) +
+            Number(usageMeta?.candidatesTokenCount || 0),
+      },
+    } as unknown as UnStreamChatType;
+
+    return {
+      response: completion,
+      isStreamResponse: false as const,
+      requestMeta,
+    };
+  } finally {
+    if (!keepTimerForStream) {
+      clearTimeout(timer);
+    }
+  }
+};
+
 export const createChatCompletion = async ({
   modelData,
   body,
@@ -1408,6 +1787,14 @@ export const createChatCompletion = async ({
 
     if (protocol === 'anthropic') {
       return createAnthropicChatCompletion({
+        modelData,
+        body,
+        timeout,
+        options,
+      });
+    }
+    if (protocol === 'google') {
+      return createGoogleChatCompletion({
         modelData,
         body,
         timeout,

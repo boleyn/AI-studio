@@ -48,9 +48,9 @@ const resolveModelIconSrc = (icon?: string) => {
   return `/icons/llms/${value.replace(/^\/+/, "")}`;
 };
 
-type MetricKey = "calls" | "totalUsedTokens" | "avgUsedPercent";
+export type MetricKey = "calls" | "totalUsedTokens" | "avgUsedPercent";
 
-const metricOptions: Array<{ key: MetricKey; label: string; color: string }> = [
+export const metricOptions: Array<{ key: MetricKey; label: string; color: string }> = [
   { key: "calls", label: "调用次数", color: "#32a549" },
   { key: "totalUsedTokens", label: "Token 消耗", color: "#3370FF" },
   { key: "avgUsedPercent", label: "平均利用率", color: "#B54708" },
@@ -64,7 +64,7 @@ type TrendChartProps = {
   color: string;
 };
 
-function TrendChart({ points, metric, color }: TrendChartProps) {
+export function TrendChart({ points, metric, color }: TrendChartProps) {
   const width = 780;
   const height = 230;
   const paddingX = 26;

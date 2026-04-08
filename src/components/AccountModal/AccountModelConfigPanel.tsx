@@ -4,9 +4,16 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
   Badge,
   Box,
   Button,
@@ -23,14 +30,25 @@ import {
   FormControl,
   FormLabel,
   Grid,
+  IconButton,
   Input,
   Select,
   Text,
+  Tooltip,
   useDisclosure,
   useToast,
 } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { EmptyIcon, SearchIcon } from "@components/common/Icon";
+import {
+  EmptyIcon,
+  CloseIcon,
+  EditCustomIcon,
+  ModelContextIcon,
+  ModelProtocolIcon,
+  ModelReasoningIcon,
+  ModelVisionIcon,
+  SearchIcon,
+} from "@components/common/Icon";
 
 type EditableModelConfig = {
   id: string;
@@ -96,6 +114,13 @@ type AccountModelConfigPanelProps = {
   fillParent?: boolean;
   searchValue?: string;
   onSearchValueChange?: (value: string) => void;
+  scopeFilter?: "all" | "user" | "system";
+  onModelClick?: (model: {
+    modelId: string;
+    label: string;
+    icon?: string;
+    scope: "user" | "system";
+  }) => void;
 };
 
 export type AccountModelConfigPanelRef = {
@@ -111,41 +136,62 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
   fillParent = false,
   searchValue,
   onSearchValueChange,
+  scopeFilter,
+  onModelClick,
 }: AccountModelConfigPanelProps, ref) {
   const toast = useToast();
   const drawer = useDisclosure();
+  const deleteDialog = useDisclosure();
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [iconOptions, setIconOptions] = useState<string[]>([]);
   const [models, setModels] = useState<EditableModelConfig[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<EditableModelConfig>(createEmptyModel());
   const [innerSearchValue, setInnerSearchValue] = useState("");
-  const [page, setPage] = useState(1);
-
-  const pageSize = 6;
-  const tableTemplateColumns = "48px 260px 100px 120px 72px 72px 88px";
-  const tableMinWidth = "760px";
 
   const effectiveSearchValue = typeof searchValue === "string" ? searchValue : innerSearchValue;
   const keyword = effectiveSearchValue.trim().toLowerCase();
 
   const filteredModels = useMemo(() => {
     const list = models.map((item, index) => ({ item, index }));
-    if (!keyword) return list;
-    return list.filter(({ item }) => {
+    const byScope = typeof scopeFilter === "string" && scopeFilter !== "all"
+      ? list.filter(({ item }) => (item.scope || "user") === scopeFilter)
+      : list;
+    if (!keyword) return byScope;
+    return byScope.filter(({ item }) => {
       const label = (item.label || "").toLowerCase();
       const id = (item.id || "").toLowerCase();
       const protocol = (item.protocol || "").toLowerCase();
       return label.includes(keyword) || id.includes(keyword) || protocol.includes(keyword);
     });
-  }, [keyword, models]);
+  }, [keyword, models, scopeFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredModels.length / pageSize));
-  const pagedModels = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredModels.slice(start, start + pageSize);
-  }, [filteredModels, page]);
+  const actionBtnSx = {
+    variant: "ghost" as const,
+    boxSize: "32px",
+    minW: "32px",
+    borderRadius: "10px",
+    border: "1px solid",
+    borderColor: "myGray.250",
+    bg: "rgba(255,255,255,0.92)",
+    color: "myGray.500",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.92)",
+    transition: "all 0.22s cubic-bezier(0.2, 0.65, 0.2, 1)",
+    _hover: {
+      transform: "translateY(-1px)",
+      borderColor: "primary.300",
+      bg: "rgba(242,251,244,0.92)",
+      color: "primary.700",
+      boxShadow: "0 8px 16px -12px rgba(50,165,73,0.45)",
+    },
+    _active: {
+      transform: "translateY(0)",
+      boxShadow: "inset 0 1px 2px rgba(17,24,36,0.12)",
+    },
+  };
 
   const openCreateDrawer = () => {
     setEditingIndex(null);
@@ -227,14 +273,6 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
     void loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [keyword]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
   const openEditDrawer = (index: number) => {
     setEditingIndex(index);
     setDraft(models[index]);
@@ -315,6 +353,10 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
       toast({ title: "请填写 API Key", status: "warning", duration: 2000 });
       return;
     }
+    if (!maxContext) {
+      toast({ title: "请填写最大上下文", status: "warning", duration: 2000 });
+      return;
+    }
 
     const nextItem: EditableModelConfig = {
       id,
@@ -354,8 +396,21 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
   };
 
   const handleDelete = (index: number) => {
-    const nextModels = models.filter((_, idx) => idx !== index);
+    setDeleteIndex(index);
+    deleteDialog.onOpen();
+  };
+
+  const confirmDelete = () => {
+    if (deleteIndex === null) return;
+    const nextModels = models.filter((_, idx) => idx !== deleteIndex);
     void persistModels(nextModels, "模型已删除");
+    setDeleteIndex(null);
+    deleteDialog.onClose();
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteIndex(null);
+    deleteDialog.onClose();
   };
 
   return (
@@ -429,199 +484,227 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
         ) : null}
 
         <Box
-          border="1px solid var(--ws-border)"
-          borderRadius="2xl"
-          bg="var(--ws-surface-strong)"
-          boxShadow="var(--ws-glow-soft)"
-          backdropFilter="blur(14px)"
-          overflow="hidden"
-          display="flex"
-          flexDirection="column"
-          h={fillParent ? "100%" : "auto"}
+          px={1}
+          py={1}
+          flex={fillParent ? 1 : undefined}
           minH={fillParent ? 0 : undefined}
+          maxH={fillParent ? "none" : tableMaxHeight}
+          overflowY={loading || filteredModels.length === 0 ? "visible" : "auto"}
         >
-          <Box px={4} py={2} overflowX={{ base: "auto", lg: "visible" }} bg="rgba(255,255,255,0.35)">
-            <Grid minW={tableMinWidth} templateColumns={tableTemplateColumns} gap={3} py={2} borderBottom="1px solid var(--ws-border)">
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)">图标</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)">名称</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)" textAlign="center">协议</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)" textAlign="center">最大上下文</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)" textAlign="center">思考</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)" textAlign="center">视觉</Text>
-              <Text fontSize="11px" letterSpacing="0.06em" textTransform="uppercase" fontWeight="700" color="var(--ws-text-subtle)" textAlign="right">操作</Text>
-            </Grid>
-          </Box>
+          {loading ? (
+            <Flex align="center" justify="center" py={8}>
+              <Text fontSize="sm" color="myGray.500">加载中...</Text>
+            </Flex>
+          ) : filteredModels.length === 0 ? (
+            <Flex direction="column" align="center" justify="center" py={8}>
+              <Box mb={5}>
+                <Box as={EmptyIcon} w="140px" h="116px" />
+              </Box>
+              <Text fontSize="md" color="myGray.700" fontWeight="600" mb={2}>
+                {effectiveSearchValue ? "没有匹配的模型" : "暂无模型"}
+              </Text>
+              <Text fontSize="sm" color="myGray.500">
+                {effectiveSearchValue ? "请尝试更换关键词。" : "点击右上角“新增”开始配置。"}
+              </Text>
+            </Flex>
+          ) : (
+            <Grid
+              templateColumns={{
+                base: "1fr",
+                md: "repeat(2, minmax(0, 1fr))",
+                xl: "repeat(3, minmax(0, 1fr))",
+                "2xl": "repeat(4, minmax(0, 1fr))",
+              }}
+              gap={4}
+            >
+              {filteredModels.map(({ item, index }) => (
+                <Box
+                  key={`${item.id}-${index}`}
+                  position="relative"
+                  border="1px solid var(--ws-border)"
+                  borderRadius="24px"
+                  bg="linear-gradient(140deg, rgba(255,255,255,0.78) 0%, rgba(245,250,248,0.88) 100%)"
+                  px={4}
+                  py={3.5}
+                  transition="all 0.18s ease"
+                  cursor={onModelClick ? "pointer" : "default"}
+                  _hover={{
+                    boxShadow: "var(--ws-glow-soft)",
+                    transform: "translateY(-1px)",
+                  }}
+                  onClick={() => {
+                    if (!onModelClick) return;
+                    onModelClick({
+                      modelId: item.id,
+                      label: item.label || item.id,
+                      icon: item.icon,
+                      scope: (item.scope || "user") as "user" | "system",
+                    });
+                  }}
+                >
+                  {item.scope !== "system" ? (
+                    <Flex position="absolute" top={3} right={3} gap={1.5} zIndex={2}>
+                      <Tooltip label="编辑">
+                        <IconButton
+                          aria-label="编辑"
+                          {...actionBtnSx}
+                          icon={<Box as={EditCustomIcon} w={3.5} h={3.5} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEditDrawer(index);
+                          }}
+                          isDisabled={saving}
+                        />
+                      </Tooltip>
+                      <Tooltip label="删除">
+                        <IconButton
+                          aria-label="删除"
+                          {...actionBtnSx}
+                          _hover={{
+                            ...actionBtnSx._hover,
+                            borderColor: "red.300",
+                            bg: "rgba(254,243,242,0.92)",
+                            color: "red.600",
+                            boxShadow: "0 8px 16px -12px rgba(217,45,32,0.45)",
+                          }}
+                          icon={<Box as={CloseIcon} w={3.5} h={3.5} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(index);
+                          }}
+                          isDisabled={saving}
+                        />
+                      </Tooltip>
+                    </Flex>
+                  ) : null}
 
-          <Box
-            px={4}
-            flex={fillParent ? 1 : undefined}
-            minH={fillParent ? 0 : undefined}
-            maxH={fillParent ? "none" : tableMaxHeight}
-            overflowY={loading || filteredModels.length === 0 ? "visible" : "auto"}
-            overflowX={{ base: "auto", lg: "visible" }}
-          >
-            {loading ? (
-              <Flex align="center" justify="center" py={8}>
-                <Text fontSize="sm" color="myGray.500">加载中...</Text>
-              </Flex>
-            ) : filteredModels.length === 0 ? (
-              <Flex direction="column" align="center" justify="center" py={8}>
-                <Box mb={5}>
-                  <Box as={EmptyIcon} w="140px" h="116px" />
-                </Box>
-                <Text fontSize="md" color="myGray.700" fontWeight="600" mb={2}>
-                  {effectiveSearchValue ? "没有匹配的模型" : "暂无模型"}
-                </Text>
-                <Text fontSize="sm" color="myGray.500">
-                  {effectiveSearchValue ? "请尝试更换关键词。" : "点击右上角“新增”开始配置。"}
-                </Text>
-              </Flex>
-            ) : (
-              <Box minW={tableMinWidth}>
-                {pagedModels.map(({ item, index }, rowIndex) => (
-                  <Grid
-                    key={`${item.id}-${index}`}
-                    templateColumns={tableTemplateColumns}
-                    gap={3}
-                    py={2}
-                    px={1}
-                    alignItems="center"
-                    borderBottom={rowIndex === pagedModels.length - 1 ? "none" : "1px solid"}
-                    borderColor="var(--ws-border)"
-                    transition="background-color 0.18s ease, transform 0.18s ease"
-                    _hover={{
-                      bg: "rgba(255,255,255,0.52)",
-                      transform: "translateY(-1px)",
-                    }}
-                  >
+                  <Flex align="center" gap={3}>
                     <Box
-                      w="36px"
-                      h="36px"
-                      borderRadius="10px"
-                      bg="var(--ws-accent-soft)"
-                      border="1px solid var(--ws-accent-border)"
+                      w="44px"
+                      h="44px"
+                      borderRadius="14px"
+                      bg="rgba(134, 239, 172, 0.16)"
+                      border="1px solid rgba(74, 222, 128, 0.45)"
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
+                      flexShrink={0}
                     >
-                      <Box as="img" src={resolveIconSrc(item.icon)} w="18px" h="18px" />
+                      <Box as="img" src={resolveIconSrc(item.icon)} w="20px" h="20px" />
                     </Box>
                     <Box minW={0}>
-                      <Text fontSize="md" lineHeight="1.2" fontWeight="700" color="var(--ws-text-main)" noOfLines={1}>
+                      <Text fontSize="lg" lineHeight="1.2" fontWeight="800" color="var(--ws-text-main)" noOfLines={1}>
                         {item.label || item.id}
                       </Text>
                       <Text mt={1} fontSize="xs" color="var(--ws-text-subtle)" noOfLines={1}>
-                        ID: {item.id}
+                        {item.id}
                       </Text>
                     </Box>
+                  </Flex>
+
+                  <Divider my={4} borderColor="var(--ws-border)" />
+
+                  <Flex wrap="wrap" gap={2.5}>
                     <Badge
-                      w="fit-content"
                       px={2.5}
                       py={1}
                       borderRadius="999px"
-                      bg="rgba(255,255,255,0.72)"
+                      bg="rgba(226, 232, 240, 0.7)"
                       color="var(--ws-text-main)"
                       border="1px solid var(--ws-border)"
-                      justifySelf="center"
-                      fontSize="10px"
-                      letterSpacing="0.04em"
+                      display="inline-flex"
+                      alignItems="center"
+                      gap={1}
+                      fontSize="11px"
                     >
+                      <Box as={ModelProtocolIcon} w={3} h={3} />
                       {(item.protocol || "openai").toUpperCase()}
                     </Badge>
-                    <Text fontSize="sm" color="var(--ws-text-main)" textAlign="center" fontWeight="600">
-                      {formatContextWindow(item.maxContext)}
-                    </Text>
                     <Badge
-                      w="fit-content"
-                      justifySelf="center"
+                      px={2.5}
+                      py={1}
+                      borderRadius="999px"
+                      bg="rgba(226, 232, 240, 0.7)"
+                      color="var(--ws-text-main)"
+                      border="1px solid var(--ws-border)"
+                      display="inline-flex"
+                      alignItems="center"
+                      gap={1}
+                      fontSize="11px"
+                    >
+                      <Box as={ModelContextIcon} w={3} h={3} />
+                      {formatContextWindow(item.maxContext)}
+                    </Badge>
+                    <Badge
+                      px={2.5}
+                      py={1}
+                      borderRadius="999px"
                       bg={item.reasoning ? "var(--ws-accent-soft)" : "rgba(148, 163, 184, 0.16)"}
                       color={item.reasoning ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
                       border={item.reasoning ? "1px solid var(--ws-accent-border)" : "1px solid var(--ws-border)"}
-                      px={2.5}
-                      py={1}
+                      display="inline-flex"
+                      alignItems="center"
+                      gap={1}
+                      fontSize="11px"
                     >
-                      {item.reasoning ? "是" : "否"}
+                      <Box as={ModelReasoningIcon} w={3} h={3} />
+                      {item.reasoning ? "思考" : "无思考"}
                     </Badge>
                     <Badge
-                      w="fit-content"
-                      justifySelf="center"
+                      px={2.5}
+                      py={1}
+                      borderRadius="999px"
                       bg={item.vision ? "var(--ws-accent-soft)" : "rgba(148, 163, 184, 0.16)"}
                       color={item.vision ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
                       border={item.vision ? "1px solid var(--ws-accent-border)" : "1px solid var(--ws-border)"}
-                      px={2.5}
-                      py={1}
+                      display="inline-flex"
+                      alignItems="center"
+                      gap={1}
+                      fontSize="11px"
                     >
-                      {item.vision ? "是" : "否"}
+                      <Box as={ModelVisionIcon} w={3} h={3} />
+                      {item.vision ? "视觉" : "无视觉"}
                     </Badge>
-                    <Flex justify="flex-end" gap={1}>
-                      {item.scope === "system" ? (
-                        <Badge bg="rgba(148, 163, 184, 0.16)" color="var(--ws-text-subtle)" border="1px solid var(--ws-border)" px={2.5} py={1}>
-                          只读
-                        </Badge>
-                      ) : (
-                        <>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => openEditDrawer(index)}
-                            isDisabled={saving}
-                            color="var(--ws-text-main)"
-                            _hover={{ bg: "var(--ws-surface-muted)", color: "var(--ws-accent)" }}
-                          >
-                            编辑
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            color="red.600"
-                            onClick={() => handleDelete(index)}
-                            isDisabled={saving}
-                            _hover={{ bg: "red.50", color: "red.700" }}
-                          >
-                            删除
-                          </Button>
-                        </>
-                      )}
-                    </Flex>
-                  </Grid>
-                ))}
-              </Box>
-            )}
-          </Box>
-
-          {!loading && filteredModels.length > 0 ? (
-            <Flex px={4} py={3} borderTop="1px solid var(--ws-border)" justify="space-between" align="center">
-              <Text fontSize="sm" color="var(--ws-text-subtle)">
-                第 {page} / {totalPages} 页，共 {filteredModels.length} 条
-              </Text>
-              <Flex gap={2}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  isDisabled={page <= 1}
-                  border="1px solid var(--ws-border)"
-                  bg="rgba(255,255,255,0.52)"
-                  _hover={{ bg: "var(--ws-surface-muted)", borderColor: "var(--ws-border-strong)" }}
-                >
-                  上一页
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                  isDisabled={page >= totalPages}
-                  border="1px solid var(--ws-border)"
-                  bg="rgba(255,255,255,0.52)"
-                  _hover={{ bg: "var(--ws-surface-muted)", borderColor: "var(--ws-border-strong)" }}
-                >
-                  下一页
-                </Button>
-              </Flex>
-            </Flex>
-          ) : null}
+                  </Flex>
+                </Box>
+              ))}
+            </Grid>
+          )}
         </Box>
       </Box>
+
+      <AlertDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={closeDeleteDialog}
+        leastDestructiveRef={cancelDeleteRef}
+        isCentered
+      >
+        <AlertDialogOverlay bg="blackAlpha.400">
+          <AlertDialogContent
+            borderRadius="xl"
+            border="1px solid rgba(255,255,255,0.65)"
+            bg="rgba(255,255,255,0.95)"
+            backdropFilter="blur(18px)"
+          >
+            <AlertDialogHeader color="myGray.800">删除模型</AlertDialogHeader>
+            <AlertDialogBody color="myGray.700">
+              {`确定删除模型「${deleteIndex !== null ? models[deleteIndex]?.label || models[deleteIndex]?.id || "" : ""}」吗？此操作无法撤销。`}
+            </AlertDialogBody>
+            <AlertDialogFooter gap={2}>
+              <Button ref={cancelDeleteRef} variant="ghost" onClick={closeDeleteDialog}>
+                取消
+              </Button>
+              <Button
+                colorScheme="red"
+                onClick={confirmDelete}
+                isLoading={saving}
+              >
+                删除
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
 
       <Drawer isOpen={drawer.isOpen} placement="right" onClose={drawer.onClose} size="md">
         <DrawerOverlay bg="blackAlpha.300" />
@@ -660,6 +743,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                 <Select value={draft.protocol || "openai"} onChange={(e) => setDraft((prev) => ({ ...prev, protocol: e.target.value }))}>
                   <option value="openai">OpenAI API</option>
                   <option value="anthropic">Anthropic API</option>
+                  <option value="google">Google API</option>
                 </Select>
               </FormControl>
               <FormControl isRequired>
@@ -670,7 +754,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                 <FormLabel fontSize="xs">API Key</FormLabel>
                 <Input type="password" value={draft.key || ""} onChange={(e) => setDraft((prev) => ({ ...prev, key: e.target.value }))} autoComplete="new-password" spellCheck={false} />
               </FormControl>
-              <FormControl>
+              <FormControl isRequired>
                 <FormLabel fontSize="xs">最大上下文</FormLabel>
                 <Input
                   type="number"

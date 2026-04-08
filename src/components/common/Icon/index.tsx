@@ -31,3 +31,8 @@ export { default as ThumbUpIcon } from "./icons/thumb-up.svg";
 export { default as ThumbDownIcon } from "./icons/thumb-down.svg";
 export { default as EmptyIcon } from "./icons/empty.svg";
 export { default as CollapseDetailIcon } from "./icons/collapse-detail.svg";
+export { default as ModelProtocolIcon } from "./icons/model-protocol.svg";
+export { default as ModelContextIcon } from "./icons/model-context.svg";
+export { default as ModelReasoningIcon } from "./icons/model-reasoning.svg";
+export { default as ModelVisionIcon } from "./icons/model-vision.svg";
+export { default as ModelScopeIcon } from "./icons/model-scope.svg";

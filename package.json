@@ -22,6 +22,7 @@
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
     "@fortaine/fetch-event-source": "^3.0.6",
+    "@google/genai": "^1.48.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@monaco-editor/react": "^4.7.0",
     "ahooks": "^3.8.5",
