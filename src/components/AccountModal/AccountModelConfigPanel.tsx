@@ -34,11 +34,11 @@ import {
   Input,
   Select,
   Text,
-  Tooltip,
   useDisclosure,
   useToast,
 } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import MyTooltip from "@components/ui/MyTooltip";
 import {
   EmptyIcon,
   CloseIcon,
@@ -145,6 +145,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [iconOptions, setIconOptions] = useState<string[]>([]);
   const [models, setModels] = useState<EditableModelConfig[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -331,7 +332,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
     }
   };
 
-  const commitDraft = () => {
+  const buildValidatedDraft = (): EditableModelConfig | null => {
     const id = draft.id.trim();
     const label = (draft.label || "").trim();
     const baseUrl = (draft.baseUrl || "").trim();
@@ -343,22 +344,22 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
 
     if (!id) {
       toast({ title: "请填写模型 ID", status: "warning", duration: 2000 });
-      return;
+      return null;
     }
     if (!baseUrl) {
       toast({ title: "请填写 Base URL", status: "warning", duration: 2000 });
-      return;
+      return null;
     }
     if (!key) {
       toast({ title: "请填写 API Key", status: "warning", duration: 2000 });
-      return;
+      return null;
     }
     if (!maxContext) {
       toast({ title: "请填写最大上下文", status: "warning", duration: 2000 });
-      return;
+      return null;
     }
 
-    const nextItem: EditableModelConfig = {
+    return {
       id,
       label: label || id,
       icon: (draft.icon || "").trim() || "auto.svg",
@@ -369,6 +370,11 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
       reasoning: Boolean(draft.reasoning),
       vision: Boolean(draft.vision),
     };
+  };
+
+  const commitDraft = () => {
+    const nextItem = buildValidatedDraft();
+    if (!nextItem) return;
 
     const nextModels =
       editingIndex === null
@@ -393,6 +399,46 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
     }
 
     void persistModels(nextModels, editingIndex === null ? "模型已新增" : "模型已更新", true);
+  };
+
+  const testDraft = async () => {
+    const nextItem = buildValidatedDraft();
+    if (!nextItem) return;
+
+    setTesting(true);
+    try {
+      const response = await fetch("/api/chat/model-config-test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...withAuthHeaders(),
+        },
+        body: JSON.stringify({
+          model: nextItem,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || `模型测试失败: ${response.status}`);
+      }
+      toast({
+        title: payload?.message || "模型测试通过",
+        description:
+          typeof payload?.output === "string" && payload.output.trim()
+            ? `返回示例：${payload.output.trim().slice(0, 80)}`
+            : undefined,
+        status: "success",
+        duration: 2400,
+      });
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : "模型测试失败",
+        status: "error",
+        duration: 2800,
+      });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const handleDelete = (index: number) => {
@@ -544,7 +590,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                 >
                   {item.scope !== "system" ? (
                     <Flex position="absolute" top={3} right={3} gap={1.5} zIndex={2}>
-                      <Tooltip label="编辑">
+                      <MyTooltip label="编辑">
                         <IconButton
                           aria-label="编辑"
                           {...actionBtnSx}
@@ -555,8 +601,8 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                           }}
                           isDisabled={saving}
                         />
-                      </Tooltip>
-                      <Tooltip label="删除">
+                      </MyTooltip>
+                      <MyTooltip label="删除">
                         <IconButton
                           aria-label="删除"
                           {...actionBtnSx}
@@ -574,7 +620,7 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                           }}
                           isDisabled={saving}
                         />
-                      </Tooltip>
+                      </MyTooltip>
                     </Flex>
                   ) : null}
 
@@ -816,10 +862,21 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
 
           <Divider />
           <DrawerFooter gap={3}>
-            <Button variant="outline" onClick={drawer.onClose}>
+            <Button variant="outline" onClick={drawer.onClose} isDisabled={saving || testing}>
               取消
             </Button>
-            <Button bg="green.500" color="white" _hover={{ bg: "green.600" }} _active={{ bg: "green.700" }} isLoading={saving} onClick={commitDraft}>
+            <Button variant="outline" isLoading={testing} isDisabled={saving} onClick={() => void testDraft()}>
+              测试模型
+            </Button>
+            <Button
+              bg="green.500"
+              color="white"
+              _hover={{ bg: "green.600" }}
+              _active={{ bg: "green.700" }}
+              isLoading={saving}
+              isDisabled={testing}
+              onClick={commitDraft}
+            >
               {editingIndex === null ? "保存模型" : "更新模型"}
             </Button>
           </DrawerFooter>

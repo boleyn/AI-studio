@@ -23,13 +23,13 @@ import {
   ModalHeader,
   ModalOverlay,
   Textarea,
-  Tooltip,
   useDisclosure,
 } from "@chakra-ui/react";
 
 import UnifiedEntityCard from "./UnifiedEntityCard";
 import { CloseIcon, CopyIcon, EditCustomIcon } from "../common/Icon";
 import { CalendarDays, History } from "lucide-react";
+import MyTooltip from "../ui/MyTooltip";
 
 type DashboardEntityCardProps = {
   index: number;
@@ -208,16 +208,16 @@ export default function DashboardEntityCard({
         }}
         actions={
           <>
-            <Tooltip label="编辑">
+            <MyTooltip label="编辑">
               <IconButton
                 aria-label="编辑"
                 {...actionBtnSx}
                 icon={<Box as={EditCustomIcon} w={4} h={4} />}
                 onClick={onRename ? handleRenameOpen : onOpen}
               />
-            </Tooltip>
+            </MyTooltip>
             {onDuplicate ? (
-              <Tooltip label="复制">
+              <MyTooltip label="复制">
                 <IconButton
                   aria-label="复制"
                   {...actionBtnSx}
@@ -227,9 +227,9 @@ export default function DashboardEntityCard({
                   }}
                   isLoading={duplicating}
                 />
-              </Tooltip>
+              </MyTooltip>
             ) : null}
-            <Tooltip label="删除">
+            <MyTooltip label="删除">
               <IconButton
                 aria-label="删除"
                 {...actionBtnSx}
@@ -243,7 +243,7 @@ export default function DashboardEntityCard({
                 icon={<Box as={CloseIcon} w={4} h={4} />}
                 onClick={onDeleteOpen}
               />
-            </Tooltip>
+            </MyTooltip>
           </>
         }
       />
