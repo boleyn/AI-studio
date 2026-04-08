@@ -5,9 +5,9 @@
   "license": "Apache-2.0",
   "author": "CodeSandbox",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
+    "build": "NEXT_DIST_DIR=.next next build",
+    "start": "NEXT_DIST_DIR=.next next start",
     "lint": "next lint --dir src/pages --dir src/features --dir src/server --dir src/shared --dir src/contexts --dir src/hooks",
     "test:workspace": "tsx --test src/server/agent/workspace/projectWorkspaceManager.test.ts"
   },

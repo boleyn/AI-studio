@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Rocket, Sparkles, Wand2 } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { useRouter } from "next/router";
 import {
   Badge,
   Box,
@@ -45,6 +46,7 @@ type HomeTab = "projects" | "skills";
 type CreateType = "project" | "skill";
 
 export default function ProjectList() {
+  const router = useRouter();
   const { user, loading: loadingUser } = useAuth();
   const {
     projects,
@@ -56,7 +58,6 @@ export default function ProjectList() {
     renameProject,
     deleteProject,
     duplicateProject,
-    formatDate,
   } = useProjects();
   const {
     skills,
@@ -77,6 +78,7 @@ export default function ProjectList() {
   const [createType, setCreateType] = useState<CreateType>("project");
   const [nameInput, setNameInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
+  const queryTab = Array.isArray(router.query.tab) ? router.query.tab[0] : router.query.tab;
 
   const keyword = searchValue.trim().toLowerCase();
   const filteredProjects = useMemo(() => {
@@ -92,6 +94,12 @@ export default function ProjectList() {
       );
     });
   }, [keyword, skills]);
+  const projectCountInTabs = keyword ? filteredProjects.length : projects.length;
+  const skillCountInTabs = keyword ? filteredSkills.length : skills.length;
+  const isProjectsTab = activeTab === "projects";
+  const isSkillsTab = activeTab === "skills";
+  const mobileTabOrder: HomeTab[] = ["projects", "skills"];
+  const mobileTabIndex = mobileTabOrder.indexOf(activeTab);
 
   const creating = creatingProject || creatingSkill;
   const projectTotal = overview.projects.total;
@@ -112,20 +120,34 @@ export default function ProjectList() {
     return value.toLocaleString("zh-CN");
   };
 
-  const formatAbsoluteDate = (dateString?: string) => {
+  const formatCompactDate = (dateString?: string) => {
     if (!dateString) return "--";
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return "--";
+    const now = new Date();
     const year = date.getFullYear();
+    const currentYear = now.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    if (year === currentYear) return `${month}-${day}`;
+    return `${String(year).slice(-2)}-${month}-${day}`;
   };
+
+  const pageMeta = {
+    projects: {
+      title: "项目工作台",
+      description: "管理你的项目上下文、文件和历史对话。",
+    },
+    skills: {
+      title: "Skills 工作台",
+      description: "沉淀可复用技能，统一维护描述与版本。",
+    },
+  } as const;
 
   const resetCreateModal = () => {
     setNameInput("");
     setDescriptionInput("");
-    setCreateType(activeTab === "skills" ? "skill" : "project");
+    setCreateType(isSkillsTab ? "skill" : "project");
   };
 
   const handleOpenCreateModal = () => {
@@ -161,12 +183,12 @@ export default function ProjectList() {
     }
   };
 
-  const currentLoading = activeTab === "projects" ? loadingProjects : loadingSkills;
-  const isProjectsTab = activeTab === "projects";
+  const currentLoading = isProjectsTab ? loadingProjects : loadingSkills;
   const navActiveStyles = {
-    bg: "myGray.100",
-    border: "1px solid rgba(148,163,184,0.55)",
-    color: "myGray.800",
+    bg: "primary.50",
+    border: "1px solid",
+    borderColor: "primary.200",
+    color: "primary.700",
     fontWeight: "semibold",
   } as const;
   const navInactiveStyles = {
@@ -178,6 +200,18 @@ export default function ProjectList() {
 
   const isNameInvalid = createType === "skill" && nameInput.trim() !== "" && !/^[\w\-\s]+$/.test(nameInput);
 
+  const switchTab = (nextTab: HomeTab) => {
+    setActiveTab(nextTab);
+    void router.replace(
+      {
+        pathname: "/",
+        query: { ...(nextTab === "projects" ? {} : { tab: nextTab }) },
+      },
+      undefined,
+      { shallow: true }
+    );
+  };
+
   useEffect(() => {
     if (loadingUser) return;
     if (!user?.id) return;
@@ -185,6 +219,15 @@ export default function ProjectList() {
     void loadSkills();
     void loadOverview();
   }, [loadOverview, loadProjects, loadSkills, loadingUser, user?.id]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (queryTab === "skills") {
+      setActiveTab("skills");
+      return;
+    }
+    setActiveTab("projects");
+  }, [queryTab, router.isReady]);
 
   return (
     <Box position="relative" minH="100vh" overflow="hidden">
@@ -232,44 +275,34 @@ export default function ProjectList() {
                 </Badge>
               </Flex>
 
-              <Box>
+              <Box display={{ base: "none", lg: "block" }}>
                 <Text fontSize="xs" color="myGray.500" mb={3} textTransform="uppercase" letterSpacing="wider">
-                  工作台
+                  资源导航
                 </Text>
                 <Flex direction="column" gap={2}>
                   <Button
                     variant="ghost"
                     justifyContent="flex-start"
                     borderRadius="md"
-                    {...(isProjectsTab ? navActiveStyles : navInactiveStyles)}
-                    _hover={{ bg: "myGray.150", borderColor: "rgba(148,163,184,0.5)" }}
-                    onClick={() => setActiveTab("projects")}
+                    {...navActiveStyles}
+                    _hover={{
+                      bg: "primary.50",
+                      borderColor: "primary.200",
+                      color: "primary.700",
+                    }}
+                    onClick={() => void router.push("/")}
                   >
-                    我的项目
+                    工作台
                   </Button>
                   <Button
                     variant="ghost"
                     justifyContent="flex-start"
                     borderRadius="md"
-                    {...(!isProjectsTab ? navActiveStyles : navInactiveStyles)}
-                    _hover={{ bg: "myGray.150", borderColor: "rgba(148,163,184,0.5)" }}
-                    onClick={() => setActiveTab("skills")}
+                    {...navInactiveStyles}
+                    _hover={{ bg: "myGray.100", borderColor: "myGray.200", color: "myGray.800" }}
+                    onClick={() => void router.push("/models")}
                   >
-                     SKILLS
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    justifyContent="flex-start"
-                    borderRadius="md"
-                    onClick={handleOpenCreateModal}
-                    isLoading={creating}
-                    leftIcon={<Box as={AddIcon} w={4} h={4} />}
-                    iconSpacing={2.5}
-                    fontWeight="medium"
-                    color="primary.700"
-                    _hover={{ bg: "myGray.100" }}
-                  >
-                    新增
+                    模型中心
                   </Button>
                 </Flex>
               </Box>
@@ -302,10 +335,10 @@ export default function ProjectList() {
             >
               <Box>
                 <Heading size="md" mb={2} color="myGray.800" lineHeight="1.2">
-                  工作台首页
+                  {pageMeta[activeTab].title}
                 </Heading>
                 <Text color="myGray.600">
-                  统一管理项目与技能，快速切换并继续你的工作流。
+                  {pageMeta[activeTab].description}
                 </Text>
               </Box>
               <HStack spacing={3} w={{ base: "100%", lg: "auto" }}>
@@ -463,9 +496,13 @@ export default function ProjectList() {
               </Grid>
             </Box>
 
-            <Box mb={6} maxW="max-content">
-              <Tabs variant="unstyled" index={isProjectsTab ? 0 : 1} onChange={(index) => setActiveTab(index === 0 ? "projects" : "skills")}>
-                <TabList bg="myGray.50" p={1.5} borderRadius="14px" border="1px solid" borderColor="myGray.150" gap={1}>
+            <Box mb={6} maxW="100%" overflowX="auto">
+              <Tabs
+                variant="unstyled"
+                index={mobileTabIndex < 0 ? 0 : mobileTabIndex}
+                onChange={(index) => switchTab(mobileTabOrder[index] || "projects")}
+              >
+                <TabList bg="myGray.50" p={1.5} borderRadius="14px" border="1px solid" borderColor="myGray.150" gap={1} w="max-content">
                   <Tab
                     fontWeight="600"
                     fontSize="sm"
@@ -480,7 +517,7 @@ export default function ProjectList() {
                   >
                     项目
                     <Box as="span" ml={1.5} opacity={0.8} fontWeight="normal">
-                      ({projects.length})
+                      ({projectCountInTabs})
                     </Box>
                   </Tab>
                   <Tab
@@ -497,7 +534,7 @@ export default function ProjectList() {
                   >
                     Skills
                     <Box as="span" ml={1.5} opacity={0.8} fontWeight="normal">
-                      ({skills.length})
+                      ({skillCountInTabs})
                     </Box>
                   </Tab>
                 </TabList>
@@ -528,7 +565,9 @@ export default function ProjectList() {
                     {searchValue ? "没有匹配的项目" : "启动你的第一个项目"}
                   </Heading>
                   <Text color="myGray.500" mb={8} maxW="md" textAlign="center" fontSize="sm">
-                    {searchValue ? "未发现匹配该搜索词的项目。尝试换一个词或者新建项目。" : "在这里管理你的所有 AI 探索与应用开发。创建一个新项目，开始与模型进行深度对话。"}
+                    {searchValue
+                      ? "未发现匹配该搜索词的项目。尝试换一个词或者新建项目。"
+                      : "在这里管理你的所有 AI 探索与应用开发。创建一个新项目，开始与模型进行深度对话。"}
                   </Text>
                   <Button
                     variant="primary"
@@ -553,27 +592,27 @@ export default function ProjectList() {
                 >
                   {filteredProjects.map((project, index) => {
                     return (
-                    <DashboardEntityCard
-                      key={project.token}
-                      index={index}
-                      title={project.name}
-                      description={project.description || "继续编辑项目代码与相关对话"}
-                      createdMeta={formatAbsoluteDate(project.createdAt)}
-                      meta={`更新于 ${formatDate(project.updatedAt)}`}
-                      fileCount={project.fileCount}
-                      onOpen={() => openProject(project.token)}
-                      onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
-                      renameDialogTitle="修改项目"
-                      renameFieldLabel="项目名称"
-                      renamePlaceholder="输入项目名称"
-                      renameDescLabel="项目描述（非必填）"
-                      renameDescPlaceholder="简单描述这个项目的作用..."
-                      initialDescription={project.description}
-                      onDelete={() => deleteProject(project.token)}
-                      onDuplicate={() => duplicateProject(project.token)}
-                      deleteDialogTitle="删除项目"
-                      deleteDialogBody={`确定删除项目「${project.name}」吗？将同时删除该项目的所有对话记录和文件，此操作无法撤销。`}
-                    />
+                      <DashboardEntityCard
+                        key={project.token}
+                        index={index}
+                        title={project.name}
+                        description={project.description || "继续编辑项目代码与相关对话"}
+                        createdMeta={formatCompactDate(project.createdAt)}
+                        meta={`更新于 ${formatCompactDate(project.updatedAt)}`}
+                        fileCount={project.fileCount}
+                        onOpen={() => openProject(project.token)}
+                        onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
+                        renameDialogTitle="修改项目"
+                        renameFieldLabel="项目名称"
+                        renamePlaceholder="输入项目名称"
+                        renameDescLabel="项目描述（非必填）"
+                        renameDescPlaceholder="简单描述这个项目的作用..."
+                        initialDescription={project.description}
+                        onDelete={() => deleteProject(project.token)}
+                        onDuplicate={() => duplicateProject(project.token)}
+                        deleteDialogTitle="删除项目"
+                        deleteDialogBody={`确定删除项目「${project.name}」吗？将同时删除该项目的所有对话记录和文件，此操作无法撤销。`}
+                      />
                     );
                   })}
                 </Grid>
@@ -597,7 +636,9 @@ export default function ProjectList() {
                   {searchValue ? "没有匹配的 Skill" : "沉淀你的专属 Skill"}
                 </Heading>
                 <Text color="myGray.500" mb={8} maxW="md" textAlign="center" fontSize="sm">
-                  {searchValue ? "未发现匹配该搜索词的 Skill。尝试换一个词或者新建 Skill。" : "尚未发现任何满足条件的 Skill。你可以将常用的 Prompt 封装成 Skill，在任意项目中复用。"}
+                  {searchValue
+                    ? "未发现匹配该搜索词的 Skill。尝试换一个词或者新建 Skill。"
+                    : "尚未发现任何满足条件的 Skill。你可以将常用的 Prompt 封装成 Skill，在任意项目中复用。"}
                 </Text>
                 <Button
                   variant="primary"
@@ -622,37 +663,37 @@ export default function ProjectList() {
               >
                 {filteredSkills.map((skill, index) => {
                   return (
-                  <DashboardEntityCard
-                    key={skill.token}
-                    index={index}
-                    title={skill.name}
-                    description={skill.description || "暂无描述"}
-                    createdMeta={formatAbsoluteDate(skill.createdAt)}
-                    meta={`更新于 ${formatDate(skill.updatedAt)}`}
-                    fileCount={skill.fileCount}
-                    onOpen={() => {
-                      void openSkill(skill.token);
-                    }}
-                    onRename={async (nextName, nextDesc) => {
-                      await updateSkill(skill.token, nextName, nextDesc);
-                    }}
-                    renameDialogTitle="修改 Skill"
-                    renameFieldLabel="Skill 名称"
-                    renamePlaceholder="输入 skill 名称"
-                    renameDescLabel="触发描述（非必填）"
-                    renameDescPlaceholder="描述这个 skill 适合在什么场景触发"
-                    renameNameRegex={/^[\w\-\s]+$/}
-                    renameNameErrorMsg="Skill 名称仅支持英文字母、数字、空格、横线（-）和下划线（_）"
-                    initialDescription={skill.description}
-                    onDuplicate={async () => {
-                      await duplicateSkill(skill.token);
-                    }}
-                    onDelete={async () => {
-                      await deleteSkill(skill.token);
-                    }}
-                    deleteDialogTitle="删除 Skill"
-                    deleteDialogBody={`确定删除 Skill「${skill.name}」吗？该操作不可撤销。`}
-                  />
+                    <DashboardEntityCard
+                      key={skill.token}
+                      index={index}
+                      title={skill.name}
+                      description={skill.description || "暂无描述"}
+                      createdMeta={formatCompactDate(skill.createdAt)}
+                      meta={`更新于 ${formatCompactDate(skill.updatedAt)}`}
+                      fileCount={skill.fileCount}
+                      onOpen={() => {
+                        void openSkill(skill.token);
+                      }}
+                      onRename={async (nextName, nextDesc) => {
+                        await updateSkill(skill.token, nextName, nextDesc);
+                      }}
+                      renameDialogTitle="修改 Skill"
+                      renameFieldLabel="Skill 名称"
+                      renamePlaceholder="输入 skill 名称"
+                      renameDescLabel="触发描述（非必填）"
+                      renameDescPlaceholder="描述这个 skill 适合在什么场景触发"
+                      renameNameRegex={/^[\w\-\s]+$/}
+                      renameNameErrorMsg="Skill 名称仅支持英文字母、数字、空格、横线（-）和下划线（_）"
+                      initialDescription={skill.description}
+                      onDuplicate={async () => {
+                        await duplicateSkill(skill.token);
+                      }}
+                      onDelete={async () => {
+                        await deleteSkill(skill.token);
+                      }}
+                      deleteDialogTitle="删除 Skill"
+                      deleteDialogBody={`确定删除 Skill「${skill.name}」吗？该操作不可撤销。`}
+                    />
                   );
                 })}
               </Grid>

@@ -25,7 +25,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       channel: "user",
       source: "user" as const,
       icon: item.icon,
+      protocol: item.protocol,
+      maxContext: item.maxContext,
       reasoning: item.reasoning,
+      vision: item.vision,
       scope: "user" as const,
     })),
     ...systemCatalog.models.map((item) => ({

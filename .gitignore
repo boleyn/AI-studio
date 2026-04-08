@@ -82,3 +82,5 @@ tmp/docx/
 
 # Read-file bridge outputs for parsed attachments
 .files/derived/
+.next-derived/
+.next-dev/

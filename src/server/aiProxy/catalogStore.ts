@@ -11,6 +11,8 @@ export interface ChatModelOption {
   source: "aiproxy" | "env";
   icon?: string;
   reasoning?: boolean;
+  vision?: boolean;
+  maxContext?: number;
 }
 
 export interface ChatModelChannel {
@@ -207,6 +209,14 @@ const buildCatalog = (params: {
       reasoning:
         item.profile && typeof item.profile.reasoning === "boolean"
           ? (item.profile.reasoning as boolean)
+          : undefined,
+      vision:
+        item.profile && typeof item.profile.vision === "boolean"
+          ? (item.profile.vision as boolean)
+          : undefined,
+      maxContext:
+        item.profile && typeof item.profile.maxContext === "number"
+          ? (item.profile.maxContext as number)
           : undefined,
       channel: DEFAULT_CHANNEL,
       source: "aiproxy" as const,
