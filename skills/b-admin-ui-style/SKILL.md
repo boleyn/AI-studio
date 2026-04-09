@@ -70,3 +70,28 @@ Use this skill to keep enterprise dashboard UI visually consistent, production-f
 - Common icons: `assets/icons/outline/*.svg`
 - Design tokens and usage guidance: `references/design-tokens.md`
 
+## How To Use Resources
+
+1. Read `references/design-tokens.md` first and establish page-level tokens before writing any UI.
+2. Materialize tokens as implementation primitives:
+   - CSS custom properties (preferred for plain CSS/Sandpack pages), or
+   - theme constants/tokens (for component libraries).
+3. Reuse assets from `assets/` directly:
+   - brand/logo from `assets/logo/logo.svg`;
+   - line icons from `assets/icons/outline/*.svg`;
+   - avoid mixing third-party icon sets in the same screen unless required by existing codebase.
+4. Keep replacement strategy deterministic:
+   - first shell layout (sidebar/topbar/background),
+   - then control styles (filters/forms/buttons),
+   - then data components (cards/tables/tags),
+   - finally icon/logo replacement.
+5. If a requested component is not covered by local assets, follow local project UI library first, then create minimal compatible fallback styles using existing tokens.
+
+## Resource Constraints (MUST)
+
+- MUST treat this skill's `references/` and `assets/` as the default style source for admin pages.
+- MUST respect host runtime static-file constraints before applying visual assets:
+  - In Sandpack runtime, static assets MUST be in `/public` and service worker static serving must be enabled by host config.
+  - Do not assume host Next.js static path conventions automatically apply in embedded Sandpack preview.
+- MUST prioritize consistency over novelty: tokenize first, then layout, then components, then icons/logo.
+- NEVER mix arbitrary icon packs when `assets/icons/outline/*.svg` can satisfy the need.

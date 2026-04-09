@@ -63,7 +63,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
           files={project.files}
           customSetup={customSetup}
           theme={githubLight}
-          options={{ autorun: true }}
+          options={{ autorun: true, experimental_enableServiceWorker: true }}
         >
           <SandpackStack
             style={{

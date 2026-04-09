@@ -32,6 +32,21 @@ Follow this skill for coding tasks in this repository.
 6. Validate with project build/tests when available.
 7. Summarize changed files and behavior impact.
 
+## Resource Usage (Built-in Skill Coordination)
+
+- If the request is admin-console style related (后台管理系统/管理台/控制台/仪表盘/列表页), load and apply `b-admin-ui-style` as a companion skill.
+- Use resources in this strict order:
+  1. External/project constraints from MCP knowledge sources (for example GitLab KB when available).
+  2. Local codebase conventions (`package.json`, existing pages/components, current styling system).
+  3. Style skill references (`skills/b-admin-ui-style/references/design-tokens.md`).
+  4. Style skill assets (`skills/b-admin-ui-style/assets/**`).
+- Convert style resources into concrete implementation artifacts:
+  - map tokens to CSS variables or theme constants first;
+  - then apply them to layout/components;
+  - then swap ad-hoc icons/logo with `b-admin-ui-style` bundled assets.
+- If MCP knowledge conflicts with style skill defaults, prefer MCP/project constraints and document the override reason in the summary.
+- If `b-admin-ui-style` resources are missing, report once and continue with nearest local design system fallback.
+
 ## Hard Rules
 
 - Use function call and MCP tools only.
@@ -47,6 +62,11 @@ Follow this skill for coding tasks in this repository.
 - Default implementation style for frontend output: follow the current repo/runtime stack detected from files and `package.json` (do not force TypeScript when the project is JavaScript).
 - Keep edits scoped to user intent.
 - Never hard-code unavailable server/tool names; always bind workflow to discovered capabilities in the current turn.
+- Sandpack static assets MUST follow Context7-verified rule set:
+  - MUST enable `experimental_enableServiceWorker: true` on every relevant `SandpackProvider`/`Sandpack`.
+  - MUST place static assets under `/public`.
+  - MUST use Sandpack-compatible runtime paths for those assets (for this project, follow `/public/...` convention used by Sandpack static-files docs/examples).
+  - NEVER assume Next.js `public` path behavior is identical inside Sandpack runtime.
 
 ## Project Conventions (Must Follow)
 

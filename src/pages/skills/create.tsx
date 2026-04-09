@@ -954,7 +954,7 @@ const SkillCreatePage = () => {
             files={sandpackRuntimeFiles}
             customSetup={customSetup}
             theme={githubLight}
-            options={{ autorun: false }}
+            options={{ autorun: false, experimental_enableServiceWorker: true }}
           >
             <CodeChangeListener
               token={workspaceId}

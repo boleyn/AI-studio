@@ -561,6 +561,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
             autorun: true,
             recompileMode: "delayed",
             recompileDelay: 600,
+            experimental_enableServiceWorker: true,
           }}
         >
           <CodeChangeListener
