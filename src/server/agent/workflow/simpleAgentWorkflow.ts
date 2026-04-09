@@ -158,7 +158,7 @@ const parseToolResponse = (response: string): unknown => {
 const toDebugSnippet = (value: string, maxChars = 2000) =>
   value.length > maxChars ? `${value.slice(0, maxChars)}...[truncated ${value.length - maxChars} chars]` : value;
 
-const compactToolResponseForModel = (toolName: string, response: string): string => {
+const mapToolResponseForModel = (toolName: string, response: string): string => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(response);
@@ -171,47 +171,65 @@ const compactToolResponseForModel = (toolName: string, response: string): string
 
   const payload = parsed as Record<string, unknown>;
   const action = typeof payload.action === "string" ? payload.action : "";
-  const isWriteLikeTool =
-    toolName === "Write" ||
-    toolName === "Edit" ||
-    (toolName === "global" && (action === "write" || action === "replace"));
-  if (!isWriteLikeTool) {
-    return response;
+  const isFailure = payload.ok === false;
+
+  const filePath = (() => {
+    if (typeof payload.filePath === "string" && payload.filePath.trim()) return payload.filePath;
+    if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+      const path = (payload.data as Record<string, unknown>).path;
+      if (typeof path === "string" && path.trim()) return path;
+    }
+    return "";
+  })();
+
+  const resolveWriteMessage = () => {
+    const type = typeof payload.type === "string" ? payload.type : "";
+    if (type === "create" && filePath) return `File created successfully at: ${filePath}`;
+    if (filePath) return `The file ${filePath} has been updated successfully.`;
+    return "File updated successfully.";
+  };
+
+  const resolveEditMessage = () => {
+    const replaceAll = Boolean(payload.replaceAll);
+    const userModified = Boolean(payload.userModified);
+    const modifiedNote = userModified
+      ? ". The user modified your proposed changes before accepting them."
+      : "";
+    if (replaceAll && filePath) {
+      return `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`;
+    }
+    if (filePath) return `The file ${filePath} has been updated successfully${modifiedNote}.`;
+    return `File updated successfully${modifiedNote}.`;
+  };
+
+  const resolveGlobMessage = () => {
+    const files = Array.isArray(payload.filenames)
+      ? payload.filenames.filter((item): item is string => typeof item === "string")
+      : [];
+    const truncated = Boolean(payload.truncated);
+    if (files.length === 0) return "No files found";
+    return [
+      ...files,
+      ...(truncated ? ["(Results are truncated. Consider using a more specific path or pattern.)"] : []),
+    ].join("\n");
+  };
+
+  if (toolName === "Write" || (toolName === "global" && action === "write")) {
+    if (isFailure) return response;
+    return resolveWriteMessage();
   }
 
-  const rawFiles =
-    (payload.files && typeof payload.files === "object" && !Array.isArray(payload.files)
-      ? (payload.files as Record<string, unknown>)
-      : null) ||
-    (payload.uiFiles && typeof payload.uiFiles === "object" && !Array.isArray(payload.uiFiles)
-      ? (payload.uiFiles as Record<string, unknown>)
-      : null);
-  const fileSummaries = rawFiles
-    ? Object.entries(rawFiles).map(([path, file]) => ({
-        path,
-        chars:
-          file && typeof file === "object" && !Array.isArray(file) && typeof (file as { code?: unknown }).code === "string"
-            ? ((file as { code: string }).code || "").length
-            : 0,
-      }))
-    : undefined;
+  if (toolName === "Edit" || (toolName === "global" && action === "replace")) {
+    if (isFailure) return response;
+    return resolveEditMessage();
+  }
 
-  const nextData =
-    payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
-      ? Object.fromEntries(
-          Object.entries(payload.data as Record<string, unknown>).filter(
-            ([key]) => key !== "files" && key !== "uiFiles"
-          )
-        )
-      : payload.data;
+  if (toolName === "Glob" || (toolName === "global" && action === "list")) {
+    if (isFailure) return response;
+    return resolveGlobMessage();
+  }
 
-  return JSON.stringify({
-    ...payload,
-    ...(nextData !== undefined ? { data: nextData } : {}),
-    ...(fileSummaries ? { files: fileSummaries } : {}),
-    ...(payload.uiFiles !== undefined ? { uiFiles: undefined } : {}),
-    compactedForModel: true,
-  });
+  return response;
 };
 
 export const runSimpleAgentWorkflow = async ({
@@ -346,7 +364,7 @@ export const runSimpleAgentWorkflow = async ({
       }
 
       const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
-      const modelResponse = compactToolResponseForModel(toolName, response);
+      const modelResponse = mapToolResponseForModel(toolName, response);
 
       console.info(
         "[agent-debug][tool-call-result]",

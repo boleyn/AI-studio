@@ -246,11 +246,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       .map((modelId) => {
         const meta = mergedCatalog.get(modelId);
         const usage = usageByModel.get(modelId);
+        const scope: ModelUsageItem["scope"] = meta?.scope ?? "unknown";
         return {
           modelId,
           label: meta?.label || modelId,
           icon: meta?.icon,
-          scope: meta?.scope || "unknown",
+          scope,
           calls: Math.max(0, Math.floor(toSafeNumber(usage?.calls))),
           totalUsedTokens: Math.max(0, Math.floor(toSafeNumber(usage?.totalUsedTokens))),
           avgUsedPercent: Number(Math.max(0, Math.min(100, toSafeNumber(usage?.avgUsedPercent))).toFixed(1)),

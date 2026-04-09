@@ -7,6 +7,9 @@ export type AgentRuntimeConfig = {
   maxContext?: number;
   apiKey?: string;
   baseUrl?: string;
+  memoryEnabled: boolean;
+  memoryAutoExtractEnabled: boolean;
+  contextManagerEnabled: boolean;
 };
 
 const DEFAULT_TOOL_CALL_MODEL = "";
@@ -40,5 +43,8 @@ export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
     maxContext: Number.isFinite(parsedMaxContext) ? parsedMaxContext : undefined,
     apiKey,
     baseUrl,
+    memoryEnabled: process.env.AI_MEMORY_ENABLED !== "0",
+    memoryAutoExtractEnabled: process.env.AI_MEMORY_AUTO_EXTRACT_ENABLED !== "0",
+    contextManagerEnabled: process.env.AI_CONTEXT_MANAGER_ENABLED !== "0",
   };
 };

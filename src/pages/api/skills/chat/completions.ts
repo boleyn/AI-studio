@@ -2,6 +2,7 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from "@aistudio/a
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { getLLMModel } from "@aistudio/ai/model";
 import { computedMaxToken } from "@aistudio/ai/utils";
+import { createLLMResponse } from "@aistudio/ai/llm/request";
 import { SKILL_STUDIO_AGENT_PROMPT } from "@server/agent/prompts/skillStudioAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
@@ -31,6 +32,16 @@ import { toWorkspacePublicFiles } from "@server/skills/workspaceStorage";
 import { createDataId } from "@shared/chat/ids";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { assemblePrompts } from "@server/chat/completions/promptAssembler";
+import { manageContextWindow } from "@server/chat/completions/contextManager";
+import {
+  buildProjectMemoryContextPrompt,
+  extractAndPersistProjectMemories,
+  getProjectMemoryBehaviorPrompt,
+  recallProjectMemoriesWithModel,
+  type ProjectMemoryRecall,
+  type ProjectMemoryUpdateResult,
+} from "@server/chat/completions/projectMemory";
 import {
   getConversationId,
   getConversationToken,
@@ -143,12 +154,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const workspaceTools = createSkillWorkspaceTools({
-    workspaceId: workspace.id,
-    userId,
-    projectToken: workspace.projectToken,
-    skillId: workspace.skillId,
-  });
   const runtimeSkills = await getRuntimeSkills();
   const projectSkillsParsed =
     workspace.source === "project" && workspace.projectToken
@@ -172,6 +177,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const selectedProjectSkills = selectedResolvedSkills.filter(
     (item) => !runtimeSkills.some((runtimeSkill) => runtimeSkill.name === item.name)
   );
+  const historyConversationMessages = conversationId
+    ? (await getConversation(conversationToken, conversationId))?.messages ?? []
+    : [];
+  const newConversationMessages = incomingMessages;
+  const contextConversationMessages: ConversationMessage[] = [
+    ...historyConversationMessages,
+    ...newConversationMessages,
+  ];
+  const historyOnlyConversationMessages: ConversationMessage[] = [...historyConversationMessages];
+  const contextMessages: ChatCompletionMessageParam[] = toAgentMessages(contextConversationMessages);
+  const historyOnlyMessages: ChatCompletionMessageParam[] = toAgentMessages(historyOnlyConversationMessages);
+  const workspaceTools = createSkillWorkspaceTools({
+    workspaceId: workspace.id,
+    userId,
+    projectToken: workspace.projectToken,
+    skillId: workspace.skillId,
+    historyMessages: contextConversationMessages,
+  });
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
   const toolSessionId = conversationId || `skill-${workspace.id}-${userId}`;
   const projectWorkspaceManager = new ProjectWorkspaceManager({
@@ -289,17 +312,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             : []),
         ].join("\n")
       : "";
-  const historyConversationMessages = conversationId
-    ? (await getConversation(conversationToken, conversationId))?.messages ?? []
-    : [];
-  const newConversationMessages = incomingMessages;
-  const contextConversationMessages: ConversationMessage[] = [
-    ...historyConversationMessages,
-    ...newConversationMessages,
-  ];
-  const historyOnlyConversationMessages: ConversationMessage[] = [...historyConversationMessages];
-  const contextMessages: ChatCompletionMessageParam[] = toAgentMessages(contextConversationMessages);
-  const historyOnlyMessages: ChatCompletionMessageParam[] = toAgentMessages(historyOnlyConversationMessages);
+  const latestSkillUserText = (() => {
+    for (let i = contextConversationMessages.length - 1; i >= 0; i -= 1) {
+      if (contextConversationMessages[i].role !== "user") continue;
+      return String(contextConversationMessages[i].content || "");
+    }
+    return "";
+  })();
+  const runMemoryModelQuery = async ({ system, user }: { system: string; user: string }) => {
+    const profile = userModelProfiles.get(selectedModel);
+    const baseUrl = typeof profile?.baseUrl === "string" ? profile.baseUrl.trim() : undefined;
+    const key = typeof profile?.key === "string" ? profile.key.trim() : undefined;
+    const result = await runWithRequestModelProfiles(userModelProfiles, async () =>
+      createLLMResponse({
+        throwError: false,
+        userKey: baseUrl || key ? { baseUrl, key } : undefined,
+        body: {
+          model: selectedModel,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          temperature: 0,
+          stream: false,
+        } as any,
+      })
+    );
+    return result.answerText || "";
+  };
   const systemMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: SKILL_STUDIO_AGENT_PROMPT },
     { role: "system", content: STUDIO_PROMPT },
@@ -317,18 +357,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } as ChatCompletionMessageParam)
     ),
   ];
-  const messages: ChatCompletionMessageParam[] = [
-    ...systemMessages,
-    ...contextMessages,
-  ];
-  const backgroundMessages: ChatCompletionMessageParam[] = [
-    ...systemMessages,
-    ...historyOnlyMessages,
-  ];
+  const memoryRecall: ProjectMemoryRecall | null =
+    runtimeConfig.memoryEnabled && workspace.projectToken
+      ? await recallProjectMemoriesWithModel({
+          projectToken: workspace.projectToken,
+          query: latestSkillUserText,
+          llmSelect: runMemoryModelQuery,
+        }).catch(() => null)
+      : null;
+  const memoryContextPrompt = memoryRecall ? buildProjectMemoryContextPrompt(memoryRecall) : "";
+  const memoryPrompts: ChatCompletionMessageParam[] =
+    runtimeConfig.memoryEnabled && workspace.projectToken
+      ? [
+          { role: "system", content: getProjectMemoryBehaviorPrompt() } as ChatCompletionMessageParam,
+          ...(memoryContextPrompt
+            ? [{ role: "system", content: memoryContextPrompt } as ChatCompletionMessageParam]
+            : []),
+        ]
+      : [];
+  const assembled = assemblePrompts({
+    coreSystemPrompts: systemMessages,
+    contextMessages,
+    memoryPrompts,
+  });
+  const backgroundAssembled = assemblePrompts({
+    coreSystemPrompts: systemMessages,
+    contextMessages: historyOnlyMessages,
+    memoryPrompts,
+  });
+  let messages: ChatCompletionMessageParam[] = assembled.messages;
+  const backgroundMessages: ChatCompletionMessageParam[] = backgroundAssembled.messages;
   const selectedModelInfo = await runWithRequestModelProfiles(userModelProfiles, async () => getLLMModel(selectedModel));
+  const contextManaged = await manageContextWindow({
+    messages,
+    tools,
+    model: selectedModelInfo,
+    focusQuery: latestSkillUserText,
+    enabled: runtimeConfig.contextManagerEnabled,
+  });
+  messages = contextManaged.messages;
   const promptUsedTokens = await countGptMessagesTokens(messages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundMessages, tools).catch(() => 0);
-  const systemAndSkillsTokens = await countGptMessagesTokens(systemMessages).catch(() => 0);
+  const systemAndSkillsTokens = await countGptMessagesTokens(assembled.systemPrompts).catch(() => 0);
   const historyTokens = await countGptMessagesTokens(historyOnlyMessages).catch(() => 0);
   const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
   const reservedOutputTokens = computedMaxToken({
@@ -356,6 +426,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       totalPromptTokens: promptUsedTokens,
       reservedOutputTokens,
     },
+    contextManagement: contextManaged.meta,
   };
 
   try {
@@ -501,6 +572,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })();
 
     const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
+    const memoryUpdateAudit: ProjectMemoryUpdateResult | undefined =
+      runtimeConfig.memoryEnabled &&
+      runtimeConfig.memoryAutoExtractEnabled &&
+      workspace.projectToken
+        ? await extractAndPersistProjectMemories({
+            projectToken: workspace.projectToken,
+            messages: [
+              ...newConversationMessages.map((item) => ({ role: item.role, content: item.content })),
+              { role: "assistant", content: result.finalMessage },
+            ],
+            llmExtract: runMemoryModelQuery,
+          }).catch(() => ({ updated: false, writtenPaths: [] }))
+        : undefined;
     if (persistIncomingMessages && conversationId && newConversationMessages.length > 0) {
       await appendConversationMessages(conversationToken, conversationId, newConversationMessages);
     }
@@ -571,6 +655,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             durationSeconds,
             timeline,
             contextWindow: contextWindowUsage,
+            ...(memoryRecall
+              ? {
+                  memoryRecall: {
+                    files: memoryRecall.files.map((item) => item.path),
+                    indexTruncatedByLines: memoryRecall.index.truncatedByLines,
+                    indexTruncatedByBytes: memoryRecall.index.truncatedByBytes,
+                  },
+                }
+              : {}),
+            ...(memoryUpdateAudit ? { memoryUpdate: memoryUpdateAudit } : {}),
           },
         },
       ]);
@@ -612,6 +706,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         reasoning: result.finalReasoning,
       },
       contextWindow: contextWindowUsage,
+      memoryRecall: memoryRecall
+        ? {
+            files: memoryRecall.files.map((item) => item.path),
+            indexTruncatedByLines: memoryRecall.index.truncatedByLines,
+            indexTruncatedByBytes: memoryRecall.index.truncatedByBytes,
+          }
+        : undefined,
+      memoryUpdate: memoryUpdateAudit,
       toolResponses: result.flowResponses,
       files: workspace.files,
       workspaceId: workspace.id,

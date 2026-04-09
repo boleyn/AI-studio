@@ -222,7 +222,6 @@ export function ModelUsageWorkspace() {
                     cursor="pointer"
                     onClick={() => setSelectedModelId(item.modelId)}
                     whileHover={{ x: 2 }}
-                    transition={{ duration: 0.16 }}
                   >
                     <Grid templateColumns={{ base: "minmax(0,1fr)", md: "minmax(220px,2fr) 90px 100px 120px" }} gap={3} alignItems="center">
                       <Flex align="center" gap={3} minW={0}>

@@ -119,6 +119,7 @@ const extractScriptArg = (cmd: string, args: string[]) => {
 };
 
 const FILE_OP_COMMANDS = new Set(["rm", "cp", "mv"]);
+const SEARCH_TOOL_COMMANDS = new Set(["rg", "grep", "find"]);
 
 const collectPathLikeArgs = (cmd: string, args: string[]) => {
   // Keep only non-flag arguments as path candidates.
@@ -188,6 +189,9 @@ export const validateStructuredCommand = async (input: {
   const cmd = input.cmd.trim().toLowerCase();
   if (!ALLOWED_COMMANDS.has(cmd)) {
     return `当前命令不允许: ${cmd}`;
+  }
+  if (SEARCH_TOOL_COMMANDS.has(cmd)) {
+    return "搜索命令应使用 Glob/Grep 工具，不要通过 bash 执行 rg/grep/find。";
   }
 
   if (input.args.length > MAX_ARG_COUNT) {

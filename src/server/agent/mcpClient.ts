@@ -43,7 +43,7 @@ const tinyHash = (value: string) => {
 };
 
 const buildOpenAIToolName = (serverName: string, toolName: string) => {
-  const raw = `mcp_${toSafeName(serverName)}__${toSafeName(toolName)}`;
+  const raw = `mcp__${toSafeName(serverName)}__${toSafeName(toolName)}`;
   if (raw.length <= MAX_TOOL_NAME_LENGTH) return raw;
 
   const suffix = `_${tinyHash(raw).slice(0, 8)}`;

@@ -248,9 +248,11 @@ export const ALWAYS_KEEP_TOOL_NAMES = new Set([
   "bash",
 ]);
 
-const MCP_TOOL_NAME_PREFIX = "mcp_";
+const MCP_TOOL_NAME_PREFIX = "mcp__";
+const MCP_TOOL_NAME_PREFIX_LEGACY = "mcp_";
 
-export const isMcpToolName = (toolName: string) => toolName.startsWith(MCP_TOOL_NAME_PREFIX);
+export const isMcpToolName = (toolName: string) =>
+  toolName.startsWith(MCP_TOOL_NAME_PREFIX) || toolName.startsWith(MCP_TOOL_NAME_PREFIX_LEGACY);
 
 export const isProjectKnowledgeMcpTool = (toolName: string) => {
   if (!isMcpToolName(toolName)) return false;
@@ -367,9 +369,9 @@ export const buildToolRoutingSystemPrompt = (
   const toolNames = route.selectedTools.map((tool) => tool.name).join(", ") || "(none)";
   const intentRule =
     intent === "tooling"
-      ? "Current task intent is tooling. Prefer Edit/Write/Delete/Read/Grep/Glob and concrete edits; avoid one-shot large file writes and split broad changes into smaller modules."
+      ? "Current task intent is tooling. Read/search before write. Keep edits focused, avoid one-shot large file writes, and split broad changes into smaller modules."
       : intent === "coding"
-      ? "Current task intent is coding. Prioritize project code tools and MCP references. Read/search before write; avoid one-shot large file writes, and if change >120 lines or crosses concerns, split into smaller files/modules or incremental steps."
+      ? "Current task intent is coding. Prioritize project code tools and MCP references. Read/search before write; keep writes small; if change >120 lines or crosses concerns, split into smaller files/modules or incremental steps."
       : "Current task intent is general. Use tools only when they materially improve correctness.";
   const mandatoryRule =
     toolChoiceMode === "required"

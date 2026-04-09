@@ -9,6 +9,14 @@ import { assertChatScopedStoragePath } from "../../../pages/api/core/chat/files/
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { getAIApi } from "@aistudio/ai/config";
+import { DEFAULT_TOOL_TIMEOUT_MS, runExecFile } from "./commandRunner";
+import {
+  clearReadSnapshot,
+  createReadSnapshotStore,
+  ensureAbsoluteFilePath,
+  getReadSnapshot,
+  markReadSnapshot,
+} from "./readState";
 
 const listFilesSchema = z
   .object({
@@ -552,30 +560,6 @@ const sliceContentByLineRange = (content: string, offset?: number, limit?: numbe
   };
 };
 
-const globToRegExp = (glob: string) => {
-  let out = "^";
-  for (let i = 0; i < glob.length; i += 1) {
-    const ch = glob[i];
-    const next = glob[i + 1];
-    if (ch === "*" && next === "*") {
-      out += ".*";
-      i += 1;
-      continue;
-    }
-    if (ch === "*") {
-      out += "[^/]*";
-      continue;
-    }
-    if (ch === "?") {
-      out += "[^/]";
-      continue;
-    }
-    out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  out += "$";
-  return new RegExp(out);
-};
-
 const normalizeSearchRoot = (value?: string) => {
   const raw = (value || "").trim();
   if (!raw) return "";
@@ -587,6 +571,48 @@ const splitGlobPatterns = (value?: string) =>
     .split(/[,\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+
+let resolvedRipgrepCommand: string | null | undefined;
+
+const resolveRipgrepCommand = async () => {
+  if (resolvedRipgrepCommand !== undefined) return resolvedRipgrepCommand;
+  const candidates = [
+    process.env.RIPGREP_PATH,
+    process.env.RG_PATH,
+    "/usr/bin/rg",
+    "/usr/local/bin/rg",
+    "/opt/homebrew/bin/rg",
+    "/Applications/Codex.app/Contents/Resources/rg",
+    "rg",
+  ]
+    .map((item) => (item || "").trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const probe = await runExecFile({
+      command: candidate,
+      args: ["--version"],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+    });
+    if (probe.ok) {
+      resolvedRipgrepCommand = candidate;
+      return resolvedRipgrepCommand;
+    }
+  }
+  resolvedRipgrepCommand = null;
+  return null;
+};
+
+const normalizeFsPath = (value: string) => value.replace(/\\/g, "/");
+
+const toWorkspacePublicPath = (workspaceRoot: string, absoluteFilePath: string) => {
+  const root = normalizeFsPath(path.resolve(workspaceRoot)).replace(/\/+$/, "");
+  const resolved = normalizeFsPath(path.resolve(absoluteFilePath));
+  if (!(resolved === root || resolved.startsWith(`${root}/`))) return null;
+  const relative = resolved.slice(root.length).replace(/^\/+/, "");
+  return relative ? `/${relative}` : "/";
+};
 
 const replaceAtMostOnce = (source: string, oldString: string, newString: string) => {
   const index = source.indexOf(oldString);
@@ -626,7 +652,12 @@ const toVirtualPackageJsonContent = (input: {
 export function createProjectTools(
   token: string,
   changeTracker: ChangeTracker,
-  options?: { chatId?: string; skillBaseDirs?: string[]; workspaceManager?: ProjectWorkspaceManager }
+  options?: {
+    chatId?: string;
+    skillBaseDirs?: string[];
+    workspaceManager?: ProjectWorkspaceManager;
+    historyMessages?: unknown[];
+  }
 ): AgentToolDefinition[] {
   const workspaceManager =
     options?.workspaceManager ||
@@ -634,6 +665,7 @@ export function createProjectTools(
       fallbackProjectToken: token,
       sessionId: options?.chatId || `project-${token}`,
     });
+  const readSnapshots = createReadSnapshotStore(options?.historyMessages);
 
   return [
     {
@@ -643,19 +675,46 @@ export function createProjectTools(
       run: async (input) => {
         const parsed = safeParse<{ pattern: string; path?: string }>(listFilesSchema, input, "Glob");
         if (!parsed.ok) throw new Error(parsed.error);
+        if (typeof parsed.data.path === "string" && parsed.data.path.trim()) {
+          ensureAbsoluteFilePath(parsed.data.path, "path");
+        }
         await workspaceManager.hydrate(token, { force: true });
-        const files = await workspaceManager.listFiles(token);
-        const withVirtualPackageJson = (() => {
-          if (files.includes("/package.json")) return files;
-          return [...files, "/package.json"].sort((a, b) => a.localeCompare(b));
-        })();
-        const matcher = globToRegExp(parsed.data.pattern);
-        const root = normalizeSearchRoot(parsed.data.path);
-        const filenames = withVirtualPackageJson.filter((filePath) => {
-          if (root && !(filePath === root || filePath.startsWith(`${root}/`))) return false;
-          const relative = root ? filePath.slice(root.length).replace(/^\/+/, "") : filePath.replace(/^\/+/, "");
-          return matcher.test(relative) || matcher.test(filePath);
+        const limit = 100;
+        const workspaceRoot = await workspaceManager.resolveCwd(token, ".");
+        const searchDir = await workspaceManager.resolveCwd(token, parsed.data.path || ".");
+        const rgCommand = await resolveRipgrepCommand();
+        if (!rgCommand) {
+          throw new Error("ripgrep (rg) 不可用：请安装 rg 或配置 RIPGREP_PATH/RG_PATH");
+        }
+
+        const rgResult = await runExecFile({
+          command: rgCommand,
+          args: [
+            "--files",
+            "--glob",
+            parsed.data.pattern,
+            "--sort=modified",
+            "--no-ignore",
+            "--hidden",
+          ],
+          cwd: searchDir,
+          timeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
         });
+
+        if (!rgResult.ok && rgResult.exitCode !== 1) {
+          throw new Error(rgResult.error || rgResult.stderr || "Glob 搜索失败");
+        }
+        const lines = (rgResult.stdout || "")
+          .split(/\r?\n/g)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const matchedFiles = lines
+          .map((line) => path.resolve(searchDir, line))
+          .map((absPath) => toWorkspacePublicPath(workspaceRoot, absPath))
+          .filter((item): item is string => Boolean(item));
+        const uniqueFiles = Array.from(new Set(matchedFiles));
+        const truncated = uniqueFiles.length > limit;
+        const filenames = uniqueFiles.slice(0, limit);
         return {
           ok: true,
           action: "list",
@@ -663,8 +722,8 @@ export function createProjectTools(
           durationMs: 0,
           numFiles: filenames.length,
           filenames,
-          truncated: false,
-          data: { files: filenames },
+          truncated,
+          data: { files: filenames, truncated },
         };
       },
     },
@@ -682,7 +741,7 @@ export function createProjectTools(
         }>(readFileSchema, input, "Read");
         if (!parsed.ok) throw new Error(parsed.error);
 
-        const pathInput = parsed.data.file_path.trim();
+        const pathInput = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const looksLikeScopedStoragePath = /^\/?chat_uploads\//i.test(pathInput);
         const shouldReadAttachment = looksLikeScopedStoragePath;
 
@@ -744,6 +803,12 @@ export function createProjectTools(
               });
             }
             const ranged = sliceContentByLineRange(String(file.content || ""), offset, limit);
+            const isPartial = ranged.startLine > 1 || ranged.numLines < ranged.totalLines;
+            markReadSnapshot(readSnapshots, {
+              filePath: file.path,
+              content: String(file.content || ""),
+              isPartial,
+            });
             return {
               ok: true,
               action: "read",
@@ -832,10 +897,39 @@ export function createProjectTools(
         );
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        const targetPath = parsed.data.file_path;
+        const targetPath = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const previous = await workspaceManager.readFile(token, targetPath);
+        if (previous) {
+          const snapshot = getReadSnapshot(readSnapshots, previous.path);
+          if (!snapshot) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File has not been read yet. Read it first before writing to it.",
+            };
+          }
+          if (snapshot.isPartial) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File was read partially. Read the full file before writing to it.",
+            };
+          }
+          if (snapshot.content !== String(previous.content || "")) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File has been modified since read. Read it again before attempting to write it.",
+            };
+          }
+        }
         const result = await workspaceManager.writeFile(token, targetPath, parsed.data.content);
         const type = previous ? "update" : "create";
+        markReadSnapshot(readSnapshots, {
+          filePath: result.path,
+          content: parsed.data.content,
+          isPartial: false,
+        });
         changeTracker.paths.add(result.path);
         changeTracker.changed = true;
         return {
@@ -870,7 +964,7 @@ export function createProjectTools(
         );
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        const targetPath = parsed.data.file_path;
+        const targetPath = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const oldString = parsed.data.old_string;
         const newString = parsed.data.new_string;
         const replaceAll = parsed.data.replace_all ?? false;
@@ -882,7 +976,29 @@ export function createProjectTools(
             message: `未找到文件 ${targetPath}`,
           };
         }
+        const snapshot = getReadSnapshot(readSnapshots, existing.path);
+        if (!snapshot) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File has not been read yet. Read it first before editing it.",
+          };
+        }
+        if (snapshot.isPartial) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File was read partially. Read the full file before editing it.",
+          };
+        }
         const originalFile = String(existing.content || "");
+        if (snapshot.content !== originalFile) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File has been modified since read. Read it again before attempting to edit it.",
+          };
+        }
         const occurrences = oldString ? originalFile.split(oldString).length - 1 : 0;
         if (!oldString || occurrences === 0) {
           return {
@@ -905,6 +1021,11 @@ export function createProjectTools(
           : replaceAtMostOnce(originalFile, oldString, newString);
         const writeResult = await workspaceManager.writeFile(token, existing.path, next.content);
         const latest = await workspaceManager.readFile(token, writeResult.path);
+        markReadSnapshot(readSnapshots, {
+          filePath: writeResult.path,
+          content: next.content,
+          isPartial: false,
+        });
         changeTracker.paths.add(writeResult.path);
         changeTracker.changed = true;
         return {
@@ -912,8 +1033,6 @@ export function createProjectTools(
           action: "replace",
           message: `已在 ${writeResult.path} 中替换 ${next.replaced} 处。`,
           filePath: writeResult.path,
-          oldString,
-          newString,
           originalFile,
           structuredPatch: [],
           userModified: false,
@@ -931,7 +1050,7 @@ export function createProjectTools(
         const parsed = safeParse<{ file_path: string }>(deleteFileSchema, input, "Delete");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
-        const targetPath = parsed.data.file_path;
+        const targetPath = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const result = await workspaceManager.deleteFile(token, targetPath);
         if (!result.ok) {
           return {
@@ -942,6 +1061,7 @@ export function createProjectTools(
         }
         changeTracker.paths.add(result.path);
         changeTracker.changed = true;
+        clearReadSnapshot(readSnapshots, result.path);
         return {
           ok: true,
           action: "delete",
@@ -974,6 +1094,9 @@ export function createProjectTools(
         }>(grepSchema, input, "Grep");
         if (!parsed.ok) throw new Error(parsed.error);
         await workspaceManager.hydrate(token);
+        if (typeof parsed.data.path === "string" && parsed.data.path.trim()) {
+          ensureAbsoluteFilePath(parsed.data.path, "path");
+        }
         const outputMode = parsed.data.output_mode || "files_with_matches";
         const includeGlobs: string[] = [];
         const root = normalizeSearchRoot(parsed.data.path);

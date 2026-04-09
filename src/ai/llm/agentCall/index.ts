@@ -18,6 +18,7 @@ import { filterGPTMessageByMaxContext } from '@aistudio/ai/utils';
 import { getLLMModel } from '@aistudio/ai/model';
 import { filterEmptyAssistantMessages } from './utils';
 import { countGptMessagesTokens } from '@aistudio/ai/compat/common/string/tiktoken/index';
+import { addLog } from '@aistudio/ai/compat/common/system/log';
 
 const sanitizeToolMessagesByToolCalls = (messages: ChatCompletionMessageParam[]) => {
   const seenToolCallIds = new Set<string>();

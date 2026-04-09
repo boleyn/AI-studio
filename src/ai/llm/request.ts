@@ -322,7 +322,7 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
       return parts;
     };
 
-    const messages = [...rewriteMessages];
+    const messages = [...rewriteMessages] as any[];
 
     // 1. 找到最后一个 system 消息，添加 cache_control
     let lastSystemIndex = -1;
@@ -341,12 +341,12 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
         messages[lastSystemIndex] = {
           ...lastSystemMessage,
           content: attachCacheControl([{ type: 'text', text: systemContent }])
-        } as ChatCompletionMessageParam;
+        };
       } else if (Array.isArray(systemContent)) {
         messages[lastSystemIndex] = {
           ...lastSystemMessage,
           content: attachCacheControl(systemContent)
-        } as ChatCompletionMessageParam;
+        };
       }
     }
 
@@ -362,12 +362,12 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
         messages[lastMessageIndex] = {
           ...lastMessage,
           content: attachCacheControl([{ type: 'text', text: content }])
-        } as ChatCompletionMessageParam;
+        };
       } else if (Array.isArray(content)) {
         messages[lastMessageIndex] = {
           ...lastMessage,
           content: attachCacheControl(content)
-        } as ChatCompletionMessageParam;
+        };
       }
     }
 
@@ -1327,7 +1327,7 @@ const createAnthropicChatCompletion = async ({
           signal: controller.signal,
           timeout: formatTimeout,
         }
-      )) as AsyncIterable<unknown>;
+      )) as unknown as AsyncIterable<unknown>;
       keepTimerForStream = true;
       const streamResponse = createAnthropicStreamResponse(
         stream,
@@ -1889,7 +1889,7 @@ export const createChatCompletion = async ({
 
     if (isStreamResponse) {
       return {
-        response,
+        response: response as unknown as StreamChatType,
         isStreamResponse: true,
         requestMeta
       };

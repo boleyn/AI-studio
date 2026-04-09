@@ -90,33 +90,49 @@ export const createBashTool = (options?: {
   return {
     name: "bash",
     description:
-      "Run query-oriented commands in a project-isolated workspace. Uses structured command input and non-shell execution.",
+      "Run query-oriented commands in a project-isolated workspace. Supports Claude-style `command` and structured `cmd/args` input.",
     parameters: {
       type: "object",
       properties: {
+        command: {
+          type: "string",
+          description: "Claude-compatible command string. Example: `ls -la src`.",
+        },
         cmd: { type: "string", description: "Executable command name (whitelisted)." },
         args: { type: "array", items: { type: "string" }, description: "Command arguments." },
         cwd: { type: "string", description: "Relative working directory inside project workspace." },
+        timeout: {
+          type: "integer",
+          minimum: 1000,
+          maximum: MAX_TOOL_TIMEOUT_MS,
+          description: `Claude-compatible timeout in milliseconds (default ${DEFAULT_TOOL_TIMEOUT_MS}).`,
+        },
         timeoutMs: {
           type: "integer",
           minimum: 1000,
           maximum: MAX_TOOL_TIMEOUT_MS,
           description: `Execution timeout in milliseconds (optional, default ${DEFAULT_TOOL_TIMEOUT_MS}).`,
         },
+        run_in_background: {
+          type: "boolean",
+          description: "Claude-compatible field. Current runtime does not support background tasks.",
+        },
       },
-      required: ["cmd"],
+      required: [],
     },
     run: async (input) => {
       const payload = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
       const normalizedProjectToken = (options?.allowedProjectToken || options?.fallbackProjectToken || "").trim();
-      const cmdInput = typeof payload.cmd === "string" ? payload.cmd : "";
+      const commandInput = typeof payload.command === "string" ? payload.command : "";
+      const cmdInput = typeof payload.cmd === "string" ? payload.cmd : commandInput;
       const argsInput = Array.isArray(payload.args) ? payload.args.map((item) => String(item)) : [];
       const normalizedCommand = normalizeStructuredCommandInput(cmdInput, argsInput);
       const cmd = normalizedCommand.cmd;
       const args = normalizeStructuredArgs(cmd, normalizedCommand.args);
       const cwdInputRaw = typeof payload.cwd === "string" ? payload.cwd : "";
       const cwdInput = normalizeWorkspaceLikePath(cwdInputRaw);
-      const timeoutMs = clampToolTimeout(payload.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
+      const timeoutMs = clampToolTimeout(payload.timeoutMs ?? payload.timeout ?? DEFAULT_TOOL_TIMEOUT_MS);
+      const runInBackground = payload.run_in_background === true;
 
       if (!normalizedProjectToken) {
         throw new Error("当前会话未绑定项目，无法执行 bash。");
@@ -125,6 +141,9 @@ export const createBashTool = (options?: {
         throw new Error("无权限访问该项目的 bash 执行环境。");
       }
       if (!cmd) throw new Error("缺少 cmd 参数。");
+      if (runInBackground) {
+        throw new Error("当前 bash 工具暂不支持 run_in_background=true，请改为前台执行。");
+      }
 
       const prepared = await workspaceManager.prepare(normalizedProjectToken);
       await workspaceManager.hydrate(normalizedProjectToken);

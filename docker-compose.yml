@@ -16,6 +16,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      RIPGREP_PATH: /usr/bin/rg
       CHAT_MODEL_CONFIG_FILE: config/config.json
 
       MONGODB_URI: mongodb://myusername:mypassword@10.21.8.6:37017/nextjs_ai_studio?authSource=admin&directConnection=true

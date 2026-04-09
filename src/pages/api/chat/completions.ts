@@ -1,7 +1,7 @@
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
-import { compressRequestMessages } from "@aistudio/ai/llm/compress";
 import { getLLMModel } from "@aistudio/ai/model";
+import { createLLMResponse } from "@aistudio/ai/llm/request";
 import { loadMcpTools } from "@server/agent/mcpClient";
 import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
@@ -32,6 +32,16 @@ import { getProject } from "@server/projects/projectStorage";
 import {
   toArtifactFileParts,
 } from "@server/chat/completions/multimodalMemory";
+import { manageContextWindow } from "@server/chat/completions/contextManager";
+import { assemblePrompts } from "@server/chat/completions/promptAssembler";
+import {
+  buildProjectMemoryContextPrompt,
+  extractAndPersistProjectMemories,
+  getProjectMemoryBehaviorPrompt,
+  recallProjectMemoriesWithModel,
+  type ProjectMemoryRecall,
+  type ProjectMemoryUpdateResult,
+} from "@server/chat/completions/projectMemory";
 import {
   getHistories,
   type ConversationHistoryWithSummary,
@@ -70,7 +80,6 @@ import {
   toIncomingMessages,
   toStringValue,
 } from "./completions/helpers";
-const CONTEXT_PRECOMPRESS_RATIO = 0.9;
 const isImageInputPart = (value: unknown) => {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
@@ -125,9 +134,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (type === "disabled") return { type: "disabled" as const };
     return undefined;
   })();
-  const requestedToolChoiceMode = normalizeToolChoiceMode(
-    req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice
-  );
+  const requestedToolChoiceRaw = req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice;
+  const requestedToolChoiceMode = normalizeToolChoiceMode(requestedToolChoiceRaw);
   const history = (() => {
     const value = req.body?.history;
     if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
@@ -346,6 +354,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     chatId,
     workspaceManager: projectWorkspaceManager,
     skillBaseDirs: allAvailableSkills.map((item) => item.baseDir),
+    historyMessages: contextMessages,
   });
   const skillLoadTool = allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
   const skillRunScriptTool =
@@ -428,15 +437,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? catalog.defaultModel
       : filteredCatalogModels[0]?.id || requestedModel;
   const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
-  const profileToolChoiceMode = normalizeToolChoiceMode(
+  const profileToolChoiceRaw =
     selectedModelProfile?.toolChoiceMode ??
-      selectedModelProfile?.toolChoice ??
-      selectedModelProfile?.forceToolChoice
-  );
+    selectedModelProfile?.toolChoice ??
+    selectedModelProfile?.forceToolChoice;
+  const profileToolChoiceMode = normalizeToolChoiceMode(profileToolChoiceRaw);
   const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
+  const requestedToolChoiceNone =
+    typeof requestedToolChoiceRaw === "string" && requestedToolChoiceRaw.trim().toLowerCase() === "none";
+  const profileToolChoiceNone =
+    typeof profileToolChoiceRaw === "string" && profileToolChoiceRaw.trim().toLowerCase() === "none";
 
   const toolChoiceForWorkflow: "auto" | "required" | undefined =
-    isGoogleModel || requestedToolChoiceMode === "none" || profileToolChoiceMode === "none"
+    isGoogleModel || requestedToolChoiceNone || profileToolChoiceNone
       ? undefined
       : selectedTools.length > 0
       ? (requestedToolChoiceMode || profileToolChoiceMode || (selectedRuntimeSkill
@@ -447,8 +460,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : undefined;
 
   const resolvedToolChoiceMode = toolChoiceForWorkflow ?? "auto";
-  const finalToolChoiceModeForPrompt = isGoogleModel || requestedToolChoiceMode === "none" || profileToolChoiceMode === "none"
-    ? "none"
+  const finalToolChoiceModeForPrompt = isGoogleModel || requestedToolChoiceNone || profileToolChoiceNone
+    ? "auto"
     : resolvedToolChoiceMode;
 
   const toolRoutingPrompt = buildToolRoutingSystemPrompt(
@@ -537,9 +550,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
   const runtimeSkillPrompt = await getAgentRuntimeSkillPrompt();
-  const buildCoreSystemPrompts = (): ChatCompletionMessageParam[] => [
+  const latestUserQuery = getLastUserText(contextMessages);
+  const runMemoryModelQuery = async ({ system, user }: { system: string; user: string }) => {
+    const profile = userModelProfiles.get(selectedModel);
+    const baseUrl = typeof profile?.baseUrl === "string" ? profile.baseUrl.trim() : undefined;
+    const key = typeof profile?.key === "string" ? profile.key.trim() : undefined;
+    const result = await runWithRequestModelProfiles(userModelProfiles, async () =>
+      createLLMResponse({
+        throwError: false,
+        userKey: baseUrl || key ? { baseUrl, key } : undefined,
+        body: {
+          model: selectedModel,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          temperature: 0,
+          stream: false,
+        } as any,
+      })
+    );
+    return result.answerText || "";
+  };
+  const memoryRecall: ProjectMemoryRecall | null = runtimeConfig.memoryEnabled
+    ? await recallProjectMemoriesWithModel({
+        projectToken: token,
+        query: latestUserQuery,
+        llmSelect: runMemoryModelQuery,
+      }).catch(() => null)
+    : null;
+  const memoryContextPrompt = memoryRecall ? buildProjectMemoryContextPrompt(memoryRecall) : "";
+
+  const baseAgentMessages = await toAgentMessages(contextMessages);
+  const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
+
+  const coreSystemPrompts: ChatCompletionMessageParam[] = [
     { role: "system", content: BASE_CODING_AGENT_PROMPT },
     { role: "system", content: toolRoutingPrompt },
+    ...(skillsCatalogPrompt
+      ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
+      : []),
+    ...(runtimeSkillPrompt
+      ? [{ role: "system", content: runtimeSkillPrompt } as ChatCompletionMessageParam]
+      : []),
+  ];
+  const taskConstraintPrompts: ChatCompletionMessageParam[] = [
     ...(latestUserArtifactFiles.length > 0
       ? [
           {
@@ -577,64 +632,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           } as ChatCompletionMessageParam,
         ]
       : []),
-    ...(skillsCatalogPrompt
-      ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
-      : []),
-    ...(runtimeSkillPrompt
-      ? [{ role: "system", content: runtimeSkillPrompt } as ChatCompletionMessageParam]
-      : []),
   ];
-  const baseAgentMessages = await toAgentMessages(contextMessages);
-  const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
-  const coreSystemPrompts = buildCoreSystemPrompts();
-  const systemPrompts = [...coreSystemPrompts];
-  const historySystemPrompts = [...coreSystemPrompts];
-  let agentMessages = [...systemPrompts, ...baseAgentMessages] as ChatCompletionMessageParam[];
-  const backgroundAgentMessages = [
-    ...historySystemPrompts,
-    ...historyBaseAgentMessages,
-  ] as ChatCompletionMessageParam[];
-  const selectedModelInfo = await runWithRequestModelProfiles(userModelProfiles, async () => getLLMModel(selectedModel));
-  const calcContextUsage = async (messages: ChatCompletionMessageParam[]) => {
-    const usedTokens = await countGptMessagesTokens(messages).catch(() => 0);
-    const maxContext = Math.max(1, selectedModelInfo.maxContext || 16000);
-    return {
-      usedTokens,
-      maxContext,
-      usedRatio: usedTokens / maxContext,
-    };
-  };
-  const beforePrecompressUsage = await calcContextUsage(agentMessages);
-  if (beforePrecompressUsage.usedRatio >= CONTEXT_PRECOMPRESS_RATIO) {
-    const focusedQuery = getLastUserText(contextMessages);
-    const compressed = await compressRequestMessages({
-      messages: agentMessages,
-      model: selectedModelInfo,
-      focusQuery: focusedQuery,
-      force: true,
-    });
-    if (compressed.messages.length > 0) {
-      agentMessages = compressed.messages;
-    }
-    const afterPrecompressUsage = await calcContextUsage(agentMessages);
-    console.info("[agent-debug][pre-send-compress]", {
-      triggered: true,
-      focusedQueryLength: focusedQuery.length,
-      thresholdRatio: CONTEXT_PRECOMPRESS_RATIO,
-      beforeUsedTokens: beforePrecompressUsage.usedTokens,
-      afterUsedTokens: afterPrecompressUsage.usedTokens,
-      maxContext: beforePrecompressUsage.maxContext,
-      beforeRatio: Number(beforePrecompressUsage.usedRatio.toFixed(4)),
-      afterRatio: Number(afterPrecompressUsage.usedRatio.toFixed(4)),
-      beforeCount: beforePrecompressUsage.usedTokens,
-      afterCount: afterPrecompressUsage.usedTokens,
-      beforeMessageCount: systemPrompts.length + baseAgentMessages.length,
-      afterMessageCount: agentMessages.length,
-    });
-  }
+  const memoryPrompts: ChatCompletionMessageParam[] = runtimeConfig.memoryEnabled
+    ? [
+        { role: "system", content: getProjectMemoryBehaviorPrompt() } as ChatCompletionMessageParam,
+        ...(memoryContextPrompt
+          ? [{ role: "system", content: memoryContextPrompt } as ChatCompletionMessageParam]
+          : []),
+      ]
+    : [];
+
+  const assembled = assemblePrompts({
+    coreSystemPrompts,
+    contextMessages: baseAgentMessages,
+    taskConstraintPrompts,
+    memoryPrompts,
+  });
+  const backgroundAssembled = assemblePrompts({
+    coreSystemPrompts,
+    contextMessages: historyBaseAgentMessages,
+    taskConstraintPrompts,
+    memoryPrompts,
+  });
+
+  const selectedModelInfo = await runWithRequestModelProfiles(userModelProfiles, async () =>
+    getLLMModel(selectedModel)
+  );
+  const contextManaged = await manageContextWindow({
+    messages: assembled.messages,
+    tools,
+    model: selectedModelInfo,
+    focusQuery: latestUserQuery,
+    enabled: runtimeConfig.contextManagerEnabled,
+  });
+  let agentMessages = contextManaged.messages;
+
   const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
-  const backgroundUsedTokens = await countGptMessagesTokens(backgroundAgentMessages, tools).catch(() => 0);
-  const systemAndSkillsTokens = await countGptMessagesTokens(coreSystemPrompts).catch(() => 0);
+  const backgroundUsedTokens = await countGptMessagesTokens(backgroundAssembled.messages, tools).catch(() => 0);
+  const systemAndSkillsTokens = await countGptMessagesTokens(assembled.systemPrompts).catch(() => 0);
   const historyTokens = await countGptMessagesTokens(historyBaseAgentMessages).catch(() => 0);
   const historyFileTokens = 0;
   const toolsSchemaTokens = await countGptMessagesTokens([], tools).catch(() => 0);
@@ -662,6 +697,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       totalPromptTokens: promptUsedTokens,
       reservedOutputTokens,
     },
+    contextManagement: contextManaged.meta,
   };
   if (stream) {
     startStream();
@@ -803,6 +839,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
   const finalPromptUsedTokens = await countGptMessagesTokens(runResult.completeMessages, tools).catch(() => 0);
   const finalCurrentInputTokens = Math.max(0, finalPromptUsedTokens - backgroundUsedTokens);
+  const memoryRecallAudit = memoryRecall
+    ? {
+        files: memoryRecall.files.map((item) => item.path),
+        indexTruncatedByLines: memoryRecall.index.truncatedByLines,
+        indexTruncatedByBytes: memoryRecall.index.truncatedByBytes,
+      }
+    : undefined;
   const finalContextWindowUsage = {
     ...contextWindowUsage,
     phase: "final" as const,
@@ -815,6 +858,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...contextWindowUsage.budget,
       currentInputTokens: finalCurrentInputTokens,
       totalPromptTokens: finalPromptUsedTokens,
+    },
+    contextManagement: {
+      ...contextManaged.meta,
+      finalPromptTokens: finalPromptUsedTokens,
     },
   };
   const normalizeToolPayloadForMatch = (value: string) => {
@@ -884,6 +931,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .reasoning_content;
     return typeof reasoning === "string" ? reasoning : "";
   })();
+  let memoryUpdateAudit: ProjectMemoryUpdateResult | undefined;
+  if (runtimeConfig.memoryEnabled && runtimeConfig.memoryAutoExtractEnabled) {
+    memoryUpdateAudit = await extractAndPersistProjectMemories({
+      projectToken: token,
+      messages: [
+        ...newMessages.map((item) => ({ role: item.role, content: item.content })),
+        { role: "assistant", content: resolvedFinalMessage },
+      ],
+      llmExtract: runMemoryModelQuery,
+    }).catch(() => ({ updated: false, writtenPaths: [] }));
+  }
 
   if (stream) {
     sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(finalContextWindowUsage));
@@ -931,6 +989,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           responseData: flowResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
+          ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
+          ...(memoryUpdateAudit ? { memoryUpdate: memoryUpdateAudit } : {}),
         },
       };
     } else if (resolvedFinalMessage) {
@@ -945,6 +1005,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           responseData: flowResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
+          ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
+          ...(memoryUpdateAudit ? { memoryUpdate: memoryUpdateAudit } : {}),
         },
       };
     }
@@ -961,6 +1023,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       created: Math.floor(Date.now() / 1000),
       model,
       contextWindow: finalContextWindowUsage,
+      memoryRecall: memoryRecallAudit,
+      memoryUpdate: memoryUpdateAudit,
       responseData: flowResponses,
       durationSeconds,
       choices: [

@@ -164,11 +164,17 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
             event === SseResponseEventEnum.workflowDuration ||
             event === SseResponseEventEnum.contextWindow
           ) {
-            if (typeof parseJson === "object") {
-              onMessage({ event: event as any, ...parseJson });
+            if (typeof parseJson === "object" && parseJson !== null) {
+              // Keep tool/metadata events in the same queue as answer deltas to
+              // preserve strict arrival order for timeline rendering.
+              pushDataToQueue({ event: event as any, ...parseJson });
             }
           } else if (event === SseResponseEventEnum.error) {
-            onMessage({ event: SseResponseEventEnum.error, ...parseJson });
+            if (typeof parseJson === "object" && parseJson !== null) {
+              pushDataToQueue({ event: SseResponseEventEnum.error, ...parseJson });
+            } else {
+              pushDataToQueue({ event: SseResponseEventEnum.error });
+            }
           }
         },
         onclose() {

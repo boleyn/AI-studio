@@ -4,6 +4,13 @@ import {
   runWorkspaceAction,
   type WorkspaceActionInput,
 } from "@server/skills/workspaceStorage";
+import {
+  clearReadSnapshot,
+  createReadSnapshotStore,
+  ensureAbsoluteFilePath,
+  getReadSnapshot,
+  markReadSnapshot,
+} from "./readState";
 
 const listFilesSchema = z
   .object({
@@ -223,12 +230,64 @@ const sliceContentByLineRange = (content: string, offset?: number, limit?: numbe
   };
 };
 
-const globToRegExp = (glob: string) => {
-  let out = "^";
+const escapeRegExpChar = (char: string) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const findBraceClose = (pattern: string, start: number) => {
+  let depth = 0;
+  for (let i = start; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+};
+
+const splitBraceAlternatives = (pattern: string) => {
+  const alternatives: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    if (ch === "," && depth === 0) {
+      alternatives.push(current);
+      current = "";
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+    current += ch;
+  }
+  alternatives.push(current);
+  return alternatives;
+};
+
+const expandBraceGlobs = (pattern: string): string[] => {
+  const openIndex = pattern.indexOf("{");
+  if (openIndex < 0) return [pattern];
+  const closeIndex = findBraceClose(pattern, openIndex);
+  if (closeIndex < 0) return [pattern];
+  const prefix = pattern.slice(0, openIndex);
+  const suffix = pattern.slice(closeIndex + 1);
+  const body = pattern.slice(openIndex + 1, closeIndex);
+  const alternatives = splitBraceAlternatives(body);
+  return alternatives.flatMap((alt) => expandBraceGlobs(`${prefix}${alt}${suffix}`));
+};
+
+const singleGlobToRegExpPart = (glob: string) => {
+  let out = "";
   for (let i = 0; i < glob.length; i += 1) {
     const ch = glob[i];
     const next = glob[i + 1];
+    const afterNext = glob[i + 2];
     if (ch === "*" && next === "*") {
+      if (afterNext === "/") {
+        out += "(?:[^/]+/)*";
+        i += 2;
+        continue;
+      }
       out += ".*";
       i += 1;
       continue;
@@ -241,10 +300,15 @@ const globToRegExp = (glob: string) => {
       out += "[^/]";
       continue;
     }
-    out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out += escapeRegExpChar(ch);
   }
-  out += "$";
-  return new RegExp(out);
+  return out;
+};
+
+const globToRegExp = (glob: string) => {
+  const expanded = expandBraceGlobs(glob);
+  const body = expanded.map((item) => singleGlobToRegExpPart(item)).join("|");
+  return new RegExp(`^(?:${body})$`);
 };
 
 const normalizeSearchRoot = (value?: string) => {
@@ -264,12 +328,15 @@ export const createSkillWorkspaceTools = ({
   userId,
   projectToken,
   skillId,
+  historyMessages,
 }: {
   workspaceId: string;
   userId: string;
   projectToken?: string;
   skillId?: string;
+  historyMessages?: unknown[];
 }): AgentToolDefinition[] => {
+  const readSnapshots = createReadSnapshotStore(historyMessages);
   const run = (input: WorkspaceActionInput) =>
     runWorkspaceAction(
       {
@@ -289,6 +356,10 @@ export const createSkillWorkspaceTools = ({
       run: async (input) => {
         const parsed = safeParse<{ pattern: string; path?: string }>(listFilesSchema, input, "Glob");
         if (!parsed.ok) throw new Error(parsed.error);
+        if (typeof parsed.data.path === "string" && parsed.data.path.trim()) {
+          ensureAbsoluteFilePath(parsed.data.path, "path");
+        }
+        const limit = 100;
         const listed = await run({ action: "list" });
         const files = (listed as any)?.data?.files || [];
         const root = normalizeSearchRoot(parsed.data.path);
@@ -298,15 +369,17 @@ export const createSkillWorkspaceTools = ({
           const relative = root ? filePath.slice(root.length).replace(/^\/+/, "") : filePath.replace(/^\/+/, "");
           return matcher.test(relative) || matcher.test(filePath);
         });
+        const truncated = filenames.length > limit;
+        const limitedFiles = filenames.slice(0, limit);
         return {
           ok: true,
           action: "list",
-          message: `匹配到 ${filenames.length} 个文件。`,
+          message: `匹配到 ${limitedFiles.length} 个文件。`,
           durationMs: 0,
-          numFiles: filenames.length,
-          filenames,
-          truncated: false,
-          data: { files: filenames },
+          numFiles: limitedFiles.length,
+          filenames: limitedFiles,
+          truncated,
+          data: { files: limitedFiles, truncated },
         };
       },
     },
@@ -321,16 +394,23 @@ export const createSkillWorkspaceTools = ({
           "Read"
         );
         if (!parsed.ok) throw new Error(parsed.error);
-        const path = parsed.data.file_path;
+        const path = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const result = await run({ action: "read", path });
         if (!result?.ok || result.action !== "read") return result;
         const content = String((result as any).data?.content || "");
         const ranged = sliceContentByLineRange(content, parsed.data.offset, parsed.data.limit);
+        const resolvedPath = (result as any).data?.path || path;
+        const isPartial = ranged.startLine > 1 || ranged.numLines < ranged.totalLines;
+        markReadSnapshot(readSnapshots, {
+          filePath: resolvedPath,
+          content,
+          isPartial,
+        });
         return {
           ...result,
           type: "text",
           file: {
-            filePath: (result as any).data?.path || path,
+            filePath: resolvedPath,
             content: ranged.content,
             numLines: ranged.numLines,
             startLine: ranged.startLine,
@@ -355,8 +435,34 @@ export const createSkillWorkspaceTools = ({
           "Write"
         );
         if (!parsed.ok) throw new Error(parsed.error);
-        const path = parsed.data.file_path;
+        const path = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const previous = await run({ action: "read", path });
+        if (previous?.ok && (previous as any).action === "read") {
+          const currentContent = String((previous as any).data?.content || "");
+          const currentPath = (previous as any).data?.path || path;
+          const snapshot = getReadSnapshot(readSnapshots, currentPath);
+          if (!snapshot) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File has not been read yet. Read it first before writing to it.",
+            };
+          }
+          if (snapshot.isPartial) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File was read partially. Read the full file before writing to it.",
+            };
+          }
+          if (snapshot.content !== currentContent) {
+            return {
+              ok: false,
+              action: "write",
+              message: "File has been modified since read. Read it again before attempting to write it.",
+            };
+          }
+        }
         const result = await run({
           action: "write",
           path,
@@ -364,6 +470,11 @@ export const createSkillWorkspaceTools = ({
         });
         if (!result?.ok) return result;
         const previousContent = previous?.ok && (previous as any).action === "read" ? (previous as any).data?.content : null;
+        markReadSnapshot(readSnapshots, {
+          filePath: (result as any).data?.path || path,
+          content: parsed.data.content,
+          isPartial: false,
+        });
         return {
           ...result,
           type: previousContent == null ? "create" : "update",
@@ -386,11 +497,38 @@ export const createSkillWorkspaceTools = ({
           "Edit"
         );
         if (!parsed.ok) throw new Error(parsed.error);
-        const path = parsed.data.file_path;
+        const path = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const query = parsed.data.old_string;
         const replace = parsed.data.new_string;
         const replaceAll = parsed.data.replace_all ?? false;
         const before = await run({ action: "read", path });
+        if (!before?.ok || (before as any).action !== "read") {
+          return before;
+        }
+        const beforeContent = String((before as any).data?.content || "");
+        const beforePath = (before as any).data?.path || path;
+        const snapshot = getReadSnapshot(readSnapshots, beforePath);
+        if (!snapshot) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File has not been read yet. Read it first before editing it.",
+          };
+        }
+        if (snapshot.isPartial) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File was read partially. Read the full file before editing it.",
+          };
+        }
+        if (snapshot.content !== beforeContent) {
+          return {
+            ok: false,
+            action: "replace",
+            message: "File has been modified since read. Read it again before attempting to edit it.",
+          };
+        }
         const result = await run({
           action: "replace",
           path,
@@ -399,12 +537,20 @@ export const createSkillWorkspaceTools = ({
           replaceAll,
         });
         if (!result?.ok) return result;
-        const originalFile = before?.ok && (before as any).action === "read" ? String((before as any).data?.content || "") : "";
+        const originalFile = beforeContent;
+        const latest = await run({ action: "read", path });
+        const nextContent =
+          latest?.ok && (latest as any).action === "read"
+            ? String((latest as any).data?.content || "")
+            : "";
+        markReadSnapshot(readSnapshots, {
+          filePath: (result as any).data?.path || path,
+          content: nextContent,
+          isPartial: false,
+        });
         return {
           ...result,
           filePath: (result as any).data?.path || path,
-          oldString: query,
-          newString: replace,
           originalFile,
           structuredPatch: [],
           userModified: false,
@@ -419,11 +565,15 @@ export const createSkillWorkspaceTools = ({
       run: async (input) => {
         const parsed = safeParse<{ file_path: string }>(deleteFileSchema, input, "Delete");
         if (!parsed.ok) throw new Error(parsed.error);
-        const path = parsed.data.file_path;
-        return run({
+        const path = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
+        const result = await run({
           action: "delete",
           path,
         });
+        if (result?.ok && (result as any).action === "delete") {
+          clearReadSnapshot(readSnapshots, (result as any).path || path);
+        }
+        return result;
       },
     },
     {
@@ -446,6 +596,9 @@ export const createSkillWorkspaceTools = ({
           offset?: number;
         }>(grepSchema, input, "Grep");
         if (!parsed.ok) throw new Error(parsed.error);
+        if (typeof parsed.data.path === "string" && parsed.data.path.trim()) {
+          ensureAbsoluteFilePath(parsed.data.path, "path");
+        }
         const includeGlobs = splitGlobPatterns(parsed.data.glob);
         const root = normalizeSearchRoot(parsed.data.path);
         if (root) includeGlobs.push(root, `${root}/**`);

@@ -110,18 +110,22 @@ const getLatestStoredContextWindow = (messages: ConversationMessage[]): ContextW
 };
 
 const toTokenCountMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] =>
-  messages
-    .map((message) => ({
-      role: message.role,
-      content: extractText(message.content),
-    }))
-    .filter(
-      (
-        item
-      ): item is ChatCompletionMessageParam =>
-        (item.role === "user" || item.role === "assistant" || item.role === "system" || item.role === "tool") &&
-        typeof item.content === "string"
-    );
+  messages.flatMap((message) => {
+    const content = extractText(message.content);
+    if (message.role === "user") {
+      return [{ role: "user", content } as ChatCompletionMessageParam];
+    }
+    if (message.role === "assistant") {
+      return [{ role: "assistant", content } as ChatCompletionMessageParam];
+    }
+    if (message.role === "system") {
+      return [{ role: "system", content } as ChatCompletionMessageParam];
+    }
+    if (message.role === "tool") {
+      return [{ role: "tool", content, tool_call_id: message.tool_call_id || "" } as ChatCompletionMessageParam];
+    }
+    return [];
+  });
 
 const estimateContextWindow = async ({
   messages,

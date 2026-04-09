@@ -10,6 +10,7 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
   && apk add --no-cache \
     libc6-compat \
     bash \
+    ripgrep \
     pandoc \
     python3 \
     py3-pip \
@@ -23,6 +24,7 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+ENV RIPGREP_PATH=/usr/bin/rg
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \

@@ -52,13 +52,43 @@ const globToRegExp = (glob: string) => {
   return new RegExp(out);
 };
 
-const createGlobMatchers = (globs?: string[]) => (globs || []).map((glob) => globToRegExp(glob.trim()));
+const expandGlobForPathSegments = (glob: string) => {
+  const pattern = glob.trim();
+  if (!pattern) return [];
+  if (pattern.includes("/")) return [pattern];
+  // Align closer to rg --glob semantics: bare patterns apply at any depth.
+  return [pattern, `**/${pattern}`];
+};
 
-const pathMatches = (path: string, include: RegExp[], exclude: RegExp[]) => {
-  if (include.length > 0 && !include.some((matcher) => matcher.test(path))) {
+type GlobMatcher = {
+  raw: string;
+  matcher: RegExp;
+  basenameOnly: boolean;
+};
+
+const createGlobMatchers = (globs?: string[]): GlobMatcher[] =>
+  (globs || [])
+    .flatMap((glob) => expandGlobForPathSegments(glob))
+    .map((glob) => ({
+      raw: glob,
+      matcher: globToRegExp(glob),
+      basenameOnly: !glob.includes("/"),
+    }));
+
+const matchesGlob = (path: string, normalizedPath: string, basename: string, item: GlobMatcher) => {
+  if (item.matcher.test(path) || item.matcher.test(normalizedPath)) return true;
+  if (item.basenameOnly && basename && item.matcher.test(basename)) return true;
+  return false;
+};
+
+const pathMatches = (path: string, include: GlobMatcher[], exclude: GlobMatcher[]) => {
+  const normalizedPath = path.replace(/^\/+/, "");
+  const basename = normalizedPath.split("/").pop() || "";
+  const matches = (item: GlobMatcher) => matchesGlob(path, normalizedPath, basename, item);
+  if (include.length > 0 && !include.some(matches)) {
     return false;
   }
-  if (exclude.some((matcher) => matcher.test(path))) {
+  if (exclude.some(matches)) {
     return false;
   }
   return true;
