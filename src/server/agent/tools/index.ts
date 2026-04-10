@@ -5,7 +5,7 @@ import type { AgentToolDefinition, ChangeTracker } from "./types";
 import { getProject } from "@server/projects/projectStorage";
 import { ProjectWorkspaceManager } from "../workspace/projectWorkspaceManager";
 import { getObjectFromStorage } from "@server/storage/s3";
-import { assertChatScopedStoragePath } from "../../../pages/api/core/chat/files/shared";
+import { assertChatScopedStoragePath, toSafeFileName } from "../../../pages/api/core/chat/files/shared";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { getAIApi } from "@aistudio/ai/config";
@@ -153,6 +153,39 @@ const toStorageCandidates = (normalizedPath: string) => {
     result.add(normalizedPath.replace("/.files/", marker));
   }
   return [...result];
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const toString = (value: unknown) => (typeof value === "string" ? value : "");
+
+const buildAttachmentStoragePathLookup = (messages?: unknown[]) => {
+  const lookup = new Map<string, string>();
+  if (!Array.isArray(messages)) return lookup;
+
+  for (const message of messages) {
+    const messageRecord = toRecord(message);
+    if (!messageRecord) continue;
+    if (toString(messageRecord.role) !== "user") continue;
+    const artifact = toRecord(messageRecord.artifact);
+    if (!artifact) continue;
+    const files = Array.isArray(artifact.files) ? artifact.files : [];
+    for (const file of files) {
+      const fileRecord = toRecord(file);
+      if (!fileRecord) continue;
+      const storagePath = toString(fileRecord.storagePath).replace(/^\/+/, "");
+      if (!storagePath) continue;
+      const fileName = toSafeFileName(
+        toString(fileRecord.name) || path.posix.basename(storagePath)
+      );
+      const workspacePath = `/.files/${fileName}`;
+      lookup.set(workspacePath, storagePath);
+      lookup.set(workspacePath.replace("/.files/", "/files/"), storagePath);
+    }
+  }
+
+  return lookup;
 };
 
 const resolveReadFileVisionModelCandidates = async () => {
@@ -666,6 +699,7 @@ export function createProjectTools(
       sessionId: options?.chatId || `project-${token}`,
     });
   const readSnapshots = createReadSnapshotStore(options?.historyMessages);
+  const attachmentStoragePathLookup = buildAttachmentStoragePathLookup(options?.historyMessages);
 
   return [
     {
@@ -742,8 +776,10 @@ export function createProjectTools(
         if (!parsed.ok) throw new Error(parsed.error);
 
         const pathInput = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
+        const normalizedWorkspaceAttachmentPath = pathInput.replace(/^\/?files\//i, "/.files/");
+        const mappedStoragePath = attachmentStoragePathLookup.get(normalizedWorkspaceAttachmentPath);
         const looksLikeScopedStoragePath = /^\/?chat_uploads\//i.test(pathInput);
-        const shouldReadAttachment = looksLikeScopedStoragePath;
+        const shouldReadAttachment = looksLikeScopedStoragePath || Boolean(mappedStoragePath);
 
         const mode: "auto" = "auto";
         const maxChars = CHAT_FILE_MAX_CHARS;
@@ -752,6 +788,32 @@ export function createProjectTools(
         if (!shouldReadAttachment) {
           try {
             await workspaceManager.hydrate(token, { force: true });
+            if (/^\/?\.?files\//i.test(pathInput) || /^\/?files\//i.test(pathInput)) {
+              const absPath = await workspaceManager.resolvePathInWorkspace(
+                token,
+                normalizedWorkspaceAttachmentPath
+              );
+              const buffer = await fs.readFile(absPath).catch(() => null);
+              if (buffer) {
+                const localContentType = inferContentTypeFromPath(absPath).toLowerCase();
+                if (localContentType.startsWith("image/")) {
+                  return await readImageByVision({
+                    storagePath: normalizedWorkspaceAttachmentPath,
+                    buffer,
+                    contentType: localContentType,
+                    maxChars,
+                    prompt: undefined,
+                  });
+                }
+                return toReadFilePayload({
+                  mode,
+                  storagePath: normalizedWorkspaceAttachmentPath,
+                  buffer,
+                  contentType: localContentType,
+                  maxChars,
+                });
+              }
+            }
             const file = await workspaceManager.readFile(token, pathInput);
             if (!file) {
               const normalizedPath = pathInput.startsWith("/") ? pathInput : `/${pathInput}`;
@@ -836,7 +898,7 @@ export function createProjectTools(
 
         const chatId = (options?.chatId || "").trim();
         if (!chatId) throw new Error("当前会话缺少 chatId，无法读取附件");
-        const storagePath = pathInput.replace(/^\/+/, "");
+        const storagePath = (mappedStoragePath || pathInput).replace(/^\/+/, "");
 
         const normalizedPath = assertChatScopedStoragePath({
           storagePath,
