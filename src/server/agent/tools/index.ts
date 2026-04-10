@@ -74,6 +74,83 @@ const sandpackCompileInfoSchema = z.object({
   includeEvents: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).optional(),
 });
+const COMPILE_NOISE_EVENT_TYPES = new Set(["document-focus", "test"]);
+const COMPILE_SUCCESS_EVENT_TYPES = new Set(["success", "done"]);
+const COMPILE_ERROR_EVENT_TYPES = new Set(["error", "fatal", "runtime-error", "runtime_error"]);
+
+const parseEventJson = (value: string) => {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCompileEventType = (event: { type?: unknown; text?: unknown }) => {
+  const eventType = typeof event.type === "string" ? event.type.trim().toLowerCase() : "";
+  if (eventType) return eventType;
+  if (typeof event.text !== "string") return "";
+  const payload = parseEventJson(event.text);
+  const payloadType =
+    payload && typeof payload.type === "string" ? payload.type.trim().toLowerCase() : "";
+  return payloadType;
+};
+
+const getCompileDoneErrorFlag = (event: { type?: unknown; text?: unknown }) => {
+  const type = getCompileEventType(event);
+  if (type !== "done") return null;
+  if (typeof event.text !== "string") return null;
+  const payload = parseEventJson(event.text);
+  if (!payload) return null;
+  if (typeof payload.compilatonError === "boolean") return payload.compilatonError;
+  if (typeof payload.compilationError === "boolean") return payload.compilationError;
+  return null;
+};
+
+const isIgnorableCompileErrorEntry = (value: string) => {
+  const text = (value || "").trim();
+  if (!text) return true;
+  if (text === "test_count") return true;
+  const payload = parseEventJson(text);
+  if (!payload) return false;
+  const type = typeof payload.type === "string" ? payload.type.trim().toLowerCase() : "";
+  if (COMPILE_NOISE_EVENT_TYPES.has(type)) return true;
+  if (type === "done") {
+    if (payload.compilatonError === false || payload.compilationError === false) return true;
+  }
+  return false;
+};
+
+const resolveCompileProjectStatus = ({
+  rawStatus,
+  events,
+  errors,
+}: {
+  rawStatus: string;
+  events: Array<{ type?: unknown; text?: unknown }>;
+  errors: string[];
+}) => {
+  const hasDoneWithError = events.some((event) => getCompileDoneErrorFlag(event) === true);
+  if (hasDoneWithError) return "error";
+
+  const hasDoneSuccess = events.some((event) => getCompileDoneErrorFlag(event) === false);
+  const hasErrorEvent = events.some((event) => {
+    const type = getCompileEventType(event);
+    if (!type || COMPILE_NOISE_EVENT_TYPES.has(type)) return false;
+    if (COMPILE_ERROR_EVENT_TYPES.has(type)) return true;
+    return type.includes("error") || type.includes("failed");
+  });
+  if (hasErrorEvent || errors.length > 0) return "error";
+
+  if (hasDoneSuccess) return "success";
+  const hasSuccessEvent = events.some((event) => {
+    const type = getCompileEventType(event);
+    return COMPILE_SUCCESS_EVENT_TYPES.has(type);
+  });
+  if (hasSuccessEvent) return "success";
+  return rawStatus;
+};
 const CHAT_FILE_MAX_CHARS = 12000;
 const CHAT_FILE_BASE64_MAX_BYTES = 200 * 1024;
 const CHAT_FILE_VISION_MAX_BYTES = 4 * 1024 * 1024;
@@ -1265,15 +1342,23 @@ export function createProjectTools(
         const limit = parsed.data.limit ?? 30;
         const includeLogs = parsed.data.includeLogs !== false;
         const includeEvents = parsed.data.includeEvents !== false;
+        const recentEvents = compileInfo.events.slice(-limit);
+        const filteredErrors = compileInfo.errors.filter((item) => !isIgnorableCompileErrorEntry(item)).slice(-limit);
+        const status = resolveCompileProjectStatus({
+          rawStatus: compileInfo.status,
+          events: recentEvents,
+          errors: filteredErrors,
+        });
 
         return {
           ok: true,
-          status: compileInfo.status,
+          status,
+          rawStatus: compileInfo.status,
           updatedAt: compileInfo.updatedAt,
           lastEventType: compileInfo.lastEventType || "",
           lastEventText: compileInfo.lastEventText || "",
-          errors: compileInfo.errors.slice(-limit),
-          events: includeEvents ? compileInfo.events.slice(-limit) : [],
+          errors: filteredErrors,
+          events: includeEvents ? recentEvents : [],
           logs: includeLogs ? compileInfo.logs.slice(-limit) : [],
         };
       },

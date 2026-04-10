@@ -11,7 +11,6 @@ const testModelSchema = z.object({
   baseUrl: z.string().trim().min(1, "Base URL 不能为空").max(500, "baseUrl 过长"),
   key: z.string().trim().min(1, "API Key 不能为空").max(1000, "key 过长"),
   maxContext: z.number().int().positive("maxContext 必须为正整数").optional(),
-  maxResponse: z.number().int().positive("maxResponse 必须为正整数").optional(),
   reasoning: z.boolean().optional(),
   vision: z.boolean().optional(),
 });
@@ -97,10 +96,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const maxContext = Number.isFinite(Number(model.maxContext)) && Number(model.maxContext) > 0
     ? Math.floor(Number(model.maxContext))
     : 16000;
-  const maxResponse = Number.isFinite(Number(model.maxResponse)) && Number(model.maxResponse) > 0
-    ? Math.floor(Number(model.maxResponse))
-    : 256;
-  const quoteMaxToken = Math.min(2000, Math.max(256, maxContext - maxResponse));
 
   try {
     console.info("[model-config-test] start", {
@@ -123,8 +118,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         baseUrl,
         key: apiKey,
         maxContext,
-        maxResponse,
-        quoteMaxToken,
         reasoning: Boolean(model.reasoning),
         vision: Boolean(model.vision),
         functionCall: true,
@@ -134,7 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         model: modelId,
         stream: false,
         temperature: 0,
-        max_tokens: Math.min(32, maxResponse),
+        max_tokens: 32,
         messages: [
           {
             role: "user",

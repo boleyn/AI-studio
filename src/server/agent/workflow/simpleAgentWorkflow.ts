@@ -22,7 +22,7 @@ export interface SimpleWorkflowNodeResponse {
 interface RunSimpleAgentWorkflowInput {
   selectedModel: string;
   stream: boolean;
-  recursionLimit: number;
+  recursionLimit?: number;
   temperature: number;
   userKey?: OpenaiAccountType;
   thinking?: { type: "enabled" | "disabled" };
@@ -365,6 +365,16 @@ export const runSimpleAgentWorkflow = async ({
 
       const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
       const modelResponse = mapToolResponseForModel(toolName, response);
+      const parsedToolResponse = parseToolResponse(modelResponse);
+      if (
+        status === "success" &&
+        parsedToolResponse &&
+        typeof parsedToolResponse === "object" &&
+        !Array.isArray(parsedToolResponse) &&
+        (parsedToolResponse as Record<string, unknown>).ok === false
+      ) {
+        status = "error";
+      }
 
       console.info(
         "[agent-debug][tool-call-result]",
@@ -408,7 +418,7 @@ export const runSimpleAgentWorkflow = async ({
         runningTime,
         status,
         toolInput: toSafeToolArgs(call.function.arguments),
-        toolRes: parseToolResponse(modelResponse),
+        toolRes: parsedToolResponse,
       };
       flowResponses.push(nodeResponse);
 

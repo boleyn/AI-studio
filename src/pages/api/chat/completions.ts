@@ -456,7 +456,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? "required"
           : latestUserArtifactFiles.length > 0
           ? "required"
-          : resolveToolChoice(userIntent)))
+          : resolveToolChoice(userIntent))) as "auto" | "required"
       : undefined;
 
   const resolvedToolChoiceMode = toolChoiceForWorkflow ?? "auto";
@@ -753,7 +753,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       runSimpleAgentWorkflow({
         selectedModel: modelToUse,
         stream,
-        recursionLimit: runtimeConfig.recursionLimit || 6,
+        recursionLimit: runtimeConfig.recursionLimit,
         temperature: runtimeConfig.temperature,
         userKey: (() => {
           const profile = userModelProfiles.get(modelToUse);

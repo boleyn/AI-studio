@@ -11,8 +11,6 @@ export type EditableModelConfig = {
   baseUrl?: string;
   key?: string;
   maxContext?: number;
-  maxResponse?: number;
-  quoteMaxToken?: number;
   maxTemperature?: number;
   reasoning?: boolean;
   vision?: boolean;
@@ -75,8 +73,6 @@ const normalizeModel = (model: Record<string, unknown>): EditableModelConfig | u
     baseUrl: trimOrUndefined(model.baseUrl),
     key: trimOrUndefined(model.key),
     maxContext: numberOrUndefined(model.maxContext),
-    maxResponse: numberOrUndefined(model.maxResponse),
-    quoteMaxToken: numberOrUndefined(model.quoteMaxToken),
     maxTemperature: numberOrUndefined(model.maxTemperature),
     reasoning: booleanOrUndefined(model.reasoning),
     vision: booleanOrUndefined(model.vision),
@@ -102,8 +98,6 @@ const toConfigModel = (model: EditableModelConfig) => {
   if (model.baseUrl) next.baseUrl = model.baseUrl;
   if (model.key) next.key = model.key;
   if (typeof model.maxContext === "number") next.maxContext = model.maxContext;
-  if (typeof model.maxResponse === "number") next.maxResponse = model.maxResponse;
-  if (typeof model.quoteMaxToken === "number") next.quoteMaxToken = model.quoteMaxToken;
   if (typeof model.maxTemperature === "number") next.maxTemperature = model.maxTemperature;
   if (typeof model.reasoning === "boolean") next.reasoning = model.reasoning;
   if (typeof model.vision === "boolean") next.vision = model.vision;

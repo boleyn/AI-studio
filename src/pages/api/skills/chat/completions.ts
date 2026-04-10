@@ -284,8 +284,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
   const omitToolChoice =
     isGoogleModel ||
-    (requestedToolChoiceMode as any) === "none" ||
-    (profileToolChoiceMode as any) === "none";
+    requestedToolChoiceMode === "none" ||
+    profileToolChoiceMode === "none";
   const toolChoiceForWorkflow: "auto" | "required" | undefined = omitToolChoice
     ? undefined
     : requestedToolChoiceMode === "auto" || requestedToolChoiceMode === "required"
@@ -496,7 +496,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           runSimpleAgentWorkflow({
             selectedModel,
             stream,
-            recursionLimit: runtimeConfig.recursionLimit || 6,
+            recursionLimit: runtimeConfig.recursionLimit,
             temperature: runtimeConfig.temperature,
             userKey: (() => {
               const profile = userModelProfiles.get(selectedModel);

@@ -14,7 +14,7 @@ export type AgentRuntimeConfig = {
 
 const DEFAULT_TOOL_CALL_MODEL = "";
 const DEFAULT_NORMAL_MODEL = "";
-const DEFAULT_RECURSION_LIMIT = 100;
+const DEFAULT_RECURSION_LIMIT = 20;
 
 export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
   const provider = "openai";
@@ -37,9 +37,10 @@ export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
     toolCallModel,
     normalModel,
     temperature: Number.parseFloat(process.env.AI_TEMPERATURE || "0.2"),
-    recursionLimit: Number.isFinite(parsedRecursionLimit)
-      ? parsedRecursionLimit
-      : DEFAULT_RECURSION_LIMIT,
+    recursionLimit:
+      Number.isFinite(parsedRecursionLimit) && (parsedRecursionLimit as number) > 0
+        ? parsedRecursionLimit
+        : DEFAULT_RECURSION_LIMIT,
     maxContext: Number.isFinite(parsedMaxContext) ? parsedMaxContext : undefined,
     apiKey,
     baseUrl,

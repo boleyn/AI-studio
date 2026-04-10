@@ -442,6 +442,37 @@ export async function replaceConversationMessages(
   await ensureMetaByChatId({ token, chatId, title });
 }
 
+export async function deleteConversationMessageById(
+  token: string,
+  id: string,
+  messageId: string
+): Promise<boolean> {
+  const chatId = id;
+  const itemCol = await getItemCollection();
+  const result = await itemCol.deleteOne({ token, chatId, dataId: messageId });
+  if (!result.deletedCount) return false;
+  await ensureMetaByChatId({ token, chatId });
+  return true;
+}
+
+export async function truncateConversationFromMessageId(
+  token: string,
+  id: string,
+  messageId: string
+): Promise<boolean> {
+  const chatId = id;
+  const itemCol = await getItemCollection();
+  const docs = await itemCol.find({ token, chatId }).sort({ time: 1, _id: 1 }).toArray();
+  const startIndex = docs.findIndex((doc) => doc.dataId === messageId);
+  if (startIndex < 0) return false;
+  const deleteIds = docs.slice(startIndex).map((doc) => doc._id);
+  if (deleteIds.length > 0) {
+    await itemCol.deleteMany({ _id: { $in: deleteIds } });
+  }
+  await ensureMetaByChatId({ token, chatId });
+  return true;
+}
+
 export async function updateConversation(
   token: string,
   id: string,

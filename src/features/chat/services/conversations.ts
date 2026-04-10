@@ -4,11 +4,13 @@ import type { ChatHistoryItemType } from "../types/conversationApi";
 
 import {
   clearConversationHistories,
+  deleteConversationMessage,
   deleteConversationHistory,
   getConversationHistories,
   getConversationInit,
   getConversationRecordsV2,
   putConversationHistory,
+  truncateConversationFromMessage,
 } from "./conversationApi";
 
 import type { Conversation, ConversationMessage, ConversationSummary } from "@/types/conversation";
@@ -127,6 +129,40 @@ export async function replaceConversationMessages(
 ): Promise<boolean> {
   try {
     await putConversationHistory({ token, chatId, messages });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteConversationMessageById(
+  token: string,
+  chatId: string,
+  messageId: string
+): Promise<boolean> {
+  try {
+    await deleteConversationMessage({
+      token,
+      chatId,
+      messageId,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function truncateConversationFromMessageId(
+  token: string,
+  chatId: string,
+  messageId: string
+): Promise<boolean> {
+  try {
+    await truncateConversationFromMessage({
+      token,
+      chatId,
+      messageId,
+    });
     return true;
   } catch {
     return false;

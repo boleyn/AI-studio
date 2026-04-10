@@ -15,8 +15,6 @@ const modelSchema = z.object({
   baseUrl: z.string().trim().max(500, "baseUrl 过长").optional().or(z.literal("")),
   key: z.string().trim().max(1000, "key 过长").optional().or(z.literal("")),
   maxContext: z.number().int().positive("maxContext 必须为正整数").optional(),
-  maxResponse: z.number().int().positive("maxResponse 必须为正整数").optional(),
-  quoteMaxToken: z.number().int().positive("quoteMaxToken 必须为正整数").optional(),
   maxTemperature: z.number().nonnegative("maxTemperature 不能为负数").optional(),
   reasoning: z.boolean().optional(),
   vision: z.boolean().optional(),

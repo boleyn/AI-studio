@@ -16,8 +16,6 @@ export const defaultQAModels: LLMModelItemType[] = [
     model: 'gpt-5',
     name: 'gpt-5',
     maxContext: 16000,
-    maxResponse: 16000,
-    quoteMaxToken: 13000,
     maxTemperature: 1.2,
     charsPointsPrice: 0,
     censor: false,

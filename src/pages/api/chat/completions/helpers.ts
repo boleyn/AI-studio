@@ -353,18 +353,21 @@ export const resolveToolChoice = (intent: UserIntent): "auto" | "required" => {
   return "auto";
 };
 
-export const normalizeToolChoiceMode = (value: unknown): "auto" | "required" | undefined => {
+export const normalizeToolChoiceMode = (
+  value: unknown
+): "auto" | "required" | "none" | undefined => {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   if (normalized === "auto") return "auto";
   if (normalized === "required") return "required";
+  if (normalized === "none") return "none";
   return undefined;
 };
 
 export const buildToolRoutingSystemPrompt = (
   intent: UserIntent,
   route: ToolRouteResult,
-  toolChoiceMode: "auto" | "required"
+  toolChoiceMode: "auto" | "required" | "none"
 ) => {
   const toolNames = route.selectedTools.map((tool) => tool.name).join(", ") || "(none)";
   const intentRule =
@@ -376,6 +379,8 @@ export const buildToolRoutingSystemPrompt = (
   const mandatoryRule =
     toolChoiceMode === "required"
       ? "- You must call at least one allowed tool before providing the final answer."
+      : toolChoiceMode === "none"
+      ? "- Tool calls are disabled for this request."
       : "- Tool calls are optional; use them when needed for correctness.";
 
   return [

@@ -6,8 +6,6 @@ export type UserModelConfig = {
   baseUrl?: string;
   key?: string;
   maxContext?: number;
-  maxResponse?: number;
-  quoteMaxToken?: number;
   maxTemperature?: number;
   reasoning?: boolean;
   vision?: boolean;
@@ -63,8 +61,6 @@ const normalizeSingle = (value: unknown): UserModelConfig | undefined => {
     baseUrl: trimOrUndefined(record.baseUrl),
     key: trimOrUndefined(record.key),
     maxContext: numberOrUndefined(record.maxContext),
-    maxResponse: numberOrUndefined(record.maxResponse),
-    quoteMaxToken: numberOrUndefined(record.quoteMaxToken),
     maxTemperature: numberOrUndefined(record.maxTemperature),
     reasoning: booleanOrUndefined(record.reasoning),
     vision: booleanOrUndefined(record.vision),
@@ -106,8 +102,6 @@ export const toUserModelProfileMap = (models: UserModelConfig[]) => {
       baseUrl: model.baseUrl,
       key: model.key,
       maxContext: model.maxContext,
-      maxResponse: model.maxResponse,
-      quoteMaxToken: model.quoteMaxToken,
       maxTemperature: model.maxTemperature,
       reasoning: model.reasoning,
       vision: model.vision,

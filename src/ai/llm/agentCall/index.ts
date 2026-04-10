@@ -15,7 +15,7 @@ import type { ChatNodeUsageType } from '@aistudio/ai/compat/global/support/walle
 import { compressRequestMessages } from '../compress';
 import { computedMaxToken } from '@aistudio/ai/utils';
 import { filterGPTMessageByMaxContext } from '@aistudio/ai/utils';
-import { getLLMModel } from '@aistudio/ai/model';
+import { getLLMModel, getModelToolChoiceMode } from '@aistudio/ai/model';
 import { filterEmptyAssistantMessages } from './utils';
 import { countGptMessagesTokens } from '@aistudio/ai/compat/common/string/tiktoken/index';
 import { addLog } from '@aistudio/ai/compat/common/system/log';
@@ -90,8 +90,59 @@ const dedupeToolCallsInRound = (calls: ChatCompletionMessageToolCall[]) => {
   return output;
 };
 
+const TOOL_LOOP_SIGNATURE_WINDOW = 6;
+
+const buildToolRoundSignature = (calls: ChatCompletionMessageToolCall[]) => {
+  if (!Array.isArray(calls) || calls.length === 0) return "";
+  return calls
+    .filter((call) => call?.function?.name)
+    .map((call) => {
+      const name = call.function.name.trim().toLowerCase();
+      const args = normalizeToolArgsForFingerprint(call.function.arguments);
+      return `${name}::${args}`;
+    })
+    .join("||");
+};
+
+const detectToolCallLoop = (history: string[], current: string) => {
+  if (!current) return { shouldStop: false as const, reason: undefined as string | undefined };
+  const next = [...history, current].slice(-TOOL_LOOP_SIGNATURE_WINDOW);
+  const last3 = next.slice(-3);
+  if (last3.length === 3 && last3[0] === last3[1] && last3[1] === last3[2]) {
+    return { shouldStop: true as const, reason: "same_signature_x3" };
+  }
+  const last4 = next.slice(-4);
+  if (
+    last4.length === 4 &&
+    last4[0] === last4[2] &&
+    last4[1] === last4[3] &&
+    last4[0] !== last4[1]
+  ) {
+    return { shouldStop: true as const, reason: "alternating_abab" };
+  }
+  return { shouldStop: false as const, reason: undefined as string | undefined };
+};
+
+const OBSERVATION_ONLY_TURN_LIMIT = 4;
+const OBSERVATION_TOOLS = new Set(["read", "grep", "compile_project"]);
+const MUTATION_TOOLS = new Set(["write", "edit"]);
+
+const isObservationOnlyTool = (name: string) => OBSERVATION_TOOLS.has(name);
+
+const isMutatingToolCall = (name: string, argsRaw?: string) => {
+  if (MUTATION_TOOLS.has(name)) return true;
+  if (name !== "global" || !argsRaw) return false;
+  try {
+    const parsed = JSON.parse(argsRaw) as { action?: unknown };
+    const action = typeof parsed.action === "string" ? parsed.action.trim().toLowerCase() : "";
+    return action === "write" || action === "replace";
+  } catch {
+    return false;
+  }
+};
+
 type RunAgentCallProps = {
-  maxRunAgentTimes: number;
+  maxRunAgentTimes?: number;
   compressTaskDescription?: string;
 
   body: CreateLLMResponseProps['body'] & {
@@ -171,6 +222,12 @@ export const runAgentCall = async ({
   onToolParam
 }: RunAgentCallProps): Promise<RunAgentResponse> => {
   const modelData = getLLMModel(String(model));
+  const modelDefaultToolChoiceMode = getModelToolChoiceMode(String(model));
+  const resolvedToolChoice =
+    body.tool_choice ??
+    (modelDefaultToolChoiceMode === "auto" || modelDefaultToolChoiceMode === "required"
+      ? modelDefaultToolChoiceMode
+      : "auto");
   const requestedMaxTokens = max_tokens ?? undefined;
 
   let runTimes = 0;
@@ -222,6 +279,10 @@ export const runAgentCall = async ({
   const subAppUsages: ChatNodeUsageType[] = [];
   const isKimiModel = /kimi/i.test(String(model || ""));
   const isMiniMaxModel = /minimax/i.test(String(model || ""));
+  const hasRunLimit = Number.isFinite(maxRunAgentTimes) && (maxRunAgentTimes as number) > 0;
+  const runLimit = hasRunLimit ? (maxRunAgentTimes as number) : Infinity;
+  let recentToolRoundSignatures: string[] = [];
+  let consecutiveObservationOnlyTurns = 0;
 
   // 处理 tool 里的交互
   if (childrenInteractiveParams) {
@@ -278,7 +339,7 @@ export const runAgentCall = async ({
   }
 
   // 自循环运行
-  while (runTimes < maxRunAgentTimes) {
+  while (runTimes < runLimit) {
     if (isAborted?.()) {
       finish_reason = 'stop';
       break;
@@ -329,7 +390,7 @@ export const runAgentCall = async ({
         ...body,
         model,
         messages: requestMessages,
-        tool_choice: body.tool_choice ?? 'auto',
+        tool_choice: resolvedToolChoice,
         toolCallMode: 'toolChoice',
         tools,
         // Kimi often emits duplicate batched tool calls; run sequential tool planning for stability.
@@ -363,88 +424,156 @@ export const runAgentCall = async ({
     // 4. Call tools
     toolCalls = dedupeToolCallsInRound(toolCalls);
     let toolCallStep = false;
-    for await (const tool of toolCalls) {
-      if (!tool) {
-        console.warn(
-          "[agent-debug][tool-exec-skip-empty-call]",
-          JSON.stringify({ runTimes })
-        );
-        continue;
-      }
-      console.info(
-        "[agent-debug][tool-exec-start]",
-        JSON.stringify({
-          runTimes,
-          toolCallId: tool.id,
-          toolName: tool.function?.name,
-          aborted: Boolean(isAborted?.())
-        })
+    const toolRoundSignature = buildToolRoundSignature(toolCalls);
+    const loopCheck = detectToolCallLoop(recentToolRoundSignatures, toolRoundSignature);
+    if (toolRoundSignature) {
+      recentToolRoundSignatures = [...recentToolRoundSignatures, toolRoundSignature].slice(
+        -TOOL_LOOP_SIGNATURE_WINDOW
       );
-      if (isAborted?.()) {
-        toolCallStep = true;
-        finish_reason = 'stop';
+    }
+    if (loopCheck.shouldStop) {
+      toolCallStep = true;
+      finish_reason = "stop";
+      const loopNotice =
+        `检测到可能的工具调用循环（${loopCheck.reason}），已停止自动工具调用。` +
+        "请调整提示词、降低 tool_choice 约束或限制可用工具后重试。";
+      const loopMessage: ChatCompletionMessageParam = {
+        role: ChatCompletionRequestMessageRoleEnum.Assistant,
+        content: loopNotice
+      };
+      assistantMessages.push(loopMessage);
+      requestMessages.push(loopMessage);
+      addLog.warn("[LLM ToolLoop][stop-loop]", {
+        runTimes,
+        reason: loopCheck.reason || "",
+        signature: toolRoundSignature
+      });
+    }
+
+    if (!toolCallStep) {
+      let hasMutatingToolCall = false;
+      let hasToolCall = false;
+      let allObservationOnly = true;
+      for await (const tool of toolCalls) {
+        if (!tool) {
+          console.warn(
+            "[agent-debug][tool-exec-skip-empty-call]",
+            JSON.stringify({ runTimes })
+          );
+          continue;
+        }
         console.info(
-          "[agent-debug][tool-exec-skip-aborted]",
+          "[agent-debug][tool-exec-start]",
           JSON.stringify({
             runTimes,
             toolCallId: tool.id,
-            toolName: tool.function?.name
+            toolName: tool.function?.name,
+            aborted: Boolean(isAborted?.())
           })
         );
-        break;
-      }
-      const {
-        response,
-        assistantMessages: toolAssistantMessages,
-        usages,
-        interactive,
-        stop
-      } = await handleToolResponse({
-        call: tool,
-        messages: cloneRequestMessages
-      });
 
-      const toolMessage: ChatCompletionMessageParam = {
-        tool_call_id: tool.id,
-        role: ChatCompletionRequestMessageRoleEnum.Tool,
-        content: response
-      };
-      console.info(
-        "[agent-debug][tool-exec-finish]",
-        JSON.stringify({
-          runTimes,
-          toolCallId: tool.id,
-          toolName: tool.function?.name,
-          responseLength: typeof response === 'string' ? response.length : 0,
-          stop: Boolean(stop),
-          interactive: Boolean(interactive)
-        })
-      );
-
-      // 5. Add tool response to messages
-      assistantMessages.push(toolMessage);
-      assistantMessages.push(...filterEmptyAssistantMessages(toolAssistantMessages)); // 因为 toolAssistantMessages 也需要记录成 AI 响应，所以这里需要推送。
-      requestMessages.push(toolMessage); // 请求的 Request 只需要工具响应，不需要工具中 assistant 的内容，所以不推送 toolAssistantMessages
-
-      subAppUsages.push(...usages);
-
-      if (interactive) {
-        interactiveResponse = {
-          type: 'toolChildrenInteractive',
-          params: {
-            childrenResponse: interactive,
-            toolParams: {
-              memoryRequestMessages: [],
-              toolCallId: tool.id
-            }
-          }
-        } as any;
-      }
-      if (stop) {
-        toolCallStep = true;
         if (isAborted?.()) {
+          toolCallStep = true;
           finish_reason = 'stop';
+          console.info(
+            "[agent-debug][tool-exec-skip-aborted]",
+            JSON.stringify({
+              runTimes,
+              toolCallId: tool.id,
+              toolName: tool.function?.name
+            })
+          );
+          break;
         }
+        const {
+          response,
+          assistantMessages: toolAssistantMessages,
+          usages,
+          interactive,
+          stop
+        } = await handleToolResponse({
+          call: tool,
+          messages: cloneRequestMessages
+        });
+        const toolName = String(tool.function?.name || "").trim().toLowerCase();
+        hasToolCall = true;
+        if (!isObservationOnlyTool(toolName)) {
+          allObservationOnly = false;
+        }
+        if (isMutatingToolCall(toolName, tool.function?.arguments)) {
+          hasMutatingToolCall = true;
+        }
+
+        const toolMessage: ChatCompletionMessageParam = {
+          tool_call_id: tool.id,
+          role: ChatCompletionRequestMessageRoleEnum.Tool,
+          content: response
+        };
+        console.info(
+          "[agent-debug][tool-exec-finish]",
+          JSON.stringify({
+            runTimes,
+            toolCallId: tool.id,
+            toolName: tool.function?.name,
+            responseLength: typeof response === 'string' ? response.length : 0,
+            stop: Boolean(stop),
+            interactive: Boolean(interactive)
+          })
+        );
+
+        // 5. Add tool response to messages
+        assistantMessages.push(toolMessage);
+        assistantMessages.push(...filterEmptyAssistantMessages(toolAssistantMessages)); // 因为 toolAssistantMessages 也需要记录成 AI 响应，所以这里需要推送。
+        requestMessages.push(toolMessage); // 请求的 Request 只需要工具响应，不需要工具中 assistant 的内容，所以不推送 toolAssistantMessages
+
+        subAppUsages.push(...usages);
+
+        if (interactive) {
+          interactiveResponse = {
+            type: 'toolChildrenInteractive',
+            params: {
+              childrenResponse: interactive,
+              toolParams: {
+                memoryRequestMessages: [],
+                toolCallId: tool.id
+              }
+            }
+          } as any;
+        }
+        if (stop) {
+          toolCallStep = true;
+          if (isAborted?.()) {
+            finish_reason = 'stop';
+          }
+        }
+      }
+
+      if (hasToolCall) {
+        if (hasMutatingToolCall) {
+          consecutiveObservationOnlyTurns = 0;
+        } else if (allObservationOnly) {
+          consecutiveObservationOnlyTurns += 1;
+        } else {
+          consecutiveObservationOnlyTurns = 0;
+        }
+      }
+
+      if (consecutiveObservationOnlyTurns >= OBSERVATION_ONLY_TURN_LIMIT) {
+        toolCallStep = true;
+        finish_reason = "stop";
+        const noProgressNotice =
+          `检测到连续 ${consecutiveObservationOnlyTurns} 轮仅执行观察类工具（Read/Grep/compile_project）且无写入动作，已停止自动重试。` +
+          "请明确给出一次性修改指令，或放宽工具策略后再继续。";
+        const noProgressMessage: ChatCompletionMessageParam = {
+          role: ChatCompletionRequestMessageRoleEnum.Assistant,
+          content: noProgressNotice
+        };
+        assistantMessages.push(noProgressMessage);
+        requestMessages.push(noProgressMessage);
+        addLog.warn("[LLM ToolLoop][stop-observation-only]", {
+          runTimes,
+          consecutiveObservationOnlyTurns
+        });
       }
     }
 
@@ -455,6 +584,29 @@ export const runAgentCall = async ({
     if (toolCalls.length === 0 || !!interactiveResponse || toolCallStep) {
       break;
     }
+  }
+
+  if (
+    runLimit !== Infinity &&
+    runTimes >= runLimit &&
+    !interactiveResponse &&
+    !requestError &&
+    !isAborted?.()
+  ) {
+    finish_reason = "stop";
+    const limitNotice =
+      `已达到最大自动执行轮次（${runLimit}），为避免无效循环已停止。` +
+      "如需继续，请明确下一步目标或提高 AI_RECURSION_LIMIT 后重试。";
+    const limitMessage: ChatCompletionMessageParam = {
+      role: ChatCompletionRequestMessageRoleEnum.Assistant,
+      content: limitNotice
+    };
+    assistantMessages.push(limitMessage);
+    requestMessages.push(limitMessage);
+    addLog.warn("[LLM ToolLoop][stop-recursion-limit]", {
+      runTimes,
+      runLimit
+    });
   }
 
   if (interactiveResponse) {

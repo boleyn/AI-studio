@@ -42,8 +42,6 @@ type ConfigModelItem = {
   baseUrl?: unknown;
   key?: unknown;
   maxContext?: unknown;
-  maxResponse?: unknown;
-  quoteMaxToken?: unknown;
   maxTemperature?: unknown;
   reasoning?: unknown;
   vision?: unknown;
@@ -140,8 +138,6 @@ const parseModels = (value: unknown) => {
             ? record.key.trim()
             : undefined,
         maxContext: toNumber(record.maxContext),
-        maxResponse: toNumber(record.maxResponse),
-        quoteMaxToken: toNumber(record.quoteMaxToken),
         maxTemperature: toNumber(record.maxTemperature),
         reasoning: toBoolean(record.reasoning),
         vision: toBoolean(record.vision),

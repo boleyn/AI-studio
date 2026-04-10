@@ -15,7 +15,12 @@ import {
   uploadChatFiles,
 } from "../services/files";
 import { updateMessageFeedback } from "../services/feedback";
-import { getConversation as getConversationById, replaceConversationMessages } from "../services/conversations";
+import {
+  deleteConversationMessageById,
+  getConversation as getConversationById,
+  replaceConversationMessages,
+  truncateConversationFromMessageId,
+} from "../services/conversations";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
@@ -1134,23 +1139,29 @@ const ChatPanel = ({
     async (messageId: string) => {
       if (isSending) return;
       const snapshot = [...messages];
-      const targetIndex = snapshot.findIndex((message) => message.id === messageId);
+      const isVirtualFailedAssistant = messageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX);
+      const resolvedDeleteId = isVirtualFailedAssistant
+        ? messageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length)
+        : messageId;
+      if (!resolvedDeleteId) return;
+
+      const targetIndex = snapshot.findIndex((message) => message.id === resolvedDeleteId);
       if (targetIndex < 0) return;
 
-      const remainedMessages = snapshot.filter((message) => message.id !== messageId);
+      const remainedMessages = snapshot.filter((message) => message.id !== resolvedDeleteId);
       const conversationId = activeConversation?.id;
       if (conversationId) {
-        const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
-        if (!replaced) return;
+        const deleted = await deleteConversationMessageById(token, conversationId, resolvedDeleteId);
+        if (!deleted) return;
       }
 
       setMessages(remainedMessages);
       setMessageRatings((prev) => {
         const next = { ...prev };
-        delete next[messageId];
+        delete next[resolvedDeleteId];
         return next;
       });
-      if (streamingMessageId === messageId) {
+      if (streamingMessageId === resolvedDeleteId) {
         setStreamingMessageId(null);
       }
     },
@@ -1195,9 +1206,8 @@ const ChatPanel = ({
 
       // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
       const cutIndex = Math.max(0, Math.min(assistantIndex, snapshot.length));
-      const remainedMessages = snapshot.slice(0, cutIndex);
-      const replaced = await replaceConversationMessages(token, conversationId, remainedMessages);
-      if (!replaced) return;
+      const truncated = await truncateConversationFromMessageId(token, conversationId, assistantMessageId);
+      if (!truncated) return;
 
       setMessages((prev) => prev.slice(0, cutIndex));
       setMessageRatings((prev) => {

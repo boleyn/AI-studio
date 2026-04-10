@@ -1,22 +1,7 @@
-
 import { requireAuth } from "@server/auth/session";
-import {
-  getConversation,
-  replaceConversationMessages,
-  updateConversation,
-  type Conversation,
-  type ConversationMessage,
-} from "@server/conversations/conversationStorage";
+import { truncateConversationFromMessageId } from "@server/conversations/conversationStorage";
 import { getProjectAccessState } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
-
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "8mb",
-    },
-  },
-};
 
 const getToken = (req: NextApiRequest): string | null => {
   const queryToken = typeof req.query.token === "string" ? req.query.token : null;
@@ -30,9 +15,15 @@ const getChatId = (req: NextApiRequest): string | null => {
   return queryChatId ?? bodyChatId;
 };
 
+const getMessageId = (req: NextApiRequest): string | null => {
+  const queryMessageId = typeof req.query.messageId === "string" ? req.query.messageId : null;
+  const bodyMessageId = typeof req.body?.messageId === "string" ? req.body.messageId : null;
+  return queryMessageId ?? bodyMessageId;
+};
+
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<{ history: Conversation } | { error: string }>
+  res: NextApiResponse<{ success: boolean } | { error: string }>
 ) {
   const auth = await requireAuth(req, res);
   if (!auth) return;
@@ -57,31 +48,23 @@ export default async function handler(
     res.status(400).json({ error: "缺少 chatId 参数" });
     return;
   }
+  const messageId = getMessageId(req)?.trim();
+  if (!messageId) {
+    res.status(400).json({ error: "缺少 messageId 参数" });
+    return;
+  }
 
-  if (req.method !== "POST" && req.method !== "PATCH" && req.method !== "PUT") {
-    res.setHeader("Allow", ["POST", "PATCH", "PUT"]);
+  if (req.method !== "POST" && req.method !== "PATCH") {
+    res.setHeader("Allow", ["POST", "PATCH"]);
     res.status(405).json({ error: `方法 ${req.method} 不被允许` });
     return;
   }
 
-  const hasMessages = Array.isArray(req.body?.messages);
-  const messages = hasMessages ? (req.body.messages as ConversationMessage[]) : undefined;
-  const title = typeof req.body?.title === "string" ? req.body.title : undefined;
-  const customTitle = typeof req.body?.customTitle === "string" ? req.body.customTitle : undefined;
-  const top = typeof req.body?.top === "boolean" ? req.body.top : undefined;
-
-  if (messages) {
-    await replaceConversationMessages(token, chatId, messages, title);
-  } else {
-    await updateConversation(token, chatId, { title, customTitle, top });
-  }
-
-  const history = await getConversation(token, chatId);
-  if (!history) {
-    res.status(404).json({ error: "对话不存在" });
+  const success = await truncateConversationFromMessageId(token, chatId, messageId);
+  if (!success) {
+    res.status(404).json({ error: "消息不存在" });
     return;
   }
 
-  res.setHeader("Cache-Control", "no-store");
-  res.status(200).json({ history });
+  res.status(200).json({ success: true });
 }

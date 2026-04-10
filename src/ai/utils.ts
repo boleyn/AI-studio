@@ -5,10 +5,9 @@ import { removeDatasetCiteText } from '@aistudio/ai/compat/global/core/ai/llm/ut
 import json5 from 'json5';
 import { sliceJsonStr } from '@aistudio/ai/compat/global/common/string/tools';
 
-/* 
+/*
   Count response max token
-  When maxToken is undefined, use a reasonable default value to balance response length and context space.
-  Default: min(2000, maxResponse / 2) to ensure sufficient context for history messages.
+  When maxToken is undefined, use a context-window based default.
 */
 export const computedMaxToken = ({
   maxToken,
@@ -19,26 +18,8 @@ export const computedMaxToken = ({
   model: LLMModelItemType;
   min?: number;
 }) => {
-  // 规范化 model.maxResponse：如果无效则根据 maxContext 动态计算
-  // 修复某些模型配置中 maxResponse 为空字符串或 undefined 的问题
-  const normalizedMaxResponse = (() => {
-    const raw = model.maxResponse;
-    // 检查是否为有效的正数
-    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-      return raw;
-    }
-
-    // 无效值：根据 maxContext 动态计算合理的输出上限
-    // 策略：为输出预留 25% 的上下文空间，最小 2000，最大 16000
-    const contextBasedDefault = Math.floor(model.maxContext * 0.25);
-    return Math.max(2000, Math.min(contextBasedDefault, 16000));
-  })();
-  // max_tokens 不能只看 maxResponse，还必须受 maxContext 约束。
-  // 否则会出现 max_tokens > maxContext，导致历史上下文在预过滤阶段被全部裁掉。
-  const contextLimitedMaxResponse = (() => {
-    const contextCap = Math.max(512, Math.floor(model.maxContext * 0.4));
-    return Math.min(normalizedMaxResponse, contextCap);
-  })();
+  // max_tokens 仅根据 maxContext 限制，避免配置分歧导致超限。
+  const contextLimitedMaxResponse = Math.max(512, Math.floor(model.maxContext * 0.4));
 
   // 参数校验
   if (maxToken !== undefined && maxToken !== null) {
@@ -52,7 +33,7 @@ export const computedMaxToken = ({
         `max_tokens must be greater than 0, got: ${maxToken}. Use undefined to apply default value.`
       );
     }
-    // 检查是否超过模型上限（使用规范化后的值）
+    // 检查是否超过模型上限
     if (maxToken > contextLimitedMaxResponse) {
       throw new Error(
         `max_tokens (${maxToken}) exceeds model response/context limit (${contextLimitedMaxResponse}). Please reduce max_tokens or use a model with higher limits.`
@@ -74,19 +55,19 @@ export const computedMaxToken = ({
     const ctx = model.maxContext;
 
     // 大上下文模型（>= 100k）：激进策略，给输出预留更多空间
-    // 例如 Gemini 1.5 (300k), Claude 3 (200k) - 使用 70% 的 maxResponse，最小 8000
+    // 例如 Gemini 1.5 (300k), Claude 3 (200k) - 使用 70% 的可用输出预算，最小 8000
     if (ctx >= 100000) {
       return Math.max(8000, Math.floor(contextLimitedMaxResponse * 0.7));
     }
 
     // 中等上下文模型（32k-100k）：平衡策略
-    // 例如 GPT-4-32k - 使用 60% 的 maxResponse，最小 4000
+    // 例如 GPT-4-32k - 使用 60% 的可用输出预算，最小 4000
     if (ctx >= 32000) {
       return Math.max(4000, Math.floor(contextLimitedMaxResponse * 0.6));
     }
 
     // 小上下文模型（< 32k）：保守策略，优先保证历史空间
-    // 例如 GPT-3.5, GPT-4 - 使用 50% 的 maxResponse，最小 2000
+    // 例如 GPT-3.5, GPT-4 - 使用 50% 的可用输出预算，最小 2000
     return Math.max(2000, Math.floor(contextLimitedMaxResponse * 0.5));
   })();
 

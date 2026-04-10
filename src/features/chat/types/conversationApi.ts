@@ -50,6 +50,17 @@ export interface UpdateHistoryResponseType {
   history?: Conversation;
 }
 
+export interface UpdateHistoryMessageActionBodyType {
+  token?: string;
+  appId?: string;
+  shareId?: string;
+  outLinkUid?: string;
+  teamId?: string;
+  teamToken?: string;
+  chatId: string;
+  messageId: string;
+}
+
 export interface DelChatHistoryType {
   token?: string;
   appId?: string;
