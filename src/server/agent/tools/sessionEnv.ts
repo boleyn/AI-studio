@@ -9,6 +9,17 @@ const SESSION_ENV_ALLOWLIST = [
   "TZ",
   "TERM",
   "SHELL",
+  "NPM_CONFIG_REGISTRY",
+  "NPM_REGISTRY",
+  "npm_config_registry",
+  "PIP_INDEX_URL",
+  "PIP_TRUSTED_HOST",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
 ];
 
 const toSafeSessionId = (raw?: string) => {

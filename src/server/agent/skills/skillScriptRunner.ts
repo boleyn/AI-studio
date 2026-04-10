@@ -83,6 +83,7 @@ const parseBase64DataUrl = (raw: string): Buffer | null => {
 const SUPPORTED_SCRIPT_EXTS = [".js", ".mjs", ".cjs", ".py", ".sh", ".bash"] as const;
 const DEFAULT_PYPI_INDEX_URL = "https://pypi.mirrors.ustc.edu.cn/simple";
 const DEFAULT_PYPI_TRUSTED_HOST = "pypi.mirrors.ustc.edu.cn";
+const DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
 
 const isSupportedScriptFile = (filePath: string) => {
   const ext = path.extname(filePath).toLowerCase();
@@ -559,9 +560,14 @@ export const runSkillScript = async (input: {
       .then((stat) => stat.isFile())
       .catch(() => false);
     const command = "npm";
+    const npmRegistry =
+      process.env.NPM_CONFIG_REGISTRY ||
+      process.env.NPM_REGISTRY ||
+      process.env.npm_config_registry ||
+      DEFAULT_NPM_REGISTRY;
     const args = hasLockFile
-      ? ["ci", "--no-audit", "--no-fund"]
-      : ["install", "--no-audit", "--no-fund"];
+      ? ["ci", "--no-audit", "--no-fund", "--registry", npmRegistry]
+      : ["install", "--no-audit", "--no-fund", "--registry", npmRegistry];
     dependencyInstall.attempted = true;
     dependencyInstall.command = command;
     dependencyInstall.args = args;
