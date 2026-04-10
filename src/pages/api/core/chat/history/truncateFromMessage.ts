@@ -1,5 +1,8 @@
 import { requireAuth } from "@server/auth/session";
-import { truncateConversationFromMessageId } from "@server/conversations/conversationStorage";
+import {
+  truncateConversationAfterMessageId,
+  truncateConversationFromMessageId,
+} from "@server/conversations/conversationStorage";
 import { getProjectAccessState } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -18,6 +21,12 @@ const getChatId = (req: NextApiRequest): string | null => {
 const getMessageId = (req: NextApiRequest): string | null => {
   const queryMessageId = typeof req.query.messageId === "string" ? req.query.messageId : null;
   const bodyMessageId = typeof req.body?.messageId === "string" ? req.body.messageId : null;
+  return queryMessageId ?? bodyMessageId;
+};
+
+const getAfterMessageId = (req: NextApiRequest): string | null => {
+  const queryMessageId = typeof req.query.afterMessageId === "string" ? req.query.afterMessageId : null;
+  const bodyMessageId = typeof req.body?.afterMessageId === "string" ? req.body.afterMessageId : null;
   return queryMessageId ?? bodyMessageId;
 };
 
@@ -53,6 +62,7 @@ export default async function handler(
     res.status(400).json({ error: "缺少 messageId 参数" });
     return;
   }
+  const afterMessageId = getAfterMessageId(req)?.trim();
 
   if (req.method !== "POST" && req.method !== "PATCH") {
     res.setHeader("Allow", ["POST", "PATCH"]);
@@ -60,7 +70,11 @@ export default async function handler(
     return;
   }
 
-  const success = await truncateConversationFromMessageId(token, chatId, messageId);
+  const success =
+    (await truncateConversationFromMessageId(token, chatId, messageId)) ||
+    (afterMessageId
+      ? await truncateConversationAfterMessageId(token, chatId, afterMessageId)
+      : false);
   if (!success) {
     res.status(404).json({ error: "消息不存在" });
     return;

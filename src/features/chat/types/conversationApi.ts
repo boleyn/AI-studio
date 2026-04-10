@@ -59,6 +59,7 @@ export interface UpdateHistoryMessageActionBodyType {
   teamToken?: string;
   chatId: string;
   messageId: string;
+  afterMessageId?: string;
 }
 
 export interface DelChatHistoryType {

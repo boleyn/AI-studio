@@ -155,13 +155,15 @@ export async function deleteConversationMessageById(
 export async function truncateConversationFromMessageId(
   token: string,
   chatId: string,
-  messageId: string
+  messageId: string,
+  afterMessageId?: string
 ): Promise<boolean> {
   try {
     await truncateConversationFromMessage({
       token,
       chatId,
       messageId,
+      ...(afterMessageId ? { afterMessageId } : {}),
     });
     return true;
   } catch {

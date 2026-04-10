@@ -473,6 +473,24 @@ export async function truncateConversationFromMessageId(
   return true;
 }
 
+export async function truncateConversationAfterMessageId(
+  token: string,
+  id: string,
+  messageId: string
+): Promise<boolean> {
+  const chatId = id;
+  const itemCol = await getItemCollection();
+  const docs = await itemCol.find({ token, chatId }).sort({ time: 1, _id: 1 }).toArray();
+  const anchorIndex = docs.findIndex((doc) => doc.dataId === messageId);
+  if (anchorIndex < 0) return false;
+  const deleteIds = docs.slice(anchorIndex + 1).map((doc) => doc._id);
+  if (deleteIds.length > 0) {
+    await itemCol.deleteMany({ _id: { $in: deleteIds } });
+  }
+  await ensureMetaByChatId({ token, chatId });
+  return true;
+}
+
 export async function updateConversation(
   token: string,
   id: string,

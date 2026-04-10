@@ -1206,7 +1206,12 @@ const ChatPanel = ({
 
       // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
       const cutIndex = Math.max(0, Math.min(assistantIndex, snapshot.length));
-      const truncated = await truncateConversationFromMessageId(token, conversationId, assistantMessageId);
+      const truncated = await truncateConversationFromMessageId(
+        token,
+        conversationId,
+        assistantMessageId,
+        userMessage.id
+      );
       if (!truncated) return;
 
       setMessages((prev) => prev.slice(0, cutIndex));
