@@ -28,6 +28,51 @@ type SharePayload = {
   project: PreviewProject;
 };
 
+const EMPTY_PROJECT_PLACEHOLDER_PATH = "/.ai-studio-empty.js";
+const EMPTY_PROJECT_PROVIDER_FILES: SandpackFiles = {
+  [EMPTY_PROJECT_PLACEHOLDER_PATH]: {
+    code: "export default function EmptyProjectPlaceholder() { return null; }",
+    hidden: true,
+  },
+};
+const ENTRY_CANDIDATES = [
+  "/index.tsx",
+  "/index.jsx",
+  "/index.ts",
+  "/index.js",
+  "/main.tsx",
+  "/main.jsx",
+  "/main.ts",
+  "/main.js",
+  "/App.tsx",
+  "/App.jsx",
+  "/App.ts",
+  "/App.js",
+] as const;
+const EXTERNAL_RESOURCE_HTML_CANDIDATES = ["/public/index.html", "/index.html"] as const;
+const extractExternalResources = (files: SandpackFiles): string[] => {
+  const resources = new Set<string>();
+  const htmlPath = EXTERNAL_RESOURCE_HTML_CANDIDATES.find((path) => Boolean(files[path]));
+  if (!htmlPath) return [];
+  const html = files[htmlPath]?.code || "";
+  if (!html) return [];
+
+  const scriptSrcRegex = /<script[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>\s*<\/script>/gi;
+  const stylesheetRegex = /<link[^>]*\brel\s*=\s*["']stylesheet["'][^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+  let match: RegExpExecArray | null = null;
+  while ((match = scriptSrcRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+  while ((match = stylesheetRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+
+  return Array.from(resources);
+};
+
 const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) => {
   const [project, setProject] = useState<PreviewProject>(initialProject);
 
@@ -53,17 +98,35 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(project.dependencies);
-  }, [project.dependencies]);
+  }, [project.dependencies, project.files]);
+  const providerFiles = useMemo(() => {
+    const files = (project.files || {}) as SandpackFiles;
+    const hasRealFiles = Object.keys(files).some((filePath) => filePath !== "/package.json");
+    return hasRealFiles ? files : EMPTY_PROJECT_PROVIDER_FILES;
+  }, [project.files]);
+  const providerCustomSetup = useMemo(() => {
+    const entry =
+      ENTRY_CANDIDATES.find((path) => Boolean(providerFiles[path])) || EMPTY_PROJECT_PLACEHOLDER_PATH;
+    return {
+      ...customSetup,
+      entry,
+    };
+  }, [customSetup, providerFiles]);
+  const providerExternalResources = useMemo(() => extractExternalResources(providerFiles), [providerFiles]);
 
   return (
     <Flex direction="column" h="100vh" bg="gray.50" overflow="hidden">
       <Box flex="1" minH="0" position="relative">
         <SandpackProvider
-          template={project.template}
-          files={project.files}
-          customSetup={customSetup}
+          template={undefined}
+          files={providerFiles}
+          customSetup={providerCustomSetup}
           theme={githubLight}
-          options={{ autorun: true, experimental_enableServiceWorker: true }}
+          options={{
+            autorun: true,
+            experimental_enableServiceWorker: true,
+            externalResources: providerExternalResources,
+          }}
         >
           <SandpackStack
             style={{

@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { normalizeSandpackCompileInfo } from "@shared/sandpack/compileInfo";
-import { normalizeSandpackReactTemplateFiles } from "@shared/sandpack/reactTemplate";
 import JSZip from "jszip";
 import {
   createProjectFileViewUrl,
@@ -46,6 +45,10 @@ type UpdateFilesRequest = {
 const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: string }> => {
   if (!files || typeof files !== "object") return false;
   return Object.keys(files as Record<string, unknown>).length > 0;
+};
+
+const hasFilesObject = (files: unknown): files is Record<string, { code: string }> => {
+  return Boolean(files && typeof files === "object");
 };
 
 const normalizeZipPath = (filePath: string): string | null => {
@@ -321,10 +324,10 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           return;
         }
 
-        const mergedFiles = normalizeSandpackReactTemplateFiles({
+        const mergedFiles = {
           ...project.files,
           ...body.files,
-        }).files;
+        };
 
         await updateFiles(token, mergedFiles);
         res.status(200).json({ success: true });
@@ -347,13 +350,8 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         return;
       }
 
-      if (!body.files || typeof body.files !== "object") {
+      if (!hasFilesObject(body.files)) {
         res.status(400).json({ error: "缺少files参数" });
-        return;
-      }
-
-      if (!hasNonEmptyFiles(body.files)) {
-        res.status(400).json({ error: "files 不能为空" });
         return;
       }
 
@@ -365,7 +363,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         });
       }
 
-      await updateFiles(token, normalizeSandpackReactTemplateFiles(body.files).files);
+      await updateFiles(token, body.files);
       res.status(200).json({ success: true });
     } catch (error) {
       console.error("Failed to update files:", error);

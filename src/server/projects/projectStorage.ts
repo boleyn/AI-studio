@@ -3,10 +3,6 @@ import { promises as fs } from "fs";
 import path from "path";
 import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
-import {
-  DEFAULT_REACT_TEMPLATE_FILES,
-  normalizeSandpackReactTemplateFiles,
-} from "@shared/sandpack/reactTemplate";
 import { getMongoDb } from "../db/mongo";
 import {
   createGetObjectPresignedUrl,
@@ -83,8 +79,6 @@ const PROJECT_STORAGE_PREFIX = "projects";
 const PROJECT_STORAGE_FILES_SEGMENT = "files";
 const CHAT_UPLOAD_ROOT = "chat_uploads";
 const LEGACY_PROJECT_FILES_ROOT = path.join(process.cwd(), "data", "projects");
-
-const DEFAULT_PROJECT_FILES: Record<string, ProjectFile> = DEFAULT_REACT_TEMPLATE_FILES;
 
 async function getCollection() {
   const db = await getMongoDb();
@@ -396,38 +390,10 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
       if (declaredFileCount > 0) {
         throw new Error(`项目文件缺失：token=${doc.token}, declaredFileCount=${declaredFileCount}`);
       }
-      await syncFilesToStorage(doc.token, DEFAULT_PROJECT_FILES);
-      await coll.updateOne(
-        { token: doc.token },
-        {
-          $set: {
-            filesPath: getFilesMetaPath(doc.token),
-            fileCount: Object.keys(DEFAULT_PROJECT_FILES).length,
-            updatedAt: new Date().toISOString(),
-          },
-          $unset: { files: "" },
-        }
-      );
-      files = DEFAULT_PROJECT_FILES;
+      files = {};
     }
   } else {
     await cleanupLegacyDir(doc.token);
-  }
-
-  const normalized = normalizeSandpackReactTemplateFiles(files);
-  if (normalized.changed) {
-    files = normalized.files;
-    await replaceProjectFilesInStorage(doc.token, files);
-    await coll.updateOne(
-      { token: doc.token },
-      {
-        $set: {
-          filesPath: getFilesMetaPath(doc.token),
-          fileCount: Object.keys(files).length,
-          updatedAt: new Date().toISOString(),
-        },
-      }
-    );
   }
 
   return {

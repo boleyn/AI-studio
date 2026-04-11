@@ -28,10 +28,9 @@ import type { SaveStatus } from "./CodeChangeListener";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
-import { DEFAULT_REACT_TEMPLATE_FILES } from "@shared/sandpack/reactTemplate";
 import { listConversations } from "@features/chat/services/conversations";
 
-type SandpackFile = { code: string };
+type SandpackFile = { code: string; hidden?: boolean };
 export type SandpackFiles = Record<string, SandpackFile>;
 
 type ProjectStatus = "idle" | "loading" | "ready" | "error";
@@ -51,8 +50,55 @@ type ActiveView = "preview" | "code" | "logs";
 type ShareMode = "editable" | "preview";
 
 const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
+const EMPTY_PROJECT_PLACEHOLDER_PATH = "/.ai-studio-empty.js";
+const EMPTY_PROJECT_PROVIDER_FILES: SandpackFiles = {
+  [EMPTY_PROJECT_PLACEHOLDER_PATH]: {
+    code: "export default function EmptyProjectPlaceholder() { return null; }",
+    hidden: true,
+  },
+};
+const ENTRY_CANDIDATES = [
+  "/index.tsx",
+  "/index.jsx",
+  "/index.ts",
+  "/index.js",
+  "/main.tsx",
+  "/main.jsx",
+  "/main.ts",
+  "/main.js",
+  "/App.tsx",
+  "/App.jsx",
+  "/App.ts",
+  "/App.js",
+] as const;
+const EXTERNAL_RESOURCE_HTML_CANDIDATES = ["/public/index.html", "/index.html"] as const;
+const hasUserVisibleFiles = (input: SandpackFiles | null | undefined): boolean =>
+  Object.keys(input || {}).some(
+    (filePath) => filePath !== "/package.json" && filePath !== EMPTY_PROJECT_PLACEHOLDER_PATH
+  );
 
-const fallbackFiles: SandpackFiles = DEFAULT_REACT_TEMPLATE_FILES;
+const extractExternalResources = (files: SandpackFiles): string[] => {
+  const resources = new Set<string>();
+  const htmlPath = EXTERNAL_RESOURCE_HTML_CANDIDATES.find((path) => Boolean(files[path]));
+  if (!htmlPath) return [];
+  const html = files[htmlPath]?.code || "";
+  if (!html) return [];
+
+  const scriptSrcRegex = /<script[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>\s*<\/script>/gi;
+  const stylesheetRegex = /<link[^>]*\brel\s*=\s*["']stylesheet["'][^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+  let match: RegExpExecArray | null = null;
+  while ((match = scriptSrcRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+  while ((match = stylesheetRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+
+  return Array.from(resources);
+};
 
 const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
   if (!rawFiles || typeof rawFiles !== "object") {
@@ -75,7 +121,7 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
     }
   });
 
-  return Object.keys(output).length > 0 ? output : null;
+  return output;
 };
 
 const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
@@ -183,11 +229,28 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     loadProject(initialToken);
   }, [initialToken, token, loadProject, initialProject]);
 
-  const sandpackFiles = useMemo<SandpackFiles>(
-    () => files || fallbackFiles,
-    [files]
+  const sandpackFiles = useMemo<SandpackFiles>(() => files || {}, [files]);
+  const hasRealFiles = useMemo(() => hasUserVisibleFiles(sandpackFiles), [sandpackFiles]);
+  const runtimeTransientPaths = useMemo(() => {
+    const paths = [EMPTY_PROJECT_PLACEHOLDER_PATH];
+    if (!hasRealFiles) {
+      paths.push("/package.json");
+    }
+    return paths;
+  }, [hasRealFiles]);
+  const shouldShowPath = useCallback(
+    (filePath: string) => !runtimeTransientPaths.includes(filePath),
+    [runtimeTransientPaths]
   );
-  const topSearchFilePaths = useMemo(() => Object.keys(sandpackFiles), [sandpackFiles]);
+  const providerFiles = useMemo<SandpackFiles>(
+    () => (hasRealFiles ? sandpackFiles : EMPTY_PROJECT_PROVIDER_FILES),
+    [hasRealFiles, sandpackFiles]
+  );
+  const providerTemplate = undefined;
+  const topSearchFilePaths = useMemo(
+    () => Object.keys(sandpackFiles).filter(shouldShowPath),
+    [sandpackFiles, shouldShowPath]
+  );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -213,6 +276,19 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(dependencies);
   }, [dependencies]);
+  const providerEntry = useMemo(() => {
+    for (const path of ENTRY_CANDIDATES) {
+      if (providerFiles[path]) return path;
+    }
+    return EMPTY_PROJECT_PLACEHOLDER_PATH;
+  }, [providerFiles]);
+  const providerCustomSetup = useMemo(() => {
+    return {
+      ...customSetup,
+      entry: providerEntry,
+    };
+  }, [customSetup, providerEntry]);
+  const providerExternalResources = useMemo(() => extractExternalResources(providerFiles), [providerFiles]);
 
   const handleManualSave = useCallback(async () => {
     // 手动保存：只保存文件内容
@@ -374,7 +450,13 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const handleFilesChange = useCallback((nextFiles: SandpackFiles) => {
     latestFilesRef.current = nextFiles;
     setChatFileOptions(toSortedFilePaths(nextFiles));
-  }, []);
+    const prevHasReal = hasUserVisibleFiles(files);
+    const nextHasReal = hasUserVisibleFiles(nextFiles);
+    // Avoid SandpackProvider remount loops: only sync state when empty/non-empty mode changes.
+    if (prevHasReal !== nextHasReal) {
+      setFiles(nextFiles);
+    }
+  }, [files]);
 
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
     const merged = {
@@ -553,21 +635,23 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         />
 
         <SandpackProvider
-          template={template}
-          files={sandpackFiles}
-          customSetup={customSetup}
+          template={providerTemplate}
+          files={providerFiles}
+          customSetup={providerCustomSetup}
           theme={githubLight}
           options={{
             autorun: true,
             recompileMode: "delayed",
             recompileDelay: 600,
             experimental_enableServiceWorker: true,
+            externalResources: providerExternalResources,
           }}
         >
           <CodeChangeListener
             token={token}
-            template={template}
-            dependencies={customSetup?.dependencies || {}}
+            template={providerTemplate || template}
+            dependencies={providerCustomSetup?.dependencies || {}}
+            transientPaths={runtimeTransientPaths}
             onSaveStatusChange={setSaveStatus}
             onFilesChange={handleFilesChange}
           />
@@ -612,6 +696,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               onChangeView={setActiveView}
               openFileRequest={topSearchOpenFilePath}
               onOpenFileRequestHandled={() => setTopSearchOpenFilePath(null)}
+              filePathFilter={shouldShowPath}
               saveStatus={saveStatus}
               onManualPreview={() => setActiveView("preview")}
               onManualSave={handleManualSave}
