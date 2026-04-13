@@ -157,6 +157,18 @@ const parseToolResponse = (response: string): unknown => {
   }
 };
 
+export const shouldStopForToolResponse = (rawResponse: string): boolean => {
+  try {
+    const payload = JSON.parse(rawResponse) as Record<string, unknown>;
+    return Boolean(
+      payload &&
+        (payload.requiresPlanModeApproval === true || payload.requiresPermissionApproval === true)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const toDebugSnippet = (value: string, maxChars = 2000) =>
   value.length > maxChars ? `${value.slice(0, maxChars)}...[truncated ${value.length - maxChars} chars]` : value;
 
@@ -467,18 +479,7 @@ export const runMasterSubAgentRuntime = async ({
       // Feed the model with direct tool output instead of an extra JSON wrapper.
       // Some models (e.g. kimi series) are less robust when the actual payload is nested as a string field.
       const toolContent = modelResponse;
-      let shouldStop = false;
-      try {
-        const payload = JSON.parse(response) as Record<string, unknown>;
-        if (
-          payload &&
-          (payload.requiresPlanModeApproval === true || payload.requiresPermissionApproval === true)
-        ) {
-          shouldStop = true;
-        }
-      } catch {
-        // ignore
-      }
+      const shouldStop = shouldStopForToolResponse(response);
 
       return {
         response: toolContent,

@@ -38,7 +38,13 @@ const spawnAgentParameters = {
     },
     run_in_background: {
       type: "boolean",
-      description: "Claude 风格字段。当前实现默认后台运行。",
+      description: "Claude 风格字段。true=后台执行；false=前台阻塞等待完成或超时。",
+    },
+    timeout_ms: {
+      type: "integer",
+      minimum: 1000,
+      maximum: 1800000,
+      description: "可选。run_in_background=false 时，等待子代理执行完成的超时时间。",
     },
   },
   required: ["prompt"],
@@ -180,6 +186,7 @@ export const createSubAgentTools = ({
             ? payload.required_mcp_servers.map((item) => toString(item)).filter(Boolean)
             : undefined,
           runInBackground: toBoolean(payload.run_in_background, true),
+          timeoutMs: toInteger(payload.timeout_ms, 300000),
         });
         return {
           ok: true,

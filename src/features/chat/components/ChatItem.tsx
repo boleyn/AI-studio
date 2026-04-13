@@ -84,6 +84,65 @@ interface PermissionApproval {
   reason?: string;
 }
 
+type ApprovalDecision = "approve" | "reject" | "";
+type ApprovalOption = { label: string; value: "approve" | "reject" };
+
+const ApprovalCard = ({
+  title,
+  description,
+  rationale,
+  decision,
+  options,
+  submitting,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  rationale?: string;
+  decision: ApprovalDecision;
+  options: ApprovalOption[];
+  submitting?: boolean;
+  onSelect: (decision: "approve" | "reject") => void;
+}) => (
+  <Box bg="primary.50" border="1px solid" borderColor="primary.200" borderRadius="10px" p={3}>
+    <Text color="primary.800" fontSize="12px" fontWeight={700}>
+      {title}
+    </Text>
+    <Text color="myGray.700" fontSize="12px" mt={1}>
+      {description}
+    </Text>
+    {rationale ? (
+      <Text color="myGray.600" fontSize="11px" mt={1.5}>
+        说明: {rationale}
+      </Text>
+    ) : null}
+    {decision ? (
+      <Text color="primary.700" fontSize="11px" mt={2}>
+        已选择: {decision === "approve" ? "批准" : "拒绝"}
+      </Text>
+    ) : null}
+    <Flex gap={2} mt={2}>
+      {options.map((option, idx) => (
+        <Button
+          key={`${title}-approval-option-${idx}`}
+          bg={decision === option.value ? "primary.100" : "white"}
+          border="1px solid"
+          borderColor={decision === option.value ? "primary.300" : "myGray.200"}
+          color={decision === option.value ? "primary.800" : "myGray.700"}
+          h="26px"
+          isDisabled={Boolean(submitting || decision)}
+          onClick={() => onSelect(option.value)}
+          px={2}
+          size="xs"
+          variant="ghost"
+        >
+          {option.label}
+        </Button>
+      ))}
+    </Flex>
+  </Box>
+);
+
 const MAX_TOOL_DETAIL_CHARS = 800;
 
 const normalizeToolPayload = (value?: string) => {
@@ -1031,104 +1090,51 @@ const ChatItem = ({
         ) : (
           <Flex direction="column" gap={2}>
             {planModeApproval ? (
-              <Box bg="cyan.50" border="1px solid" borderColor="cyan.200" borderRadius="10px" p={3}>
-                <Text color="cyan.800" fontSize="12px" fontWeight={700}>
-                  {planModeApproval.title || "计划模式审批"}
-                </Text>
-                <Text color="myGray.700" fontSize="12px" mt={1}>
-                  {planModeApproval.description ||
-                    (planModeApproval.action === "enter" ? "请求进入计划模式。" : "请求退出计划模式。")}
-                </Text>
-                {planModeApproval.rationale ? (
-                  <Text color="myGray.600" fontSize="11px" mt={1.5}>
-                    说明: {planModeApproval.rationale}
-                  </Text>
-                ) : null}
-                {planModeApprovalDecision ? (
-                  <Text color="cyan.700" fontSize="11px" mt={2}>
-                    已选择: {planModeApprovalDecision === "approve" ? "批准" : "拒绝"}
-                  </Text>
-                ) : null}
-                <Flex gap={2} mt={2}>
-                  {(planModeApproval.options && planModeApproval.options.length > 0
+              <ApprovalCard
+                decision={planModeApprovalDecision}
+                description={
+                  planModeApproval.description ||
+                  (planModeApproval.action === "enter" ? "请求进入计划模式。" : "请求退出计划模式。")
+                }
+                onSelect={(decision) =>
+                  onPlanModeApprovalSelect?.({
+                    messageId,
+                    action: planModeApproval.action,
+                    decision,
+                  })
+                }
+                options={
+                  planModeApproval.options && planModeApproval.options.length > 0
                     ? planModeApproval.options
                     : [
                         { label: "批准", value: "approve" as const },
                         { label: "拒绝", value: "reject" as const },
                       ]
-                  ).map((option, idx) => (
-                    <Button
-                      key={`${messageId}-plan-mode-approval-option-${idx}`}
-                      bg={planModeApprovalDecision === option.value ? "cyan.100" : "white"}
-                      border="1px solid"
-                      borderColor={planModeApprovalDecision === option.value ? "cyan.300" : "myGray.200"}
-                      color={planModeApprovalDecision === option.value ? "cyan.800" : "myGray.700"}
-                      h="26px"
-                      isDisabled={Boolean(planModeApprovalSubmitting || planModeApprovalDecision)}
-                      onClick={() =>
-                        onPlanModeApprovalSelect?.({
-                          messageId,
-                          action: planModeApproval.action,
-                          decision: option.value,
-                        })
-                      }
-                      px={2}
-                      size="xs"
-                      variant="ghost"
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </Flex>
-              </Box>
+                }
+                rationale={planModeApproval.rationale}
+                submitting={planModeApprovalSubmitting}
+                title={planModeApproval.title || "计划模式审批"}
+              />
             ) : null}
             {permissionApproval ? (
-              <Box bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="10px" p={3}>
-                <Text color="purple.800" fontSize="12px" fontWeight={700}>
-                  工具权限审批
-                </Text>
-                <Text color="myGray.700" fontSize="12px" mt={1}>
-                  工具 `{permissionApproval.toolName}` 请求执行，请确认是否批准。
-                </Text>
-                {permissionApproval.reason ? (
-                  <Text color="myGray.600" fontSize="11px" mt={1.5}>
-                    说明: {permissionApproval.reason}
-                  </Text>
-                ) : null}
-                {permissionApprovalDecision ? (
-                  <Text color="purple.700" fontSize="11px" mt={2}>
-                    已选择: {permissionApprovalDecision === "approve" ? "批准" : "拒绝"}
-                  </Text>
-                ) : null}
-                <Flex gap={2} mt={2}>
-                  {[
-                    { label: "批准", value: "approve" as const },
-                    { label: "拒绝", value: "reject" as const },
-                  ].map((option, idx) => (
-                    <Button
-                      key={`${messageId}-permission-approval-option-${idx}`}
-                      bg={permissionApprovalDecision === option.value ? "purple.100" : "white"}
-                      border="1px solid"
-                      borderColor={permissionApprovalDecision === option.value ? "purple.300" : "myGray.200"}
-                      color={permissionApprovalDecision === option.value ? "purple.800" : "myGray.700"}
-                      h="26px"
-                      isDisabled={Boolean(planModeApprovalSubmitting || permissionApprovalDecision)}
-                      onClick={() =>
-                        onPermissionApprovalSelect?.({
-                          messageId,
-                          toolName: permissionApproval.toolName,
-                          decision: option.value,
-                        })
-                      }
-                      px={2}
-                      size="xs"
-                      variant="ghost"
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </Flex>
-              </Box>
+              <ApprovalCard
+                decision={permissionApprovalDecision}
+                description={`工具 \`${permissionApproval.toolName}\` 请求执行，请确认是否批准。`}
+                onSelect={(decision) =>
+                  onPermissionApprovalSelect?.({
+                    messageId,
+                    toolName: permissionApproval.toolName,
+                    decision,
+                  })
+                }
+                options={[
+                  { label: "批准", value: "approve" as const },
+                  { label: "拒绝", value: "reject" as const },
+                ]}
+                rationale={permissionApproval.reason}
+                submitting={planModeApprovalSubmitting}
+                title="工具权限审批"
+              />
             ) : null}
             {planQuestions.length > 0 ? (
               <Box bg="amber.50" border="1px solid" borderColor="orange.200" borderRadius="10px" p={3}>

@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 
-const DEFAULT_SKILL_FILE = "skills/aistudio-mcp-code-workflow/SKILL.md";
+const DEFAULT_SKILL_FILE = "skills/aistudio-mcp-code-agent/SKILL.md";
 const DEFAULT_MAX_LINES = 18;
 const DEFAULT_MAX_CHARS = 1400;
 

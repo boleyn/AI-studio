@@ -9,7 +9,8 @@
     "build": "NEXT_DIST_DIR=.next next build",
     "start": "NEXT_DIST_DIR=.next next start",
     "lint": "next lint --dir src/pages --dir src/features --dir src/server --dir src/shared --dir src/contexts --dir src/hooks",
-    "test:workspace": "tsx --test src/server/agent/workspace/projectWorkspaceManager.test.ts"
+    "test:workspace": "tsx --test src/server/agent/workspace/projectWorkspaceManager.test.ts",
+    "test:agent": "tsx --test src/server/agent/runtime/masterSubAgentRuntime.test.ts src/server/agent/subagents/manager.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

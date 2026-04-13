@@ -91,6 +91,21 @@ const TEMPLATE_PRESETS: Record<
       "3. Confirm done criteria for each phase.",
     ].join("\n"),
   },
+  "orchestration-skill": {
+    name: "orchestration-skill",
+    description: "Coordinate multi-step engineering execution with clear checkpoints.",
+    body: [
+      "# Orchestration Skill",
+      "",
+      "## Goal",
+      "Drive complex implementation in reliable, testable phases.",
+      "",
+      "## Execution Plan",
+      "1. Define phase boundaries.",
+      "2. Track dependencies and risks.",
+      "3. Confirm done criteria for each phase.",
+    ].join("\n"),
+  },
   "ui-builder-skill": {
     name: "ui-builder-skill",
     description: "Build expressive UI components with production-ready interaction details.",

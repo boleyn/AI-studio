@@ -27,6 +27,7 @@ type SpawnAgentInput = {
   cwd?: string;
   requiredMcpServers?: string[];
   runInBackground?: boolean;
+  timeoutMs?: number;
 };
 
 type SendAgentInput = {
@@ -74,6 +75,7 @@ type AgentTask = {
   worktreeRoot?: string;
   requiredMcpServers?: string[];
   outputFile?: string;
+  currentPrompt?: string;
 };
 
 type SessionState = {
@@ -103,6 +105,43 @@ const sessions = new Map<string, SessionState>();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const AGENT_OUTPUT_BASE = path.join(os.tmpdir(), "aistudio-agent-runs");
 const RECOVERED_RUNNING_ERROR = "Recovered running subagent from previous process. Please rerun the task.";
+const RECOVERED_REQUEUE_NOTICE =
+  "Recovered running subagent from previous process. Call resume_agent to continue queued prompt.";
+export const getResumeStrategy = (): "fail" | "requeue" =>
+  (process.env.AISTUDIO_SUBAGENT_RESUME_STRATEGY || "fail").trim().toLowerCase() === "requeue"
+    ? "requeue"
+    : "fail";
+
+export const recoverRunningTaskState = ({
+  status,
+  error,
+  queue,
+  currentPrompt,
+  strategy,
+}: {
+  status: AgentStatus;
+  error?: string;
+  queue: string[];
+  currentPrompt?: string;
+  strategy: "fail" | "requeue";
+}) => {
+  if (status !== "running") {
+    return { status, error, queue };
+  }
+  if (strategy === "requeue") {
+    const nextQueue = currentPrompt && currentPrompt.trim() ? [currentPrompt, ...queue] : queue;
+    return {
+      status: "completed" as const,
+      error: error || RECOVERED_REQUEUE_NOTICE,
+      queue: nextQueue,
+    };
+  }
+  return {
+    status: "failed" as const,
+    error: error || RECOVERED_RUNNING_ERROR,
+    queue,
+  };
+};
 
 const newAgentId = () =>
   `agent_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -159,10 +198,19 @@ const getOrCreateSession = (sessionId: string): SessionState => {
             ? item.requiredMcpServers.filter((v): v is string => typeof v === "string")
             : undefined,
           outputFile: typeof item.outputFile === "string" ? item.outputFile : undefined,
+          currentPrompt: typeof item.currentPrompt === "string" ? item.currentPrompt : undefined,
         };
         if (restored.status === "running") {
-          restored.status = "failed";
-          restored.error = restored.error || RECOVERED_RUNNING_ERROR;
+          const recovered = recoverRunningTaskState({
+            status: restored.status,
+            error: restored.error,
+            queue: restored.queue,
+            currentPrompt: restored.currentPrompt,
+            strategy: getResumeStrategy(),
+          });
+          restored.status = recovered.status;
+          restored.error = recovered.error;
+          restored.queue = recovered.queue;
           restored.updatedAt = Date.now();
         }
         created.agents.set(restored.id, restored);
@@ -197,6 +245,7 @@ const persistSessionState = (sessionId: string, session: SessionState) => {
       worktreeRoot: task.worktreeRoot,
       requiredMcpServers: task.requiredMcpServers,
       outputFile: task.outputFile,
+      currentPrompt: task.currentPrompt,
     })),
   };
   try {
@@ -236,12 +285,34 @@ const inferAvailableMcpServers = (tools: AgentToolDefinition[]) => {
   return servers;
 };
 
-const normalizeServerName = (value: string) => value.trim().toLowerCase().replace(/_/g, "-");
+export const normalizeServerName = (value: string) => value.trim().toLowerCase().replace(/_/g, "-");
 
 const normalizeRequiredMcpServers = (input?: string[]) =>
   (Array.isArray(input) ? input : [])
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter(Boolean);
+
+export const computeMissingRequiredMcpServers = ({
+  required,
+  connectedServerNames,
+  serverNamesWithTools,
+  inferredServerNames,
+}: {
+  required: string[];
+  connectedServerNames: string[];
+  serverNamesWithTools: string[];
+  inferredServerNames: string[];
+}) => {
+  const connectedByStatus = new Set(connectedServerNames.map((item) => normalizeServerName(item)));
+  const connectedByToolMap = new Set(serverNamesWithTools.map((item) => normalizeServerName(item)));
+  const hasExplicitStatus = connectedByStatus.size > 0 || connectedByToolMap.size > 0;
+  const inferred = hasExplicitStatus
+    ? new Set<string>()
+    : new Set(inferredServerNames.map((item) => normalizeServerName(item)));
+  const available = new Set([...connectedByStatus, ...connectedByToolMap, ...inferred]);
+  const missing = required.filter((name) => !available.has(normalizeServerName(name)));
+  return { missing, available };
+};
 
 const assertRequiredMcpServers = async (
   runtime: AgentRuntimeOptions,
@@ -251,44 +322,52 @@ const assertRequiredMcpServers = async (
   if (required.length === 0) return;
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const connectedByStatus = new Set(
-      getMcpServerStatuses()
-        .filter((item) => item.connected)
-        .map((item) => normalizeServerName(item.name))
-    );
-    const connectedByToolMap = new Set(
-      getMcpServerToolMap()
-        .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
-        .map((item) => normalizeServerName(item.name))
-    );
+    const connectedByStatus = getMcpServerStatuses()
+      .filter((item) => item.connected)
+      .map((item) => item.name);
+    const connectedByToolMap = getMcpServerToolMap()
+      .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
+      .map((item) => item.name);
     const availableFromTools = inferAvailableMcpServers(runtime.getDelegatableTools());
-    const hasExplicitStatus = connectedByStatus.size > 0 || connectedByToolMap.size > 0;
-    const inferred = hasExplicitStatus
-      ? new Set<string>()
-      : new Set([...availableFromTools].map((item) => normalizeServerName(item)));
-    const available = new Set([...connectedByStatus, ...connectedByToolMap, ...inferred]);
-    const missing = required.filter((name) => !available.has(normalizeServerName(name)));
+    const { missing } = computeMissingRequiredMcpServers({
+      required,
+      connectedServerNames: connectedByStatus,
+      serverNamesWithTools: connectedByToolMap,
+      inferredServerNames: [...availableFromTools],
+    });
     if (missing.length === 0) return;
     await sleep(500);
   }
-  const connectedByStatus = new Set(
-    getMcpServerStatuses()
-      .filter((item) => item.connected)
-      .map((item) => normalizeServerName(item.name))
-  );
-  const connectedByToolMap = new Set(
-    getMcpServerToolMap()
-      .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
-      .map((item) => normalizeServerName(item.name))
-  );
+  const connectedByStatus = getMcpServerStatuses()
+    .filter((item) => item.connected)
+    .map((item) => item.name);
+  const connectedByToolMap = getMcpServerToolMap()
+    .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
+    .map((item) => item.name);
   const availableFromTools = inferAvailableMcpServers(runtime.getDelegatableTools());
-  const hasExplicitStatus = connectedByStatus.size > 0 || connectedByToolMap.size > 0;
-  const inferred = hasExplicitStatus
-    ? new Set<string>()
-    : new Set([...availableFromTools].map((item) => normalizeServerName(item)));
-  const available = new Set([...connectedByStatus, ...connectedByToolMap, ...inferred]);
-  const missing = required.filter((name) => !available.has(normalizeServerName(name)));
-  throw new Error(`Missing required MCP servers: ${missing.join(", ")}`);
+  const { missing, available } = computeMissingRequiredMcpServers({
+    required,
+    connectedServerNames: connectedByStatus,
+    serverNamesWithTools: connectedByToolMap,
+    inferredServerNames: [...availableFromTools],
+  });
+  const statuses = getMcpServerStatuses().map((item) => ({
+    name: item.name,
+    connected: item.connected,
+    error: item.error || "",
+  }));
+  const toolMap = getMcpServerToolMap().map((item) => ({
+    name: item.name,
+    tools: item.tools.length,
+  }));
+  throw new Error(
+    [
+      `Missing required MCP servers: ${missing.join(", ")}`,
+      `available: ${[...available].join(", ") || "<none>"}`,
+      `status: ${JSON.stringify(statuses)}`,
+      `toolMap: ${JSON.stringify(toolMap)}`,
+    ].join(" | ")
+  );
 };
 
 const appendAgentOutput = async (task: AgentTask, line: string) => {
@@ -296,6 +375,24 @@ const appendAgentOutput = async (task: AgentTask, line: string) => {
   const parent = path.dirname(task.outputFile);
   await fs.mkdir(parent, { recursive: true }).catch(() => undefined);
   await fs.appendFile(task.outputFile, `${line}\n`, "utf8").catch(() => undefined);
+};
+
+export const waitForPumpWithTimeout = async (task: AgentTask, timeoutMs: number) => {
+  const timeout = Math.max(1000, Math.min(timeoutMs, 1_800_000));
+  const pump = task.pump;
+  if (!pump) return false;
+  const result = await Promise.race([
+    pump.then(() => "done" as const),
+    sleep(timeout).then(() => "timeout" as const),
+  ]);
+  if (result === "done") return false;
+  if (task.currentAbort) {
+    task.currentAbort.abort();
+  }
+  task.status = "failed";
+  task.error = `Subagent timed out after ${timeout}ms`;
+  task.updatedAt = Date.now();
+  return true;
 };
 
 const trySetupWorktree = async (agentId: string, cwd?: string) => {
@@ -346,6 +443,7 @@ const ensurePump = (task: AgentTask, runtime: AgentRuntimeOptions) => {
       const nextPrompt = task.queue.shift() || "";
       if (!nextPrompt.trim()) continue;
       task.status = "running";
+      task.currentPrompt = nextPrompt;
       task.updatedAt = Date.now();
       const abortController = new AbortController();
       task.currentAbort = abortController;
@@ -397,6 +495,7 @@ const ensurePump = (task: AgentTask, runtime: AgentRuntimeOptions) => {
         break;
       } finally {
         task.currentAbort = undefined;
+        task.currentPrompt = undefined;
       }
     }
   })().finally(() => {
@@ -418,7 +517,7 @@ const ensurePump = (task: AgentTask, runtime: AgentRuntimeOptions) => {
 export const spawnSubAgent = async (
   runtime: AgentRuntimeOptions,
   input: SpawnAgentInput
-): Promise<AgentSnapshot> => {
+): Promise<AgentSnapshot & { timedOut?: boolean }> => {
   const session = getOrCreateSession(runtime.sessionId);
   const requiredMcpServers = normalizeRequiredMcpServers(input.requiredMcpServers);
   await assertRequiredMcpServers(runtime, requiredMcpServers);
@@ -479,14 +578,31 @@ export const spawnSubAgent = async (
       return toSnapshot(task);
     }
     await runWithWorktree();
+    if (task.status === "failed") {
+      persistSessionState(runtime.sessionId, session);
+      return toSnapshot(task);
+    }
+    const timedOut = await waitForPumpWithTimeout(task, input.timeoutMs || 300_000);
+    persistSessionState(runtime.sessionId, session);
     if (task.pump) {
       await task.pump;
     }
-    return toSnapshot(task);
+    return {
+      ...toSnapshot(task),
+      ...(timedOut ? { timedOut: true } : {}),
+    };
   }
   ensurePump(task, runtime);
-  if (!runInBackground && task.pump) {
-    await task.pump;
+  if (!runInBackground) {
+    const timedOut = await waitForPumpWithTimeout(task, input.timeoutMs || 300_000);
+    persistSessionState(runtime.sessionId, session);
+    if (task.pump) {
+      await task.pump;
+    }
+    return {
+      ...toSnapshot(task),
+      ...(timedOut ? { timedOut: true } : {}),
+    };
   }
   return toSnapshot(task);
 };
@@ -562,6 +678,10 @@ export const resumeSubAgent = (runtime: AgentRuntimeOptions, input: CloseAgentIn
   if (!task) throw new Error(`Agent not found: ${input.target}`);
   if (task.status === "closed") {
     task.status = "completed";
+  }
+  if (task.queue.length > 0 && !task.pump) {
+    task.status = "running";
+    ensurePump(task, runtime);
   }
   task.updatedAt = Date.now();
   persistSessionState(runtime.sessionId, session);

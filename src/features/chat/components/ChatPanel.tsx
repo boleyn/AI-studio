@@ -280,8 +280,10 @@ const ChatPanel = ({
   );
   const [agentTasks, setAgentTasks] = useState<Record<string, AgentTaskSnapshot>>({});
   const [showAgentTasks, setShowAgentTasks] = useState(true);
+  const [agentTaskFilter, setAgentTaskFilter] = useState<"all" | "active" | "done" | "failed">("all");
   const [sessionTasks, setSessionTasks] = useState<Record<string, SessionTaskSnapshot>>({});
   const [showSessionTasks, setShowSessionTasks] = useState(true);
+  const [sessionTaskFilter, setSessionTaskFilter] = useState<"all" | "active" | "done" | "blocked">("all");
   const messagesRef = useRef<ConversationMessage[]>([]);
   const { model, setModel, channel, modelOptions, modelGroups, modelLoading, modelCatalog } = useChatModels(
     user?.primaryModel
@@ -1804,6 +1806,36 @@ const ChatPanel = ({
     [activeConversation?.title, defaultHeaderTitle]
   );
 
+  const filteredAgentTaskList = useMemo(() => {
+    const list = Object.values(agentTasks).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (agentTaskFilter === "active") {
+      return list.filter((task) => task.status === "running");
+    }
+    if (agentTaskFilter === "done") {
+      return list.filter((task) => task.status === "completed" || task.status === "closed");
+    }
+    if (agentTaskFilter === "failed") {
+      return list.filter((task) => task.status === "failed");
+    }
+    return list;
+  }, [agentTaskFilter, agentTasks]);
+
+  const filteredSessionTaskList = useMemo(() => {
+    const list = Object.values(sessionTasks)
+      .filter((task) => task.status !== "deleted")
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (sessionTaskFilter === "active") {
+      return list.filter((task) => task.status === "pending" || task.status === "in_progress");
+    }
+    if (sessionTaskFilter === "done") {
+      return list.filter((task) => task.status === "completed" || task.status === "stopped");
+    }
+    if (sessionTaskFilter === "blocked") {
+      return list.filter((task) => task.status === "blocked");
+    }
+    return list;
+  }, [sessionTaskFilter, sessionTasks]);
+
   const handleUseSkill = useCallback((skillName: string) => {
     setSelectedSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]));
   }, []);
@@ -1892,20 +1924,37 @@ const ChatPanel = ({
                 <Text color="myGray.700" fontSize="12px" fontWeight={700}>
                   子代理任务 ({Object.keys(agentTasks).length})
                 </Text>
-                <Text
-                  as="button"
-                  color="myGray.500"
-                  fontSize="11px"
-                  onClick={() => setShowAgentTasks((prev) => !prev)}
-                >
-                  {showAgentTasks ? "收起" : "展开"}
-                </Text>
+                <Flex align="center" gap={3}>
+                  {([
+                    ["all", "全部"],
+                    ["active", "运行中"],
+                    ["failed", "失败"],
+                    ["done", "已结束"],
+                  ] as Array<["all" | "active" | "done" | "failed", string]>).map(([value, label]) => (
+                    <Text
+                      key={`agent-task-filter-${value}`}
+                      as="button"
+                      color={agentTaskFilter === value ? "primary.700" : "myGray.500"}
+                      fontSize="11px"
+                      fontWeight={agentTaskFilter === value ? 700 : 500}
+                      onClick={() => setAgentTaskFilter(value)}
+                    >
+                      {label}
+                    </Text>
+                  ))}
+                  <Text
+                    as="button"
+                    color="myGray.500"
+                    fontSize="11px"
+                    onClick={() => setShowAgentTasks((prev) => !prev)}
+                  >
+                    {showAgentTasks ? "收起" : "展开"}
+                  </Text>
+                </Flex>
               </Flex>
               {showAgentTasks ? (
                 <Flex direction="column" gap={1.5}>
-                  {Object.values(agentTasks)
-                    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                    .map((task) => {
+                  {filteredAgentTaskList.map((task) => {
                       const statusMeta = AGENT_STATUS_META[task.status] || AGENT_STATUS_META.completed;
                       return (
                         <Flex
@@ -1971,6 +2020,23 @@ const ChatPanel = ({
                   任务列表 ({Object.keys(sessionTasks).length})
                 </Text>
                 <Flex align="center" gap={3}>
+                  {([
+                    ["all", "全部"],
+                    ["active", "进行中"],
+                    ["blocked", "阻塞"],
+                    ["done", "已结束"],
+                  ] as Array<["all" | "active" | "done" | "blocked", string]>).map(([value, label]) => (
+                    <Text
+                      key={`session-task-filter-${value}`}
+                      as="button"
+                      color={sessionTaskFilter === value ? "primary.700" : "myGray.500"}
+                      fontSize="11px"
+                      fontWeight={sessionTaskFilter === value ? 700 : 500}
+                      onClick={() => setSessionTaskFilter(value)}
+                    >
+                      {label}
+                    </Text>
+                  ))}
                   <Text
                     as="button"
                     color="myGray.500"
@@ -1991,10 +2057,7 @@ const ChatPanel = ({
               </Flex>
               {showSessionTasks ? (
                 <Flex direction="column" gap={1.5}>
-                  {Object.values(sessionTasks)
-                    .filter((task) => task.status !== "deleted")
-                    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                    .map((task) => {
+                  {filteredSessionTaskList.map((task) => {
                       const statusMeta = SESSION_TASK_STATUS_META[task.status] || SESSION_TASK_STATUS_META.pending;
                       return (
                         <Flex
