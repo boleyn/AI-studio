@@ -5,11 +5,12 @@ import type {
 import { runAgentCall } from "@aistudio/ai/llm/agentCall";
 import type { OpenaiAccountType } from "@aistudio/ai/compat/global/support/user/team/type";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
+import { runPostToolUseHooks, runPostToolUseHooksWithResult, runPreToolUseHooks } from "@server/agent/hooks/runner";
 import type { SseEventName } from "@shared/network/sseEvents";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
 import json5 from "json5";
 
-export interface SimpleWorkflowNodeResponse {
+export interface AgentStepResponse {
   nodeId: string;
   moduleName: string;
   moduleType: "tool";
@@ -19,7 +20,8 @@ export interface SimpleWorkflowNodeResponse {
   toolRes: unknown;
 }
 
-interface RunSimpleAgentWorkflowInput {
+interface RunMasterSubAgentRuntimeInput {
+  sessionId?: string;
   selectedModel: string;
   stream: boolean;
   recursionLimit?: number;
@@ -34,11 +36,11 @@ interface RunSimpleAgentWorkflowInput {
   onEvent?: (event: SseEventName, data: Record<string, unknown>) => void;
 }
 
-interface RunSimpleAgentWorkflowResult {
+interface RunMasterSubAgentRuntimeResult {
   runResult: Awaited<ReturnType<typeof runAgentCall>>;
   finalMessage: string;
   finalReasoning: string;
-  flowResponses: SimpleWorkflowNodeResponse[];
+  stepResponses: AgentStepResponse[];
 }
 
 const parsePossiblyNestedJson = (raw: string | undefined): unknown => {
@@ -232,7 +234,8 @@ const mapToolResponseForModel = (toolName: string, response: string): string => 
   return response;
 };
 
-export const runSimpleAgentWorkflow = async ({
+export const runMasterSubAgentRuntime = async ({
+  sessionId,
   selectedModel,
   stream,
   recursionLimit,
@@ -245,8 +248,8 @@ export const runSimpleAgentWorkflow = async ({
   tools,
   abortSignal,
   onEvent,
-}: RunSimpleAgentWorkflowInput): Promise<RunSimpleAgentWorkflowResult> => {
-  const flowResponses: SimpleWorkflowNodeResponse[] = [];
+}: RunMasterSubAgentRuntimeInput): Promise<RunMasterSubAgentRuntimeResult> => {
+  const stepResponses: AgentStepResponse[] = [];
   const isKimiModel = /kimi/i.test(selectedModel || "");
   const streamedToolCallIds = new Set<string>();
   const streamedToolParamIds = new Set<string>();
@@ -343,7 +346,29 @@ export const runSimpleAgentWorkflow = async ({
           response = `未找到工具: ${call.function.name}`;
         } else {
           try {
-            const parsed = toSafeToolArgs(call.function.arguments);
+            let parsed = toSafeToolArgs(call.function.arguments);
+            const preHook = await runPreToolUseHooks({
+              event: "PreToolUse",
+              sessionId,
+              toolName,
+              toolInput: parsed,
+            });
+            if (preHook.updatedInput !== undefined) {
+              parsed = preHook.updatedInput;
+            }
+            if (preHook.decision === "ask") {
+              response = JSON.stringify({
+                ok: false,
+                requiresPermissionApproval: true,
+                permission: {
+                  toolName,
+                  reason: preHook.reason || `Tool requires approval: ${toolName}`,
+                },
+              });
+              status = "error";
+            } else if (preHook.decision === "block") {
+              throw new Error(preHook.reason || `Blocked by PreToolUse hook: ${toolName}`);
+            }
             if (toolName === "Write" && !isValidWriteFileArgs(parsed)) {
               status = "error";
               response = [
@@ -353,12 +378,27 @@ export const runSimpleAgentWorkflow = async ({
                 `diagnosis=${JSON.stringify(argDiagnosis)}`,
               ].join(" ");
             } else {
-            const result = await tool.run(parsed);
-            response = typeof result === "string" ? result : JSON.stringify(result);
+              const result = await tool.run(parsed);
+              const postHook = await runPostToolUseHooksWithResult({
+                event: "PostToolUse",
+                sessionId,
+                toolName,
+                toolInput: parsed,
+                toolResponse: result,
+              });
+              const finalResult = postHook.updatedToolOutput !== undefined ? postHook.updatedToolOutput : result;
+              response = typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult);
             }
           } catch (error) {
             status = "error";
             response = error instanceof Error ? error.message : "工具执行失败";
+            await runPostToolUseHooks({
+              event: "PostToolUseFailure",
+              sessionId,
+              toolName,
+              toolInput: toSafeToolArgs(call.function.arguments),
+              error: response,
+            });
           }
         }
       }
@@ -411,7 +451,7 @@ export const runSimpleAgentWorkflow = async ({
         rawResponse: response,
       });
 
-      const nodeResponse: SimpleWorkflowNodeResponse = {
+      const nodeResponse: AgentStepResponse = {
         nodeId: `tool:${toolName}`,
         moduleName: toolName,
         moduleType: "tool",
@@ -420,13 +460,22 @@ export const runSimpleAgentWorkflow = async ({
         toolInput: toSafeToolArgs(call.function.arguments),
         toolRes: parsedToolResponse,
       };
-      flowResponses.push(nodeResponse);
+      stepResponses.push(nodeResponse);
 
       onEvent?.(SseResponseEventEnum.flowNodeResponse, nodeResponse as unknown as Record<string, unknown>);
 
       // Feed the model with direct tool output instead of an extra JSON wrapper.
       // Some models (e.g. kimi series) are less robust when the actual payload is nested as a string field.
       const toolContent = modelResponse;
+      let shouldStop = false;
+      try {
+        const payload = JSON.parse(response) as Record<string, unknown>;
+        if (payload && payload.requiresPlanModeApproval === true) {
+          shouldStop = true;
+        }
+      } catch {
+        // ignore
+      }
 
       return {
         response: toolContent,
@@ -439,6 +488,7 @@ export const runSimpleAgentWorkflow = async ({
           } as ChatCompletionMessageParam,
         ],
         usages: [],
+        ...(shouldStop ? { stop: true } : {}),
       };
     },
   });
@@ -474,6 +524,6 @@ export const runSimpleAgentWorkflow = async ({
     runResult,
     finalMessage: finalMessage || finalReasoning,
     finalReasoning,
-    flowResponses,
+    stepResponses,
   };
 };

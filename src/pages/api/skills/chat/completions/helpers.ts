@@ -6,6 +6,12 @@ import { toToolMemoryMessages } from "@server/chat/completions/toolMemory";
 import type { ConversationMessage } from "@server/conversations/conversationStorage";
 
 type IncomingMessage = {
+  type?: string;
+  subtype?: string;
+  uuid?: string;
+  parent_uuid?: string;
+  is_sidechain?: boolean;
+  session_id?: string;
   role?: string;
   content?: unknown;
 };
@@ -42,11 +48,17 @@ export const toMessages = (messages: unknown): ConversationMessage[] => {
   return messages
     .map((item) => {
       const msg = item as IncomingMessage;
-      const role = msg?.role as SupportedRole | undefined;
+      const role = (msg?.type || msg?.role) as SupportedRole | undefined;
       if (!role || !["user", "assistant", "system", "tool"].includes(role)) return null;
       const content =
         typeof msg.content === "string" ? msg.content : extractText(msg.content).trim();
       return {
+        type: role,
+        subtype: msg.subtype,
+        uuid: msg.uuid,
+        parent_uuid: msg.parent_uuid,
+        is_sidechain: msg.is_sidechain,
+        session_id: msg.session_id,
         role,
         content: content || "",
         id: createDataId(),
@@ -149,17 +161,6 @@ export const toSelectedSkills = (req: NextApiRequest) => {
   const fromSingle = typeof req.body?.selectedSkill === "string" ? req.body.selectedSkill.trim() : "";
   const merged = [...fromArray, ...(fromSingle ? [fromSingle] : [])];
   return Array.from(new Set(merged));
-};
-
-export const normalizeToolChoiceMode = (
-  value: unknown
-): "auto" | "required" | "none" | undefined => {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "auto") return "auto";
-  if (normalized === "required") return "required";
-  if (normalized === "none") return "none";
-  return undefined;
 };
 
 export const sendSseEvent = (res: NextApiResponse, event: string, data: string) => {

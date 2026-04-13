@@ -10,6 +10,12 @@ import { getLLMModel } from "@aistudio/ai/model";
 import { getMongoDb } from "../db/mongo";
 
 export type ConversationMessage = {
+  type?: "user" | "assistant" | "system" | "tool" | "progress";
+  subtype?: string;
+  uuid?: string;
+  parent_uuid?: string;
+  is_sidechain?: boolean;
+  session_id?: string;
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
   /**
@@ -55,6 +61,12 @@ type ConversationItemDoc = {
   chatId: string;
   dataId: string;
   time: Date;
+  type?: "user" | "assistant" | "system" | "tool" | "progress";
+  subtype?: string;
+  uuid?: string;
+  parent_uuid?: string;
+  is_sidechain?: boolean;
+  session_id?: string;
   role: ConversationMessage["role"];
   content: unknown;
   name?: string;
@@ -198,6 +210,12 @@ const messageToDoc = ({
       : createDataId(),
   time,
   role: message.role,
+  type: message.type,
+  subtype: message.subtype,
+  uuid: message.uuid,
+  parent_uuid: message.parent_uuid,
+  is_sidechain: message.is_sidechain,
+  session_id: message.session_id,
   content: message.content,
   name: message.name,
   tool_call_id: message.tool_call_id,
@@ -209,6 +227,12 @@ const messageToDoc = ({
 
 const docToMessage = (doc: ConversationItemDoc): ConversationMessage => ({
   role: doc.role,
+  type: doc.type,
+  subtype: doc.subtype,
+  uuid: doc.uuid,
+  parent_uuid: doc.parent_uuid,
+  is_sidechain: doc.is_sidechain,
+  session_id: doc.session_id,
   content: doc.content,
   time: doc.time,
   id: doc.dataId,

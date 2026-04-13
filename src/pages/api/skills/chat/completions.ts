@@ -10,10 +10,14 @@ import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
 import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createBashTool } from "@server/agent/tools/bashTool";
+import { createPlanModeTools } from "@server/agent/tools/planModeTools";
+import { createPlanPermissionTools, derivePlanModeState } from "@server/agent/permissions/planMode";
 import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceTools";
+import { createSubAgentTools } from "@server/agent/tools/subAgentTools";
+import { createTaskTools } from "@server/agent/tools/taskTools";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
-import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
+import { runMasterSubAgentRuntime } from "@server/agent/runtime/masterSubAgentRuntime";
 import { getChatModelCatalog, getChatModelProfile, runWithRequestModelProfiles } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
 import { getUserModelConfigsFromUser, toUserModelProfileMap } from "@server/auth/userModelConfig";
@@ -26,7 +30,7 @@ import {
   registerActiveConversationRun,
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
-import { bindWorkflowAbortToConnection } from "@server/chat/completions/connectionLifecycle";
+import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnectionLifecycle";
 import { getSkillWorkspace } from "@server/skills/workspaceStorage";
 import { toWorkspacePublicFiles } from "@server/skills/workspaceStorage";
 import { createDataId } from "@shared/chat/ids";
@@ -58,8 +62,22 @@ import {
   toMessages,
   toSelectedSkills,
   toStringValue,
-  normalizeToolChoiceMode,
 } from "./completions/helpers";
+
+const PLAN_MODE_BLOCKED_TOOL_NAMES = new Set([
+  "Write",
+  "Edit",
+  "Delete",
+  "bash",
+  "compile_project",
+  "skill_run_script",
+  "spawn_agent",
+  "send_input",
+  "send_message",
+  "close_agent",
+  "resume_agent",
+]);
+
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -217,7 +235,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     fallbackProjectToken: workspace.projectToken,
     allowedProjectToken: workspace.projectToken,
   });
-  const allTools: AgentToolDefinition[] = [
+  let allTools: AgentToolDefinition[] = [
     ...workspaceTools,
     ...(skillLoadTool ? [skillLoadTool] : []),
     ...(skillRunScriptTool ? [skillRunScriptTool] : []),
@@ -243,9 +261,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (type === "disabled") return { type: "disabled" as const };
     return undefined;
   })();
-  const requestedToolChoiceMode = normalizeToolChoiceMode(
-    req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice
-  );
   const explicitRequestedModel =
     typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
   const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
@@ -276,23 +291,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? catalog.defaultModel
       : combinedCatalogModels[0]?.id || requestedModel;
   const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
-  const profileToolChoiceMode = normalizeToolChoiceMode(
-    selectedModelProfile?.toolChoiceMode ??
-      selectedModelProfile?.toolChoice ??
-      selectedModelProfile?.forceToolChoice
-  );
-  const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
-  const omitToolChoice =
-    isGoogleModel ||
-    requestedToolChoiceMode === "none" ||
-    profileToolChoiceMode === "none";
-  const toolChoiceForWorkflow: "auto" | "required" | undefined = omitToolChoice
-    ? undefined
-    : requestedToolChoiceMode === "auto" || requestedToolChoiceMode === "required"
-      ? requestedToolChoiceMode
-      : profileToolChoiceMode === "auto" || profileToolChoiceMode === "required"
-        ? profileToolChoiceMode
-        : "auto";
+  let subagentContextMessages: ChatCompletionMessageParam[] = [];
+  const subAgentTools = createSubAgentTools({
+    sessionId: toolSessionId,
+    getSelectedModel: () => selectedModel,
+    recursionLimit: runtimeConfig.recursionLimit,
+    temperature: runtimeConfig.temperature,
+    getContextMessages: () => subagentContextMessages,
+    getDelegatableTools: () => allTools,
+  });
+  const taskTools = createTaskTools(toolSessionId);
+  const planPermissionTools = createPlanPermissionTools();
+  const planModeActive = derivePlanModeState(contextConversationMessages);
+  const planModeTools = createPlanModeTools();
+  allTools = [...allTools, ...subAgentTools, ...taskTools, ...planPermissionTools, ...planModeTools];
+  if (planModeActive) {
+    allTools = allTools.filter((tool) => !PLAN_MODE_BLOCKED_TOOL_NAMES.has(tool.name));
+  }
+  const fixedToolChoice: "auto" = "auto";
 
   const skillsCatalogPrompt =
     allAvailableSkills.length > 0 ? buildSkillsCatalogPrompt(allAvailableSkills) : "";
@@ -343,6 +359,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const systemMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: SKILL_STUDIO_AGENT_PROMPT },
     { role: "system", content: STUDIO_PROMPT },
+    ...(planModeActive
+      ? [
+          {
+            role: "system",
+            content:
+              "Plan mode is active. Do not perform mutating actions. Focus on planning, checks, and concrete implementation steps awaiting confirmation.",
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
       : []),
@@ -396,6 +421,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     enabled: runtimeConfig.contextManagerEnabled,
   });
   messages = contextManaged.messages;
+  subagentContextMessages = messages;
   const promptUsedTokens = await countGptMessagesTokens(messages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundMessages, tools).catch(() => 0);
   const systemAndSkillsTokens = await countGptMessagesTokens(assembled.systemPrompts).catch(() => 0);
@@ -434,19 +460,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       startStream();
       sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(contextWindowUsage));
     }
-    const workflowStartAt = Date.now();
-    const workflowAbortController = new AbortController();
-    const cleanupDisconnectBinding = bindWorkflowAbortToConnection({
+    const agentRuntimeStartAt = Date.now();
+    const agentRuntimeAbortController = new AbortController();
+    const cleanupDisconnectBinding = bindAgentAbortToConnection({
       req,
       res,
-      controller: workflowAbortController,
+      controller: agentRuntimeAbortController,
       scope: "skills/chat/completions",
     });
     if (conversationId) {
       registerActiveConversationRun({
         token: runToken,
         chatId: conversationId,
-        controller: workflowAbortController,
+        controller: agentRuntimeAbortController,
       });
     }
     const timeline: TimelineItem[] = [];
@@ -493,7 +519,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const result = await (async () => {
       try {
         return await runWithRequestModelProfiles(userModelProfiles, async () =>
-          runSimpleAgentWorkflow({
+          runMasterSubAgentRuntime({
+            sessionId: toolSessionId,
             selectedModel,
             stream,
             recursionLimit: runtimeConfig.recursionLimit,
@@ -506,10 +533,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             })(),
             thinking,
             messages,
-            toolChoice: toolChoiceForWorkflow,
+            toolChoice: fixedToolChoice,
             allTools,
             tools,
-            abortSignal: workflowAbortController.signal,
+            abortSignal: agentRuntimeAbortController.signal,
             onEvent: (event, data) => {
               if (!stream) return;
               if (event === SseResponseEventEnum.answer) {
@@ -565,13 +592,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           unregisterActiveConversationRun({
             token: runToken,
             chatId: conversationId,
-            controller: workflowAbortController,
+            controller: agentRuntimeAbortController,
           });
         }
       }
     })();
 
-    const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
+    const durationSeconds = Number(((Date.now() - agentRuntimeStartAt) / 1000).toFixed(2));
     const memoryUpdateAudit: ProjectMemoryUpdateResult | undefined =
       runtimeConfig.memoryEnabled &&
       runtimeConfig.memoryAutoExtractEnabled &&
@@ -632,7 +659,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         return undefined;
       };
-      const toolDetails = result.flowResponses.map((node, index) => {
+      const toolDetails = result.stepResponses.map((node, index) => {
         const toolName = node.moduleName || "";
         const params = toStringValue(node.toolInput);
         const response = toStringValue(node.toolRes);
@@ -645,13 +672,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       await appendConversationMessages(conversationToken, conversationId, [
         {
+          type: "assistant",
+          subtype: planModeActive ? "plan_result" : "result",
           role: "assistant",
           content: result.finalMessage,
           id: createDataId(),
           additional_kwargs: {
+            planModeState: planModeActive,
             reasoning_text: result.finalReasoning,
             toolDetails,
-            responseData: result.flowResponses,
+            responseData: result.stepResponses,
             durationSeconds,
             timeline,
             contextWindow: contextWindowUsage,
@@ -673,7 +703,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (stream) {
       sendSseEvent(
         res,
-        SseResponseEventEnum.workflowDuration,
+        SseResponseEventEnum.agentDuration,
         JSON.stringify({ durationSeconds })
       );
       sendSseEvent(
@@ -701,6 +731,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.status(200).json({
       assistant: {
+        type: "assistant",
+        subtype: planModeActive ? "plan_result" : "result",
         role: "assistant",
         content: result.finalMessage,
         reasoning: result.finalReasoning,
@@ -714,7 +746,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         : undefined,
       memoryUpdate: memoryUpdateAudit,
-      toolResponses: result.flowResponses,
+      toolResponses: result.stepResponses,
       files: workspace.files,
       workspaceId: workspace.id,
       model: selectedModel,

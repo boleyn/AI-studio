@@ -11,9 +11,13 @@ import { getRuntimeSkills } from "@server/agent/skills/registry";
 import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createProjectTools } from "@server/agent/tools";
 import { createBashTool } from "@server/agent/tools/bashTool";
+import { createPlanModeTools } from "@server/agent/tools/planModeTools";
+import { createPlanPermissionTools, derivePlanModeState } from "@server/agent/permissions/planMode";
+import { createSubAgentTools } from "@server/agent/tools/subAgentTools";
+import { createTaskTools } from "@server/agent/tools/taskTools";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
 import type { AgentToolDefinition, ChangeTracker } from "@server/agent/tools/types";
-import { runSimpleAgentWorkflow } from "@server/agent/workflow/simpleAgentWorkflow";
+import { runMasterSubAgentRuntime } from "@server/agent/runtime/masterSubAgentRuntime";
 import { getAgentRuntimeSkillPrompt } from "@server/agent/skillPrompt";
 import { getChatModelCatalog, getChatModelProfile, runWithRequestModelProfiles } from "@server/aiProxy/catalogStore";
 import { requireAuth } from "@server/auth/session";
@@ -22,7 +26,7 @@ import {
   registerActiveConversationRun,
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
-import { bindWorkflowAbortToConnection } from "@server/chat/completions/connectionLifecycle";
+import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnectionLifecycle";
 import {
   getConversation,
   appendConversationMessages,
@@ -58,9 +62,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import {
   ALWAYS_KEEP_TOOL_NAMES,
   buildAttachmentHintText,
-  buildToolRoutingSystemPrompt,
   chatCompletionMessageToConversationMessage,
-  detectUserIntent,
   getLatestUserArtifactFiles,
   getLastUserText,
   getSelectedSkillFromMessages,
@@ -70,16 +72,28 @@ import {
   isMcpToolName,
   isModelUnavailableError,
   isProjectKnowledgeMcpTool,
-  normalizeToolChoiceMode,
   normalizeStoredMessages,
-  resolveToolChoice,
-  routeToolsByIntent,
   sendSseEvent,
   startSse,
   startSseHeartbeat,
   toIncomingMessages,
   toStringValue,
 } from "./completions/helpers";
+
+const PLAN_MODE_BLOCKED_TOOL_NAMES = new Set([
+  "Write",
+  "Edit",
+  "Delete",
+  "bash",
+  "compile_project",
+  "skill_run_script",
+  "spawn_agent",
+  "send_input",
+  "send_message",
+  "close_agent",
+  "resume_agent",
+]);
+
 const isImageInputPart = (value: unknown) => {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
@@ -134,8 +148,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (type === "disabled") return { type: "disabled" as const };
     return undefined;
   })();
-  const requestedToolChoiceRaw = req.body?.toolChoiceMode ?? req.body?.toolChoice ?? req.body?.tool_choice;
-  const requestedToolChoiceMode = normalizeToolChoiceMode(requestedToolChoiceRaw);
   const history = (() => {
     const value = req.body?.history;
     if (value && typeof value === "object" && Array.isArray((value as { histories?: unknown }).histories)) {
@@ -373,28 +385,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     fallbackProjectToken: token,
     allowedProjectToken: token,
   });
-  const allTools = [
+  const baseTools = [
     ...localTools,
     ...mcpTools,
     ...(skillLoadTool ? [skillLoadTool] : []),
     ...(skillRunScriptTool ? [skillRunScriptTool] : []),
     bashTool,
   ];
-  const userIntent = detectUserIntent(contextMessages);
-  const routedTools = routeToolsByIntent(allTools, userIntent);
-  const selectedTools = (() => {
-    const routed = routedTools.selectedTools;
-    const keep = allTools.filter((tool) => ALWAYS_KEEP_TOOL_NAMES.has(tool.name));
-    const merged = [...routed];
-    for (const tool of keep) {
-      if (!merged.some((item) => item.name === tool.name)) {
-        merged.push(tool);
-      }
-    }
-    return merged;
-  })();
-  const hasMcpTools = selectedTools.some((tool) => isMcpToolName(tool.name));
-  const hasProjectKnowledgeTools = selectedTools.some((tool) => isProjectKnowledgeMcpTool(tool.name));
   const explicitRequestedModel =
     typeof model === "string" && model.trim() && model !== "agent" ? model.trim() : undefined;
   const requestedModel = explicitRequestedModel || runtimeConfig.toolCallModel;
@@ -436,39 +433,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : availableFilteredModels.has(catalog.defaultModel)
       ? catalog.defaultModel
       : filteredCatalogModels[0]?.id || requestedModel;
+  let subagentContextMessages: ChatCompletionMessageParam[] = [];
+  let allTools: AgentToolDefinition[] = [];
+  const subAgentTools = createSubAgentTools({
+    sessionId: toolSessionId,
+    getSelectedModel: () => selectedModel,
+    recursionLimit: runtimeConfig.recursionLimit,
+    temperature: runtimeConfig.temperature,
+    getContextMessages: () => subagentContextMessages,
+    getDelegatableTools: () => allTools,
+  });
+  const taskTools = createTaskTools(toolSessionId);
+  const planPermissionTools = createPlanPermissionTools();
+  const planModeActive = derivePlanModeState(contextMessages);
+  const planModeTools = createPlanModeTools();
+  allTools = [...baseTools, ...subAgentTools, ...taskTools, ...planPermissionTools, ...planModeTools];
+  const selectedTools = (() => {
+    const merged = [...allTools];
+    for (const tool of allTools.filter((item) => ALWAYS_KEEP_TOOL_NAMES.has(item.name))) {
+      if (!merged.some((item) => item.name === tool.name)) {
+        merged.push(tool);
+      }
+    }
+    if (planModeActive) {
+      return merged.filter((tool) => !PLAN_MODE_BLOCKED_TOOL_NAMES.has(tool.name));
+    }
+    return merged;
+  })();
+  const hasMcpTools = selectedTools.some((tool) => isMcpToolName(tool.name));
+  const hasProjectKnowledgeTools = selectedTools.some((tool) => isProjectKnowledgeMcpTool(tool.name));
   const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
-  const profileToolChoiceRaw =
-    selectedModelProfile?.toolChoiceMode ??
-    selectedModelProfile?.toolChoice ??
-    selectedModelProfile?.forceToolChoice;
-  const profileToolChoiceMode = normalizeToolChoiceMode(profileToolChoiceRaw);
-  const isGoogleModel = selectedModel.trim().toLowerCase().startsWith("google");
-  const requestedToolChoiceNone =
-    typeof requestedToolChoiceRaw === "string" && requestedToolChoiceRaw.trim().toLowerCase() === "none";
-  const profileToolChoiceNone =
-    typeof profileToolChoiceRaw === "string" && profileToolChoiceRaw.trim().toLowerCase() === "none";
-
-  const toolChoiceForWorkflow: "auto" | "required" | undefined =
-    isGoogleModel || requestedToolChoiceNone || profileToolChoiceNone
-      ? undefined
-      : selectedTools.length > 0
-      ? (requestedToolChoiceMode || profileToolChoiceMode || (selectedRuntimeSkill
-          ? "required"
-          : latestUserArtifactFiles.length > 0
-          ? "required"
-          : resolveToolChoice(userIntent))) as "auto" | "required"
-      : undefined;
-
-  const resolvedToolChoiceMode = toolChoiceForWorkflow ?? "auto";
-  const finalToolChoiceModeForPrompt = isGoogleModel || requestedToolChoiceNone || profileToolChoiceNone
-    ? "auto"
-    : resolvedToolChoiceMode;
-
-  const toolRoutingPrompt = buildToolRoutingSystemPrompt(
-    userIntent,
-    routedTools,
-    finalToolChoiceModeForPrompt
-  );
+  const fixedToolChoice: "auto" = "auto";
 
   const tools: ChatCompletionTool[] = selectedTools.map((tool) => ({
     type: "function",
@@ -480,11 +475,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }));
 
   console.info("[agent-skill] tools", {
-    userIntent,
-    routeReason: routedTools.reason,
     totalTools: tools.length,
     totalCandidates: allTools.length,
-    toolChoiceMode: finalToolChoiceModeForPrompt,
+    toolChoiceMode: fixedToolChoice,
     toolNames: tools.map((tool) => tool.function.name),
   });
 
@@ -586,7 +579,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const coreSystemPrompts: ChatCompletionMessageParam[] = [
     { role: "system", content: getBaseCodingAgentPrompt(project.template) },
-    { role: "system", content: toolRoutingPrompt },
+    ...(planModeActive
+      ? [
+          {
+            role: "system",
+            content:
+              "Plan mode is active. Do not perform mutating operations. Produce an executable step-by-step plan, highlight risks, and ask for confirmation before implementation.",
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]
       : []),
@@ -666,6 +667,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     enabled: runtimeConfig.contextManagerEnabled,
   });
   let agentMessages = contextManaged.messages;
+  subagentContextMessages = agentMessages;
 
   const promptUsedTokens = await countGptMessagesTokens(agentMessages, tools).catch(() => 0);
   const backgroundUsedTokens = await countGptMessagesTokens(backgroundAssembled.messages, tools).catch(() => 0);
@@ -716,9 +718,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     hasProjectKnowledgeTools,
     skillsCatalogPromptLength: skillsCatalogPrompt.length,
     runtimeSkillPromptLength: runtimeSkillPrompt.length,
-    userIntent,
-    routeReason: routedTools.reason,
-    toolChoiceMode: finalToolChoiceModeForPrompt,
+    toolChoiceMode: fixedToolChoice,
     selectedSkillRequested,
     selectedSkillResolved: selectedResolvedSkill?.name || "",
     selectedSkillSource: selectedProjectSkill ? "project" : selectedRuntimeSkill ? "runtime" : "",
@@ -732,25 +732,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     startStream();
   }
 
-  const workflowStartAt = Date.now();
-  const workflowAbortController = new AbortController();
-  const cleanupDisconnectBinding = bindWorkflowAbortToConnection({
+  const agentRuntimeStartAt = Date.now();
+  const agentRuntimeAbortController = new AbortController();
+  const cleanupDisconnectBinding = bindAgentAbortToConnection({
     req,
     res,
-    controller: workflowAbortController,
+    controller: agentRuntimeAbortController,
     scope: "chat/completions",
   });
   if (conversationId) {
     registerActiveConversationRun({
       token,
       chatId: conversationId,
-      controller: workflowAbortController,
+      controller: agentRuntimeAbortController,
     });
   }
 
-  const tryRunWorkflow = async (modelToUse: string) =>
+  const tryRunAgentRun = async (modelToUse: string) =>
     runWithRequestModelProfiles(userModelProfiles, async () =>
-      runSimpleAgentWorkflow({
+      runMasterSubAgentRuntime({
+        sessionId: toolSessionId,
         selectedModel: modelToUse,
         stream,
         recursionLimit: runtimeConfig.recursionLimit,
@@ -763,10 +764,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })(),
         thinking,
         messages: agentMessages,
-        toolChoice: modelToUse.trim().toLowerCase().startsWith("google") ? undefined : toolChoiceForWorkflow,
+        toolChoice: fixedToolChoice,
         allTools: selectedTools,
         tools,
-        abortSignal: workflowAbortController.signal,
+        abortSignal: agentRuntimeAbortController.signal,
         onEvent: (event, data) => {
         if (event === SseResponseEventEnum.answer) {
           const text = typeof data.text === "string" ? data.text : "";
@@ -817,12 +818,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     runtimeConfig.toolCallModel,
   ].filter((item): item is string => Boolean(item && item !== selectedModel));
 
-  const { runResult, finalMessage, finalReasoning, flowResponses } = await (async () => {
+  const { runResult, finalMessage, finalReasoning, stepResponses } = await (async () => {
     try {
-      return await tryRunWorkflow(selectedModel);
+      return await tryRunAgentRun(selectedModel);
     } catch (error) {
       if (isModelUnavailableError(error) && fallbackModelCandidates.length > 0) {
-        return await tryRunWorkflow(fallbackModelCandidates[0]);
+        return await tryRunAgentRun(fallbackModelCandidates[0]);
       }
       throw error;
     } finally {
@@ -831,12 +832,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         unregisterActiveConversationRun({
           token,
           chatId: conversationId,
-          controller: workflowAbortController,
+          controller: agentRuntimeAbortController,
         });
       }
     }
   })();
-  const durationSeconds = Number(((Date.now() - workflowStartAt) / 1000).toFixed(2));
+  const durationSeconds = Number(((Date.now() - agentRuntimeStartAt) / 1000).toFixed(2));
   const finalPromptUsedTokens = await countGptMessagesTokens(runResult.completeMessages, tools).catch(() => 0);
   const finalCurrentInputTokens = Math.max(0, finalPromptUsedTokens - backgroundUsedTokens);
   const memoryRecallAudit = memoryRecall
@@ -907,7 +908,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return undefined;
   };
-  const toolDetailsFromFlow = flowResponses.map((node, index) => {
+  const toolDetailsFromFlow = stepResponses.map((node, index) => {
     const toolName = node.moduleName || "";
     const params = toStringValue(node.toolInput);
     const response = toStringValue(node.toolRes);
@@ -947,7 +948,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sendSseEvent(res, SseResponseEventEnum.contextWindow, JSON.stringify(finalContextWindowUsage));
     sendSseEvent(
       res,
-      SseResponseEventEnum.workflowDuration,
+      SseResponseEventEnum.agentDuration,
       JSON.stringify({ durationSeconds })
     );
   }
@@ -979,14 +980,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
       const currentText = extractText(current.content);
       assistantToStore = {
+        type: "assistant",
+        subtype: planModeActive ? "plan_result" : "result",
         ...current,
         content: currentText || resolvedFinalMessage,
         additional_kwargs: {
           ...currentKwargs,
+          planModeState: planModeActive,
           reasoning_text: finalReasoning,
           toolDetails: existingToolDetails.length > 0 ? existingToolDetails : toolDetailsFromFlow,
           ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
-          responseData: flowResponses,
+          responseData: stepResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
           ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
@@ -995,14 +999,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     } else if (resolvedFinalMessage) {
       assistantToStore = {
+        type: "assistant",
+        subtype: planModeActive ? "plan_result" : "result",
         role: "assistant",
         content: resolvedFinalMessage,
         id: createDataId(),
         additional_kwargs: {
+          planModeState: planModeActive,
           reasoning_text: finalReasoning,
           toolDetails: toolDetailsFromFlow,
           ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
-          responseData: flowResponses,
+          responseData: stepResponses,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
           ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
@@ -1025,12 +1032,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contextWindow: finalContextWindowUsage,
       memoryRecall: memoryRecallAudit,
       memoryUpdate: memoryUpdateAudit,
-      responseData: flowResponses,
+      responseData: stepResponses,
       durationSeconds,
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: resolvedFinalMessage },
+          message: {
+            type: "assistant",
+            subtype: planModeActive ? "plan_result" : "result",
+            role: "assistant",
+            content: resolvedFinalMessage,
+          },
           finish_reason: runResult.finish_reason || "stop",
         },
       ],

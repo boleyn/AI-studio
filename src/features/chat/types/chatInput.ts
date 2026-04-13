@@ -9,6 +9,10 @@ export interface ChatInputSubmitPayload {
   text: string;
   files: ChatInputFile[];
   uploadedFiles: UploadedFileArtifact[];
+  planModeApprovalResponse?: {
+    action: "enter" | "exit";
+    decision: "approve" | "reject";
+  };
   selectedSkill?: string;
   selectedSkills?: string[];
   selectedFilePaths?: string[];
@@ -38,6 +42,7 @@ export interface ChatInputProps {
   modelLoading?: boolean;
   thinkingEnabled?: boolean;
   showThinkingToggle?: boolean;
+  mode?: "default" | "plan";
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
   selectedSkill?: string;

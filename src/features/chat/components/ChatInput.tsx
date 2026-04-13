@@ -36,6 +36,7 @@ const ChatInput = ({
   modelLoading,
   thinkingEnabled = true,
   showThinkingToggle = true,
+  mode = "default",
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
   selectedSkill,
@@ -830,6 +831,25 @@ const ChatInput = ({
                 />
               </MyTooltip>
             ) : null}
+            <MyTooltip
+              fontSize="12px"
+              label={mode === "plan" ? "当前处于计划模式（由审批流驱动）" : "当前处于执行模式（由审批流驱动）"}
+              openDelay={150}
+            >
+              <Box
+                alignItems="center"
+                bg={mode === "plan" ? "rgba(251, 191, 36, 0.15)" : "transparent"}
+                border="1px solid"
+                borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.45)" : "transparent"}
+                borderRadius="8px"
+                display="flex"
+                h="30px"
+                justifyContent="center"
+                minW="46px"
+              >
+                <Text fontSize="11px" fontWeight={700}>{mode === "plan" ? "PLAN" : "RUN"}</Text>
+              </Box>
+            </MyTooltip>
             {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">
                 {t("chat:uploading_files", { defaultValue: "文件上传中..." })}

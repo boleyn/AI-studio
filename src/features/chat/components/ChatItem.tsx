@@ -56,6 +56,29 @@ interface TimelineItem {
   response?: string;
 }
 
+interface PlanQuestionOption {
+  label: string;
+  description?: string;
+}
+
+interface PlanQuestion {
+  header: string;
+  id: string;
+  question: string;
+  options: PlanQuestionOption[];
+}
+
+interface PlanModeApproval {
+  action: "enter" | "exit";
+  title?: string;
+  description?: string;
+  rationale?: string;
+  options?: Array<{
+    label: string;
+    value: "approve" | "reject";
+  }>;
+}
+
 const MAX_TOOL_DETAIL_CHARS = 800;
 
 const normalizeToolPayload = (value?: string) => {
@@ -155,6 +178,77 @@ const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
       params: typeof item.params === "string" ? item.params : undefined,
       response: typeof item.response === "string" ? item.response : undefined,
     }));
+};
+
+const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
+  const raw = (message.additional_kwargs as { planQuestions?: unknown }).planQuestions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      header: typeof item.header === "string" ? item.header : "确认",
+      id: typeof item.id === "string" ? item.id : "",
+      question: typeof item.question === "string" ? item.question : "",
+      options: Array.isArray(item.options)
+        ? item.options
+            .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
+            .map((opt) => ({
+              label: typeof opt.label === "string" ? opt.label : "",
+              description: typeof opt.description === "string" ? opt.description : "",
+            }))
+            .filter((opt) => opt.label.trim().length > 0)
+        : [],
+    }))
+    .filter((item) => item.id && item.question);
+};
+
+const getPlanAnswers = (message: ConversationMessage): Record<string, string> => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return {};
+  const raw = (message.additional_kwargs as { planAnswers?: unknown }).planAnswers;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (typeof value === "string" && value.trim()) {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+};
+
+const getPlanModeApproval = (message: ConversationMessage): PlanModeApproval | null => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
+  const value = (message.additional_kwargs as { planModeApproval?: unknown }).planModeApproval;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const action = record.action === "exit" ? "exit" : record.action === "enter" ? "enter" : null;
+  if (!action) return null;
+  const options = Array.isArray(record.options)
+    ? record.options
+        .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
+        .map((opt) => ({
+          label: typeof opt.label === "string" ? opt.label : "",
+          value:
+            opt.value === "reject"
+              ? ("reject" as const)
+              : opt.value === "approve"
+              ? ("approve" as const)
+              : ("approve" as const),
+        }))
+        .filter((opt) => opt.label)
+    : [];
+  return {
+    action,
+    title: typeof record.title === "string" ? record.title : undefined,
+    description: typeof record.description === "string" ? record.description : undefined,
+    rationale: typeof record.rationale === "string" ? record.rationale : undefined,
+    options,
+  };
+};
+
+const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const value = (message.additional_kwargs as { planModeApprovalDecision?: unknown }).planModeApprovalDecision;
+  return value === "approve" || value === "reject" ? value : "";
 };
 
 const getRunStatus = (
@@ -435,6 +529,10 @@ const ChatItem = ({
   requestMessage,
   requestContent,
   isLatestRun,
+  planQuestionSubmitting,
+  planModeApprovalSubmitting,
+  onPlanQuestionSelect,
+  onPlanModeApprovalSelect,
 }: {
   message: ConversationMessage;
   isStreaming?: boolean;
@@ -443,10 +541,31 @@ const ChatItem = ({
   requestMessage?: ConversationMessage;
   requestContent?: string;
   isLatestRun?: boolean;
+  planQuestionSubmitting?: boolean;
+  planModeApprovalSubmitting?: boolean;
+  onPlanQuestionSelect?: (input: {
+    messageId: string;
+    questionId: string;
+    header?: string;
+    question: string;
+    optionLabel: string;
+    optionDescription?: string;
+  }) => void;
+  onPlanModeApprovalSelect?: (input: {
+    messageId: string;
+    action: "enter" | "exit";
+    decision: "approve" | "reject";
+  }) => void;
 }) => {
   const content = extractText(message.content);
-  const isUser = message.role === "user";
-  const isSystem = message.role === "system";
+  const messageType = (message.type || message.role || "assistant") as
+    | "user"
+    | "assistant"
+    | "system"
+    | "tool"
+    | "progress";
+  const isUser = messageType === "user";
+  const isSystem = messageType === "system";
   const isAssistant = !isUser && !isSystem;
 
   const files = useMemo(() => getMessageFiles(message), [message]);
@@ -493,6 +612,10 @@ const ChatItem = ({
   const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const { copyData } = useCopyData();
+  const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
+  const planAnswers = useMemo(() => getPlanAnswers(message), [message]);
+  const planModeApproval = useMemo(() => getPlanModeApproval(message), [message]);
+  const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
 
   const toggleTimelineReasoningDetails = useCallback((key: string) => {
     setExpandedTimelineReasoningKeys((prev) => ({
@@ -874,6 +997,118 @@ const ChatItem = ({
           </Text>
         ) : (
           <Flex direction="column" gap={2}>
+            {planModeApproval ? (
+              <Box bg="cyan.50" border="1px solid" borderColor="cyan.200" borderRadius="10px" p={3}>
+                <Text color="cyan.800" fontSize="12px" fontWeight={700}>
+                  {planModeApproval.title || "计划模式审批"}
+                </Text>
+                <Text color="myGray.700" fontSize="12px" mt={1}>
+                  {planModeApproval.description ||
+                    (planModeApproval.action === "enter" ? "请求进入计划模式。" : "请求退出计划模式。")}
+                </Text>
+                {planModeApproval.rationale ? (
+                  <Text color="myGray.600" fontSize="11px" mt={1.5}>
+                    说明: {planModeApproval.rationale}
+                  </Text>
+                ) : null}
+                {planModeApprovalDecision ? (
+                  <Text color="cyan.700" fontSize="11px" mt={2}>
+                    已选择: {planModeApprovalDecision === "approve" ? "批准" : "拒绝"}
+                  </Text>
+                ) : null}
+                <Flex gap={2} mt={2}>
+                  {(planModeApproval.options && planModeApproval.options.length > 0
+                    ? planModeApproval.options
+                    : [
+                        { label: "批准", value: "approve" as const },
+                        { label: "拒绝", value: "reject" as const },
+                      ]
+                  ).map((option, idx) => (
+                    <Button
+                      key={`${messageId}-plan-mode-approval-option-${idx}`}
+                      bg={planModeApprovalDecision === option.value ? "cyan.100" : "white"}
+                      border="1px solid"
+                      borderColor={planModeApprovalDecision === option.value ? "cyan.300" : "myGray.200"}
+                      color={planModeApprovalDecision === option.value ? "cyan.800" : "myGray.700"}
+                      h="26px"
+                      isDisabled={Boolean(planModeApprovalSubmitting || planModeApprovalDecision)}
+                      onClick={() =>
+                        onPlanModeApprovalSelect?.({
+                          messageId,
+                          action: planModeApproval.action,
+                          decision: option.value,
+                        })
+                      }
+                      px={2}
+                      size="xs"
+                      variant="ghost"
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </Flex>
+              </Box>
+            ) : null}
+            {planQuestions.length > 0 ? (
+              <Box bg="amber.50" border="1px solid" borderColor="orange.200" borderRadius="10px" p={3}>
+                <Text color="orange.800" fontSize="12px" fontWeight={700} mb={2}>
+                  计划确认
+                </Text>
+                <Flex direction="column" gap={2.5}>
+                  {planQuestions.map((question) => {
+                    const selectedLabel = planAnswers[question.id] || "";
+                    return (
+                      <Box key={`${messageId}-plan-question-${question.id}`} bg="white" border="1px solid" borderColor="orange.100" borderRadius="8px" p={2.5}>
+                        <Text color="myGray.700" fontSize="12px" fontWeight={700}>
+                          {question.header || "确认"}
+                        </Text>
+                        <Text color="myGray.700" fontSize="12px" mt={1}>
+                          {question.question}
+                        </Text>
+                        {selectedLabel ? (
+                          <Text color="orange.700" fontSize="11px" mt={2}>
+                            已选择: {selectedLabel}
+                          </Text>
+                        ) : null}
+                        {question.options.length > 0 ? (
+                          <Flex flexWrap="wrap" gap={2} mt={2}>
+                            {question.options.map((option, optionIndex) => {
+                              const isSelected = selectedLabel === option.label;
+                              return (
+                                <Button
+                                  key={`${messageId}-plan-option-${question.id}-${optionIndex}`}
+                                  bg={isSelected ? "orange.100" : "white"}
+                                  border="1px solid"
+                                  borderColor={isSelected ? "orange.300" : "myGray.200"}
+                                  color={isSelected ? "orange.800" : "myGray.700"}
+                                  h="26px"
+                                  isDisabled={Boolean(planQuestionSubmitting || selectedLabel)}
+                                  onClick={() =>
+                                    onPlanQuestionSelect?.({
+                                      messageId,
+                                      questionId: question.id,
+                                      header: question.header,
+                                      question: question.question,
+                                      optionLabel: option.label,
+                                      optionDescription: option.description,
+                                    })
+                                  }
+                                  px={2}
+                                  size="xs"
+                                  variant="ghost"
+                                >
+                                  {option.label}
+                                </Button>
+                              );
+                            })}
+                          </Flex>
+                        ) : null}
+                      </Box>
+                    );
+                  })}
+                </Flex>
+              </Box>
+            ) : null}
             {(hasRequestContent || timelineItems.length > 0) ? (
               <Box position="relative">
                 <Box
@@ -1254,5 +1489,9 @@ export default React.memo(
     prevProps.executionSummary?.nodeCount === nextProps.executionSummary?.nodeCount &&
     prevProps.executionSummary?.durationSeconds === nextProps.executionSummary?.durationSeconds &&
     prevProps.requestContent === nextProps.requestContent &&
-    prevProps.isLatestRun === nextProps.isLatestRun
+    prevProps.isLatestRun === nextProps.isLatestRun &&
+    prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
+    prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
+    prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
+    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect
 );

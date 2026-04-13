@@ -17,9 +17,24 @@ interface ChatMessageBlockProps {
   isLatestRun?: boolean;
   rating?: MessageRating;
   canRegenerate?: boolean;
+  planQuestionSubmitting?: boolean;
+  planModeApprovalSubmitting?: boolean;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onRate?: (messageId: string, rating: MessageRating) => void;
+  onPlanQuestionSelect?: (input: {
+    messageId: string;
+    questionId: string;
+    header?: string;
+    question: string;
+    optionLabel: string;
+    optionDescription?: string;
+  }) => void;
+  onPlanModeApprovalSelect?: (input: {
+    messageId: string;
+    action: "enter" | "exit";
+    decision: "approve" | "reject";
+  }) => void;
 }
 
 const ChatMessageBlock = ({
@@ -32,9 +47,13 @@ const ChatMessageBlock = ({
   isLatestRun,
   rating,
   canRegenerate,
+  planQuestionSubmitting,
+  planModeApprovalSubmitting,
   onRegenerate,
   onDelete,
   onRate,
+  onPlanQuestionSelect,
+  onPlanModeApprovalSelect,
 }: ChatMessageBlockProps) => {
   const { copyData } = useCopyData();
   const isUser = message.role === "user";
@@ -92,6 +111,10 @@ const ChatMessageBlock = ({
         messageId={messageId}
         requestMessage={requestMessage}
         requestContent={requestContent}
+        planQuestionSubmitting={planQuestionSubmitting}
+        planModeApprovalSubmitting={planModeApprovalSubmitting}
+        onPlanQuestionSelect={onPlanQuestionSelect}
+        onPlanModeApprovalSelect={onPlanModeApprovalSelect}
       />
     </Flex>
   );
@@ -110,7 +133,11 @@ export default React.memo(
     prevProps.isLatestRun === nextProps.isLatestRun &&
     prevProps.rating === nextProps.rating &&
     prevProps.canRegenerate === nextProps.canRegenerate &&
+    prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
+    prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
     prevProps.onRegenerate === nextProps.onRegenerate &&
     prevProps.onDelete === nextProps.onDelete &&
-    prevProps.onRate === nextProps.onRate
+    prevProps.onRate === nextProps.onRate &&
+    prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
+    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect
 );

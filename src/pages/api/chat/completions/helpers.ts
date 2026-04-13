@@ -1,5 +1,4 @@
 import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
-import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { createDataId } from "@shared/chat/ids";
 import { extractText, type IncomingMessage } from "@shared/chat/messages";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -53,6 +52,12 @@ export const toIncomingMessages = (messages: unknown): IncomingMessage[] => {
     .map((message) => {
       if (!message || typeof message !== "object") return null;
       const record = message as {
+        type?: string;
+        subtype?: string;
+        uuid?: string;
+        parent_uuid?: string;
+        is_sidechain?: boolean;
+        session_id?: string;
         role?: string;
         content?: unknown;
         id?: string;
@@ -63,12 +68,17 @@ export const toIncomingMessages = (messages: unknown): IncomingMessage[] => {
         status?: IncomingMessage["status"];
         artifact?: IncomingMessage["artifact"];
       };
-      if (!record.role) return null;
-      const role = record.role;
+      const role = (record.type || record.role || "").trim();
       if (role !== "user" && role !== "assistant" && role !== "system" && role !== "tool") {
         return null;
       }
       return {
+        type: role,
+        subtype: record.subtype,
+        uuid: record.uuid,
+        parent_uuid: record.parent_uuid,
+        is_sidechain: record.is_sidechain,
+        session_id: record.session_id,
         role,
         content: record.content ?? "",
         id: record.id,
@@ -97,6 +107,7 @@ export const chatCompletionMessageToConversationMessage = (
       ? (message as { content: string }).content
       : extractText((message as { content?: unknown }).content);
   return {
+    type: role,
     role,
     content: content ?? "",
     id: (message as { id?: string }).id ?? createDataId(),
@@ -217,24 +228,6 @@ export const isModelUnavailableError = (error: unknown) => {
   return /does not exist|do not have access|model.*not found/i.test(text);
 };
 
-const CODE_INTENT_PATTERN =
-  /(改|修改|修复|重构|实现|加个|排查|debug|fix|refactor|implement|code|代码|文件|函数|接口|api|bug|报错)/i;
-const TOOLING_INTENT_PATTERN =
-  /(写工具|工具开发|新增工具|两个工具|2个工具|build tool|create tool|tooling|tool|替换|replace|删除文件|delete file|修改文件|\bRead\b|\bWrite\b|\bEdit\b|\bDelete\b|\bGlob\b|\bGrep\b)/i;
-
-export const PROJECT_LOCAL_TOOL_NAMES = new Set([
-  "Glob",
-  "Read",
-  "Write",
-  "Edit",
-  "Delete",
-  "Grep",
-  "compile_project",
-  "skill_load",
-  "skill_run_script",
-  "bash",
-]);
-
 export const ALWAYS_KEEP_TOOL_NAMES = new Set([
   "Glob",
   "Read",
@@ -246,6 +239,10 @@ export const ALWAYS_KEEP_TOOL_NAMES = new Set([
   "skill_load",
   "skill_run_script",
   "bash",
+  "spawn_agent",
+  "send_input",
+  "wait_agent",
+  "close_agent",
 ]);
 
 const MCP_TOOL_NAME_PREFIX = "mcp__";
@@ -264,13 +261,6 @@ export const isProjectKnowledgeMcpTool = (toolName: string) => {
     normalized.includes("analysis") ||
     normalized.includes("project")
   );
-};
-
-export type UserIntent = "tooling" | "coding" | "general";
-
-export type ToolRouteResult = {
-  selectedTools: AgentToolDefinition[];
-  reason: string;
 };
 
 export const getLastUserText = (messages: ConversationMessage[]) => {
@@ -297,101 +287,4 @@ export const getSelectedSkillFromMessages = (messages: ConversationMessage[]) =>
     }
   }
   return "";
-};
-
-export const detectUserIntent = (messages: ConversationMessage[]): UserIntent => {
-  const text = getLastUserText(messages).toLowerCase();
-  if (!text) return "general";
-  if (TOOLING_INTENT_PATTERN.test(text)) return "tooling";
-  if (CODE_INTENT_PATTERN.test(text)) return "coding";
-  return "general";
-};
-
-export const routeToolsByIntent = (allTools: AgentToolDefinition[], intent: UserIntent): ToolRouteResult => {
-  if (intent === "tooling") {
-    const toolBuildTools = allTools.filter((tool) =>
-      [
-        "Glob",
-        "Grep",
-        "Read",
-        "Edit",
-        "Write",
-        "Delete",
-        "compile_project",
-        "skill_load",
-        "skill_run_script",
-        "bash",
-      ].includes(tool.name)
-    );
-
-    if (toolBuildTools.length > 0) {
-      return { selectedTools: toolBuildTools, reason: "tooling_with_edit_tools" };
-    }
-
-    const fallbackNonLocal = allTools.filter((tool) => !PROJECT_LOCAL_TOOL_NAMES.has(tool.name));
-    if (fallbackNonLocal.length > 0) {
-      return { selectedTools: fallbackNonLocal, reason: "tooling_with_non_local_tools" };
-    }
-  }
-
-  if (intent === "coding") {
-    const codingTools = allTools.filter(
-      (tool) => PROJECT_LOCAL_TOOL_NAMES.has(tool.name) || isMcpToolName(tool.name)
-    );
-
-    if (codingTools.length > 0) {
-      return { selectedTools: codingTools, reason: "coding_with_project_tools" };
-    }
-  }
-
-  return { selectedTools: allTools, reason: "fallback_all_tools" };
-};
-
-export const resolveToolChoice = (intent: UserIntent): "auto" | "required" => {
-  if (intent === "tooling") return "required";
-  if (intent === "coding") return "required";
-  return "auto";
-};
-
-export const normalizeToolChoiceMode = (
-  value: unknown
-): "auto" | "required" | "none" | undefined => {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "auto") return "auto";
-  if (normalized === "required") return "required";
-  if (normalized === "none") return "none";
-  return undefined;
-};
-
-export const buildToolRoutingSystemPrompt = (
-  intent: UserIntent,
-  route: ToolRouteResult,
-  toolChoiceMode: "auto" | "required" | "none"
-) => {
-  const toolNames = route.selectedTools.map((tool) => tool.name).join(", ") || "(none)";
-  const intentRule =
-    intent === "tooling"
-      ? "Current task intent is tooling. Read/search before write. Keep edits focused, avoid one-shot large file writes, and split broad changes into smaller modules."
-      : intent === "coding"
-      ? "Current task intent is coding. Prioritize project code tools and MCP references. Read/search before write; keep writes small; if change >120 lines or crosses concerns, split into smaller files/modules or incremental steps."
-      : "Current task intent is general. Use tools only when they materially improve correctness.";
-  const mandatoryRule =
-    toolChoiceMode === "required"
-      ? "- You must call at least one allowed tool before providing the final answer."
-      : toolChoiceMode === "none"
-      ? "- Tool calls are disabled for this request."
-      : "- Tool calls are optional; use them when needed for correctness.";
-
-  return [
-    "Runtime tool routing policy:",
-    `- intent: ${intent}`,
-    `- route_reason: ${route.reason}`,
-    `- tool_choice_mode: ${toolChoiceMode}`,
-    `- allowed_tools: ${toolNames}`,
-    `- ${intentRule}`,
-    "- Do not call tools outside allowed_tools.",
-    mandatoryRule,
-    "- Prefer the minimum number of tool calls needed to complete the task.",
-  ].join("\n");
 };

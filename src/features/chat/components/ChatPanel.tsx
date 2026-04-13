@@ -47,9 +47,55 @@ interface ReasoningStreamPayload {
   reasoningText?: string;
 }
 
-interface WorkflowDurationPayload {
+interface AgentDurationPayload {
   durationSeconds?: number;
 }
+
+type AgentTaskSnapshot = {
+  id: string;
+  name?: string;
+  status: "running" | "completed" | "failed" | "closed";
+  turns?: number;
+  queueLength?: number;
+  error?: string;
+  lastOutput?: string;
+  updatedAt?: number;
+  isolation?: "session" | "worktree";
+  cwd?: string;
+  worktreePath?: string;
+  requiredMcpServers?: string[];
+  outputFile?: string;
+};
+
+type PlanQuestionOption = {
+  label: string;
+  description?: string;
+};
+
+type PlanQuestion = {
+  header?: string;
+  id: string;
+  question: string;
+  options?: PlanQuestionOption[];
+};
+
+type PlanModeApprovalPayload = {
+  action: "enter" | "exit";
+  title?: string;
+  description?: string;
+  rationale?: string;
+  options?: Array<{ label: string; value: "approve" | "reject" }>;
+};
+
+type SessionTaskSnapshot = {
+  id: string;
+  subject: string;
+  description?: string;
+  status: "pending" | "in_progress" | "completed" | "blocked" | "deleted" | "stopped";
+  owner?: string;
+  createdAt?: number;
+  updatedAt?: number;
+};
 
 import {
   FILE_TAG_MARKER_PREFIX,
@@ -77,6 +123,48 @@ const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
 const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
 const VIRTUAL_FAILED_ASSISTANT_PREFIX = "virtual-failed-assistant:";
 
+const AGENT_STATUS_META: Record<
+  AgentTaskSnapshot["status"],
+  { label: string; bg: string; color: string; borderColor: string }
+> = {
+  running: {
+    label: "运行中",
+    bg: "green.50",
+    color: "green.700",
+    borderColor: "green.200",
+  },
+  completed: {
+    label: "已完成",
+    bg: "blue.50",
+    color: "blue.700",
+    borderColor: "blue.200",
+  },
+  failed: {
+    label: "失败",
+    bg: "red.50",
+    color: "red.700",
+    borderColor: "red.200",
+  },
+  closed: {
+    label: "已关闭",
+    bg: "myGray.100",
+    color: "myGray.700",
+    borderColor: "myGray.250",
+  },
+};
+
+const SESSION_TASK_STATUS_META: Record<
+  SessionTaskSnapshot["status"],
+  { label: string; bg: string; color: string; borderColor: string }
+> = {
+  pending: { label: "待处理", bg: "myGray.100", color: "myGray.700", borderColor: "myGray.250" },
+  in_progress: { label: "进行中", bg: "green.50", color: "green.700", borderColor: "green.200" },
+  completed: { label: "已完成", bg: "blue.50", color: "blue.700", borderColor: "blue.200" },
+  blocked: { label: "阻塞", bg: "orange.50", color: "orange.700", borderColor: "orange.200" },
+  deleted: { label: "已删除", bg: "myGray.100", color: "myGray.700", borderColor: "myGray.250" },
+  stopped: { label: "已停止", bg: "red.50", color: "red.700", borderColor: "red.200" },
+};
+
 const readThinkingEnabled = () => {
   if (typeof window === "undefined") return true;
   try {
@@ -96,6 +184,30 @@ const persistThinkingEnabled = (enabled: boolean) => {
   } catch {
     // ignore
   }
+};
+
+const derivePlanModeFromMessages = (list: ConversationMessage[]): "default" | "plan" => {
+  let active = false;
+  for (const message of list) {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object"
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs) continue;
+    if (typeof kwargs.planModeState === "boolean") {
+      active = kwargs.planModeState;
+      continue;
+    }
+    const approval =
+      kwargs.planModeApprovalResponse && typeof kwargs.planModeApprovalResponse === "object"
+        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
+        : null;
+    if (!approval) continue;
+    if (approval.decision !== "approve") continue;
+    if (approval.action === "enter") active = true;
+    if (approval.action === "exit") active = false;
+  }
+  return active ? "plan" : "default";
 };
 
 const ChatPanel = ({
@@ -157,9 +269,14 @@ const ChatPanel = ({
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
+  const [chatMode, setChatMode] = useState<"default" | "plan">("default");
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
+  const [agentTasks, setAgentTasks] = useState<Record<string, AgentTaskSnapshot>>({});
+  const [showAgentTasks, setShowAgentTasks] = useState(true);
+  const [sessionTasks, setSessionTasks] = useState<Record<string, SessionTaskSnapshot>>({});
+  const [showSessionTasks, setShowSessionTasks] = useState(true);
   const messagesRef = useRef<ConversationMessage[]>([]);
   const { model, setModel, channel, modelOptions, modelGroups, modelLoading, modelCatalog } = useChatModels(
     user?.primaryModel
@@ -237,6 +354,50 @@ const ChatPanel = ({
     []
   );
 
+  const upsertAgentTasks = useCallback((incoming: AgentTaskSnapshot | AgentTaskSnapshot[]) => {
+    const list = Array.isArray(incoming) ? incoming : [incoming];
+    if (list.length === 0) return;
+    setAgentTasks((prev) => {
+      const next = { ...prev };
+      for (const item of list) {
+        if (!item || typeof item !== "object" || !item.id) continue;
+        next[item.id] = {
+          ...(next[item.id] || {}),
+          ...item,
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  const upsertSessionTasks = useCallback((incoming: SessionTaskSnapshot | SessionTaskSnapshot[]) => {
+    const list = Array.isArray(incoming) ? incoming : [incoming];
+    if (list.length === 0) return;
+    setSessionTasks((prev) => {
+      const next = { ...prev };
+      for (const item of list) {
+        if (!item || typeof item !== "object" || !item.id) continue;
+        next[item.id] = {
+          ...(next[item.id] || {}),
+          ...item,
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  const clearCompletedSessionTasks = useCallback(() => {
+    setSessionTasks((prev) => {
+      const next: Record<string, SessionTaskSnapshot> = {};
+      for (const [id, task] of Object.entries(prev)) {
+        if (!task || typeof task !== "object") continue;
+        if (task.status === "completed" || task.status === "deleted") continue;
+        next[id] = task;
+      }
+      return next;
+    });
+  }, []);
+
   const getCachedContextUsage = useCallback((conversationId?: string | null, modelId?: string | null) => {
     const safeConversationId = (conversationId || "").trim();
     const safeModelId = (modelId || "").trim();
@@ -262,6 +423,7 @@ const ChatPanel = ({
           )
         : nextMessages;
     setMessages(hydratedMessages);
+    setChatMode(derivePlanModeFromMessages(hydratedMessages));
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
       for (const message of hydratedMessages) {
@@ -273,6 +435,39 @@ const ChatPanel = ({
       }
       return next;
     });
+    const restoredAgentTasks: Record<string, AgentTaskSnapshot> = {};
+    const restoredSessionTasks: Record<string, SessionTaskSnapshot> = {};
+    for (const message of hydratedMessages) {
+      const kwargs =
+        message.additional_kwargs && typeof message.additional_kwargs === "object"
+          ? (message.additional_kwargs as Record<string, unknown>)
+          : null;
+      if (!kwargs) continue;
+      if (Array.isArray(kwargs.agentTasks)) {
+        for (const task of kwargs.agentTasks as unknown[]) {
+          if (!task || typeof task !== "object") continue;
+          const item = task as AgentTaskSnapshot;
+          if (typeof item.id !== "string" || !item.id) continue;
+          restoredAgentTasks[item.id] = {
+            ...(restoredAgentTasks[item.id] || {}),
+            ...item,
+          };
+        }
+      }
+      if (Array.isArray(kwargs.sessionTasks)) {
+        for (const task of kwargs.sessionTasks as unknown[]) {
+          if (!task || typeof task !== "object") continue;
+          const item = task as SessionTaskSnapshot;
+          if (typeof item.id !== "string" || !item.id) continue;
+          restoredSessionTasks[item.id] = {
+            ...(restoredSessionTasks[item.id] || {}),
+            ...item,
+          };
+        }
+      }
+    }
+    setAgentTasks(restoredAgentTasks);
+    setSessionTasks(restoredSessionTasks);
     shouldAutoScrollRef.current = true;
     const activeId = activeConversation?.id || "";
     const cachedUsage = getCachedContextUsage(activeId || null, model);
@@ -389,6 +584,12 @@ const ChatPanel = ({
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
+      const effectiveMode: "default" | "plan" =
+        payload.planModeApprovalResponse?.decision === "approve"
+          ? payload.planModeApprovalResponse.action === "enter"
+            ? "plan"
+            : "default"
+          : chatMode;
 
       const displayText =
         text ||
@@ -403,10 +604,12 @@ const ChatPanel = ({
         setMessages((prev) => [
           ...prev,
           {
+            type: "user",
             role: "user",
             content: displayText,
             id: userMessageId,
             time: userCreatedAt,
+            subtype: effectiveMode === "plan" ? "plan_user" : "user",
             artifact:
               hasArtifacts
                 ? {
@@ -431,14 +634,27 @@ const ChatPanel = ({
       });
 
       const userMessage: ConversationMessage = {
+        type: "user",
+        subtype: effectiveMode === "plan" ? "plan_user" : "user",
         role: "user",
         content: userBubbleContent || displayText,
         id: userMessageId,
         time: userCreatedAt,
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: payload.selectedFilePaths
-          ? { selectedFilePaths: payload.selectedFilePaths }
-          : undefined,
+          ? {
+              selectedFilePaths: payload.selectedFilePaths,
+              planModeState: effectiveMode === "plan",
+              ...(payload.planModeApprovalResponse
+                ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+                : {}),
+            }
+          : {
+              planModeState: effectiveMode === "plan",
+              ...(payload.planModeApprovalResponse
+                ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+                : {}),
+            },
       };
 
       if (echoUserMessage) {
@@ -460,6 +676,10 @@ const ChatPanel = ({
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
           ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
         },
       };
 
@@ -474,6 +694,8 @@ const ChatPanel = ({
       setMessages((prev) => [
         ...prev,
         {
+          type: "assistant",
+          subtype: effectiveMode === "plan" ? "plan_result" : "result",
           role: "assistant",
           content: "",
           id: assistantMessageId,
@@ -763,6 +985,136 @@ const ChatPanel = ({
                   response: responseForDisplay,
                 });
               }
+              if (streamPayload.toolName && responseForDisplay) {
+                try {
+                  const parsed = JSON.parse(responseForDisplay) as
+                    | AgentTaskSnapshot
+                    | { agents?: AgentTaskSnapshot[] };
+                  if (Array.isArray((parsed as { agents?: AgentTaskSnapshot[] }).agents)) {
+                    upsertAgentTasks((parsed as { agents: AgentTaskSnapshot[] }).agents);
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      agentTasks: (parsed as { agents: AgentTaskSnapshot[] }).agents,
+                    }));
+                  } else if (
+                    parsed &&
+                    typeof parsed === "object" &&
+                    "id" in parsed &&
+                    typeof (parsed as AgentTaskSnapshot).id === "string"
+                  ) {
+                    const snapshot = parsed as AgentTaskSnapshot;
+                    upsertAgentTasks(snapshot);
+                    updateAssistantMetadata((current) => {
+                      const existing = Array.isArray(current.agentTasks)
+                        ? (current.agentTasks as AgentTaskSnapshot[])
+                        : [];
+                      const index = existing.findIndex((item) => item.id === snapshot.id);
+                      const next = [...existing];
+                      if (index >= 0) next[index] = { ...next[index], ...snapshot };
+                      else next.push(snapshot);
+                      return {
+                        ...current,
+                        agentTasks: next,
+                      };
+                    });
+                  }
+                } catch {
+                  // ignore non-JSON tool responses
+                }
+              }
+
+              if (streamPayload.toolName === "request_user_input" && responseForDisplay) {
+                try {
+                  const parsed = JSON.parse(responseForDisplay) as {
+                    questions?: PlanQuestion[];
+                  };
+                  const questions = Array.isArray(parsed.questions)
+                    ? parsed.questions
+                        .filter((item): item is PlanQuestion => Boolean(item && typeof item === "object"))
+                        .map((item) => ({
+                          header: typeof item.header === "string" ? item.header : "确认",
+                          id: typeof item.id === "string" ? item.id : "",
+                          question: typeof item.question === "string" ? item.question : "",
+                          options: Array.isArray(item.options)
+                            ? item.options
+                                .filter((opt): opt is PlanQuestionOption => Boolean(opt && typeof opt === "object"))
+                                .map((opt) => ({
+                                  label: typeof opt.label === "string" ? opt.label : "",
+                                  description: typeof opt.description === "string" ? opt.description : "",
+                                }))
+                                .filter((opt) => opt.label.trim().length > 0)
+                            : [],
+                        }))
+                        .filter((item) => item.id && item.question)
+                    : [];
+                  if (questions.length > 0) {
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      planQuestions: questions,
+                    }));
+                  }
+                } catch {
+                  // ignore parser failures
+                }
+              }
+
+              if (
+                (streamPayload.toolName === "enter_plan_mode" ||
+                  streamPayload.toolName === "exit_plan_mode") &&
+                responseForDisplay
+              ) {
+                try {
+                  const parsed = JSON.parse(responseForDisplay) as {
+                    approval?: PlanModeApprovalPayload;
+                  };
+                  if (parsed.approval && typeof parsed.approval === "object") {
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      planModeApproval: parsed.approval,
+                    }));
+                  }
+                } catch {
+                  // ignore parser failures
+                }
+              }
+
+              if (
+                streamPayload.toolName &&
+                ["TaskCreate", "TaskGet", "TaskUpdate", "TaskStop", "TaskList"].includes(streamPayload.toolName) &&
+                responseForDisplay
+              ) {
+                try {
+                  const parsed = JSON.parse(responseForDisplay) as {
+                    task?: SessionTaskSnapshot;
+                    tasks?: SessionTaskSnapshot[];
+                  };
+                  if (Array.isArray(parsed.tasks)) {
+                    upsertSessionTasks(parsed.tasks);
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      sessionTasks: parsed.tasks,
+                    }));
+                  } else if (parsed.task && typeof parsed.task === "object" && parsed.task.id) {
+                    const task = parsed.task;
+                    upsertSessionTasks(task);
+                    updateAssistantMetadata((current) => {
+                      const existing = Array.isArray(current.sessionTasks)
+                        ? (current.sessionTasks as SessionTaskSnapshot[])
+                        : [];
+                      const index = existing.findIndex((item) => item.id === task.id);
+                      const next = [...existing];
+                      if (index >= 0) next[index] = { ...next[index], ...task };
+                      else next.push(task);
+                      return {
+                        ...current,
+                        sessionTasks: next,
+                      };
+                    });
+                  }
+                } catch {
+                  // ignore parser failures
+                }
+              }
 
               if (responseForFileUpdates && onFilesUpdated) {
                 try {
@@ -799,8 +1151,8 @@ const ChatPanel = ({
               });
               return;
             }
-            if (event === SseResponseEventEnum.workflowDuration) {
-              const streamPayload = item as WorkflowDurationPayload;
+            if (event === SseResponseEventEnum.agentDuration) {
+              const streamPayload = item as AgentDurationPayload;
               if (typeof streamPayload.durationSeconds !== "number") return;
               updateAssistantMetadata((current) => ({
                 ...current,
@@ -1024,6 +1376,7 @@ const ChatPanel = ({
     },
     [
       activeConversation?.id,
+      chatMode,
       ensureConversation,
       isSending,
       model,
@@ -1036,6 +1389,8 @@ const ChatPanel = ({
       updateConversationTitle,
       scheduleAssistantReasoningFlush,
       setContextUsageSnapshot,
+      upsertAgentTasks,
+      upsertSessionTasks,
     ]
   );
 
@@ -1067,6 +1422,116 @@ const ChatPanel = ({
         clearTimeout(timeout);
       });
   }, [activeConversation?.id, token]);
+
+  const handlePlanQuestionSelect = useCallback(
+    (input: {
+      messageId: string;
+      questionId: string;
+      header?: string;
+      question: string;
+      optionLabel: string;
+      optionDescription?: string;
+    }) => {
+      if (!input.messageId || !input.questionId || !input.optionLabel || isSending) return;
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== input.messageId) return message;
+          const kwargs =
+            message.additional_kwargs && typeof message.additional_kwargs === "object"
+              ? message.additional_kwargs
+              : {};
+          const existingAnswers =
+            kwargs.planAnswers && typeof kwargs.planAnswers === "object" && !Array.isArray(kwargs.planAnswers)
+              ? (kwargs.planAnswers as Record<string, unknown>)
+              : {};
+          return {
+            ...message,
+            additional_kwargs: {
+              ...kwargs,
+              planAnswers: {
+                ...existingAnswers,
+                [input.questionId]: input.optionLabel,
+              },
+            },
+          };
+        })
+      );
+
+      const answerText = [
+        "Plan mode user selection:",
+        `- question_id: ${input.questionId}`,
+        `- header: ${input.header || "Confirm"}`,
+        `- question: ${input.question}`,
+        `- selected_option: ${input.optionLabel}`,
+        ...(input.optionDescription ? [`- selected_option_description: ${input.optionDescription}`] : []),
+      ].join("\n");
+
+      void handleSend({
+        text: answerText,
+        uploadedFiles: [],
+        files: [],
+        selectedSkills,
+        thinkingEnabled,
+      });
+    },
+    [handleSend, isSending, selectedSkills, thinkingEnabled]
+  );
+
+  const handlePlanModeApprovalSelect = useCallback(
+    (input: {
+      messageId: string;
+      action: "enter" | "exit";
+      decision: "approve" | "reject";
+    }) => {
+      if (!input.messageId || isSending) return;
+
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== input.messageId) return message;
+          const kwargs =
+            message.additional_kwargs && typeof message.additional_kwargs === "object"
+              ? message.additional_kwargs
+              : {};
+          return {
+            ...message,
+            additional_kwargs: {
+              ...kwargs,
+              planModeApprovalDecision: input.decision,
+            },
+          };
+        })
+      );
+
+      const nextMode =
+        input.decision !== "approve"
+          ? chatMode
+          : input.action === "enter"
+          ? "plan"
+          : "default";
+      if (nextMode !== chatMode) {
+        setChatMode(nextMode);
+      }
+
+      const answerText = [
+        "Plan mode approval response:",
+        `- action: ${input.action}`,
+        `- decision: ${input.decision}`,
+      ].join("\n");
+
+      void handleSend({
+        text: answerText,
+        uploadedFiles: [],
+        files: [],
+        selectedSkills,
+        planModeApprovalResponse: {
+          action: input.action,
+          decision: input.decision,
+        },
+        thinkingEnabled,
+      });
+    },
+    [chatMode, handleSend, isSending, selectedSkills, thinkingEnabled]
+  );
 
   const handleRateMessage = useCallback(
     async (messageId: string, nextRating: MessageRating) => {
@@ -1328,6 +1793,164 @@ const ChatPanel = ({
             shouldAutoScrollRef.current = distanceToBottom < 80;
           }}
         >
+          {Object.keys(agentTasks).length > 0 ? (
+            <Box
+              bg="white"
+              border="1px solid"
+              borderColor="myGray.200"
+              borderRadius="10px"
+              mb={3}
+              px={3}
+              py={2}
+            >
+              <Flex align="center" justify="space-between" mb={showAgentTasks ? 2 : 0}>
+                <Text color="myGray.700" fontSize="12px" fontWeight={700}>
+                  子代理任务 ({Object.keys(agentTasks).length})
+                </Text>
+                <Text
+                  as="button"
+                  color="myGray.500"
+                  fontSize="11px"
+                  onClick={() => setShowAgentTasks((prev) => !prev)}
+                >
+                  {showAgentTasks ? "收起" : "展开"}
+                </Text>
+              </Flex>
+              {showAgentTasks ? (
+                <Flex direction="column" gap={1.5}>
+                  {Object.values(agentTasks)
+                    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                    .map((task) => {
+                      const statusMeta = AGENT_STATUS_META[task.status] || AGENT_STATUS_META.completed;
+                      return (
+                        <Flex
+                          key={task.id}
+                          align="center"
+                          bg="myGray.50"
+                          border="1px solid"
+                          borderColor="myGray.150"
+                          borderRadius="8px"
+                          gap={2}
+                          px={2}
+                          py={1.5}
+                        >
+                          <Text color="myGray.700" fontSize="11px" fontWeight={700} noOfLines={1} minW="130px">
+                            {task.name || task.id}
+                          </Text>
+                          <Text
+                            bg={statusMeta.bg}
+                            border="1px solid"
+                            borderColor={statusMeta.borderColor}
+                            borderRadius="999px"
+                            color={statusMeta.color}
+                            fontSize="10px"
+                            fontWeight={700}
+                            px={2}
+                            py="1px"
+                          >
+                            {statusMeta.label}
+                          </Text>
+                          <Text color="myGray.500" fontSize="10px">
+                            turns {task.turns || 0}
+                          </Text>
+                          <Text color="myGray.500" fontSize="10px">
+                            queue {task.queueLength || 0}
+                          </Text>
+                          {task.outputFile ? (
+                            <Text color="myGray.500" fontSize="10px" maxW="220px" noOfLines={1} title={task.outputFile}>
+                              log: {task.outputFile}
+                            </Text>
+                          ) : null}
+                          <Text color="myGray.500" fontSize="10px" ml="auto">
+                            {task.isolation || "session"}
+                          </Text>
+                        </Flex>
+                      );
+                    })}
+                </Flex>
+              ) : null}
+            </Box>
+          ) : null}
+          {Object.keys(sessionTasks).length > 0 ? (
+            <Box
+              bg="white"
+              border="1px solid"
+              borderColor="myGray.200"
+              borderRadius="10px"
+              mb={3}
+              px={3}
+              py={2}
+            >
+              <Flex align="center" justify="space-between" mb={showSessionTasks ? 2 : 0}>
+                <Text color="myGray.700" fontSize="12px" fontWeight={700}>
+                  任务列表 ({Object.keys(sessionTasks).length})
+                </Text>
+                <Flex align="center" gap={3}>
+                  <Text
+                    as="button"
+                    color="myGray.500"
+                    fontSize="11px"
+                    onClick={clearCompletedSessionTasks}
+                  >
+                    清理已完成
+                  </Text>
+                  <Text
+                    as="button"
+                    color="myGray.500"
+                    fontSize="11px"
+                    onClick={() => setShowSessionTasks((prev) => !prev)}
+                  >
+                    {showSessionTasks ? "收起" : "展开"}
+                  </Text>
+                </Flex>
+              </Flex>
+              {showSessionTasks ? (
+                <Flex direction="column" gap={1.5}>
+                  {Object.values(sessionTasks)
+                    .filter((task) => task.status !== "deleted")
+                    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                    .map((task) => {
+                      const statusMeta = SESSION_TASK_STATUS_META[task.status] || SESSION_TASK_STATUS_META.pending;
+                      return (
+                        <Flex
+                          key={task.id}
+                          align="center"
+                          bg="myGray.50"
+                          border="1px solid"
+                          borderColor="myGray.150"
+                          borderRadius="8px"
+                          gap={2}
+                          px={2}
+                          py={1.5}
+                        >
+                          <Text color="myGray.700" fontSize="11px" fontWeight={700} noOfLines={1} minW="150px">
+                            #{task.id} {task.subject || "Untitled"}
+                          </Text>
+                          <Text
+                            bg={statusMeta.bg}
+                            border="1px solid"
+                            borderColor={statusMeta.borderColor}
+                            borderRadius="999px"
+                            color={statusMeta.color}
+                            fontSize="10px"
+                            fontWeight={700}
+                            px={2}
+                            py="1px"
+                          >
+                            {statusMeta.label}
+                          </Text>
+                          {task.owner ? (
+                            <Text color="myGray.500" fontSize="10px" ml="auto">
+                              {task.owner}
+                            </Text>
+                          ) : null}
+                        </Flex>
+                      );
+                    })}
+                </Flex>
+              ) : null}
+            </Box>
+          ) : null}
           {showInitialLoading ? (
             <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
               <Spinner size="sm" />
@@ -1384,6 +2007,8 @@ const ChatPanel = ({
                     const userMessageId = message.id ?? `user-${index}`;
                     const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
                     const virtualMessage: ConversationMessage = {
+                      type: "assistant",
+                      subtype: "result",
                       role: "assistant",
                       id: virtualAssistantId,
                       time: message.time,
@@ -1449,11 +2074,15 @@ const ChatPanel = ({
                           isStreaming={row.isStreaming}
                           message={row.message}
                           messageId={row.messageId}
+                          planQuestionSubmitting={isSending}
+                          planModeApprovalSubmitting={isSending}
                           requestMessage={row.requestMessage}
                           requestContent={row.requestContent}
                           summary={row.summary}
                           canRegenerate={row.canRegenerate}
                           onDelete={handleDeleteMessage}
+                          onPlanQuestionSelect={handlePlanQuestionSelect}
+                          onPlanModeApprovalSelect={handlePlanModeApprovalSelect}
                           onRate={handleRateMessage}
                           onRegenerate={handleRegenerateMessage}
                           rating={row.rating}
@@ -1480,6 +2109,7 @@ const ChatPanel = ({
           modelOptions={modelOptions}
           modelGroups={modelGroups}
           thinkingEnabled={thinkingEnabled}
+          mode={chatMode}
           showThinkingToggle={selectedModelSupportsReasoning}
           thinkingTooltipEnabled={thinkingTooltipEnabled}
           thinkingTooltipDisabled={thinkingTooltipDisabled}

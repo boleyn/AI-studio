@@ -26,11 +26,16 @@ const MAX_TOOL_NAME_LENGTH = 64;
 
 const globalCache = globalThis as typeof globalThis & {
   __mcpConnectionCache?: Map<string, MCPServerConnection>;
+  __mcpServerStatusCache?: Map<string, { connected: boolean; updatedAt: number; error?: string }>;
 };
 
 const mcpConnectionCache =
   globalCache.__mcpConnectionCache ||
   (globalCache.__mcpConnectionCache = new Map<string, MCPServerConnection>());
+
+const mcpServerStatusCache =
+  globalCache.__mcpServerStatusCache ||
+  (globalCache.__mcpServerStatusCache = new Map<string, { connected: boolean; updatedAt: number; error?: string }>());
 
 const toSafeName = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_");
 
@@ -181,6 +186,7 @@ const loadServerTools = async (server: MCPServerConfig): Promise<MCPServerConnec
   };
 
   mcpConnectionCache.set(cacheKey, nextConnection);
+  mcpServerStatusCache.set(server.name, { connected: true, updatedAt: Date.now() });
   return nextConnection;
 };
 
@@ -264,6 +270,11 @@ export async function loadMcpTools(): Promise<AgentToolDefinition[]> {
           },
         }));
       } catch (error) {
+        mcpServerStatusCache.set(server.name, {
+          connected: false,
+          updatedAt: Date.now(),
+          error: error instanceof Error ? error.message : String(error ?? "mcp load failed"),
+        });
         console.warn(
           `[mcp] failed to load tools from ${server.name} (${server.url}):`,
           error instanceof Error ? error.message : error
@@ -275,3 +286,9 @@ export async function loadMcpTools(): Promise<AgentToolDefinition[]> {
 
   return definitions.flat();
 }
+
+export const getMcpServerStatuses = () =>
+  [...mcpServerStatusCache.entries()].map(([name, status]) => ({
+    name,
+    ...status,
+  }));

@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-type BindWorkflowAbortToConnectionInput = {
+type BindAgentAbortToConnectionInput = {
   req: NextApiRequest;
   res: NextApiResponse;
   controller: AbortController;
@@ -24,16 +24,16 @@ const getConnectionStateSnapshot = (req: NextApiRequest, res: NextApiResponse) =
   };
 };
 
-export const bindWorkflowAbortToConnection = ({
+export const bindAgentAbortToConnection = ({
   req,
   res,
   controller,
   scope,
-}: BindWorkflowAbortToConnectionInput) => {
+}: BindAgentAbortToConnectionInput) => {
   const abortWithReason = (reason: string) => {
     if (controller.signal.aborted) return;
     const snapshot = getConnectionStateSnapshot(req, res);
-    console.warn("[agent-debug][disconnect-abort-workflow]", {
+    console.warn("[agent-debug][disconnect-abort-agent-run]", {
       scope,
       reason,
       ...snapshot,
@@ -83,4 +83,3 @@ export const bindWorkflowAbortToConnection = ({
     res.off("close", onResClose);
   };
 };
-

@@ -16,7 +16,7 @@ export type StreamQueueItem =
         | typeof SseResponseEventEnum.toolParams
         | typeof SseResponseEventEnum.toolResponse
         | typeof SseResponseEventEnum.flowNodeResponse
-        | typeof SseResponseEventEnum.workflowDuration
+        | typeof SseResponseEventEnum.agentDuration
         | typeof SseResponseEventEnum.contextWindow;
       [key: string]: any;
     }
@@ -161,7 +161,7 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
             event === SseResponseEventEnum.toolParams ||
             event === SseResponseEventEnum.toolResponse ||
             event === SseResponseEventEnum.flowNodeResponse ||
-            event === SseResponseEventEnum.workflowDuration ||
+            event === SseResponseEventEnum.agentDuration ||
             event === SseResponseEventEnum.contextWindow
           ) {
             if (typeof parseJson === "object" && parseJson !== null) {

@@ -5,7 +5,7 @@ export const SseResponseEventEnum = {
   toolParams: "toolParams",
   toolResponse: "toolResponse",
   flowNodeResponse: "flowNodeResponse",
-  workflowDuration: "workflowDuration",
+  agentDuration: "agentDuration",
   contextWindow: "contextWindow",
   error: "error",
 } as const;

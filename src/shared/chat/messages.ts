@@ -10,6 +10,8 @@ export type AgentToolCall = {
 };
 
 export type AgentMessage = {
+  type?: "user" | "assistant" | "system" | "tool" | "progress";
+  subtype?: string;
   role: "user" | "assistant" | "system" | "tool";
   content?: string | null;
   id?: string;
@@ -19,6 +21,12 @@ export type AgentMessage = {
 };
 
 export type IncomingMessage = {
+  type?: "user" | "assistant" | "system" | "tool" | "progress";
+  subtype?: string;
+  uuid?: string;
+  parent_uuid?: string;
+  is_sidechain?: boolean;
+  session_id?: string;
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
   id?: string;
