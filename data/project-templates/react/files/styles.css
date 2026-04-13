@@ -1,0 +1,61 @@
+.app {
+  font-family: "Sora", sans-serif;
+  color: #f7f5ff;
+  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
+  min-height: 100vh;
+  padding: 64px;
+}
+
+h1 {
+  font-size: 40px;
+  letter-spacing: -0.02em;
+  margin: 16px 0;
+}
+
+p {
+  opacity: 0.7;
+  margin-top: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f7f5ff;
+}
+
+.subtle {
+  opacity: 0.75;
+  max-width: 520px;
+}
+
+.card {
+  margin-top: 32px;
+  padding: 24px;
+  border-radius: 16px;
+  background: rgba(16, 16, 24, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(8, 8, 16, 0.3);
+}
+
+button {
+  margin-top: 12px;
+  border: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #f7f5ff;
+  color: #111018;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+h2 {
+  margin: 0 0 8px;
+}

@@ -3,7 +3,7 @@ import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktok
 import { getLLMModel } from "@aistudio/ai/model";
 import { createLLMResponse } from "@aistudio/ai/llm/request";
 import { loadMcpTools } from "@server/agent/mcpClient";
-import { BASE_CODING_AGENT_PROMPT } from "@server/agent/prompts/baseCodingAgentPrompt";
+import { getBaseCodingAgentPrompt } from "@server/agent/prompts/baseCodingAgentPrompt";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { buildSkillsCatalogPrompt } from "@server/agent/skills/prompt";
@@ -585,7 +585,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const historyBaseAgentMessages = await toAgentMessages(historyPayload.histories);
 
   const coreSystemPrompts: ChatCompletionMessageParam[] = [
-    { role: "system", content: BASE_CODING_AGENT_PROMPT },
+    { role: "system", content: getBaseCodingAgentPrompt(project.template) },
     { role: "system", content: toolRoutingPrompt },
     ...(skillsCatalogPrompt
       ? [{ role: "system", content: skillsCatalogPrompt } as ChatCompletionMessageParam]

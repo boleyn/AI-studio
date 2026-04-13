@@ -54,6 +54,7 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   const { sandpack } = useSandpack();
   const previousFilesRef = useRef<string>("");
   const isInitialMountRef = useRef(true);
+  const suppressAutoSaveUntilRef = useRef<number>(Date.now() + 3000);
   const sanitizeFiles = useCallback(
     (input: Record<string, { code: string }> | undefined) => {
       if (!input) return {};
@@ -63,34 +64,6 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
     },
     [transientPaths]
   );
-
-  const pruneDuplicateReactScaffoldFiles = useCallback(() => {
-    const files = sandpack.files as Record<string, { code: string }> | undefined;
-    if (!files) return;
-    const hasRootReactScaffold =
-      Boolean(files["/App.js"] || files["/index.js"] || files["/public/index.html"]) ||
-      Boolean(files["/styles.css"]);
-    if (!hasRootReactScaffold) return;
-
-    const duplicates = [
-      "/src/App.jsx",
-      "/src/App.js",
-      "/src/main.jsx",
-      "/src/main.js",
-      "/src/styles.css",
-      "/src/index.css",
-      "/index.html",
-      "/vite.config.js",
-      "/vite.config.ts",
-      "/vite-env.d.ts",
-      "/tsconfig.node.json",
-    ].filter((path) => Boolean(files[path]));
-    if (duplicates.length === 0) return;
-
-    for (const path of duplicates) {
-      sandpack.deleteFile(path, true);
-    }
-  }, [sandpack]);
 
   const saveProject = useCallback(async () => {
     if (!token || !sandpack.files) {
@@ -139,13 +112,11 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   const debouncedSave = useDebounce(saveProject, autoSaveDelay);
 
   useEffect(() => {
-    pruneDuplicateReactScaffoldFiles();
-  }, [pruneDuplicateReactScaffoldFiles, sandpack.files]);
-
-  useEffect(() => {
     // 跳过初始挂载，避免在加载项目时触发保存
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
+      const initialFiles = sanitizeFiles(sandpack.files);
+      previousFilesRef.current = JSON.stringify(initialFiles);
       return;
     }
 
@@ -161,6 +132,11 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
     // 更新之前的文件状态
     previousFilesRef.current = currentFilesString;
     onFilesChange?.(sanitizedFiles);
+
+    // 初始化期间忽略 Sandpack 模板补齐带来的文件波动
+    if (Date.now() < suppressAutoSaveUntilRef.current) {
+      return;
+    }
 
     // 触发防抖保存
     debouncedSave();

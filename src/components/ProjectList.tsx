@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { AppWindow, Atom, Layers3, Sparkles, Triangle } from "lucide-react";
 import { useRouter } from "next/router";
 import {
   Badge,
@@ -20,6 +20,10 @@ import {
   Input,
   Modal,
   ModalBody,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   ModalContent,
   ModalFooter,
   ModalHeader,
@@ -33,7 +37,7 @@ import {
   Textarea,
 } from "@chakra-ui/react";
 
-import { AddIcon, EmptyIcon, LogoIcon, SearchIcon } from "./common/Icon";
+import { AddIcon, ChevronDownIcon, EmptyIcon, LogoIcon, SearchIcon } from "./common/Icon";
 import DashboardEntityCard from "./cards/DashboardEntityCard";
 import { UserAccountMenu } from "./UserAccountMenu";
 import VectorBackground from "./auth/VectorBackground";
@@ -41,6 +45,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { useProjects } from "../hooks/useProjects";
 import { useSkills } from "../hooks/useSkills";
 import { useDashboardOverview } from "../hooks/useDashboardOverview";
+import {
+  COMMON_PROJECT_TEMPLATES,
+  DEFAULT_PROJECT_TEMPLATE,
+  type CommonProjectTemplate,
+} from "@shared/sandpack/projectTemplates";
 
 type HomeTab = "projects" | "skills";
 type CreateType = "project" | "skill";
@@ -76,6 +85,7 @@ export default function ProjectList() {
   const [searchValue, setSearchValue] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createType, setCreateType] = useState<CreateType>("project");
+  const [projectTemplate, setProjectTemplate] = useState<CommonProjectTemplate>(DEFAULT_PROJECT_TEMPLATE);
   const [nameInput, setNameInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
   const queryTab = Array.isArray(router.query.tab) ? router.query.tab[0] : router.query.tab;
@@ -147,6 +157,7 @@ export default function ProjectList() {
   const resetCreateModal = () => {
     setNameInput("");
     setDescriptionInput("");
+    setProjectTemplate(DEFAULT_PROJECT_TEMPLATE);
     setCreateType(isSkillsTab ? "skill" : "project");
   };
 
@@ -164,7 +175,7 @@ export default function ProjectList() {
     if (!name) return;
 
     if (createType === "project") {
-      await createProject(name, descriptionInput.trim() || undefined);
+      await createProject(name, descriptionInput.trim() || undefined, projectTemplate);
       handleCloseCreateModal();
       return;
     }
@@ -199,6 +210,14 @@ export default function ProjectList() {
   } as const;
 
   const isNameInvalid = createType === "skill" && nameInput.trim() !== "" && !/^[\w\-\s]+$/.test(nameInput);
+  const selectedProjectTemplate = COMMON_PROJECT_TEMPLATES.find((item) => item.value === projectTemplate) || COMMON_PROJECT_TEMPLATES[0];
+  const projectTemplateIconMap: Record<CommonProjectTemplate, typeof Atom> = {
+    react: Atom,
+    vue: Triangle,
+    "vite-react": Layers3,
+    nextjs: AppWindow,
+  };
+  const SelectedTemplateIcon = projectTemplateIconMap[selectedProjectTemplate.value];
 
   const switchTab = (nextTab: HomeTab) => {
     setActiveTab(nextTab);
@@ -714,6 +733,47 @@ export default function ProjectList() {
                 <option value="skill">Skill</option>
               </Select>
             </FormControl>
+
+            {createType === "project" ? (
+              <FormControl isRequired mb={4}>
+                <FormLabel color="myGray.700">项目模板</FormLabel>
+                <Menu matchWidth>
+                  <MenuButton
+                    as={Button}
+                    variant="outline"
+                    w="100%"
+                    justifyContent="space-between"
+                    bg="myWhite.100"
+                    borderColor="myGray.200"
+                    _hover={{ borderColor: "myGray.300", bg: "myWhite.100" }}
+                    _expanded={{ borderColor: "primary.400", boxShadow: "0 0 0 1px var(--chakra-colors-primary-400)" }}
+                    rightIcon={<Box as={ChevronDownIcon} w={3.5} h={3.5} color="myGray.500" />}
+                  >
+                    <HStack spacing={2}>
+                      <Box as={SelectedTemplateIcon} w={4} h={4} color="myGray.700" />
+                      <Text>{selectedProjectTemplate.label}</Text>
+                    </HStack>
+                  </MenuButton>
+                  <MenuList>
+                    {COMMON_PROJECT_TEMPLATES.map((item) => {
+                      const TemplateIcon = projectTemplateIconMap[item.value];
+                      return (
+                        <MenuItem
+                          key={item.value}
+                          onClick={() => setProjectTemplate(item.value)}
+                          bg={item.value === projectTemplate ? "primary.50" : undefined}
+                        >
+                          <HStack spacing={2}>
+                            <Box as={TemplateIcon} w={4} h={4} color="myGray.700" />
+                            <Text>{item.label}</Text>
+                          </HStack>
+                        </MenuItem>
+                      );
+                    })}
+                  </MenuList>
+                </Menu>
+              </FormControl>
+            ) : null}
 
             <FormControl isRequired isInvalid={isNameInvalid} mb={4}>
               <FormLabel color="myGray.700">{createType === "project" ? "项目名称" : "Skill 名称"}</FormLabel>

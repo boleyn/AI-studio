@@ -1,9 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import {
-  DEFAULT_REACT_TEMPLATE_DEPENDENCIES,
-  DEFAULT_REACT_TEMPLATE_FILES,
-} from "@shared/sandpack/reactTemplate";
+  DEFAULT_PROJECT_TEMPLATE,
+  isCommonProjectTemplate,
+  toSandpackTemplate,
+} from "@shared/sandpack/projectTemplates";
+import { loadProjectTemplateDefaults } from "@server/projects/projectTemplateLoader";
 import {
   listProjects,
   getProject,
@@ -32,15 +34,13 @@ type CreateProjectRequest = {
   dependencies?: Record<string, string>;
 };
 
-const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: string }> => {
-  if (!files || typeof files !== "object") return false;
-  return Object.keys(files as Record<string, unknown>).length > 0;
+const hasFilesObject = (files: unknown): files is Record<string, { code: string }> => {
+  return Boolean(files && typeof files === "object");
 };
 
-// 默认项目模板（Node + React）
-const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
-const DEFAULT_FILES: Record<string, { code: string }> = DEFAULT_REACT_TEMPLATE_FILES;
-const DEFAULT_DEPENDENCIES: Record<string, string> = DEFAULT_REACT_TEMPLATE_DEPENDENCIES;
+const hasDependenciesObject = (dependencies: unknown): dependencies is Record<string, string> => {
+  return Boolean(dependencies && typeof dependencies === "object");
+};
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   const auth = await requireAuth(req, res);
@@ -74,15 +74,22 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       }
       const token = generateToken();
       const now = new Date().toISOString();
+      const requestedTemplate = isCommonProjectTemplate(body.template)
+        ? body.template
+        : DEFAULT_PROJECT_TEMPLATE;
+      const sandpackTemplate = toSandpackTemplate(requestedTemplate);
+      const templateDefaults = await loadProjectTemplateDefaults(requestedTemplate);
 
       const project: ProjectData = {
         token,
         name,
         description: body.description?.trim() || undefined,
-        template: body.template || DEFAULT_TEMPLATE,
+        template: sandpackTemplate,
         userId,
-        files: hasNonEmptyFiles(body.files) ? body.files : DEFAULT_FILES,
-        dependencies: body.dependencies || DEFAULT_DEPENDENCIES,
+        files: hasFilesObject(body.files) ? body.files : templateDefaults.files,
+        dependencies: hasDependenciesObject(body.dependencies)
+          ? body.dependencies
+          : templateDefaults.dependencies,
         createdAt: now,
         updatedAt: now,
       };

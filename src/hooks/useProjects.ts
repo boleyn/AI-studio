@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { ProjectListItem } from "../types/project";
+import type { CommonProjectTemplate } from "@shared/sandpack/projectTemplates";
 
 export function useProjects() {
   const router = useRouter();
@@ -36,13 +37,17 @@ export function useProjects() {
   }, [loadProjects]);
 
   const createProject = useCallback(
-    async (name: string, description?: string) => {
+    async (name: string, description?: string, template?: CommonProjectTemplate) => {
       try {
         setCreating(true);
         const response = await fetch("/api/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...withAuthHeaders() },
-          body: JSON.stringify({ name: name.trim(), description: description?.trim() }),
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description?.trim(),
+            ...(template ? { template } : {}),
+          }),
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));

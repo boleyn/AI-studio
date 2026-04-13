@@ -36,6 +36,10 @@ const EMPTY_PROJECT_PROVIDER_FILES: SandpackFiles = {
   },
 };
 const ENTRY_CANDIDATES = [
+  "/src/main.tsx",
+  "/src/main.jsx",
+  "/src/main.ts",
+  "/src/main.js",
   "/index.tsx",
   "/index.jsx",
   "/index.ts",
@@ -49,6 +53,8 @@ const ENTRY_CANDIDATES = [
   "/App.ts",
   "/App.js",
 ] as const;
+const isVueLikeTemplate = (value: SandpackPredefinedTemplate | undefined): boolean =>
+  value === "vue" || value === "vue-ts" || value === "vite-vue" || value === "vite-vue-ts";
 const EXTERNAL_RESOURCE_HTML_CANDIDATES = ["/public/index.html", "/index.html"] as const;
 const extractExternalResources = (files: SandpackFiles): string[] => {
   const resources = new Set<string>();
@@ -73,8 +79,34 @@ const extractExternalResources = (files: SandpackFiles): string[] => {
   return Array.from(resources);
 };
 
+const normalizeFiles = (rawFiles: unknown): SandpackFiles => {
+  if (!rawFiles || typeof rawFiles !== "object") return {};
+  const output: SandpackFiles = {};
+  Object.entries(rawFiles as Record<string, unknown>).forEach(([path, value]) => {
+    const trimmedPath = path.trim();
+    if (!trimmedPath) return;
+    const normalizedPath = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
+    if (typeof value === "string") {
+      output[normalizedPath] = { code: value };
+      return;
+    }
+    if (
+      value &&
+      typeof value === "object" &&
+      "code" in value &&
+      typeof (value as { code?: unknown }).code === "string"
+    ) {
+      output[normalizedPath] = value as { code: string; hidden?: boolean };
+    }
+  });
+  return output;
+};
+
 const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) => {
-  const [project, setProject] = useState<PreviewProject>(initialProject);
+  const [project, setProject] = useState<PreviewProject>({
+    ...initialProject,
+    files: normalizeFiles(initialProject.files),
+  });
 
   useEffect(() => {
     const timer = window.setInterval(async () => {
@@ -84,7 +116,10 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
         const payload = (await response.json()) as SharePayload;
         if (payload.mode !== "preview") return;
         if (payload.project.updatedAt !== project.updatedAt) {
-          setProject(payload.project);
+          setProject({
+            ...payload.project,
+            files: normalizeFiles(payload.project.files),
+          });
         }
       } catch {
         // ignore polling errors in preview mode
@@ -105,24 +140,40 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
     return hasRealFiles ? files : EMPTY_PROJECT_PROVIDER_FILES;
   }, [project.files]);
   const providerCustomSetup = useMemo(() => {
+    if (isVueLikeTemplate(project.template)) {
+      return customSetup;
+    }
     const entry =
       ENTRY_CANDIDATES.find((path) => Boolean(providerFiles[path])) || EMPTY_PROJECT_PLACEHOLDER_PATH;
     return {
       ...customSetup,
       entry,
     };
-  }, [customSetup, providerFiles]);
+  }, [customSetup, providerFiles, project.template]);
   const providerExternalResources = useMemo(() => extractExternalResources(providerFiles), [providerFiles]);
+  const sandpackRuntimeId = useMemo(
+    () =>
+      [
+        shareId,
+        project.token,
+        project.updatedAt,
+        project.template,
+        Object.keys(providerFiles).sort().join("|"),
+      ].join("::"),
+    [project.template, project.token, project.updatedAt, providerFiles, shareId]
+  );
 
   return (
     <Flex direction="column" h="100vh" bg="gray.50" overflow="hidden">
       <Box flex="1" minH="0" position="relative">
         <SandpackProvider
-          template={undefined}
+          key={sandpackRuntimeId}
+          template={isVueLikeTemplate(project.template) ? project.template : undefined}
           files={providerFiles}
           customSetup={providerCustomSetup}
           theme={githubLight}
           options={{
+            id: sandpackRuntimeId,
             autorun: true,
             experimental_enableServiceWorker: true,
             externalResources: providerExternalResources,

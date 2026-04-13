@@ -58,6 +58,10 @@ const EMPTY_PROJECT_PROVIDER_FILES: SandpackFiles = {
   },
 };
 const ENTRY_CANDIDATES = [
+  "/src/main.tsx",
+  "/src/main.jsx",
+  "/src/main.ts",
+  "/src/main.js",
   "/index.tsx",
   "/index.jsx",
   "/index.ts",
@@ -71,6 +75,8 @@ const ENTRY_CANDIDATES = [
   "/App.ts",
   "/App.js",
 ] as const;
+const isVueLikeTemplate = (value: SandpackPredefinedTemplate | undefined): boolean =>
+  value === "vue" || value === "vue-ts" || value === "vite-vue" || value === "vite-vue-ts";
 const EXTERNAL_RESOURCE_HTML_CANDIDATES = ["/public/index.html", "/index.html"] as const;
 const hasUserVisibleFiles = (input: SandpackFiles | null | undefined): boolean =>
   Object.keys(input || {}).some(
@@ -107,8 +113,11 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 
   const output: SandpackFiles = {};
   Object.entries(rawFiles as Record<string, unknown>).forEach(([path, value]) => {
+    const trimmedPath = path.trim();
+    if (!trimmedPath) return;
+    const normalizedPath = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
     if (typeof value === "string") {
-      output[path] = { code: value };
+      output[normalizedPath] = { code: value };
       return;
     }
     if (
@@ -117,7 +126,7 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
       "code" in value &&
       typeof (value as SandpackFile).code === "string"
     ) {
-      output[path] = value as SandpackFile;
+      output[normalizedPath] = value as SandpackFile;
     }
   });
 
@@ -130,6 +139,7 @@ const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
   const router = useRouter();
   const toast = useToast();
+  const initialNormalizedFiles = normalizeFiles(initialProject?.files) || null;
   const [token, setToken] = useState(initialToken);
   const [status, setStatus] = useState<ProjectStatus>(() => {
     if (initialProject && initialProject.token === initialToken) {
@@ -142,9 +152,9 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     initialProject?.template || DEFAULT_TEMPLATE
   );
   const [files, setFiles] = useState<SandpackFiles | null>(
-    initialProject?.files || null
+    initialNormalizedFiles
   );
-  const latestFilesRef = useRef<SandpackFiles | null>(initialProject?.files || null);
+  const latestFilesRef = useRef<SandpackFiles | null>(initialNormalizedFiles);
   const [dependencies, setDependencies] = useState<Record<string, string>>(
     initialProject?.dependencies || {}
   );
@@ -161,7 +171,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     preview: "",
   });
   const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
-    toSortedFilePaths(initialProject?.files || null)
+    toSortedFilePaths(initialNormalizedFiles)
   );
 
   const loadProject = useCallback(async (requestedToken: string) => {
@@ -246,7 +256,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     () => (hasRealFiles ? sandpackFiles : EMPTY_PROJECT_PROVIDER_FILES),
     [hasRealFiles, sandpackFiles]
   );
-  const providerTemplate = undefined;
+  const providerTemplate = hasRealFiles && isVueLikeTemplate(template) ? template : undefined;
   const topSearchFilePaths = useMemo(
     () => Object.keys(sandpackFiles).filter(shouldShowPath),
     [sandpackFiles, shouldShowPath]
@@ -283,12 +293,37 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     return EMPTY_PROJECT_PLACEHOLDER_PATH;
   }, [providerFiles]);
   const providerCustomSetup = useMemo(() => {
+    if (isVueLikeTemplate(template)) {
+      return customSetup;
+    }
     return {
       ...customSetup,
       entry: providerEntry,
     };
-  }, [customSetup, providerEntry]);
+  }, [customSetup, providerEntry, template]);
   const providerExternalResources = useMemo(() => extractExternalResources(providerFiles), [providerFiles]);
+  const sandpackRuntimeId = useMemo(
+    () =>
+      [
+        token || "no-token",
+        template || "no-template",
+        providerTemplate || "auto-template",
+        Object.keys(providerFiles).sort().join("|"),
+      ].join("::"),
+    [providerFiles, providerTemplate, template, token]
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hostname !== "localhost") return;
+    // Debug only: verify what we actually pass to Sandpack at runtime.
+    console.log("[StudioShell Sandpack Debug]", {
+      token,
+      template,
+      providerTemplate,
+      providerEntry,
+      filePaths: Object.keys(providerFiles),
+    });
+  }, [providerEntry, providerFiles, providerTemplate, template, token]);
 
   const handleManualSave = useCallback(async () => {
     // 手动保存：只保存文件内容
@@ -612,7 +647,11 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
           activeView={activeView}
           onChangeView={setActiveView}
           onBack={() => {
-            void router.push("/");
+            if (typeof window !== "undefined") {
+              window.location.assign("/");
+            } else {
+              void router.push("/");
+            }
           }}
           onOpenSettings={() => setOpenSkillsSignal((prev) => prev + 1)}
           onProjectNameChange={handleProjectNameChange}
@@ -635,11 +674,13 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         />
 
         <SandpackProvider
+          key={sandpackRuntimeId}
           template={providerTemplate}
           files={providerFiles}
           customSetup={providerCustomSetup}
           theme={githubLight}
           options={{
+            id: sandpackRuntimeId,
             autorun: true,
             recompileMode: "delayed",
             recompileDelay: 600,

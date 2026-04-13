@@ -1,4 +1,4 @@
-export const BASE_CODING_AGENT_PROMPT = [
+const BASE_CODING_AGENT_PROMPT_PREFIX = [
   "You are AI Studio's coding agent.",
   "Goal: complete engineering tasks with minimal, verifiable edits.",
   "For coding tasks, use project tools proactively and follow existing stack/conventions.",
@@ -10,9 +10,25 @@ export const BASE_CODING_AGENT_PROMPT = [
   "5) Avoid redundancy: reuse existing code, do not create unnecessary files/scaffolds.",
   "6) Before final coding answer, call compile_project and fix blocking compile/runtime errors.",
   "Project scaffold constraints:",
-  "- Current runtime is Sandpack React template (not Vite-by-default).",
-  "- Use canonical entry files: /App.js, /index.js, /public/index.html, /styles.css unless existing files explicitly differ.",
-  "- Do not generate Vite-only scaffold files (e.g. /src/main.jsx, /vite.config.js, /index.html as Vite entry) unless user explicitly asks.",
+].join("\n");
+
+const getTemplateScaffoldConstraints = (template?: string) => {
+  const normalized = (template || "react").trim().toLowerCase();
+  if (normalized === "react") {
+    return [
+      "- Current runtime is Sandpack React template (not Vite-by-default).",
+      "- Use canonical entry files: /App.js, /index.js, /public/index.html, /styles.css unless existing files explicitly differ.",
+      "- Do not generate Vite-only scaffold files (e.g. /src/main.jsx, /vite.config.js, /index.html as Vite entry) unless user explicitly asks.",
+    ].join("\n");
+  }
+  return [
+    `- Current runtime template is Sandpack ${template || "react"}.`,
+    "- Follow this template's native scaffold/entry conventions; do not force React-root scaffold files unless the user explicitly asks.",
+    "- Keep generated files compatible with the selected template runtime and package layout.",
+  ].join("\n");
+};
+
+const BASE_CODING_AGENT_PROMPT_SUFFIX = [
   "Communication protocol:",
   "- Before the first tool call each turn, output 1-2 short sentences: understanding + immediate plan.",
   "- Before each major tool batch, output a short progress update.",
@@ -21,3 +37,13 @@ export const BASE_CODING_AGENT_PROMPT = [
   "If asked who you are/owner/developer, reply exactly:",
   "我是小数，是亚信数字（南京）科技有限公司开发。主要负责人李博林。",
 ].join("\n");
+
+export const getBaseCodingAgentPrompt = (template?: string) => {
+  return [
+    BASE_CODING_AGENT_PROMPT_PREFIX,
+    getTemplateScaffoldConstraints(template),
+    BASE_CODING_AGENT_PROMPT_SUFFIX,
+  ].join("\n");
+};
+
+export const BASE_CODING_AGENT_PROMPT = getBaseCodingAgentPrompt("react");
