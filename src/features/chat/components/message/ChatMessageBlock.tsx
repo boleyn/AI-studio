@@ -35,6 +35,11 @@ interface ChatMessageBlockProps {
     action: "enter" | "exit";
     decision: "approve" | "reject";
   }) => void;
+  onPermissionApprovalSelect?: (input: {
+    messageId: string;
+    toolName: string;
+    decision: "approve" | "reject";
+  }) => void;
 }
 
 const ChatMessageBlock = ({
@@ -54,6 +59,7 @@ const ChatMessageBlock = ({
   onRate,
   onPlanQuestionSelect,
   onPlanModeApprovalSelect,
+  onPermissionApprovalSelect,
 }: ChatMessageBlockProps) => {
   const { copyData } = useCopyData();
   const isUser = message.role === "user";
@@ -115,6 +121,7 @@ const ChatMessageBlock = ({
         planModeApprovalSubmitting={planModeApprovalSubmitting}
         onPlanQuestionSelect={onPlanQuestionSelect}
         onPlanModeApprovalSelect={onPlanModeApprovalSelect}
+        onPermissionApprovalSelect={onPermissionApprovalSelect}
       />
     </Flex>
   );
@@ -139,5 +146,6 @@ export default React.memo(
     prevProps.onDelete === nextProps.onDelete &&
     prevProps.onRate === nextProps.onRate &&
     prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
-    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect
+    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect &&
+    prevProps.onPermissionApprovalSelect === nextProps.onPermissionApprovalSelect
 );

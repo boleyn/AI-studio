@@ -5,7 +5,7 @@ import type {
 import type { OpenaiAccountType } from "@aistudio/ai/compat/global/support/user/team/type";
 import { runMasterSubAgentRuntime } from "@server/agent/runtime/masterSubAgentRuntime";
 import { runSubagentHooks } from "@server/agent/hooks/runner";
-import { getMcpServerStatuses } from "@server/agent/mcpClient";
+import { getMcpServerStatuses, getMcpServerToolMap } from "@server/agent/mcpClient";
 import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { existsSync, mkdirSync, promises as fs, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -102,6 +102,7 @@ const sessions = new Map<string, SessionState>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const AGENT_OUTPUT_BASE = path.join(os.tmpdir(), "aistudio-agent-runs");
+const RECOVERED_RUNNING_ERROR = "Recovered running subagent from previous process. Please rerun the task.";
 
 const newAgentId = () =>
   `agent_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -159,6 +160,11 @@ const getOrCreateSession = (sessionId: string): SessionState => {
             : undefined,
           outputFile: typeof item.outputFile === "string" ? item.outputFile : undefined,
         };
+        if (restored.status === "running") {
+          restored.status = "failed";
+          restored.error = restored.error || RECOVERED_RUNNING_ERROR;
+          restored.updatedAt = Date.now();
+        }
         created.agents.set(restored.id, restored);
         if (restored.name) created.nameToId.set(restored.name, restored.id);
       }
@@ -230,6 +236,8 @@ const inferAvailableMcpServers = (tools: AgentToolDefinition[]) => {
   return servers;
 };
 
+const normalizeServerName = (value: string) => value.trim().toLowerCase().replace(/_/g, "-");
+
 const normalizeRequiredMcpServers = (input?: string[]) =>
   (Array.isArray(input) ? input : [])
     .map((item) => (typeof item === "string" ? item.trim() : ""))
@@ -246,24 +254,40 @@ const assertRequiredMcpServers = async (
     const connectedByStatus = new Set(
       getMcpServerStatuses()
         .filter((item) => item.connected)
-        .map((item) => item.name)
+        .map((item) => normalizeServerName(item.name))
+    );
+    const connectedByToolMap = new Set(
+      getMcpServerToolMap()
+        .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
+        .map((item) => normalizeServerName(item.name))
     );
     const availableFromTools = inferAvailableMcpServers(runtime.getDelegatableTools());
-    const available = new Set([...connectedByStatus, ...availableFromTools]);
-    const missing = required.filter(
-      (name) => !available.has(name) && !available.has(name.replace(/-/g, "_"))
-    );
+    const hasExplicitStatus = connectedByStatus.size > 0 || connectedByToolMap.size > 0;
+    const inferred = hasExplicitStatus
+      ? new Set<string>()
+      : new Set([...availableFromTools].map((item) => normalizeServerName(item)));
+    const available = new Set([...connectedByStatus, ...connectedByToolMap, ...inferred]);
+    const missing = required.filter((name) => !available.has(normalizeServerName(name)));
     if (missing.length === 0) return;
     await sleep(500);
   }
   const connectedByStatus = new Set(
     getMcpServerStatuses()
       .filter((item) => item.connected)
-      .map((item) => item.name)
+      .map((item) => normalizeServerName(item.name))
+  );
+  const connectedByToolMap = new Set(
+    getMcpServerToolMap()
+      .filter((item) => Array.isArray(item.tools) && item.tools.length > 0)
+      .map((item) => normalizeServerName(item.name))
   );
   const availableFromTools = inferAvailableMcpServers(runtime.getDelegatableTools());
-  const available = new Set([...connectedByStatus, ...availableFromTools]);
-  const missing = required.filter((name) => !available.has(name) && !available.has(name.replace(/-/g, "_")));
+  const hasExplicitStatus = connectedByStatus.size > 0 || connectedByToolMap.size > 0;
+  const inferred = hasExplicitStatus
+    ? new Set<string>()
+    : new Set([...availableFromTools].map((item) => normalizeServerName(item)));
+  const available = new Set([...connectedByStatus, ...connectedByToolMap, ...inferred]);
+  const missing = required.filter((name) => !available.has(normalizeServerName(name)));
   throw new Error(`Missing required MCP servers: ${missing.join(", ")}`);
 };
 
@@ -431,8 +455,9 @@ export const spawnSubAgent = async (
     agentName: name,
     status: task.status,
   });
+  const runInBackground = input.runInBackground !== false;
   if (task.isolation === "worktree") {
-    void (async () => {
+    const runWithWorktree = async () => {
       try {
         const setup = await trySetupWorktree(id, input.cwd);
         task.worktreeRoot = setup.worktreeRoot;
@@ -448,10 +473,21 @@ export const spawnSubAgent = async (
           ensurePump(task, runtime);
         }
       }
-    })();
+    };
+    if (runInBackground) {
+      void runWithWorktree();
+      return toSnapshot(task);
+    }
+    await runWithWorktree();
+    if (task.pump) {
+      await task.pump;
+    }
     return toSnapshot(task);
   }
   ensurePump(task, runtime);
+  if (!runInBackground && task.pump) {
+    await task.pump;
+  }
   return toSnapshot(task);
 };
 

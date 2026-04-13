@@ -87,6 +87,11 @@ type PlanModeApprovalPayload = {
   options?: Array<{ label: string; value: "approve" | "reject" }>;
 };
 
+type PermissionApprovalPayload = {
+  toolName: string;
+  reason?: string;
+};
+
 type SessionTaskSnapshot = {
   id: string;
   subject: string;
@@ -648,11 +653,17 @@ const ChatPanel = ({
               ...(payload.planModeApprovalResponse
                 ? { planModeApprovalResponse: payload.planModeApprovalResponse }
                 : {}),
+              ...(payload.permissionApprovalResponse
+                ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+                : {}),
             }
           : {
               planModeState: effectiveMode === "plan",
               ...(payload.planModeApprovalResponse
                 ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+                : {}),
+              ...(payload.permissionApprovalResponse
+                ? { permissionApprovalResponse: payload.permissionApprovalResponse }
                 : {}),
             },
       };
@@ -679,6 +690,9 @@ const ChatPanel = ({
           planModeState: effectiveMode === "plan",
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
             : {}),
         },
       };
@@ -1071,6 +1085,35 @@ const ChatPanel = ({
                     updateAssistantMetadata((current) => ({
                       ...current,
                       planModeApproval: parsed.approval,
+                    }));
+                  }
+                } catch {
+                  // ignore parser failures
+                }
+              }
+
+              if (responseForDisplay) {
+                try {
+                  const parsed = JSON.parse(responseForDisplay) as {
+                    requiresPermissionApproval?: boolean;
+                    permission?: PermissionApprovalPayload;
+                  };
+                  const permission = parsed.permission;
+                  if (
+                    parsed.requiresPermissionApproval === true &&
+                    permission &&
+                    typeof permission === "object" &&
+                    typeof permission.toolName === "string"
+                  ) {
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      permissionApproval: {
+                        toolName: permission.toolName,
+                        reason:
+                          typeof permission.reason === "string"
+                            ? permission.reason
+                            : undefined,
+                      },
                     }));
                   }
                 } catch {
@@ -1531,6 +1574,48 @@ const ChatPanel = ({
       });
     },
     [chatMode, handleSend, isSending, selectedSkills, thinkingEnabled]
+  );
+
+  const handlePermissionApprovalSelect = useCallback(
+    (input: { messageId: string; toolName: string; decision: "approve" | "reject" }) => {
+      if (!input.messageId || !input.toolName || isSending) return;
+
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== input.messageId) return message;
+          const kwargs =
+            message.additional_kwargs && typeof message.additional_kwargs === "object"
+              ? message.additional_kwargs
+              : {};
+          return {
+            ...message,
+            additional_kwargs: {
+              ...kwargs,
+              permissionApprovalDecision: input.decision,
+            },
+          };
+        })
+      );
+
+      const answerText = [
+        "Tool permission approval response:",
+        `- tool_name: ${input.toolName}`,
+        `- decision: ${input.decision}`,
+      ].join("\n");
+
+      void handleSend({
+        text: answerText,
+        uploadedFiles: [],
+        files: [],
+        selectedSkills,
+        permissionApprovalResponse: {
+          toolName: input.toolName,
+          decision: input.decision,
+        },
+        thinkingEnabled,
+      });
+    },
+    [handleSend, isSending, selectedSkills, thinkingEnabled]
   );
 
   const handleRateMessage = useCallback(
@@ -2083,6 +2168,7 @@ const ChatPanel = ({
                           onDelete={handleDeleteMessage}
                           onPlanQuestionSelect={handlePlanQuestionSelect}
                           onPlanModeApprovalSelect={handlePlanModeApprovalSelect}
+                          onPermissionApprovalSelect={handlePermissionApprovalSelect}
                           onRate={handleRateMessage}
                           onRegenerate={handleRegenerateMessage}
                           rating={row.rating}

@@ -27,6 +27,7 @@ const MAX_TOOL_NAME_LENGTH = 64;
 const globalCache = globalThis as typeof globalThis & {
   __mcpConnectionCache?: Map<string, MCPServerConnection>;
   __mcpServerStatusCache?: Map<string, { connected: boolean; updatedAt: number; error?: string }>;
+  __mcpServerToolCache?: Map<string, string[]>;
 };
 
 const mcpConnectionCache =
@@ -36,6 +37,8 @@ const mcpConnectionCache =
 const mcpServerStatusCache =
   globalCache.__mcpServerStatusCache ||
   (globalCache.__mcpServerStatusCache = new Map<string, { connected: boolean; updatedAt: number; error?: string }>());
+const mcpServerToolCache =
+  globalCache.__mcpServerToolCache || (globalCache.__mcpServerToolCache = new Map<string, string[]>());
 
 const toSafeName = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_");
 
@@ -187,6 +190,10 @@ const loadServerTools = async (server: MCPServerConfig): Promise<MCPServerConnec
 
   mcpConnectionCache.set(cacheKey, nextConnection);
   mcpServerStatusCache.set(server.name, { connected: true, updatedAt: Date.now() });
+  mcpServerToolCache.set(
+    server.name,
+    nextConnection.tools.map((item) => item.toolName)
+  );
   return nextConnection;
 };
 
@@ -291,4 +298,10 @@ export const getMcpServerStatuses = () =>
   [...mcpServerStatusCache.entries()].map(([name, status]) => ({
     name,
     ...status,
+  }));
+
+export const getMcpServerToolMap = () =>
+  [...mcpServerToolCache.entries()].map(([name, tools]) => ({
+    name,
+    tools,
   }));

@@ -9,6 +9,10 @@ export interface ChatInputSubmitPayload {
   text: string;
   files: ChatInputFile[];
   uploadedFiles: UploadedFileArtifact[];
+  permissionApprovalResponse?: {
+    toolName: string;
+    decision: "approve" | "reject";
+  };
   planModeApprovalResponse?: {
     action: "enter" | "exit";
     decision: "approve" | "reject";

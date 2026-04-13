@@ -79,6 +79,11 @@ interface PlanModeApproval {
   }>;
 }
 
+interface PermissionApproval {
+  toolName: string;
+  reason?: string;
+}
+
 const MAX_TOOL_DETAIL_CHARS = 800;
 
 const normalizeToolPayload = (value?: string) => {
@@ -248,6 +253,26 @@ const getPlanModeApproval = (message: ConversationMessage): PlanModeApproval | n
 const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
   const value = (message.additional_kwargs as { planModeApprovalDecision?: unknown }).planModeApprovalDecision;
+  return value === "approve" || value === "reject" ? value : "";
+};
+
+const getPermissionApproval = (message: ConversationMessage): PermissionApproval | null => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
+  const value = (message.additional_kwargs as { permissionApproval?: unknown }).permissionApproval;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
+  if (!toolName) return null;
+  return {
+    toolName,
+    reason: typeof record.reason === "string" ? record.reason : undefined,
+  };
+};
+
+const getPermissionApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const value = (message.additional_kwargs as { permissionApprovalDecision?: unknown })
+    .permissionApprovalDecision;
   return value === "approve" || value === "reject" ? value : "";
 };
 
@@ -533,6 +558,7 @@ const ChatItem = ({
   planModeApprovalSubmitting,
   onPlanQuestionSelect,
   onPlanModeApprovalSelect,
+  onPermissionApprovalSelect,
 }: {
   message: ConversationMessage;
   isStreaming?: boolean;
@@ -554,6 +580,11 @@ const ChatItem = ({
   onPlanModeApprovalSelect?: (input: {
     messageId: string;
     action: "enter" | "exit";
+    decision: "approve" | "reject";
+  }) => void;
+  onPermissionApprovalSelect?: (input: {
+    messageId: string;
+    toolName: string;
     decision: "approve" | "reject";
   }) => void;
 }) => {
@@ -616,6 +647,8 @@ const ChatItem = ({
   const planAnswers = useMemo(() => getPlanAnswers(message), [message]);
   const planModeApproval = useMemo(() => getPlanModeApproval(message), [message]);
   const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
+  const permissionApproval = useMemo(() => getPermissionApproval(message), [message]);
+  const permissionApprovalDecision = useMemo(() => getPermissionApprovalDecision(message), [message]);
 
   const toggleTimelineReasoningDetails = useCallback((key: string) => {
     setExpandedTimelineReasoningKeys((prev) => ({
@@ -1036,6 +1069,54 @@ const ChatItem = ({
                         onPlanModeApprovalSelect?.({
                           messageId,
                           action: planModeApproval.action,
+                          decision: option.value,
+                        })
+                      }
+                      px={2}
+                      size="xs"
+                      variant="ghost"
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </Flex>
+              </Box>
+            ) : null}
+            {permissionApproval ? (
+              <Box bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="10px" p={3}>
+                <Text color="purple.800" fontSize="12px" fontWeight={700}>
+                  工具权限审批
+                </Text>
+                <Text color="myGray.700" fontSize="12px" mt={1}>
+                  工具 `{permissionApproval.toolName}` 请求执行，请确认是否批准。
+                </Text>
+                {permissionApproval.reason ? (
+                  <Text color="myGray.600" fontSize="11px" mt={1.5}>
+                    说明: {permissionApproval.reason}
+                  </Text>
+                ) : null}
+                {permissionApprovalDecision ? (
+                  <Text color="purple.700" fontSize="11px" mt={2}>
+                    已选择: {permissionApprovalDecision === "approve" ? "批准" : "拒绝"}
+                  </Text>
+                ) : null}
+                <Flex gap={2} mt={2}>
+                  {[
+                    { label: "批准", value: "approve" as const },
+                    { label: "拒绝", value: "reject" as const },
+                  ].map((option, idx) => (
+                    <Button
+                      key={`${messageId}-permission-approval-option-${idx}`}
+                      bg={permissionApprovalDecision === option.value ? "purple.100" : "white"}
+                      border="1px solid"
+                      borderColor={permissionApprovalDecision === option.value ? "purple.300" : "myGray.200"}
+                      color={permissionApprovalDecision === option.value ? "purple.800" : "myGray.700"}
+                      h="26px"
+                      isDisabled={Boolean(planModeApprovalSubmitting || permissionApprovalDecision)}
+                      onClick={() =>
+                        onPermissionApprovalSelect?.({
+                          messageId,
+                          toolName: permissionApproval.toolName,
                           decision: option.value,
                         })
                       }
@@ -1493,5 +1574,6 @@ export default React.memo(
     prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
     prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
     prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
-    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect
+    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect &&
+    prevProps.onPermissionApprovalSelect === nextProps.onPermissionApprovalSelect
 );

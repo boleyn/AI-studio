@@ -470,7 +470,10 @@ export const runMasterSubAgentRuntime = async ({
       let shouldStop = false;
       try {
         const payload = JSON.parse(response) as Record<string, unknown>;
-        if (payload && payload.requiresPlanModeApproval === true) {
+        if (
+          payload &&
+          (payload.requiresPlanModeApproval === true || payload.requiresPermissionApproval === true)
+        ) {
           shouldStop = true;
         }
       } catch {
