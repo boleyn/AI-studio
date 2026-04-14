@@ -242,14 +242,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     bashTool,
   ];
 
-  const tools: ChatCompletionTool[] = allTools.map((tool) => ({
-    type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    },
-  }));
+  let tools: ChatCompletionTool[] = [];
 
   const modelCatalogKey =
     typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
@@ -359,6 +352,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (planModeActive) {
     allTools = allTools.filter((tool) => !PLAN_MODE_BLOCKED_TOOL_NAMES.has(tool.name));
   }
+  tools = allTools.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }));
+  const hasSpawnAgentTool = allTools.some(
+    (tool) => (tool.name || "").trim().toLowerCase() === "spawn_agent"
+  );
+  const delegationGuidancePrompt = (() => {
+    if (!planExecutionConfirmed) return "";
+    if (!hasSpawnAgentTool) {
+      return "Subagent tools are unavailable in this run. Execute directly in the master agent and keep update_plan progress in sync.";
+    }
+    const complexityScore =
+      (plannedStepCount >= 4 ? 2 : plannedStepCount >= 2 ? 1 : 0) +
+      (allTools.length >= 24 ? 1 : 0);
+    if (complexityScore >= 2) {
+      return "Delegation is recommended: for multi-step or broad-scope work, call spawn_agent for at least one bounded implementation subtask, then integrate outputs and continue.";
+    }
+    return "Delegation is optional: proceed directly when scope is small, otherwise delegate bounded side tasks via spawn_agent.";
+  })();
   const fixedToolChoice: "auto" = "auto";
 
   const skillsCatalogPrompt =
@@ -426,11 +443,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             content:
               "User confirmed execution. Do not re-plan. Start implementing immediately from the first pending step, keep update_plan status in sync, and complete all steps.",
           } as ChatCompletionMessageParam,
-          {
-            role: "system",
-            content:
-              "Execution architecture requirement: master agent must delegate at least one bounded implementation task via spawn_agent for non-trivial work, then integrate outputs and finish all plan steps.",
-          } as ChatCompletionMessageParam,
+          ...(delegationGuidancePrompt
+            ? [
+                {
+                  role: "system",
+                  content: delegationGuidancePrompt,
+                } as ChatCompletionMessageParam,
+              ]
+            : []),
         ]
       : []),
     ...(skillsCatalogPrompt
@@ -665,8 +685,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })();
 
     const durationSeconds = Number(((Date.now() - agentRuntimeStartAt) / 1000).toFixed(2));
+    const enforceSpawnDelegationPolicy = process.env.AISTUDIO_ENFORCE_SPAWN_AGENT_POLICY === "true";
+    const spawnedAgent = result.stepResponses.some((node) => node.moduleName === "spawn_agent");
     if (planExecutionConfirmed) {
-      const spawnedAgent = result.stepResponses.some((node) => node.moduleName === "spawn_agent");
       const updatePlanSnapshots = result.stepResponses
         .filter((node) => node.moduleName === "update_plan")
         .map((node) => {
@@ -710,10 +731,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : 0;
       const latestPlanCount = latestPlan ? latestPlan.length : 0;
 
-      if (plannedStepCount > 1 && !spawnedAgent) {
-        throw new Error(
-          "Execution policy violated: confirmed multi-step plan must delegate at least one bounded task via spawn_agent."
-        );
+      if (hasSpawnAgentTool && plannedStepCount > 1 && !spawnedAgent) {
+        const message =
+          "Execution policy violated: confirmed multi-step plan must delegate at least one bounded task via spawn_agent.";
+        if (enforceSpawnDelegationPolicy) {
+          throw new Error(message);
+        }
+        console.warn("[plan-policy][spawn-agent-missing][skills]", {
+          plannedStepCount,
+          spawnedAgent,
+          hasSpawnAgentTool,
+          enforced: false,
+        });
       }
       if (!latestPlan) {
         throw new Error(
@@ -877,6 +906,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               : {}),
             responseData: result.stepResponses,
+            executionDelegationMode: spawnedAgent ? "subagent" : "direct",
             durationSeconds,
             timeline,
             contextWindow: contextWindowUsage,

@@ -138,6 +138,11 @@ const ChatItem = ({
     messageId,
   });
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
+  const executionDelegationMode = (() => {
+    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+    const value = (message.additional_kwargs as { executionDelegationMode?: unknown }).executionDelegationMode;
+    return value === "subagent" || value === "direct" ? value : "";
+  })();
   const hasPendingPlanQuestions = planQuestions.length > 0 && !planQuestionSubmission;
   const shouldHidePlanReasoning = Boolean(hasPendingPlanQuestions || (planModeApproval && !planModeApprovalDecision));
   const shouldSuppressPlanVerboseAnswer = Boolean(
@@ -741,6 +746,11 @@ const ChatItem = ({
                 </Text>
                 {executionSummary?.durationSeconds !== undefined ? (
                   <Text>耗时: {executionSummary.durationSeconds.toFixed(2)}s</Text>
+                ) : null}
+                {executionDelegationMode ? (
+                  <Text>
+                    子代理: {executionDelegationMode === "subagent" ? "已启用" : "未启用（主代理直执）"}
+                  </Text>
                 ) : null}
               </Flex>
             ) : null}

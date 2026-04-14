@@ -522,6 +522,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })();
   const hasMcpTools = selectedTools.some((tool) => isMcpToolName(tool.name));
   const hasProjectKnowledgeTools = selectedTools.some((tool) => isProjectKnowledgeMcpTool(tool.name));
+  const hasSpawnAgentTool = selectedTools.some((tool) => (tool.name || "").trim().toLowerCase() === "spawn_agent");
+  const delegationGuidancePrompt = (() => {
+    if (!planExecutionConfirmed) return "";
+    if (!hasSpawnAgentTool) {
+      return "Subagent tools are unavailable in this run. Execute directly in the master agent and keep update_plan progress in sync.";
+    }
+    const complexityScore =
+      (plannedStepCount >= 4 ? 2 : plannedStepCount >= 2 ? 1 : 0) +
+      (selectedTools.length >= 24 ? 1 : 0);
+    if (complexityScore >= 2) {
+      return "Delegation is recommended: for multi-step or broad-scope work, call spawn_agent for at least one bounded implementation subtask, then integrate outputs and continue.";
+    }
+    return "Delegation is optional: proceed directly when scope is small, otherwise delegate bounded side tasks via spawn_agent.";
+  })();
   const selectedModelProfile = userModelProfiles.get(selectedModel) || getChatModelProfile(selectedModel, modelCatalogKey);
   const fixedToolChoice: "auto" = "auto";
 
@@ -655,11 +669,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             content:
               "User confirmed execution. Do not re-plan. Start implementing immediately from the first pending step, keep update_plan status in sync, and complete all steps end-to-end.",
           } as ChatCompletionMessageParam,
-          {
-            role: "system",
-            content:
-              "Execution architecture requirement: master agent must delegate at least one bounded implementation task via spawn_agent for non-trivial multi-file work, then integrate worker outputs and continue until all plan steps are completed.",
-          } as ChatCompletionMessageParam,
+          ...(delegationGuidancePrompt
+            ? [
+                {
+                  role: "system",
+                  content: delegationGuidancePrompt,
+                } as ChatCompletionMessageParam,
+              ]
+            : []),
         ]
       : []),
     ...(skillsCatalogPrompt
@@ -940,8 +957,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
   })();
+  const enforceSpawnDelegationPolicy = process.env.AISTUDIO_ENFORCE_SPAWN_AGENT_POLICY === "true";
+  const spawnedAgent = stepResponses.some((node) => node.moduleName === "spawn_agent");
   if (planExecutionConfirmed) {
-    const spawnedAgent = stepResponses.some((node) => node.moduleName === "spawn_agent");
     const updatePlanSnapshots = stepResponses
       .filter((node) => node.moduleName === "update_plan")
       .map((node) => {
@@ -977,10 +995,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : 0;
     const latestPlanCount = latestPlan ? latestPlan.length : 0;
 
-    if (plannedStepCount > 1 && !spawnedAgent) {
-      throw new Error(
-        "Execution policy violated: confirmed multi-step plan must delegate at least one bounded task via spawn_agent."
-      );
+    if (hasSpawnAgentTool && plannedStepCount > 1 && !spawnedAgent) {
+      const message =
+        "Execution policy violated: confirmed multi-step plan must delegate at least one bounded task via spawn_agent.";
+      if (enforceSpawnDelegationPolicy) {
+        throw new Error(message);
+      }
+      console.warn("[plan-policy][spawn-agent-missing]", {
+        plannedStepCount,
+        spawnedAgent,
+        hasSpawnAgentTool,
+        enforced: false,
+      });
     }
     if (!latestPlan) {
       throw new Error(
@@ -1227,6 +1253,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             : {}),
           ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
           responseData: stepResponses,
+          executionDelegationMode: spawnedAgent ? "subagent" : "direct",
           planModeProtocolVersion: 2,
           durationSeconds,
           contextWindow: finalContextWindowUsage,
@@ -1271,6 +1298,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             : {}),
           ...(persistedTimeline.length > 0 ? { timeline: persistedTimeline } : {}),
           responseData: stepResponses,
+          executionDelegationMode: spawnedAgent ? "subagent" : "direct",
           planModeProtocolVersion: 2,
           durationSeconds,
           contextWindow: finalContextWindowUsage,

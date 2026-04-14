@@ -1060,6 +1060,12 @@ const ChatPanel = ({
                   progressStatus: "completed",
                 });
               }
+              if ((streamPayload.toolName || "").trim().toLowerCase() === "spawn_agent") {
+                updateAssistantMetadata((current) => ({
+                  ...current,
+                  executionDelegationMode: "subagent",
+                }));
+              }
               if (streamPayload.toolName && responseForDisplay) {
                 try {
                   const parsed = (parsedPayload ||
@@ -1431,6 +1437,10 @@ const ChatPanel = ({
             : "[已结束] 工具未返回结果";
           return {
             ...current,
+            executionDelegationMode:
+              typeof current.executionDelegationMode === "string" && current.executionDelegationMode
+                ? current.executionDelegationMode
+                : "direct",
             toolDetails: details.map((item) => ({
               ...item,
               response:
