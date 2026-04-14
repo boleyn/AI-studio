@@ -424,16 +424,52 @@ export async function appendConversationMessages(
   const itemCol = await getItemCollection();
   await ensureMetaByChatId({ token, chatId: id, title });
   const now = new Date();
+  const docs = messages.map((message, index) =>
+    messageToDoc({
+      token,
+      chatId: id,
+      message,
+      time: new Date(now.getTime() + index),
+    })
+  );
+  const toSetPayload = (doc: ConversationItemDoc) => ({
+    role: doc.role,
+    ...(doc.type !== undefined ? { type: doc.type } : {}),
+    ...(doc.subtype !== undefined ? { subtype: doc.subtype } : {}),
+    ...(doc.uuid !== undefined ? { uuid: doc.uuid } : {}),
+    ...(doc.parent_uuid !== undefined ? { parent_uuid: doc.parent_uuid } : {}),
+    ...(doc.is_sidechain !== undefined ? { is_sidechain: doc.is_sidechain } : {}),
+    ...(doc.session_id !== undefined ? { session_id: doc.session_id } : {}),
+    content: doc.content,
+    ...(doc.name !== undefined ? { name: doc.name } : {}),
+    ...(doc.tool_call_id !== undefined ? { tool_call_id: doc.tool_call_id } : {}),
+    ...(doc.tool_calls !== undefined ? { tool_calls: doc.tool_calls } : {}),
+    ...(doc.additional_kwargs !== undefined ? { additional_kwargs: doc.additional_kwargs } : {}),
+    ...(doc.status !== undefined ? { status: doc.status } : {}),
+    ...(doc.artifact !== undefined ? { artifact: doc.artifact } : {}),
+  });
 
-  await itemCol.insertMany(
-    messages.map((message, index) =>
-      messageToDoc({
-        token,
-        chatId: id,
-        message,
-        time: new Date(now.getTime() + index),
-      })
-    )
+  await itemCol.bulkWrite(
+    docs.map((doc) => ({
+      updateOne: {
+        filter: {
+          token,
+          chatId: id,
+          dataId: doc.dataId,
+        },
+        update: {
+          $set: toSetPayload(doc),
+          $setOnInsert: {
+            _id: doc._id,
+            token,
+            chatId: id,
+            dataId: doc.dataId,
+            time: doc.time,
+          },
+        },
+        upsert: true,
+      },
+    }))
   );
 }
 

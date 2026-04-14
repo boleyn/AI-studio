@@ -4,6 +4,8 @@ export const SseResponseEventEnum = {
   toolCall: "toolCall",
   toolParams: "toolParams",
   toolResponse: "toolResponse",
+  toolInteraction: "toolInteraction",
+  toolProgress: "toolProgress",
   flowNodeResponse: "flowNodeResponse",
   agentDuration: "agentDuration",
   contextWindow: "contextWindow",

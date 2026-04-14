@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
 import type { ConversationMessage } from "@/types/conversation";
 import type { ChatInteractionContextValue } from "../context/ChatInteractionContext";
+import type { ChatInputSubmitPayload } from "../types/chatInput";
 
 export const useChatPlanInteractions = ({
   isSending,
@@ -15,29 +16,21 @@ export const useChatPlanInteractions = ({
   setMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
   chatMode: "default" | "plan";
   setChatMode: Dispatch<SetStateAction<"default" | "plan">>;
-  handleSend: (input: {
-    text?: string;
-    uploadedFiles?: unknown[];
-    files?: unknown[];
-    selectedSkills?: string[];
-    thinkingEnabled?: boolean;
-    planModeApprovalResponse?: {
-      action: "enter" | "exit";
-      decision: "approve" | "reject";
-      note?: string;
-    };
-    permissionApprovalResponse?: {
-      toolName: string;
-      decision: "approve" | "reject";
-      note?: string;
-    };
-  }) => Promise<void>;
+  handleSend: (
+    input: ChatInputSubmitPayload,
+    options?: {
+      echoUserMessage?: boolean;
+      persistIncomingMessages?: boolean;
+      continueAssistantMessageId?: string;
+    }
+  ) => Promise<void>;
   selectedSkills: string[];
   thinkingEnabled: boolean;
 }) => {
   const handlePlanQuestionSelect = useCallback(
     (input: {
       messageId: string;
+      requestId?: string;
       questionId: string;
       header?: string;
       question: string;
@@ -64,34 +57,123 @@ export const useChatPlanInteractions = ({
                 ...existingAnswers,
                 [input.questionId]: input.optionLabel,
               },
+              ...(input.requestId
+                ? {
+                    planModeInteractionState: {
+                      ...(kwargs.planModeInteractionState &&
+                      typeof kwargs.planModeInteractionState === "object" &&
+                      !Array.isArray(kwargs.planModeInteractionState)
+                        ? (kwargs.planModeInteractionState as Record<string, unknown>)
+                        : {}),
+                      [input.requestId]: {
+                        type: "plan_question",
+                        status: "submitted",
+                      },
+                    },
+                  }
+                : {}),
             },
           };
         })
       );
 
+    },
+    [isSending, setMessages]
+  );
+
+  const handlePlanQuestionsSubmit = useCallback(
+    (input: {
+      messageId: string;
+      requestId: string;
+      answers: Record<string, string>;
+    }) => {
+      if (!input.messageId || !input.requestId || isSending) return;
+      const answerEntries = Object.entries(input.answers).filter(
+        ([key, value]) => Boolean(key && typeof value === "string" && value.trim().length > 0)
+      );
+      if (answerEntries.length === 0) return;
+      const answerMap = Object.fromEntries(answerEntries);
+      const executionDecision = (answerMap.plan_execute_confirm || "").trim();
+      const shouldExecuteNow = executionDecision === "确认执行";
+
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== input.messageId) return message;
+          const kwargs =
+            message.additional_kwargs && typeof message.additional_kwargs === "object"
+              ? message.additional_kwargs
+              : {};
+          return {
+            ...message,
+            additional_kwargs: {
+              ...kwargs,
+              planQuestions: [],
+              planQuestionSubmission: {
+                requestId: input.requestId,
+                answers: answerMap,
+                submittedAt: new Date().toISOString(),
+              },
+              planModeInteractionState: {
+                ...(kwargs.planModeInteractionState &&
+                typeof kwargs.planModeInteractionState === "object" &&
+                !Array.isArray(kwargs.planModeInteractionState)
+                  ? (kwargs.planModeInteractionState as Record<string, unknown>)
+                  : {}),
+                [input.requestId]: {
+                  type: "plan_question",
+                  status: "submitted",
+                },
+              },
+              ...(shouldExecuteNow ? { planModeApprovalDecision: "approve" } : {}),
+            },
+          };
+        })
+      );
+      if (shouldExecuteNow && chatMode !== "default") {
+        setChatMode("default");
+      }
+
       const answerText = [
         "Plan mode user selection:",
-        `- question_id: ${input.questionId}`,
-        `- header: ${input.header || "Confirm"}`,
-        `- question: ${input.question}`,
-        `- selected_option: ${input.optionLabel}`,
-        ...(input.optionDescription ? [`- selected_option_description: ${input.optionDescription}`] : []),
+        `- request_id: ${input.requestId}`,
+        ...answerEntries.map(([questionId, answer]) => `- ${questionId}: ${answer}`),
       ].join("\n");
 
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        thinkingEnabled,
-      });
+      void handleSend(
+        {
+          text: answerText,
+          uploadedFiles: [],
+          files: [],
+          planQuestionResponse: {
+            requestId: input.requestId,
+            answers: answerMap,
+          },
+          ...(shouldExecuteNow
+            ? {
+                planModeApprovalResponse: {
+                  requestId: `${input.requestId}:execute`,
+                  action: "exit" as const,
+                  decision: "approve" as const,
+                  note: "execute_confirmed",
+                },
+              }
+            : {}),
+          selectedSkills,
+          thinkingEnabled,
+        },
+        {
+          echoUserMessage: false,
+          continueAssistantMessageId: input.messageId,
+        }
+      );
     },
-    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
+    [chatMode, handleSend, isSending, selectedSkills, setChatMode, setMessages, thinkingEnabled]
   );
 
   const handlePlanModeApprovalSelect = useCallback(
     (input: {
       messageId: string;
+      requestId: string;
       action: "enter" | "exit";
       decision: "approve" | "reject";
       note?: string;
@@ -111,6 +193,19 @@ export const useChatPlanInteractions = ({
               ...kwargs,
               planModeApprovalDecision: input.decision,
               ...(input.note ? { planModeApprovalNote: input.note } : {}),
+              planModeApproval: null,
+              planModeInteractionState: {
+                ...(kwargs.planModeInteractionState &&
+                typeof kwargs.planModeInteractionState === "object" &&
+                !Array.isArray(kwargs.planModeInteractionState)
+                  ? (kwargs.planModeInteractionState as Record<string, unknown>)
+                  : {}),
+                [input.requestId]: {
+                  type: "plan_approval",
+                  status: "submitted",
+                  decision: input.decision,
+                },
+              },
             },
           };
         })
@@ -123,23 +218,31 @@ export const useChatPlanInteractions = ({
 
       const answerText = [
         "Plan mode approval response:",
+        `- request_id: ${input.requestId}`,
         `- action: ${input.action}`,
         `- decision: ${input.decision}`,
         ...(input.note ? [`- note: ${input.note}`] : []),
       ].join("\n");
 
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        planModeApprovalResponse: {
-          action: input.action,
-          decision: input.decision,
-          ...(input.note ? { note: input.note } : {}),
+      void handleSend(
+        {
+          text: answerText,
+          uploadedFiles: [],
+          files: [],
+          selectedSkills,
+          planModeApprovalResponse: {
+            requestId: input.requestId,
+            action: input.action,
+            decision: input.decision,
+            ...(input.note ? { note: input.note } : {}),
+          },
+          thinkingEnabled,
         },
-        thinkingEnabled,
-      });
+        {
+          echoUserMessage: false,
+          continueAssistantMessageId: input.messageId,
+        }
+      );
     },
     [chatMode, handleSend, isSending, selectedSkills, setChatMode, setMessages, thinkingEnabled]
   );
@@ -195,14 +298,22 @@ export const useChatPlanInteractions = ({
       planModeApprovalSubmitting: isSending,
       hideInteractiveCards: false,
       onPlanQuestionSelect: handlePlanQuestionSelect,
+      onPlanQuestionsSubmit: handlePlanQuestionsSubmit,
       onPlanModeApprovalSelect: handlePlanModeApprovalSelect,
       onPermissionApprovalSelect: handlePermissionApprovalSelect,
     }),
-    [handlePermissionApprovalSelect, handlePlanModeApprovalSelect, handlePlanQuestionSelect, isSending]
+    [
+      handlePermissionApprovalSelect,
+      handlePlanModeApprovalSelect,
+      handlePlanQuestionSelect,
+      handlePlanQuestionsSubmit,
+      isSending,
+    ]
   );
 
   return {
     handlePlanQuestionSelect,
+    handlePlanQuestionsSubmit,
     handlePlanModeApprovalSelect,
     handlePermissionApprovalSelect,
     chatInteractionContextValue,

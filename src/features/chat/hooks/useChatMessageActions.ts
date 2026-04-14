@@ -34,7 +34,11 @@ export const useChatMessageActions = ({
   selectedSkills: string[];
   handleSend: (
     payload: ChatInputSubmitPayload,
-    options?: { echoUserMessage?: boolean; persistIncomingMessages?: boolean }
+    options?: {
+      echoUserMessage?: boolean;
+      persistIncomingMessages?: boolean;
+      continueAssistantMessageId?: string;
+    }
   ) => Promise<void>;
 }) => {
   const handleRateMessage = useCallback(

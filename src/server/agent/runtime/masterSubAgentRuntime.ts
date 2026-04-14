@@ -8,6 +8,7 @@ import type { AgentToolDefinition } from "@server/agent/tools/types";
 import { runPostToolUseHooks, runPostToolUseHooksWithResult, runPreToolUseHooks } from "@server/agent/hooks/runner";
 import type { SseEventName } from "@shared/network/sseEvents";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
+import { isPlanInteractionEnvelope, type PlanInteractionEnvelope } from "@shared/chat/planInteraction";
 import json5 from "json5";
 
 export interface AgentStepResponse {
@@ -34,6 +35,7 @@ interface RunMasterSubAgentRuntimeInput {
   tools: ChatCompletionTool[];
   abortSignal?: AbortSignal;
   onEvent?: (event: SseEventName, data: Record<string, unknown>) => void;
+  pauseOnPlanInteraction?: boolean;
 }
 
 interface RunMasterSubAgentRuntimeResult {
@@ -42,6 +44,8 @@ interface RunMasterSubAgentRuntimeResult {
   finalReasoning: string;
   stepResponses: AgentStepResponse[];
 }
+
+type ToolProgressStatus = "pending" | "in_progress" | "completed" | "error";
 
 const parsePossiblyNestedJson = (raw: string | undefined): unknown => {
   if (!raw) return {};
@@ -157,20 +161,381 @@ const parseToolResponse = (response: string): unknown => {
   }
 };
 
-export const shouldStopForToolResponse = (rawResponse: string): boolean => {
+export const shouldStopForToolResponse = (
+  rawResponse: string,
+  options?: { pauseOnPlanInteraction?: boolean; interactionType?: PlanInteractionEnvelope["type"] }
+): boolean => {
   try {
     const payload = JSON.parse(rawResponse) as Record<string, unknown>;
-    return Boolean(
+    const shouldStopForApproval = Boolean(
       payload &&
         (payload.requiresPlanModeApproval === true || payload.requiresPermissionApproval === true)
     );
+    if (shouldStopForApproval) return true;
+    if (!options?.pauseOnPlanInteraction) return false;
+    return (
+      options.interactionType === "plan_progress" ||
+      options.interactionType === "plan_question" ||
+      options.interactionType === "plan_approval"
+    );
   } catch {
-    return false;
+    if (!options?.pauseOnPlanInteraction) return false;
+    return (
+      options.interactionType === "plan_progress" ||
+      options.interactionType === "plan_question" ||
+      options.interactionType === "plan_approval"
+    );
   }
+};
+
+const shouldHoldToolResultFromModel = (
+  pauseOnPlanInteraction: boolean | undefined,
+  interactionType: PlanInteractionEnvelope["type"] | undefined
+) => {
+  if (!pauseOnPlanInteraction) return false;
+  return (
+    interactionType === "plan_progress" ||
+    interactionType === "plan_question" ||
+    interactionType === "plan_approval"
+  );
+};
+
+export const runMasterSubAgentRuntime = async ({
+  sessionId,
+  selectedModel,
+  stream,
+  recursionLimit,
+  temperature,
+  userKey,
+  thinking,
+  toolChoice,
+  messages,
+  allTools,
+  tools,
+  abortSignal,
+  onEvent,
+  pauseOnPlanInteraction,
+}: RunMasterSubAgentRuntimeInput): Promise<RunMasterSubAgentRuntimeResult> => {
+  const stepResponses: AgentStepResponse[] = [];
+  const isKimiModel = /kimi/i.test(selectedModel || "");
+  const streamedToolCallIds = new Set<string>();
+  const streamedToolParamIds = new Set<string>();
+
+  const runResult = await runAgentCall({
+    maxRunAgentTimes: recursionLimit,
+    body: {
+      model: selectedModel,
+      messages,
+      max_tokens: undefined,
+      tools,
+      temperature,
+      stream,
+      useVision: false,
+      requestOrigin: process.env.STORAGE_EXTERNAL_ENDPOINT || "http://127.0.0.1:3000",
+      tool_choice: toolChoice,
+      toolCallMode: "toolChoice",
+      ...(thinking ? { thinking } : {}),
+    },
+    userKey,
+    isAborted: () => abortSignal?.aborted,
+    handleInteractiveTool: async () => ({
+      response: "",
+      assistantMessages: [],
+      usages: [],
+      stop: true,
+    }),
+    onStreaming: ({ text }) => {
+      if (!text) return;
+      onEvent?.(SseResponseEventEnum.answer, { text });
+    },
+    onReasoning: ({ text }) => {
+      if (!text) return;
+      onEvent?.(SseResponseEventEnum.reasoning, { text });
+    },
+    onToolCall: ({ call }) => {
+      const toolCallId = typeof call?.id === "string" ? call.id : "";
+      const toolName = typeof call?.function?.name === "string" ? call.function.name : "";
+      if (!toolCallId || !toolName) return;
+      streamedToolCallIds.add(toolCallId);
+      onEvent?.(SseResponseEventEnum.toolCall, {
+        id: toolCallId,
+        toolName,
+      });
+    },
+    onToolParam: ({ tool, params }) => {
+      const toolCallId = typeof tool?.id === "string" ? tool.id : "";
+      const toolName = typeof tool?.function?.name === "string" ? tool.function.name : "";
+      if (!toolCallId || !toolName || !params) return;
+      streamedToolParamIds.add(toolCallId);
+      onEvent?.(SseResponseEventEnum.toolParams, {
+        id: toolCallId,
+        toolName,
+        params,
+      });
+    },
+    handleToolResponse: async ({ call }) => {
+      if (abortSignal?.aborted) {
+        return {
+          response: "stopped",
+          assistantMessages: [],
+          usages: [],
+          stop: true,
+        };
+      }
+
+      const startAt = Date.now();
+      const tool = allTools.find((item) => item.name === call.function.name);
+      let response = "";
+      let status: "success" | "error" = "success";
+      let progressStatus: ToolProgressStatus = "in_progress";
+
+      const toolName = call.function.name;
+      const argDiagnosis = inspectRawToolArgs(call.function.arguments);
+      const params = formatToolArgs(call.function.arguments);
+      // Emit tool lifecycle events from execution phase (after dedupe),
+      // so UI cards reflect what actually runs.
+      if (!streamedToolCallIds.has(call.id)) {
+        onEvent?.(SseResponseEventEnum.toolCall, {
+          id: call.id,
+          toolName,
+        });
+      }
+      if (params && !streamedToolParamIds.has(call.id)) {
+        onEvent?.(SseResponseEventEnum.toolParams, {
+          id: call.id,
+          toolName,
+          params,
+        });
+      }
+      onEvent?.(SseResponseEventEnum.toolProgress, {
+        id: call.id,
+        toolName,
+        status: "in_progress",
+        progress: 0,
+        total: 1,
+        message: `正在执行 ${toolName}`,
+      });
+
+      if (!response) {
+        if (!tool) {
+          status = "error";
+          progressStatus = "error";
+          response = `未找到工具: ${call.function.name}`;
+        } else {
+          try {
+            let parsed = toSafeToolArgs(call.function.arguments);
+            const preHook = await runPreToolUseHooks({
+              event: "PreToolUse",
+              sessionId,
+              toolName,
+              toolInput: parsed,
+            });
+            if (preHook.updatedInput !== undefined) {
+              parsed = preHook.updatedInput;
+            }
+            if (preHook.decision === "ask") {
+              response = JSON.stringify({
+                ok: false,
+                requiresPermissionApproval: true,
+                permission: {
+                  toolName,
+                  reason: preHook.reason || `Tool requires approval: ${toolName}`,
+                },
+              });
+              status = "error";
+              progressStatus = "error";
+            } else if (preHook.decision === "block") {
+              throw new Error(preHook.reason || `Blocked by PreToolUse hook: ${toolName}`);
+            }
+            if (toolName === "Write" && !isValidWriteFileArgs(parsed)) {
+              status = "error";
+              progressStatus = "error";
+              response = [
+                "Write 参数不完整或被截断：需要完整 JSON 且必须包含字符串字段 file_path、content。",
+                "请重试该工具调用，并只写一个文件（不要并行多个 Write），必要时缩短单次 content 长度。",
+                `raw_args_snippet=${toRawToolArgSnippet(call.function.arguments) || "<empty>"}`,
+                `diagnosis=${JSON.stringify(argDiagnosis)}`,
+              ].join(" ");
+            } else {
+              const result = await tool.run(parsed);
+              const postHook = await runPostToolUseHooksWithResult({
+                event: "PostToolUse",
+                sessionId,
+                toolName,
+                toolInput: parsed,
+                toolResponse: result,
+              });
+              const finalResult = postHook.updatedToolOutput !== undefined ? postHook.updatedToolOutput : result;
+              response = typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult);
+            }
+          } catch (error) {
+            status = "error";
+            progressStatus = "error";
+            response = error instanceof Error ? error.message : "工具执行失败";
+            await runPostToolUseHooks({
+              event: "PostToolUseFailure",
+              sessionId,
+              toolName,
+              toolInput: toSafeToolArgs(call.function.arguments),
+              error: response,
+            });
+          }
+        }
+      }
+
+      const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
+      const modelResponse = mapToolResponseForModel(toolName, response);
+      const parsedToolResponse = parseToolResponse(modelResponse);
+      if (
+        status === "success" &&
+        parsedToolResponse &&
+        typeof parsedToolResponse === "object" &&
+        !Array.isArray(parsedToolResponse) &&
+        (parsedToolResponse as Record<string, unknown>).ok === false
+      ) {
+        status = "error";
+        progressStatus = "error";
+      }
+      if (status === "success") {
+        progressStatus = "completed";
+      }
+
+      console.info(
+        "[agent-debug][tool-call-result]",
+        JSON.stringify(
+          {
+            model: selectedModel,
+            isKimiModel,
+            toolCallId: call.id,
+            toolName,
+            status,
+            runningTime,
+            argsRawLength: (call.function.arguments || "").length,
+            argsDisplayLength: params.length,
+            argsJsonValid: argDiagnosis.jsonValid,
+            argsEndsWithJsonCloser: argDiagnosis.endsWithJsonCloser,
+            argsLikelyTruncated: argDiagnosis.likelyTruncated,
+            argsTail: argDiagnosis.rawTail,
+            rawResponseLength: response.length,
+            modelResponseLength: modelResponse.length,
+            paramsPreview: toDebugSnippet(params),
+            rawResponsePreview: toDebugSnippet(response),
+            modelResponsePreview: toDebugSnippet(modelResponse),
+          },
+          null,
+          2
+        )
+      );
+
+      const interaction = extractToolInteraction(parsedToolResponse);
+
+      onEvent?.(SseResponseEventEnum.toolResponse, {
+        id: call.id,
+        toolName,
+        params,
+        response: modelResponse,
+        rawResponse: response,
+        interaction,
+      });
+      if (interaction) {
+        onEvent?.(SseResponseEventEnum.toolInteraction, {
+          id: call.id,
+          toolName,
+          interaction,
+        });
+      }
+      onEvent?.(SseResponseEventEnum.toolProgress, {
+        id: call.id,
+        toolName,
+        status: progressStatus,
+        progress: 1,
+        total: 1,
+        message: progressStatus === "error" ? `${toolName} 执行失败` : `${toolName} 执行完成`,
+      });
+
+      const nodeResponse: AgentStepResponse = {
+        nodeId: `tool:${toolName}`,
+        moduleName: toolName,
+        moduleType: "tool",
+        runningTime,
+        status,
+        toolInput: toSafeToolArgs(call.function.arguments),
+        toolRes: parsedToolResponse,
+      };
+      stepResponses.push(nodeResponse);
+
+      onEvent?.(SseResponseEventEnum.flowNodeResponse, nodeResponse as unknown as Record<string, unknown>);
+
+      // Feed the model with direct tool output instead of an extra JSON wrapper.
+      // Some models (e.g. kimi series) are less robust when the actual payload is nested as a string field.
+      const toolContent = modelResponse;
+      const shouldStop = shouldStopForToolResponse(response, {
+        pauseOnPlanInteraction,
+        interactionType: interaction?.type,
+      });
+      const shouldHoldFromModel = shouldHoldToolResultFromModel(pauseOnPlanInteraction, interaction?.type);
+
+      return {
+        response: shouldHoldFromModel ? "" : toolContent,
+        assistantMessages: shouldHoldFromModel
+          ? []
+          : [
+              {
+                role: "tool",
+                tool_call_id: call.id,
+                name: toolName,
+                content: toolContent,
+              } as ChatCompletionMessageParam,
+            ],
+        usages: [],
+        ...(shouldStop ? { stop: true } : {}),
+      };
+    },
+  });
+
+  const assistantMessage =
+    [...runResult.assistantMessages].reverse().find((item) => item.role === "assistant") ||
+    runResult.assistantMessages[runResult.assistantMessages.length - 1];
+
+  const finalMessage = (() => {
+    const content = assistantMessage?.content;
+    if (typeof content === "string") return content;
+    if (!content) return "";
+    if (Array.isArray(content)) {
+      return content
+        .map((item) => {
+          if (!item || typeof item !== "object") return "";
+          return "text" in item && typeof item.text === "string" ? item.text : "";
+        })
+        .join("");
+    }
+    return "";
+  })();
+  const finalReasoning = (() => {
+    if (!assistantMessage || typeof assistantMessage !== "object") return "";
+    const value = (assistantMessage as { reasoning_text?: unknown; reasoning_content?: unknown })
+      .reasoning_text ??
+      (assistantMessage as { reasoning_text?: unknown; reasoning_content?: unknown })
+        .reasoning_content;
+    return typeof value === "string" ? value : "";
+  })();
+
+  return {
+    runResult,
+    finalMessage: finalMessage || finalReasoning,
+    finalReasoning,
+    stepResponses,
+  };
 };
 
 const toDebugSnippet = (value: string, maxChars = 2000) =>
   value.length > maxChars ? `${value.slice(0, maxChars)}...[truncated ${value.length - maxChars} chars]` : value;
+
+const extractToolInteraction = (toolRes: unknown): PlanInteractionEnvelope | undefined => {
+  if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) return undefined;
+  const value = (toolRes as { interaction?: unknown }).interaction;
+  return isPlanInteractionEnvelope(value) ? value : undefined;
+};
 
 const mapToolResponseForModel = (toolName: string, response: string): string => {
   let parsed: unknown;
@@ -244,290 +609,4 @@ const mapToolResponseForModel = (toolName: string, response: string): string => 
   }
 
   return response;
-};
-
-export const runMasterSubAgentRuntime = async ({
-  sessionId,
-  selectedModel,
-  stream,
-  recursionLimit,
-  temperature,
-  userKey,
-  thinking,
-  toolChoice,
-  messages,
-  allTools,
-  tools,
-  abortSignal,
-  onEvent,
-}: RunMasterSubAgentRuntimeInput): Promise<RunMasterSubAgentRuntimeResult> => {
-  const stepResponses: AgentStepResponse[] = [];
-  const isKimiModel = /kimi/i.test(selectedModel || "");
-  const streamedToolCallIds = new Set<string>();
-  const streamedToolParamIds = new Set<string>();
-
-  const runResult = await runAgentCall({
-    maxRunAgentTimes: recursionLimit,
-    body: {
-      model: selectedModel,
-      messages,
-      max_tokens: undefined,
-      tools,
-      temperature,
-      stream,
-      useVision: false,
-      requestOrigin: process.env.STORAGE_EXTERNAL_ENDPOINT || "http://127.0.0.1:3000",
-      tool_choice: toolChoice,
-      toolCallMode: "toolChoice",
-      ...(thinking ? { thinking } : {}),
-    },
-    userKey,
-    isAborted: () => abortSignal?.aborted,
-    handleInteractiveTool: async () => ({
-      response: "",
-      assistantMessages: [],
-      usages: [],
-      stop: true,
-    }),
-    onStreaming: ({ text }) => {
-      if (!text) return;
-      onEvent?.(SseResponseEventEnum.answer, { text });
-    },
-    onReasoning: ({ text }) => {
-      if (!text) return;
-      onEvent?.(SseResponseEventEnum.reasoning, { text });
-    },
-    onToolCall: ({ call }) => {
-      const toolCallId = typeof call?.id === "string" ? call.id : "";
-      const toolName = typeof call?.function?.name === "string" ? call.function.name : "";
-      if (!toolCallId || !toolName) return;
-      streamedToolCallIds.add(toolCallId);
-      onEvent?.(SseResponseEventEnum.toolCall, {
-        id: toolCallId,
-        toolName,
-      });
-    },
-    onToolParam: ({ tool, params }) => {
-      const toolCallId = typeof tool?.id === "string" ? tool.id : "";
-      const toolName = typeof tool?.function?.name === "string" ? tool.function.name : "";
-      if (!toolCallId || !toolName || !params) return;
-      streamedToolParamIds.add(toolCallId);
-      onEvent?.(SseResponseEventEnum.toolParams, {
-        id: toolCallId,
-        toolName,
-        params,
-      });
-    },
-    handleToolResponse: async ({ call }) => {
-      if (abortSignal?.aborted) {
-        return {
-          response: "stopped",
-          assistantMessages: [],
-          usages: [],
-          stop: true,
-        };
-      }
-
-      const startAt = Date.now();
-      const tool = allTools.find((item) => item.name === call.function.name);
-      let response = "";
-      let status: "success" | "error" = "success";
-
-      const toolName = call.function.name;
-      const argDiagnosis = inspectRawToolArgs(call.function.arguments);
-      const params = formatToolArgs(call.function.arguments);
-      // Emit tool lifecycle events from execution phase (after dedupe),
-      // so UI cards reflect what actually runs.
-      if (!streamedToolCallIds.has(call.id)) {
-        onEvent?.(SseResponseEventEnum.toolCall, {
-          id: call.id,
-          toolName,
-        });
-      }
-      if (params && !streamedToolParamIds.has(call.id)) {
-        onEvent?.(SseResponseEventEnum.toolParams, {
-          id: call.id,
-          toolName,
-          params,
-        });
-      }
-
-      if (!response) {
-        if (!tool) {
-          status = "error";
-          response = `未找到工具: ${call.function.name}`;
-        } else {
-          try {
-            let parsed = toSafeToolArgs(call.function.arguments);
-            const preHook = await runPreToolUseHooks({
-              event: "PreToolUse",
-              sessionId,
-              toolName,
-              toolInput: parsed,
-            });
-            if (preHook.updatedInput !== undefined) {
-              parsed = preHook.updatedInput;
-            }
-            if (preHook.decision === "ask") {
-              response = JSON.stringify({
-                ok: false,
-                requiresPermissionApproval: true,
-                permission: {
-                  toolName,
-                  reason: preHook.reason || `Tool requires approval: ${toolName}`,
-                },
-              });
-              status = "error";
-            } else if (preHook.decision === "block") {
-              throw new Error(preHook.reason || `Blocked by PreToolUse hook: ${toolName}`);
-            }
-            if (toolName === "Write" && !isValidWriteFileArgs(parsed)) {
-              status = "error";
-              response = [
-                "Write 参数不完整或被截断：需要完整 JSON 且必须包含字符串字段 file_path、content。",
-                "请重试该工具调用，并只写一个文件（不要并行多个 Write），必要时缩短单次 content 长度。",
-                `raw_args_snippet=${toRawToolArgSnippet(call.function.arguments) || "<empty>"}`,
-                `diagnosis=${JSON.stringify(argDiagnosis)}`,
-              ].join(" ");
-            } else {
-              const result = await tool.run(parsed);
-              const postHook = await runPostToolUseHooksWithResult({
-                event: "PostToolUse",
-                sessionId,
-                toolName,
-                toolInput: parsed,
-                toolResponse: result,
-              });
-              const finalResult = postHook.updatedToolOutput !== undefined ? postHook.updatedToolOutput : result;
-              response = typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult);
-            }
-          } catch (error) {
-            status = "error";
-            response = error instanceof Error ? error.message : "工具执行失败";
-            await runPostToolUseHooks({
-              event: "PostToolUseFailure",
-              sessionId,
-              toolName,
-              toolInput: toSafeToolArgs(call.function.arguments),
-              error: response,
-            });
-          }
-        }
-      }
-
-      const runningTime = Number(((Date.now() - startAt) / 1000).toFixed(2));
-      const modelResponse = mapToolResponseForModel(toolName, response);
-      const parsedToolResponse = parseToolResponse(modelResponse);
-      if (
-        status === "success" &&
-        parsedToolResponse &&
-        typeof parsedToolResponse === "object" &&
-        !Array.isArray(parsedToolResponse) &&
-        (parsedToolResponse as Record<string, unknown>).ok === false
-      ) {
-        status = "error";
-      }
-
-      console.info(
-        "[agent-debug][tool-call-result]",
-        JSON.stringify(
-          {
-            model: selectedModel,
-            isKimiModel,
-            toolCallId: call.id,
-            toolName,
-            status,
-            runningTime,
-            argsRawLength: (call.function.arguments || "").length,
-            argsDisplayLength: params.length,
-            argsJsonValid: argDiagnosis.jsonValid,
-            argsEndsWithJsonCloser: argDiagnosis.endsWithJsonCloser,
-            argsLikelyTruncated: argDiagnosis.likelyTruncated,
-            argsTail: argDiagnosis.rawTail,
-            rawResponseLength: response.length,
-            modelResponseLength: modelResponse.length,
-            paramsPreview: toDebugSnippet(params),
-            rawResponsePreview: toDebugSnippet(response),
-            modelResponsePreview: toDebugSnippet(modelResponse),
-          },
-          null,
-          2
-        )
-      );
-
-      onEvent?.(SseResponseEventEnum.toolResponse, {
-        id: call.id,
-        toolName,
-        params,
-        response: modelResponse,
-        rawResponse: response,
-      });
-
-      const nodeResponse: AgentStepResponse = {
-        nodeId: `tool:${toolName}`,
-        moduleName: toolName,
-        moduleType: "tool",
-        runningTime,
-        status,
-        toolInput: toSafeToolArgs(call.function.arguments),
-        toolRes: parsedToolResponse,
-      };
-      stepResponses.push(nodeResponse);
-
-      onEvent?.(SseResponseEventEnum.flowNodeResponse, nodeResponse as unknown as Record<string, unknown>);
-
-      // Feed the model with direct tool output instead of an extra JSON wrapper.
-      // Some models (e.g. kimi series) are less robust when the actual payload is nested as a string field.
-      const toolContent = modelResponse;
-      const shouldStop = shouldStopForToolResponse(response);
-
-      return {
-        response: toolContent,
-        assistantMessages: [
-          {
-            role: "tool",
-            tool_call_id: call.id,
-            name: toolName,
-            content: toolContent,
-          } as ChatCompletionMessageParam,
-        ],
-        usages: [],
-        ...(shouldStop ? { stop: true } : {}),
-      };
-    },
-  });
-
-  const assistantMessage =
-    [...runResult.assistantMessages].reverse().find((item) => item.role === "assistant") ||
-    runResult.assistantMessages[runResult.assistantMessages.length - 1];
-
-  const finalMessage = (() => {
-    const content = assistantMessage?.content;
-    if (typeof content === "string") return content;
-    if (!content) return "";
-    if (Array.isArray(content)) {
-      return content
-        .map((item) => {
-          if (!item || typeof item !== "object") return "";
-          return "text" in item && typeof item.text === "string" ? item.text : "";
-        })
-        .join("");
-    }
-    return "";
-  })();
-  const finalReasoning = (() => {
-    if (!assistantMessage || typeof assistantMessage !== "object") return "";
-    const value = (assistantMessage as { reasoning_text?: unknown; reasoning_content?: unknown })
-      .reasoning_text ??
-      (assistantMessage as { reasoning_text?: unknown; reasoning_content?: unknown })
-        .reasoning_content;
-    return typeof value === "string" ? value : "";
-  })();
-
-  return {
-    runResult,
-    finalMessage: finalMessage || finalReasoning,
-    finalReasoning,
-    stepResponses,
-  };
 };

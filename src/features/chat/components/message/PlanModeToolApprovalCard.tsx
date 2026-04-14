@@ -32,12 +32,15 @@ const PlanModeToolApprovalCard = ({
     status: "pending" as const,
   }));
   const finalChecklist = checklist && checklist.length > 0 ? checklist : parsedChecklist;
+  const hasActiveStatus = finalChecklist.some(
+    (item) => item.status === "in_progress" || item.status === "completed"
+  );
   const statusPalette: Record<
     NonNullable<ChecklistItem["status"]>,
-    { dot: string; text: string; label: string }
+    { dot: string; text: string; label: string; dotBorder?: string }
   > = {
-    pending: { dot: "myGray.350", text: "myGray.700", label: "待处理" },
-    in_progress: { dot: "orange.400", text: "orange.800", label: "进行中" },
+    pending: { dot: "#C4CAD4", dotBorder: "#AAB4C2", text: "myGray.700", label: "待处理" },
+    in_progress: { dot: "primary.500", text: "primary.700", label: "进行中" },
     completed: { dot: "green.500", text: "green.700", label: "已完成" },
   };
 
@@ -45,9 +48,8 @@ const PlanModeToolApprovalCard = ({
     <Box
       bg="myWhite.100"
       border="1px solid"
-      borderColor="myGray.250"
+      borderColor="primary.200"
       borderRadius="12px"
-      mt={2}
       p={3}
       shadow="xs"
     >
@@ -73,24 +75,33 @@ const PlanModeToolApprovalCard = ({
               return (
               <Flex key={`plan-check-${index}`} align="center" gap={2} justify="space-between">
                 <Flex align="center" gap={2} minW={0}>
-                  <Box bg={status.dot} borderRadius="full" h="8px" minW="8px" />
+                  <Box
+                    bg={status.dot}
+                    border="1px solid"
+                    borderColor={status.dotBorder || "transparent"}
+                    borderRadius="full"
+                    h="8px"
+                    minW="8px"
+                  />
                   <Text color={status.text} fontSize="12px" noOfLines={2}>
                     {item.text}
                   </Text>
                 </Flex>
-                <Text
-                  bg="white"
-                  border="1px solid"
-                  borderColor="myGray.250"
-                  borderRadius="999px"
-                  color="myGray.600"
-                  flexShrink={0}
-                  fontSize="10px"
-                  px={2}
-                  py="1px"
-                >
-                  {status.label}
-                </Text>
+                {hasActiveStatus ? (
+                  <Text
+                    bg="white"
+                    border="1px solid"
+                    borderColor="myGray.250"
+                    borderRadius="999px"
+                    color="myGray.600"
+                    flexShrink={0}
+                    fontSize="10px"
+                    px={2}
+                    py="1px"
+                  >
+                    {status.label}
+                  </Text>
+                ) : null}
               </Flex>
             )})}
           </Flex>
@@ -104,12 +115,12 @@ const PlanModeToolApprovalCard = ({
           return (
           <Button
             key={`plan-mode-tool-approval-${option.value}-${idx}`}
-            bg={isSelected ? (isReject ? "red.50" : "green.50") : "white"}
+            bg={isSelected ? (isReject ? "myGray.100" : "primary.100") : "white"}
             border="1px solid"
             borderColor={
-              isSelected ? (isReject ? "red.300" : "green.300") : "myGray.250"
+              isSelected ? (isReject ? "myGray.350" : "primary.300") : "myGray.250"
             }
-            color={isSelected ? (isReject ? "red.700" : "green.700") : "myGray.700"}
+            color={isSelected ? (isReject ? "myGray.700" : "primary.700") : "myGray.700"}
             h="30px"
             isDisabled={Boolean(submitting || decision)}
             onClick={() => onSelect?.(option.value)}

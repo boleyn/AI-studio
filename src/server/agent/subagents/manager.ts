@@ -107,6 +107,8 @@ const AGENT_OUTPUT_BASE = path.join(os.tmpdir(), "aistudio-agent-runs");
 const RECOVERED_RUNNING_ERROR = "Recovered running subagent from previous process. Please rerun the task.";
 const RECOVERED_REQUEUE_NOTICE =
   "Recovered running subagent from previous process. Call resume_agent to continue queued prompt.";
+const SUBAGENT_WORKER_SYSTEM_PROMPT =
+  "You are a worker subagent. Execute only the delegated scoped task and return concrete outputs. Do not re-plan the whole project, do not ask for global strategy changes, and do not call orchestration tools. If blocked, report the blocker and the smallest next action needed.";
 export const getResumeStrategy = (): "fail" | "requeue" =>
   (process.env.AISTUDIO_SUBAGENT_RESUME_STRATEGY || "fail").trim().toLowerCase() === "requeue"
     ? "requeue"
@@ -534,7 +536,13 @@ export const spawnSubAgent = async (
     id,
     name,
     status: "running",
-    messages: input.forkContext === false ? [] : [...runtime.getContextMessages()],
+    messages:
+      input.forkContext === false
+        ? ([{ role: "system", content: SUBAGENT_WORKER_SYSTEM_PROMPT }] as ChatCompletionMessageParam[])
+        : ([
+            ...runtime.getContextMessages(),
+            { role: "system", content: SUBAGENT_WORKER_SYSTEM_PROMPT },
+          ] as ChatCompletionMessageParam[]),
     queue: [input.prompt],
     model: (input.model || "").trim() || runtime.selectedModel,
     turns: 0,

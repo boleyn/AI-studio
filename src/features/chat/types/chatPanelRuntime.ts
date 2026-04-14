@@ -1,9 +1,21 @@
+import type { PlanInteractionEnvelope } from "@shared/chat/planInteraction";
+
 export interface ToolStreamPayload {
   id?: string;
   toolName?: string;
   params?: string;
   response?: string;
   rawResponse?: string;
+  interaction?: PlanInteractionEnvelope;
+}
+
+export interface ToolProgressPayload {
+  id?: string;
+  toolName?: string;
+  status?: "pending" | "in_progress" | "completed" | "error";
+  progress?: number;
+  total?: number;
+  message?: string;
 }
 
 export interface ReasoningStreamPayload {
@@ -36,6 +48,7 @@ export type PlanQuestionOption = {
 };
 
 export type PlanQuestion = {
+  requestId?: string;
   header?: string;
   id: string;
   question: string;
@@ -98,4 +111,3 @@ export const SESSION_TASK_STATUS_META: Record<
   deleted: { label: "已删除", bg: "myGray.100", color: "myGray.700", borderColor: "myGray.250" },
   stopped: { label: "已停止", bg: "red.50", color: "red.700", borderColor: "red.200" },
 };
-

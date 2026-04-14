@@ -1,4 +1,10 @@
 import type { AgentToolDefinition } from "./types";
+import { randomUUID } from "node:crypto";
+import type {
+  PlanInteractionEnvelope,
+  PlanProgressInteractionPayload,
+  PlanQuestionInteractionPayload,
+} from "@shared/chat/planInteraction";
 
 type PlanItem = {
   step: string;
@@ -13,6 +19,8 @@ const normalizeStatus = (value: unknown): PlanItem["status"] => {
   if (raw === "in_progress") return "in_progress";
   return "pending";
 };
+
+const createRequestId = (prefix: string) => `${prefix}_${randomUUID()}`;
 
 export const createPlanModeTools = (): AgentToolDefinition[] => [
   {
@@ -54,10 +62,19 @@ export const createPlanModeTools = (): AgentToolDefinition[] => [
       if (inProgressCount > 1) {
         throw new Error("Only one plan step can be in_progress");
       }
+      const interaction: PlanInteractionEnvelope<"plan_progress"> = {
+        type: "plan_progress",
+        requestId: createRequestId("plan_progress"),
+        payload: {
+          explanation: toString(payload.explanation) || undefined,
+          plan,
+        } satisfies PlanProgressInteractionPayload,
+      };
       return {
         ok: true,
-        explanation: toString(payload.explanation) || undefined,
-        plan,
+        interaction,
+        planModeProtocolVersion: 2,
+        ...interaction.payload,
       };
     },
   },
@@ -119,10 +136,19 @@ export const createPlanModeTools = (): AgentToolDefinition[] => [
       if (questions.length === 0) {
         throw new Error("request_user_input requires at least one valid question");
       }
+      const interaction: PlanInteractionEnvelope<"plan_question"> = {
+        type: "plan_question",
+        requestId: createRequestId("plan_question"),
+        payload: {
+          questions,
+        } satisfies PlanQuestionInteractionPayload,
+      };
       return {
         ok: true,
         requiresUserInput: true,
-        questions,
+        interaction,
+        planModeProtocolVersion: 2,
+        ...interaction.payload,
       };
     },
   },

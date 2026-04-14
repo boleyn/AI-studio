@@ -38,6 +38,24 @@ export const getMessageFeedback = (message: ConversationMessage): MessageRating 
   return value === "up" || value === "down" ? value : undefined;
 };
 
+export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessage[]): ConversationMessage[] => {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+
+  // Keep last occurrence for duplicated message ids while preserving chronological order.
+  const latestIndexById = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (typeof message.id === "string" && message.id.trim()) {
+      latestIndexById.set(message.id.trim(), index);
+    }
+  });
+  const deduped = messages.filter((message, index) => {
+    const id = typeof message.id === "string" ? message.id.trim() : "";
+    if (!id) return true;
+    return latestIndexById.get(id) === index;
+  });
+  return deduped;
+};
+
 export const buildConversationTitle = (value: string): string | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;

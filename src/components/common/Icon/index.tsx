@@ -36,3 +36,4 @@ export { default as ModelContextIcon } from "./icons/model-context.svg";
 export { default as ModelReasoningIcon } from "./icons/model-reasoning.svg";
 export { default as ModelVisionIcon } from "./icons/model-vision.svg";
 export { default as ModelScopeIcon } from "./icons/model-scope.svg";
+export { default as ModeToggleIcon } from "./icons/mode-toggle.svg";

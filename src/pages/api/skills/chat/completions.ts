@@ -11,7 +11,7 @@ import { getRuntimeSkills } from "@server/agent/skills/registry";
 import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
 import { createBashTool } from "@server/agent/tools/bashTool";
 import { createPlanModeTools } from "@server/agent/tools/planModeTools";
-import { createPlanPermissionTools, derivePlanModeState } from "@server/agent/permissions/planMode";
+import { derivePlanModeState } from "@server/agent/permissions/planMode";
 import { createSkillWorkspaceTools } from "@server/agent/tools/skillWorkspaceTools";
 import { createSubAgentTools } from "@server/agent/tools/subAgentTools";
 import { createTaskTools } from "@server/agent/tools/taskTools";
@@ -253,6 +253,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const modelCatalogKey =
     typeof req.body?.modelCatalogKey === "string" ? req.body.modelCatalogKey : undefined;
+  const continueAssistantMessageId =
+    typeof req.body?.continueAssistantMessageId === "string"
+      ? req.body.continueAssistantMessageId.trim()
+      : "";
   const thinking = (() => {
     const raw = req.body?.thinking;
     if (!raw || typeof raw !== "object") return undefined;
@@ -301,10 +305,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     getDelegatableTools: () => allTools,
   });
   const taskTools = createTaskTools(toolSessionId);
-  const planPermissionTools = createPlanPermissionTools();
-  const planModeActive = derivePlanModeState(contextConversationMessages);
+  const latestUserMessage = [...contextConversationMessages].reverse().find((item) => item.role === "user");
+  const latestUserKwargs =
+    latestUserMessage?.additional_kwargs && typeof latestUserMessage.additional_kwargs === "object"
+      ? (latestUserMessage.additional_kwargs as Record<string, unknown>)
+      : null;
+  const latestPlanQuestionResponse =
+    latestUserKwargs?.planQuestionResponse &&
+    typeof latestUserKwargs.planQuestionResponse === "object" &&
+    !Array.isArray(latestUserKwargs.planQuestionResponse)
+      ? (latestUserKwargs.planQuestionResponse as { answers?: Record<string, unknown> })
+      : null;
+  const latestExecuteDecision =
+    latestPlanQuestionResponse?.answers &&
+    typeof latestPlanQuestionResponse.answers === "object" &&
+    !Array.isArray(latestPlanQuestionResponse.answers)
+      ? String(
+          (latestPlanQuestionResponse.answers as Record<string, unknown>).plan_execute_confirm || ""
+        ).trim()
+      : "";
+  const planExecutionConfirmed = latestExecuteDecision === "确认执行";
+  const plannedStepCount = (() => {
+    for (let i = contextConversationMessages.length - 1; i >= 0; i -= 1) {
+      const message = contextConversationMessages[i];
+      if (message.role !== "assistant") continue;
+      const kwargs =
+        message.additional_kwargs && typeof message.additional_kwargs === "object"
+          ? (message.additional_kwargs as Record<string, unknown>)
+          : null;
+      if (!kwargs) continue;
+      const planProgress =
+        kwargs.planProgress && typeof kwargs.planProgress === "object" && !Array.isArray(kwargs.planProgress)
+          ? (kwargs.planProgress as { plan?: unknown })
+          : null;
+      if (!planProgress || !Array.isArray(planProgress.plan)) continue;
+      const validPlan = planProgress.plan.filter(
+        (item): item is { step?: unknown; status?: unknown } => Boolean(item && typeof item === "object")
+      );
+      if (validPlan.length > 0) return validPlan.length;
+    }
+    return 0;
+  })();
+  const planModeActive = planExecutionConfirmed ? false : derivePlanModeState(contextConversationMessages);
   const planModeTools = createPlanModeTools();
-  allTools = [...allTools, ...subAgentTools, ...taskTools, ...planPermissionTools, ...planModeTools];
+  const updatePlanTool = planModeTools.find((tool) => tool.name === "update_plan");
+  allTools = [
+    ...allTools,
+    ...subAgentTools,
+    ...taskTools,
+    ...(updatePlanTool ? [updatePlanTool] : []),
+    ...(planModeActive ? planModeTools.filter((tool) => tool.name === "request_user_input") : []),
+  ];
   if (planModeActive) {
     allTools = allTools.filter((tool) => !PLAN_MODE_BLOCKED_TOOL_NAMES.has(tool.name));
   }
@@ -364,7 +415,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           {
             role: "system",
             content:
-              "Plan mode is active. Do not perform mutating actions. Focus on planning, checks, and concrete implementation steps awaiting confirmation.",
+              "Plan mode is active. Do not perform mutating actions. First call update_plan with concise checklist, then wait for execution confirmation. Keep prose minimal.",
+          } as ChatCompletionMessageParam,
+        ]
+      : []),
+    ...(planExecutionConfirmed
+      ? [
+          {
+            role: "system",
+            content:
+              "User confirmed execution. Do not re-plan. Start implementing immediately from the first pending step, keep update_plan status in sync, and complete all steps.",
+          } as ChatCompletionMessageParam,
+          {
+            role: "system",
+            content:
+              "Execution architecture requirement: master agent must delegate at least one bounded implementation task via spawn_agent for non-trivial work, then integrate outputs and finish all plan steps.",
           } as ChatCompletionMessageParam,
         ]
       : []),
@@ -536,6 +601,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             toolChoice: fixedToolChoice,
             allTools,
             tools,
+            pauseOnPlanInteraction: planModeActive && !planExecutionConfirmed,
             abortSignal: agentRuntimeAbortController.signal,
             onEvent: (event, data) => {
               if (!stream) return;
@@ -599,6 +665,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })();
 
     const durationSeconds = Number(((Date.now() - agentRuntimeStartAt) / 1000).toFixed(2));
+    if (planExecutionConfirmed) {
+      const spawnedAgent = result.stepResponses.some((node) => node.moduleName === "spawn_agent");
+      const updatePlanSnapshots = result.stepResponses
+        .filter((node) => node.moduleName === "update_plan")
+        .map((node) => {
+          const toolRes = node.toolRes;
+          if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) return null;
+          const interaction =
+            (toolRes as { interaction?: unknown }).interaction &&
+            typeof (toolRes as { interaction?: unknown }).interaction === "object" &&
+            !Array.isArray((toolRes as { interaction?: unknown }).interaction)
+              ? ((toolRes as { interaction: { type?: unknown; payload?: unknown } }).interaction)
+              : null;
+          if (!interaction || interaction.type !== "plan_progress") return null;
+          const payload =
+            interaction.payload && typeof interaction.payload === "object" && !Array.isArray(interaction.payload)
+              ? (interaction.payload as { plan?: unknown })
+              : null;
+          if (!payload || !Array.isArray(payload.plan)) return null;
+          const plan = payload.plan
+            .filter(
+              (item): item is { step?: unknown; status?: unknown } =>
+                Boolean(item && typeof item === "object" && typeof item.step === "string")
+            )
+            .map((item) => ({
+              step: String(item.step || "").trim(),
+              status:
+                item.status === "completed"
+                  ? "completed"
+                  : item.status === "in_progress"
+                  ? "in_progress"
+                  : "pending",
+            }))
+            .filter((item) => item.step.length > 0);
+          return plan.length > 0 ? plan : null;
+        })
+        .filter((item): item is Array<{ step: string; status: "pending" | "in_progress" | "completed" }> =>
+          Boolean(item && item.length > 0)
+        );
+      const latestPlan = updatePlanSnapshots.length > 0 ? updatePlanSnapshots[updatePlanSnapshots.length - 1] : null;
+      const latestCompletedCount = latestPlan
+        ? latestPlan.filter((item) => item.status === "completed").length
+        : 0;
+      const latestPlanCount = latestPlan ? latestPlan.length : 0;
+
+      if (plannedStepCount > 1 && !spawnedAgent) {
+        throw new Error(
+          "Execution policy violated: confirmed multi-step plan must delegate at least one bounded task via spawn_agent."
+        );
+      }
+      if (!latestPlan) {
+        throw new Error(
+          "Execution policy violated: execution finished without update_plan progress callbacks."
+        );
+      }
+      if (plannedStepCount > 0) {
+        if (latestPlanCount < plannedStepCount || latestCompletedCount < plannedStepCount) {
+          throw new Error(
+            `Execution policy violated: plan not fully completed (${latestCompletedCount}/${plannedStepCount}) via update_plan.`
+          );
+        }
+      }
+    }
     const memoryUpdateAudit: ProjectMemoryUpdateResult | undefined =
       runtimeConfig.memoryEnabled &&
       runtimeConfig.memoryAutoExtractEnabled &&
@@ -670,17 +799,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           response,
         };
       });
+      const latestPlanProgressInteraction = (() => {
+        for (let i = result.stepResponses.length - 1; i >= 0; i -= 1) {
+          const node = result.stepResponses[i];
+          if (node.moduleName !== "update_plan") continue;
+          const toolRes = node.toolRes;
+          if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) continue;
+          const interaction =
+            (toolRes as { interaction?: unknown }).interaction &&
+            typeof (toolRes as { interaction?: unknown }).interaction === "object" &&
+            !Array.isArray((toolRes as { interaction?: unknown }).interaction)
+              ? ((toolRes as { interaction: { type?: unknown; requestId?: unknown; payload?: unknown } }).interaction)
+              : null;
+          if (!interaction || interaction.type !== "plan_progress") continue;
+          const payload =
+            interaction.payload && typeof interaction.payload === "object" && !Array.isArray(interaction.payload)
+              ? (interaction.payload as { explanation?: unknown; plan?: unknown })
+              : null;
+          if (!payload || !Array.isArray(payload.plan)) continue;
+          const plan = payload.plan
+            .filter(
+              (item): item is { step?: unknown; status?: unknown } =>
+                Boolean(item && typeof item === "object" && typeof item.step === "string")
+            )
+            .map((item) => ({
+              step: String(item.step || "").trim(),
+              status:
+                item.status === "completed"
+                  ? ("completed" as const)
+                  : item.status === "in_progress"
+                  ? ("in_progress" as const)
+                  : ("pending" as const),
+            }))
+            .filter((item) => item.step.length > 0);
+          if (plan.length === 0) continue;
+          return {
+            requestId: typeof interaction.requestId === "string" ? interaction.requestId : "",
+            explanation: typeof payload.explanation === "string" ? payload.explanation : undefined,
+            plan,
+          };
+        }
+        return null;
+      })();
       await appendConversationMessages(conversationToken, conversationId, [
         {
           type: "assistant",
           subtype: planModeActive ? "plan_result" : "result",
           role: "assistant",
           content: result.finalMessage,
-          id: createDataId(),
+          id: continueAssistantMessageId || createDataId(),
           additional_kwargs: {
             planModeState: planModeActive,
             reasoning_text: result.finalReasoning,
             toolDetails,
+            ...(latestPlanProgressInteraction
+              ? {
+                  planProgress: {
+                    explanation: latestPlanProgressInteraction.explanation,
+                    plan: latestPlanProgressInteraction.plan,
+                  },
+                }
+              : {}),
+            ...(planModeActive && !planExecutionConfirmed && latestPlanProgressInteraction
+              ? {
+                  planQuestions: [
+                    {
+                      requestId: `${latestPlanProgressInteraction.requestId}:execute`,
+                      header: "执行确认",
+                      id: "plan_execute_confirm",
+                      question: "计划已生成，是否立即执行完整清单？",
+                      options: [
+                        { label: "确认执行", description: "按计划顺序开始执行并持续回写进度" },
+                        { label: "继续调整", description: "保持计划模式，继续补充或修改计划" },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
             responseData: result.stepResponses,
             durationSeconds,
             timeline,

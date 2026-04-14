@@ -143,6 +143,16 @@ type CreateSubAgentToolsInput = {
   getDelegatableTools: () => AgentToolDefinition[];
 };
 
+const MASTER_ONLY_TOOL_NAMES = new Set([
+  "TaskCreate",
+  "TaskGet",
+  "TaskList",
+  "TaskUpdate",
+  "TaskStop",
+  "update_plan",
+  "request_user_input",
+]);
+
 export const createSubAgentTools = ({
   sessionId,
   getSelectedModel,
@@ -162,7 +172,9 @@ export const createSubAgentTools = ({
     thinking,
     getContextMessages,
     getDelegatableTools: () =>
-      getDelegatableTools().filter((tool) => !SUB_AGENT_TOOL_NAMES.has(tool.name)),
+      getDelegatableTools().filter(
+        (tool) => !SUB_AGENT_TOOL_NAMES.has(tool.name) && !MASTER_ONLY_TOOL_NAMES.has(tool.name)
+      ),
   });
 
   return [

@@ -1,4 +1,9 @@
 import type { AgentToolDefinition } from "@server/agent/tools/types";
+import { randomUUID } from "node:crypto";
+import type {
+  PlanApprovalInteractionPayload,
+  PlanInteractionEnvelope,
+} from "@shared/chat/planInteraction";
 
 const toString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -29,10 +34,8 @@ export const derivePlanModeState = (
   return active;
 };
 
-const buildApprovalPayload = (action: "enter" | "exit", rationale?: string) => ({
-  ok: true,
-  requiresPlanModeApproval: true,
-  approval: {
+const buildApprovalPayload = (action: "enter" | "exit", rationale?: string) => {
+  const payload: PlanApprovalInteractionPayload = {
     action,
     title: action === "enter" ? "进入计划模式审批" : "退出计划模式审批",
     description:
@@ -44,8 +47,19 @@ const buildApprovalPayload = (action: "enter" | "exit", rationale?: string) => (
       { label: "批准", value: "approve" },
       { label: "拒绝", value: "reject" },
     ],
-  },
-});
+  };
+  const interaction: PlanInteractionEnvelope<"plan_approval"> = {
+    type: "plan_approval",
+    requestId: `plan_approval_${randomUUID()}`,
+    payload,
+  };
+  return {
+    ok: true,
+    requiresPlanModeApproval: true,
+    interaction,
+    planModeProtocolVersion: 2,
+  };
+};
 
 export const createPlanPermissionTools = (): AgentToolDefinition[] => [
   {
@@ -77,4 +91,3 @@ export const createPlanPermissionTools = (): AgentToolDefinition[] => [
     },
   },
 ];
-

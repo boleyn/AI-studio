@@ -1,6 +1,12 @@
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
+import {
+  isPlanInteractionEnvelope,
+  type PlanInteractionEnvelope,
+  type PlanProgressInteractionPayload,
+  type PlanQuestionInteractionPayload,
+} from "@shared/chat/planInteraction";
 import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
@@ -29,6 +35,7 @@ import {
   type PlanQuestionOption,
   type ReasoningStreamPayload,
   type SessionTaskSnapshot,
+  type ToolProgressPayload,
   type ToolStreamPayload,
 } from "../types/chatPanelRuntime";
 import { getExecutionSummary } from "../utils/executionSummary";
@@ -56,6 +63,7 @@ import {
   toFileArtifacts,
   getImageInputParts,
   toUpdatedFilesMap,
+  normalizeHistoryMessagesForTimeline,
 } from "../utils/chatPanelUtils";
 import { useChatModels } from "../hooks/useChatModels";
 import { useChatMessageActions } from "../hooks/useChatMessageActions";
@@ -305,11 +313,12 @@ const ChatPanel = ({
             })
           )
         : nextMessages;
-    setMessages(hydratedMessages);
-    setChatMode(derivePlanModeFromMessages(hydratedMessages));
+    const normalizedHydratedMessages = normalizeHistoryMessagesForTimeline(hydratedMessages);
+    setMessages(normalizedHydratedMessages);
+    setChatMode(derivePlanModeFromMessages(normalizedHydratedMessages));
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
-      for (const message of hydratedMessages) {
+      for (const message of normalizedHydratedMessages) {
         if (!message.id) continue;
         const feedback = getMessageFeedback(message);
         if (feedback) {
@@ -320,7 +329,7 @@ const ChatPanel = ({
     });
     const restoredAgentTasks: Record<string, AgentTaskSnapshot> = {};
     const restoredSessionTasks: Record<string, SessionTaskSnapshot> = {};
-    for (const message of hydratedMessages) {
+    for (const message of normalizedHydratedMessages) {
       const kwargs =
         message.additional_kwargs && typeof message.additional_kwargs === "object"
           ? (message.additional_kwargs as Record<string, unknown>)
@@ -354,13 +363,13 @@ const ChatPanel = ({
     shouldAutoScrollRef.current = true;
     const activeId = activeConversation?.id || "";
     const cachedUsage = getCachedContextUsage(activeId || null, model);
-    const recoveredUsage = getLatestContextUsageFromMessages(hydratedMessages, model);
+    const recoveredUsage = getLatestContextUsageFromMessages(normalizedHydratedMessages, model);
     const matchedRecoveredUsage =
       recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
         ? recoveredUsage
         : null;
     setContextUsageSnapshot(cachedUsage || matchedRecoveredUsage || null, activeId || null, model);
-  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, setContextUsageSnapshot, token]);
+  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot, token]);
 
   useEffect(() => {
     const activeId = activeConversation?.id || "";
@@ -454,6 +463,7 @@ const ChatPanel = ({
       options?: {
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
+        continueAssistantMessageId?: string;
       }
     ) => {
       const text = payload.text.trim();
@@ -464,6 +474,7 @@ const ChatPanel = ({
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
+      const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
@@ -527,18 +538,26 @@ const ChatPanel = ({
         additional_kwargs: payload.selectedFilePaths
           ? {
               selectedFilePaths: payload.selectedFilePaths,
+              ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
               planModeState: effectiveMode === "plan",
               ...(payload.planModeApprovalResponse
                 ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+                : {}),
+              ...(payload.planQuestionResponse
+                ? { planQuestionResponse: payload.planQuestionResponse }
                 : {}),
               ...(payload.permissionApprovalResponse
                 ? { permissionApprovalResponse: payload.permissionApprovalResponse }
                 : {}),
             }
           : {
+              ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
               planModeState: effectiveMode === "plan",
               ...(payload.planModeApprovalResponse
                 ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+                : {}),
+              ...(payload.planQuestionResponse
+                ? { planQuestionResponse: payload.planQuestionResponse }
                 : {}),
               ...(payload.permissionApprovalResponse
                 ? { permissionApprovalResponse: payload.permissionApprovalResponse }
@@ -569,31 +588,79 @@ const ChatPanel = ({
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
             : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
           ...(payload.permissionApprovalResponse
             ? { permissionApprovalResponse: payload.permissionApprovalResponse }
             : {}),
         },
       };
 
-      const assistantMessageId = createDataId();
-      const assistantCreatedAt = new Date().toISOString();
+      const continuedAssistantMessage = continueAssistantMessageId
+        ? messagesRef.current.find(
+            (item) => item.id === continueAssistantMessageId && item.role === "assistant"
+          ) || null
+        : null;
+      const isInteractionContinuation = Boolean(
+        payload.planQuestionResponse || payload.planModeApprovalResponse || payload.permissionApprovalResponse
+      );
+      const assistantMessageId = continuedAssistantMessage?.id || createDataId();
+      const assistantCreatedAt = continuedAssistantMessage?.time || new Date().toISOString();
+      const existingAssistantContent = continuedAssistantMessage
+        ? extractText(continuedAssistantMessage.content)
+        : "";
+      const existingAssistantKwargs =
+        continuedAssistantMessage?.additional_kwargs &&
+        typeof continuedAssistantMessage.additional_kwargs === "object"
+          ? (continuedAssistantMessage.additional_kwargs as Record<string, unknown>)
+          : {};
+      const existingAssistantReasoning =
+        !isInteractionContinuation && typeof existingAssistantKwargs.reasoning_text === "string"
+          ? existingAssistantKwargs.reasoning_text
+          : "";
+      if (continuedAssistantMessage && isInteractionContinuation) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMessageId) return msg;
+            const kwargs =
+              msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                ? (msg.additional_kwargs as Record<string, unknown>)
+                : {};
+            const timeline = Array.isArray(kwargs.timeline)
+              ? (kwargs.timeline as Array<Record<string, unknown>>).filter((item) => item?.type !== "reasoning")
+              : kwargs.timeline;
+            return {
+              ...msg,
+              additional_kwargs: {
+                ...kwargs,
+                reasoning_text: "",
+                reasoning_content: "",
+                ...(Array.isArray(timeline) ? { timeline } : {}),
+              },
+            };
+          })
+        );
+      }
       let assistantFailureText: string | null = null;
-      streamingTextRef.current = "";
-      streamingReasoningRef.current = "";
+      streamingTextRef.current = existingAssistantContent;
+      streamingReasoningRef.current = existingAssistantReasoning;
       cancelPendingFlushes();
       shouldAutoScrollRef.current = true;
       setStreamingMessageId(assistantMessageId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "assistant",
-          subtype: effectiveMode === "plan" ? "plan_result" : "result",
-          role: "assistant",
-          content: "",
-          id: assistantMessageId,
-          time: assistantCreatedAt,
-        },
-      ]);
+      if (!continuedAssistantMessage) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "assistant",
+            subtype: effectiveMode === "plan" ? "plan_result" : "result",
+            role: "assistant",
+            content: "",
+            id: assistantMessageId,
+            time: assistantCreatedAt,
+          },
+        ]);
+      }
 
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
@@ -618,7 +685,13 @@ const ChatPanel = ({
       try {
         const upsertToolMessage = (
           id: string,
-          nextPartial: { toolName?: string; params?: string; response?: string }
+          nextPartial: {
+            toolName?: string;
+            params?: string;
+            response?: string;
+            interaction?: PlanInteractionEnvelope;
+            progressStatus?: "pending" | "in_progress" | "completed" | "error";
+          }
         ) => {
           updateAssistantMetadata((current) => {
             const list = Array.isArray(current.toolDetails)
@@ -627,6 +700,8 @@ const ChatPanel = ({
                   toolName?: string;
                   params?: string;
                   response?: string;
+                  interaction?: PlanInteractionEnvelope;
+                  progressStatus?: "pending" | "in_progress" | "completed" | "error";
                 }>)
               : [];
             const index = list.findIndex((item) => item.id === id);
@@ -637,6 +712,8 @@ const ChatPanel = ({
               toolName: nextPartial.toolName ?? base.toolName,
               params: `${base.params || ""}${nextPartial.params || ""}`,
               response: nextPartial.response ?? base.response,
+              interaction: nextPartial.interaction ?? base.interaction,
+              progressStatus: nextPartial.progressStatus ?? base.progressStatus,
             };
             const next = [...list];
             if (index >= 0) {
@@ -677,6 +754,8 @@ const ChatPanel = ({
           toolName?: string;
           params?: string;
           response?: string;
+          interaction?: PlanInteractionEnvelope;
+          progressStatus?: "pending" | "in_progress" | "completed" | "error";
         }) => {
           updateAssistantMetadata((current) => {
             const list = Array.isArray(current.timeline)
@@ -696,6 +775,8 @@ const ChatPanel = ({
                   params: `${typeof target.params === "string" ? target.params : ""}${typeof nextPartial.params === "string" ? nextPartial.params : ""}`,
                   response:
                     typeof nextPartial.response === "string" ? nextPartial.response : target.response,
+                  interaction: nextPartial.interaction ?? target.interaction,
+                  progressStatus: nextPartial.progressStatus ?? target.progressStatus,
                 };
                 return { ...current, timeline: next };
               }
@@ -710,6 +791,8 @@ const ChatPanel = ({
                   toolName: nextPartial.toolName || "",
                   params: nextPartial.params || "",
                   response: nextPartial.response || "",
+                  interaction: nextPartial.interaction,
+                  progressStatus: nextPartial.progressStatus,
                 },
               ],
             };
@@ -732,6 +815,7 @@ const ChatPanel = ({
               token,
               messages: historyMessages,
               persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -837,10 +921,12 @@ const ChatPanel = ({
                   toolName: streamPayload.toolName,
                   params: "",
                   response: "",
+                  progressStatus: "pending",
                 });
                 upsertTimelineTool({
                   id: streamPayload.id,
                   toolName: streamPayload.toolName,
+                  progressStatus: "pending",
                 });
               }
               return;
@@ -871,11 +957,19 @@ const ChatPanel = ({
                 upsertToolMessage(streamPayload.id, {
                   toolName: streamPayload.toolName,
                   response: responseForDisplay,
+                  interaction: isPlanInteractionEnvelope(streamPayload.interaction)
+                    ? streamPayload.interaction
+                    : undefined,
+                  progressStatus: "completed",
                 });
                 upsertTimelineTool({
                   id: streamPayload.id,
                   toolName: streamPayload.toolName,
                   response: responseForDisplay,
+                  interaction: isPlanInteractionEnvelope(streamPayload.interaction)
+                    ? streamPayload.interaction
+                    : undefined,
+                  progressStatus: "completed",
                 });
               }
               if (streamPayload.toolName && responseForDisplay) {
@@ -915,83 +1009,63 @@ const ChatPanel = ({
                 }
               }
 
-              if (streamPayload.toolName === "request_user_input" && parsedPayload) {
-                const parsed = parsedPayload as {
-                  questions?: PlanQuestion[];
-                };
-                const questions = Array.isArray(parsed.questions)
-                  ? parsed.questions
-                      .filter((item): item is PlanQuestion => Boolean(item && typeof item === "object"))
-                      .map((item) => ({
-                        header: typeof item.header === "string" ? item.header : "确认",
-                        id: typeof item.id === "string" ? item.id : "",
-                        question: typeof item.question === "string" ? item.question : "",
-                        options: Array.isArray(item.options)
-                          ? item.options
-                              .filter((opt): opt is PlanQuestionOption => Boolean(opt && typeof opt === "object"))
-                              .map((opt) => ({
-                                label: typeof opt.label === "string" ? opt.label : "",
-                                description: typeof opt.description === "string" ? opt.description : "",
-                              }))
-                              .filter((opt) => opt.label.trim().length > 0)
-                          : [],
-                      }))
-                      .filter((item) => item.id && item.question)
-                  : [];
-                if (questions.length > 0) {
-                  updateAssistantMetadata((current) => ({
-                    ...current,
-                    planQuestions: questions,
-                  }));
-                }
-              }
-
-              if (streamPayload.toolName === "update_plan" && parsedPayload) {
-                const parsed = parsedPayload as {
-                  explanation?: string;
-                  plan?: Array<{ step?: string; status?: string }>;
-                };
-                const plan = Array.isArray(parsed.plan)
-                  ? parsed.plan
-                      .filter((item): item is { step?: string; status?: string } => Boolean(item && typeof item === "object"))
-                      .map((item) => ({
-                        step: typeof item.step === "string" ? item.step.trim() : "",
-                        status:
-                          item.status === "completed"
-                            ? ("completed" as const)
-                            : item.status === "in_progress"
-                            ? ("in_progress" as const)
-                            : ("pending" as const),
-                      }))
-                      .filter((item) => item.step.length > 0)
-                  : [];
-                if (plan.length > 0) {
-                  updateAssistantMetadata((current) => ({
-                    ...current,
-                    planProgress: {
-                      explanation: typeof parsed.explanation === "string" ? parsed.explanation : undefined,
-                      plan,
-                    },
-                  }));
-                }
-              }
-
-              if (
-                (streamPayload.toolName === "enter_plan_mode" ||
-                  streamPayload.toolName === "exit_plan_mode") &&
-                parsedPayload
-              ) {
+              const interaction = isPlanInteractionEnvelope(streamPayload.interaction)
+                ? streamPayload.interaction
+                : undefined;
+              if (interaction) {
                 const planPreview = streamingTextRef.current.trim().slice(0, 6000);
-                const parsed = parsedPayload as {
-                  approval?: PlanModeApprovalPayload;
-                };
-                if (parsed.approval && typeof parsed.approval === "object") {
-                  updateAssistantMetadata((current) => ({
+                updateAssistantMetadata((current) => {
+                  const currentInteractionState =
+                    current.planModeInteractionState &&
+                    typeof current.planModeInteractionState === "object" &&
+                    !Array.isArray(current.planModeInteractionState)
+                      ? (current.planModeInteractionState as Record<string, unknown>)
+                      : {};
+                  const next: Record<string, unknown> = {
                     ...current,
-                    planModeApproval: parsed.approval,
-                    ...(planPreview ? { planPreview } : {}),
-                  }));
-                }
+                    planModeProtocolVersion: 2,
+                    planModeInteractionState: {
+                      ...currentInteractionState,
+                      [interaction.requestId]: {
+                        type: interaction.type,
+                        status: "pending",
+                      },
+                    },
+                  };
+                  if (interaction.type === "plan_question") {
+                    // Ignore model-generated question cards to keep plan flow deterministic.
+                    // Confirmation card is derived from plan_progress.
+                  } else if (interaction.type === "plan_progress") {
+                    const payload = interaction.payload as PlanProgressInteractionPayload;
+                    next.planProgress = {
+                      explanation: payload.explanation,
+                      plan: payload.plan,
+                    };
+                    const hasPendingPlanQuestions =
+                      Array.isArray(current.planQuestions) &&
+                      (current.planQuestions as Array<Record<string, unknown>>).length > 0;
+                    if (!hasPendingPlanQuestions) {
+                      next.planQuestions = [
+                        {
+                          requestId: `${interaction.requestId}:execute`,
+                          header: "执行确认",
+                          id: "plan_execute_confirm",
+                          question: "计划已生成，是否立即执行完整清单？",
+                          options: [
+                            { label: "确认执行", description: "按计划顺序开始执行并持续回写进度" },
+                            { label: "继续调整", description: "保持计划模式，继续补充或修改计划" },
+                          ],
+                        },
+                      ];
+                    }
+                  } else if (interaction.type === "plan_approval") {
+                    next.planModeApproval = interaction.payload;
+                    if (planPreview) {
+                      next.planPreview = planPreview;
+                    }
+                  }
+                  return next;
+                });
               }
 
               if (parsedPayload) {
@@ -1079,6 +1153,47 @@ const ChatPanel = ({
               }
               return;
             }
+            if (event === SseResponseEventEnum.toolInteraction) {
+              const streamPayload = item as ToolStreamPayload;
+              const interaction = isPlanInteractionEnvelope(streamPayload.interaction)
+                ? streamPayload.interaction
+                : undefined;
+              if (!interaction) return;
+              if (streamPayload.id) {
+                upsertToolMessage(streamPayload.id, {
+                  toolName: streamPayload.toolName,
+                  interaction,
+                });
+                upsertTimelineTool({
+                  id: streamPayload.id,
+                  toolName: streamPayload.toolName,
+                  interaction,
+                });
+              }
+              return;
+            }
+            if (event === SseResponseEventEnum.toolProgress) {
+              const streamPayload = item as ToolProgressPayload;
+              const progressStatus =
+                streamPayload.status === "pending" ||
+                streamPayload.status === "in_progress" ||
+                streamPayload.status === "completed" ||
+                streamPayload.status === "error"
+                  ? streamPayload.status
+                  : undefined;
+              if (streamPayload.id && progressStatus) {
+                upsertToolMessage(streamPayload.id, {
+                  toolName: streamPayload.toolName,
+                  progressStatus,
+                });
+                upsertTimelineTool({
+                  id: streamPayload.id,
+                  toolName: streamPayload.toolName,
+                  progressStatus,
+                });
+              }
+              return;
+            }
             if (event === SseResponseEventEnum.flowNodeResponse) {
               const streamPayload = item as FlowNodeResponsePayload;
               updateAssistantMetadata((current) => {
@@ -1163,6 +1278,7 @@ const ChatPanel = ({
               messages: [requestMessage],
               stream: true,
               persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -1451,12 +1567,13 @@ const ChatPanel = ({
       conversations,
       contextUsage,
       contextStatus,
-      messageCount: messages.length,
+      messageCount: conversations.length,
       model,
       modelLoading,
       modelOptions,
       modelGroups,
       onChangeModel: handleChangeModel,
+      onChangeMode: setChatMode,
       onDeleteAllConversations: () => deleteAllConversations(),
       onDeleteConversation: (id: string) => void deleteConversation(id),
       onNewConversation: () => {

@@ -12,6 +12,7 @@ import {
   getMessageFiles,
   getPathTailLabel,
   getPlanAnswers,
+  getPlanQuestionSubmission,
   getPlanModeApprovalDecision,
   getPlanPreview,
   getPlanQuestions,
@@ -181,6 +182,7 @@ export const useChatItemViewModel = ({
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
   const planAnswers = useMemo(() => getPlanAnswers(message), [message]);
+  const planQuestionSubmission = useMemo(() => getPlanQuestionSubmission(message), [message]);
   const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
   const planPreview = useMemo(() => getPlanPreview(message), [message]);
   const planProgress = useMemo(() => getPlanProgressFromMessage(message), [message]);
@@ -339,6 +341,7 @@ export const useChatItemViewModel = ({
     isDetailModalOpen,
     planQuestions,
     planAnswers,
+    planQuestionSubmission,
     planModeApprovalDecision,
     planPreview,
     planProgress,
@@ -370,4 +373,3 @@ export const useChatItemViewModel = ({
 
 export type UseChatItemViewModelResult = ReturnType<typeof useChatItemViewModel>;
 export type { MessageFile };
-

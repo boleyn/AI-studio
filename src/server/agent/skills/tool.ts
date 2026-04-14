@@ -73,7 +73,7 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
     script: {
       type: "string",
       description:
-        "脚本路径。必须优先使用 skill_load 返回的 <skill_runnable_scripts> 中的精确相对路径；支持 skill 目录内相对路径或其绝对路径。",
+        "脚本路径。必须使用 skill_load 返回的 <skill_runnable_scripts> 中的精确相对路径（基于虚拟 skill 根路径）。",
     },
     args: {
       type: "array",
@@ -87,7 +87,7 @@ const SKILL_RUN_SCRIPT_PARAMETERS: Record<string, unknown> = {
     },
     cwd: {
       type: "string",
-      description: "执行目录（相对于 skill 基目录或其绝对路径）。默认 skill 基目录。",
+      description: "执行目录（相对于 skill 虚拟根路径）。默认 skill 根目录。",
     },
     timeoutMs: {
       type: "integer",

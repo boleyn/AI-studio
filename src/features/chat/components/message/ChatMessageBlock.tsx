@@ -43,6 +43,7 @@ const ChatMessageBlock = ({
     planModeApprovalSubmitting,
     hideInteractiveCards,
     onPlanQuestionSelect,
+    onPlanQuestionsSubmit,
     onPlanModeApprovalSelect,
     onPermissionApprovalSelect,
   } = useChatInteractionContext();
@@ -105,6 +106,7 @@ const ChatMessageBlock = ({
         planModeApprovalSubmitting={planModeApprovalSubmitting}
         hideInteractiveCards={hideInteractiveCards}
         onPlanQuestionSelect={onPlanQuestionSelect}
+        onPlanQuestionsSubmit={onPlanQuestionsSubmit}
         onPlanModeApprovalSelect={onPlanModeApprovalSelect}
         onPermissionApprovalSelect={onPermissionApprovalSelect}
       />

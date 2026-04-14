@@ -24,3 +24,43 @@ test("shouldStopForToolResponse returns false for normal payload", () => {
   assert.equal(shouldStopForToolResponse(payload), false);
   assert.equal(shouldStopForToolResponse("not json"), false);
 });
+
+test("shouldStopForToolResponse returns true for plan interaction when pause flag is enabled", () => {
+  const payload = JSON.stringify({
+    ok: true,
+    interaction: {
+      type: "plan_progress",
+      requestId: "plan_progress_123",
+      payload: {
+        plan: [{ step: "A", status: "pending" }],
+      },
+    },
+  });
+  assert.equal(
+    shouldStopForToolResponse(payload, {
+      pauseOnPlanInteraction: true,
+      interactionType: "plan_progress",
+    }),
+    true
+  );
+});
+
+test("shouldStopForToolResponse returns false for plan interaction when pause flag is disabled", () => {
+  const payload = JSON.stringify({
+    ok: true,
+    interaction: {
+      type: "plan_progress",
+      requestId: "plan_progress_123",
+      payload: {
+        plan: [{ step: "A", status: "pending" }],
+      },
+    },
+  });
+  assert.equal(
+    shouldStopForToolResponse(payload, {
+      pauseOnPlanInteraction: false,
+      interactionType: "plan_progress",
+    }),
+    false
+  );
+});

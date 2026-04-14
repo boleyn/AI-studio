@@ -23,6 +23,7 @@ export type ChatPanelViewContextValue = {
   modelOptions: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }>;
   modelGroups: Array<{ id: "user" | "system"; label: string; options: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }> }>;
   onChangeModel: (nextModel: string) => void;
+  onChangeMode: (mode: "default" | "plan") => void;
   onDeleteAllConversations: () => void;
   onDeleteConversation: (id: string) => void;
   onNewConversation: () => void;
@@ -66,7 +67,14 @@ export type ChatPanelViewContextValue = {
   onChangeThinkingEnabled: (enabled: boolean) => void;
   onChangeSelectedSkills: (skills: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;
-  onSend: (payload: ChatInputSubmitPayload, options?: { echoUserMessage?: boolean; persistIncomingMessages?: boolean }) => Promise<void>;
+  onSend: (
+    payload: ChatInputSubmitPayload,
+    options?: {
+      echoUserMessage?: boolean;
+      persistIncomingMessages?: boolean;
+      continueAssistantMessageId?: string;
+    }
+  ) => Promise<void>;
   onStop: () => void;
   hideSkillsManager: boolean;
   isSkillsOpen: boolean;

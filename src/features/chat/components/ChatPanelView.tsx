@@ -23,6 +23,7 @@ const ChatPanelView = () => {
       boxShadow="none"
       direction="column"
       h={context.height}
+      minH={0}
       overflow="hidden"
     >
       <ChatHeader
@@ -43,11 +44,12 @@ const ChatPanelView = () => {
         title={context.activeConversationTitle}
       />
 
-      <Flex direction="column" flex="1" overflow="hidden">
+      <Flex direction="column" flex="1" minH={0} overflow="hidden">
         <Box
           ref={context.scrollRef}
           bg="myGray.50"
           flex="1"
+          minH={0}
           overflowY="auto"
           sx={{
             scrollbarWidth: "none",
@@ -99,7 +101,7 @@ const ChatPanelView = () => {
               </Box>
             </Flex>
           ) : (
-            <Flex direction="column" gap={3} pt={14}>
+            <Flex direction="column" gap={3} minH={0}>
               <ChatMessageTimeline
                 chatInteractionContextValue={context.chatInteractionContextValue}
                 isLoadingConversation={context.isLoadingConversation}
@@ -132,6 +134,7 @@ const ChatPanelView = () => {
           skillOptions={context.skillOptions}
           fileOptions={context.fileOptions}
           onChangeModel={context.onChangeModel}
+          onChangeMode={context.onChangeMode}
           onChangeThinkingEnabled={context.onChangeThinkingEnabled}
           onChangeSelectedSkills={context.onChangeSelectedSkills}
           onUploadFiles={context.onUploadFiles}

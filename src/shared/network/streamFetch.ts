@@ -15,6 +15,8 @@ export type StreamQueueItem =
         | typeof SseResponseEventEnum.toolCall
         | typeof SseResponseEventEnum.toolParams
         | typeof SseResponseEventEnum.toolResponse
+        | typeof SseResponseEventEnum.toolInteraction
+        | typeof SseResponseEventEnum.toolProgress
         | typeof SseResponseEventEnum.flowNodeResponse
         | typeof SseResponseEventEnum.agentDuration
         | typeof SseResponseEventEnum.contextWindow;
@@ -160,6 +162,8 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
             event === SseResponseEventEnum.toolCall ||
             event === SseResponseEventEnum.toolParams ||
             event === SseResponseEventEnum.toolResponse ||
+            event === SseResponseEventEnum.toolInteraction ||
+            event === SseResponseEventEnum.toolProgress ||
             event === SseResponseEventEnum.flowNodeResponse ||
             event === SseResponseEventEnum.agentDuration ||
             event === SseResponseEventEnum.contextWindow

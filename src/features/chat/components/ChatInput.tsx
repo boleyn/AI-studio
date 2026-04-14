@@ -9,7 +9,7 @@ import {
   useTheme,
 } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
-import { AgentSkillsIcon } from "@components/common/Icon";
+import { AgentSkillsIcon, ModeToggleIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -46,6 +46,7 @@ const ChatInput = ({
   prefillText,
   prefillVersion,
   onChangeModel,
+  onChangeMode,
   onChangeThinkingEnabled,
   onChangeSelectedSkill,
   onChangeSelectedSkills,
@@ -833,22 +834,44 @@ const ChatInput = ({
             ) : null}
             <MyTooltip
               fontSize="12px"
-              label={mode === "plan" ? "当前处于计划模式（由审批流驱动）" : "当前处于执行模式（由审批流驱动）"}
-              openDelay={150}
+              label={
+                mode === "plan"
+                  ? "当前模式: PLAN。点击可切换到 RUN。"
+                  : "当前模式: RUN。点击可切换到 PLAN。"
+              }
+              openDelay={120}
             >
-              <Box
-                alignItems="center"
-                bg={mode === "plan" ? "rgba(251, 191, 36, 0.15)" : "transparent"}
-                border="1px solid"
-                borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.45)" : "transparent"}
+              <IconButton
+                _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
+                aria-label={mode === "plan" ? "切换到执行模式" : "切换到计划模式"}
+                bg="transparent"
+                border="1px solid transparent"
                 borderRadius="8px"
-                display="flex"
                 h="30px"
-                justifyContent="center"
-                minW="46px"
-              >
-                <Text fontSize="11px" fontWeight={700}>{mode === "plan" ? "PLAN" : "RUN"}</Text>
-              </Box>
+                icon={
+                  <Flex
+                    align="center"
+                    bg={mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "transparent"}
+                    border="1px solid"
+                    borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.55)" : "#CBD5E1"}
+                    borderRadius="999px"
+                    h="20px"
+                    justify="center"
+                    w="20px"
+                  >
+                    <Box
+                      as={ModeToggleIcon}
+                      color={mode === "plan" ? "orange.700" : "myGray.600"}
+                      h="14px"
+                      w="14px"
+                    />
+                  </Flex>
+                }
+                isDisabled={Boolean(isSending || isSubmitting)}
+                minW="30px"
+                onClick={() => onChangeMode?.(mode === "plan" ? "default" : "plan")}
+                variant="ghost"
+              />
             </MyTooltip>
             {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">

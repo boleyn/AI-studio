@@ -20,6 +20,7 @@ export const buildSkillContentBlock = (
   resourceTree: string[] = []
 ): string => {
   const fileBlock = sampledFiles.map((file) => `<file>${file}</file>`).join("\n");
+  const virtualSkillRoot = `skills/${skill.name}`;
   const scriptBlock =
     runnableScripts.length > 0
       ? [
@@ -28,7 +29,7 @@ export const buildSkillContentBlock = (
           ...runnableScripts.map((file) => `<script>${file}</script>`),
           "</skill_runnable_scripts>",
           "If you need to inspect script source, call Read with path like:",
-          ...runnableScripts.map((file) => `<read_path>skills/${skill.name}/${file}</read_path>`),
+          ...runnableScripts.map((file) => `<read_path>${virtualSkillRoot}/${file}</read_path>`),
         ]
       : [
           "Runnable scripts for skill_run_script (use exact relative path):",
@@ -56,8 +57,8 @@ export const buildSkillContentBlock = (
     "",
     skill.body.trim(),
     "",
-    `Base directory for this skill: ${skill.baseDir}`,
-    "Relative paths mentioned in this skill are relative to this base directory.",
+    `Virtual skill root: ${virtualSkillRoot}`,
+    "Relative paths mentioned in this skill are relative to this virtual root.",
     "Important: For skill_run_script, script must be an exact value from <skill_runnable_scripts>; do not guess names.",
     ...scriptBlock,
     ...treeBlock,

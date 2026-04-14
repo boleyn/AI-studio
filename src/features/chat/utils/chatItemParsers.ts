@@ -1,4 +1,8 @@
 import type { ConversationMessage } from "@/types/conversation";
+import {
+  isPlanInteractionEnvelope,
+  type PlanInteractionEnvelope,
+} from "@shared/chat/planInteraction";
 
 export interface MessageFile {
   id?: string;
@@ -21,6 +25,8 @@ export interface ToolDetail {
   toolName?: string;
   params?: string;
   response?: string;
+  interaction?: PlanInteractionEnvelope;
+  progressStatus?: "pending" | "in_progress" | "completed" | "error";
 }
 
 export interface TimelineItem {
@@ -30,6 +36,8 @@ export interface TimelineItem {
   toolName?: string;
   params?: string;
   response?: string;
+  interaction?: PlanInteractionEnvelope;
+  progressStatus?: "pending" | "in_progress" | "completed" | "error";
 }
 
 export interface PlanQuestionOption {
@@ -38,10 +46,17 @@ export interface PlanQuestionOption {
 }
 
 export interface PlanQuestion {
+  requestId?: string;
   header: string;
   id: string;
   question: string;
   options: PlanQuestionOption[];
+}
+
+export interface PlanQuestionSubmission {
+  requestId?: string;
+  answers: Record<string, string>;
+  submittedAt?: string;
 }
 
 export const MAX_TOOL_DETAIL_CHARS = 800;
@@ -108,13 +123,20 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
               : item.toolInput == null
               ? ""
               : JSON.stringify(item.toolInput, null, 2),
-          response:
-            typeof item.toolRes === "string"
-              ? item.toolRes
-              : item.toolRes == null
-              ? ""
-              : JSON.stringify(item.toolRes, null, 2),
-        }))
+      response:
+        typeof item.toolRes === "string"
+          ? item.toolRes
+          : item.toolRes == null
+          ? ""
+          : JSON.stringify(item.toolRes, null, 2),
+      interaction:
+        item.toolRes &&
+        typeof item.toolRes === "object" &&
+        !Array.isArray(item.toolRes) &&
+        isPlanInteractionEnvelope((item.toolRes as { interaction?: unknown }).interaction)
+          ? (item.toolRes as { interaction: PlanInteractionEnvelope }).interaction
+          : undefined,
+    }))
     : [];
 
   return detailsFromResponseData.length > detailsFromToolDetails.length
@@ -148,6 +170,14 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
       toolName: typeof item.toolName === "string" ? item.toolName : undefined,
       params: typeof item.params === "string" ? item.params : undefined,
       response: typeof item.response === "string" ? item.response : undefined,
+      interaction: isPlanInteractionEnvelope(item.interaction) ? item.interaction : undefined,
+      progressStatus:
+        item.progressStatus === "pending" ||
+        item.progressStatus === "in_progress" ||
+        item.progressStatus === "completed" ||
+        item.progressStatus === "error"
+          ? item.progressStatus
+          : undefined,
     }));
 };
 
@@ -158,6 +188,7 @@ export const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] =
   return raw
     .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
     .map((item) => ({
+      requestId: typeof item.requestId === "string" ? item.requestId : undefined,
       header: typeof item.header === "string" ? item.header : "确认",
       id: typeof item.id === "string" ? item.id : "",
       question: typeof item.question === "string" ? item.question : "",
@@ -184,6 +215,28 @@ export const getPlanAnswers = (message: ConversationMessage): Record<string, str
     }
     return acc;
   }, {});
+};
+
+export const getPlanQuestionSubmission = (message: ConversationMessage): PlanQuestionSubmission | null => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
+  const raw = (message.additional_kwargs as { planQuestionSubmission?: unknown }).planQuestionSubmission;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const answersRaw =
+    record.answers && typeof record.answers === "object" && !Array.isArray(record.answers)
+      ? (record.answers as Record<string, unknown>)
+      : {};
+  const answers = Object.entries(answersRaw).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (typeof value === "string" && value.trim()) {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+  return {
+    requestId: typeof record.requestId === "string" ? record.requestId : undefined,
+    answers,
+    submittedAt: typeof record.submittedAt === "string" ? record.submittedAt : undefined,
+  };
 };
 
 export const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
@@ -326,6 +379,8 @@ export const composeTimelineItems = ({
         toolName: target.toolName || tool.toolName,
         params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
         response: target.response || tool.response,
+        interaction: target.interaction || tool.interaction,
+        progressStatus: target.progressStatus || tool.progressStatus,
       };
       return;
     }
@@ -338,8 +393,10 @@ export const composeTimelineItems = ({
           ...target,
           toolName: target.toolName || tool.toolName,
           params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-          response: target.response || tool.response,
-        };
+        response: target.response || tool.response,
+        interaction: target.interaction || tool.interaction,
+        progressStatus: target.progressStatus || tool.progressStatus,
+      };
         return;
       }
     }
@@ -351,6 +408,8 @@ export const composeTimelineItems = ({
         toolName: tool.toolName || "",
         params: tool.params || "",
         response: tool.response || "",
+        interaction: tool.interaction,
+        progressStatus: tool.progressStatus,
       }) - 1;
     if (toolId) timelineToolIndexById.set(toolId, insertedIndex);
     timelineToolIndexByFingerprint.set(toolFingerprint, insertedIndex);
@@ -370,4 +429,3 @@ export const isDetailTruncated = (value?: string) => {
   if (!value) return false;
   return value.trim().length > MAX_TOOL_DETAIL_CHARS;
 };
-

@@ -382,7 +382,8 @@ export const sampleSkillFiles = async (skill: RuntimeSkill, limit = 10): Promise
       }
       if (!item.isFile()) continue;
       if (item.name === SKILL_FILE_NAME) continue;
-      found.push(absolute);
+      const relative = path.relative(skill.baseDir, absolute).replace(/\\/g, "/");
+      found.push(`skills/${skill.name}/${relative}`);
     }
   }
 

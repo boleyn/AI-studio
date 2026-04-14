@@ -10,11 +10,18 @@ export interface ChatInputSubmitPayload {
   files: ChatInputFile[];
   uploadedFiles: UploadedFileArtifact[];
   permissionApprovalResponse?: {
+    requestId?: string;
     toolName: string;
     decision: "approve" | "reject";
     note?: string;
   };
+  planQuestionResponse?: {
+    requestId: string;
+    answers: Record<string, string>;
+    note?: string;
+  };
   planModeApprovalResponse?: {
+    requestId: string;
     action: "enter" | "exit";
     decision: "approve" | "reject";
     note?: string;
@@ -61,6 +68,7 @@ export interface ChatInputProps {
   prefillText?: string;
   prefillVersion?: number;
   onChangeModel: (model: string) => void;
+  onChangeMode?: (mode: "default" | "plan") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
   onChangeSelectedSkills?: (skillNames: string[]) => void;

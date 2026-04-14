@@ -33,11 +33,18 @@ const buildChatRows = ({
   isSending: boolean;
   messageRatings: Record<string, MessageRating | undefined>;
 }): ChatRow[] => {
+  const visibleMessages = messages.filter((message) => {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object"
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    return kwargs?.hiddenFromTimeline !== true;
+  });
   const rows: ChatRow[] = [];
 
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    const nextMessage = messages[index + 1];
+  for (let index = 0; index < visibleMessages.length; index += 1) {
+    const message = visibleMessages[index];
+    const nextMessage = visibleMessages[index + 1];
     if (message.role === "user" && nextMessage?.role === "assistant") {
       const userMessageId = message.id ?? `user-${index}`;
       const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
@@ -180,4 +187,3 @@ const ChatMessageTimeline = ({
 };
 
 export default ChatMessageTimeline;
-
