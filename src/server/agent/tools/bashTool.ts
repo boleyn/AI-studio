@@ -53,6 +53,25 @@ const normalizeInlineCodePathMentions = (value: string) =>
     .replace(/(^|[^\w./-])\/\.files(?=\/|$)/g, "$1.files")
     .replace(/(^|[^\w./-])\/files(?=\/|$)/g, "$1.files");
 
+const normalizeFsPath = (value: string) => value.replace(/\\/g, "/");
+
+const sanitizeWorkspaceAbsolutePathInText = (value: string, workspaceRoot: string) => {
+  if (!value) return value;
+  const root = normalizeFsPath(path.resolve(workspaceRoot)).replace(/\/+$/, "");
+  if (!root) return value;
+  return normalizeFsPath(value)
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return line;
+      if (trimmed === root) {
+        return line.replace(root, "/");
+      }
+      return line.split(`${root}/`).join("/");
+    })
+    .join("\n");
+};
+
 const normalizeStructuredArgs = (cmdRaw: string, argsRaw: string[]) => {
   const cmd = cmdRaw.trim().toLowerCase();
   const normalizedArgs = argsRaw.map((arg) => normalizeWorkspaceLikePath(arg));
@@ -196,21 +215,21 @@ export const createBashTool = (options?: {
       const finalResult = await withFallback();
       const flushed = await workspaceManager.flushChangedFiles(normalizedProjectToken);
       const relativeCwd = path.relative(prepared.workspaceRoot, cwd).split(path.sep).join("/") || ".";
+      const sanitizedStdout = sanitizeWorkspaceAbsolutePathInText(finalResult.stdout, prepared.workspaceRoot);
+      const sanitizedStderr = sanitizeWorkspaceAbsolutePathInText(finalResult.stderr, prepared.workspaceRoot);
+      const sanitizedError = sanitizeWorkspaceAbsolutePathInText(finalResult.error || "", prepared.workspaceRoot);
 
       return {
         ok: finalResult.ok,
-        sandbox: "project_workspace",
-        sessionId: isolatedEnv.AISTUDIO_SESSION_ID,
-        projectToken: normalizedProjectToken,
         cwd: relativeCwd === "" ? "." : relativeCwd,
         cmd,
         args,
         exitCode: finalResult.exitCode,
         killed: finalResult.killed,
         signal: finalResult.signal,
-        stdout: finalResult.stdout,
-        stderr: finalResult.stderr,
-        error: finalResult.error,
+        stdout: sanitizedStdout,
+        stderr: sanitizedStderr,
+        error: sanitizedError,
         changedFiles: flushed.changedFiles,
       };
     },

@@ -314,6 +314,28 @@ const ChatPanel = ({
           )
         : nextMessages;
     const normalizedHydratedMessages = normalizeHistoryMessagesForTimeline(hydratedMessages);
+    const isStreamingCurrentConversation =
+      Boolean(streamAbortRef.current) &&
+      Boolean(chatId) &&
+      streamingConversationIdRef.current === chatId;
+    if (isStreamingCurrentConversation) {
+      const localMessages = messagesRef.current;
+      const localCount = localMessages.length;
+      const hydratedCount = normalizedHydratedMessages.length;
+      const activeStreamingId = (streamingMessageId || "").trim();
+      const localHasStreamingMessage = activeStreamingId
+        ? localMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      const hydratedHasStreamingMessage = activeStreamingId
+        ? normalizedHydratedMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      if (
+        hydratedCount < localCount ||
+        (localHasStreamingMessage && !hydratedHasStreamingMessage)
+      ) {
+        return;
+      }
+    }
     setMessages(normalizedHydratedMessages);
     setChatMode(derivePlanModeFromMessages(normalizedHydratedMessages));
     setMessageRatings(() => {
@@ -369,7 +391,15 @@ const ChatPanel = ({
         ? recoveredUsage
         : null;
     setContextUsageSnapshot(cachedUsage || matchedRecoveredUsage || null, activeId || null, model);
-  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot, token]);
+  }, [
+    activeConversation?.id,
+    activeConversation?.messages,
+    getCachedContextUsage,
+    model,
+    setContextUsageSnapshot,
+    streamingMessageId,
+    token,
+  ]);
 
   useEffect(() => {
     const activeId = activeConversation?.id || "";

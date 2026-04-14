@@ -78,7 +78,7 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
     return {
       type: "object",
       properties: {
-        file_path: { type: "string", description: "Claude Read: 绝对文件路径" },
+        file_path: { type: "string", description: "Claude Read: 工作区路径（以 / 开头）" },
         offset: { type: "integer", minimum: 0, description: "Claude 风格字段：读取起始行号（默认 1）" },
         limit: { type: "integer", minimum: 1, description: "Claude 风格字段：读取行数限制" },
       },
@@ -89,7 +89,7 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
     return {
       type: "object",
       properties: {
-        file_path: { type: "string", description: "Claude Write: 绝对文件路径" },
+        file_path: { type: "string", description: "Claude Write: 工作区路径（以 / 开头）" },
         content: {
           type: "string",
           description:
@@ -105,7 +105,7 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
       properties: {
         file_path: {
           type: "string",
-          description: "Claude Edit: 要修改的文件绝对路径",
+          description: "Claude Edit: 要修改的工作区路径（以 / 开头）",
         },
         old_string: { type: "string", description: "Claude Edit: 被替换原文" },
         new_string: { type: "string", description: "Claude Edit: 替换后文本" },
@@ -118,7 +118,7 @@ const toJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
     return {
       type: "object",
       properties: {
-        file_path: { type: "string", description: "要删除的文件绝对路径" },
+        file_path: { type: "string", description: "要删除的工作区路径（以 / 开头）" },
       },
       required: ["file_path"],
     };

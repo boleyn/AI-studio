@@ -91,7 +91,7 @@ const snapshotFromReadPayload = (payload: unknown): ReadSnapshot | null => {
 export const ensureAbsoluteFilePath = (filePath: string, field = "file_path") => {
   const normalized = normalizePath(filePath);
   if (!normalized || !normalized.startsWith("/")) {
-    throw new Error(`${field} 必须是绝对路径（以 / 开头）`);
+    throw new Error(`${field} 必须是工作区路径（以 / 开头）`);
   }
   return normalized;
 };
@@ -143,4 +143,3 @@ export const getReadSnapshot = (store: ReadSnapshotStore, filePath: string) => {
   if (!normalized) return undefined;
   return store.get(normalized);
 };
-

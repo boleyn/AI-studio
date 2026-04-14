@@ -537,6 +537,19 @@ const extractToolInteraction = (toolRes: unknown): PlanInteractionEnvelope | und
   return isPlanInteractionEnvelope(value) ? value : undefined;
 };
 
+const sanitizeWorkspacePathForDisplay = (input: string) => {
+  const normalized = (input || "").replace(/\\/g, "/").trim();
+  if (!normalized) return "";
+  const workspaceMatch = normalized.match(
+    /^.*\/\.aistudio\/projects\/[^/]+\/sessions\/[^/]+\/ws(\/.*)?$/i
+  );
+  if (workspaceMatch) {
+    return workspaceMatch[1] || "/";
+  }
+  if (!normalized.startsWith("/")) return `/${normalized.replace(/^\/+/, "")}`;
+  return normalized;
+};
+
 const mapToolResponseForModel = (toolName: string, response: string): string => {
   let parsed: unknown;
   try {
@@ -553,13 +566,38 @@ const mapToolResponseForModel = (toolName: string, response: string): string => 
   const isFailure = payload.ok === false;
 
   const filePath = (() => {
-    if (typeof payload.filePath === "string" && payload.filePath.trim()) return payload.filePath;
+    if (typeof payload.filePath === "string" && payload.filePath.trim()) {
+      return sanitizeWorkspacePathForDisplay(payload.filePath);
+    }
     if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
       const path = (payload.data as Record<string, unknown>).path;
-      if (typeof path === "string" && path.trim()) return path;
+      if (typeof path === "string" && path.trim()) return sanitizeWorkspacePathForDisplay(path);
     }
     return "";
   })();
+
+  const resolveBashMessage = () => {
+    const stdout = typeof payload.stdout === "string" ? payload.stdout.trim() : "";
+    const stderr = typeof payload.stderr === "string" ? payload.stderr.trim() : "";
+    const error = typeof payload.error === "string" ? payload.error.trim() : "";
+    const exitCode =
+      typeof payload.exitCode === "number" && Number.isFinite(payload.exitCode)
+        ? payload.exitCode
+        : undefined;
+    const ok = payload.ok !== false;
+
+    if (ok) {
+      if (stdout && stderr) return `${stdout}\n\n[stderr]\n${stderr}`;
+      if (stdout) return stdout;
+      if (stderr) return stderr;
+      return "Command completed.";
+    }
+
+    if (stderr) return stderr;
+    if (error) return error;
+    if (typeof exitCode === "number") return `Command failed with exit code ${exitCode}.`;
+    return response;
+  };
 
   const resolveWriteMessage = () => {
     const type = typeof payload.type === "string" ? payload.type : "";
@@ -606,6 +644,10 @@ const mapToolResponseForModel = (toolName: string, response: string): string => 
   if (toolName === "Glob" || (toolName === "global" && action === "list")) {
     if (isFailure) return response;
     return resolveGlobMessage();
+  }
+
+  if (toolName === "bash") {
+    return resolveBashMessage();
   }
 
   return response;
