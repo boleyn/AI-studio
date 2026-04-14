@@ -1,4 +1,3 @@
-import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
@@ -7,6 +6,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ChatPanelViewProvider } from "../context/ChatPanelViewContext";
 import { useConversations } from "../hooks/useConversations";
 import {
   buildDownloadUrl,
@@ -14,101 +14,41 @@ import {
   getPresignedChatFileGetUrl,
   uploadChatFiles,
 } from "../services/files";
-import { updateMessageFeedback } from "../services/feedback";
 import {
-  deleteConversationMessageById,
   getConversation as getConversationById,
   replaceConversationMessages,
-  truncateConversationFromMessageId,
 } from "../services/conversations";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
+import {
+  type AgentDurationPayload,
+  type AgentTaskSnapshot,
+  type PermissionApprovalPayload,
+  type PlanQuestion,
+  type PlanQuestionOption,
+  type ReasoningStreamPayload,
+  type SessionTaskSnapshot,
+  type ToolStreamPayload,
+} from "../types/chatPanelRuntime";
 import { getExecutionSummary } from "../utils/executionSummary";
 import { type FlowNodeResponsePayload } from "../utils/flowNodeMessages";
+import {
+  derivePlanModeFromMessages,
+  parseToolPayload,
+  type PlanModeApprovalPayload,
+} from "../utils/planModeDisplay";
 
-import ChatHeader from "./ChatHeader";
-import ChatInput from "./ChatInput";
-import SkillsManagerModal from "./SkillsManagerModal";
-import ChatMessageBlock from "./message/ChatMessageBlock";
+import ChatPanelView from "./ChatPanelView";
 import type { MessageRating } from "./message/MessageActionBar";
 
 import type { ConversationMessage } from "@/types/conversation";
-
-interface ToolStreamPayload {
-  id?: string;
-  toolName?: string;
-  params?: string;
-  response?: string;
-  rawResponse?: string;
-}
-
-interface ReasoningStreamPayload {
-  reasoningText?: string;
-}
-
-interface AgentDurationPayload {
-  durationSeconds?: number;
-}
-
-type AgentTaskSnapshot = {
-  id: string;
-  name?: string;
-  status: "running" | "completed" | "failed" | "closed";
-  turns?: number;
-  queueLength?: number;
-  error?: string;
-  lastOutput?: string;
-  updatedAt?: number;
-  isolation?: "session" | "worktree";
-  cwd?: string;
-  worktreePath?: string;
-  requiredMcpServers?: string[];
-  outputFile?: string;
-};
-
-type PlanQuestionOption = {
-  label: string;
-  description?: string;
-};
-
-type PlanQuestion = {
-  header?: string;
-  id: string;
-  question: string;
-  options?: PlanQuestionOption[];
-};
-
-type PlanModeApprovalPayload = {
-  action: "enter" | "exit";
-  title?: string;
-  description?: string;
-  rationale?: string;
-  options?: Array<{ label: string; value: "approve" | "reject" }>;
-};
-
-type PermissionApprovalPayload = {
-  toolName: string;
-  reason?: string;
-};
-
-type SessionTaskSnapshot = {
-  id: string;
-  subject: string;
-  description?: string;
-  status: "pending" | "in_progress" | "completed" | "blocked" | "deleted" | "stopped";
-  owner?: string;
-  createdAt?: number;
-  updatedAt?: number;
-};
 
 import {
   FILE_TAG_MARKER_PREFIX,
   SKILL_TAG_MARKER_PREFIX,
   buildConversationTitle,
   buildUserBubbleContent,
-  stripTagMarkersFromUserContent,
-  stripInlineImageMarkdown,
   getLatestContextUsageFromMessages,
   getMessageFeedback,
   hydrateHistoryUserMessage,
@@ -118,6 +58,8 @@ import {
   toUpdatedFilesMap,
 } from "../utils/chatPanelUtils";
 import { useChatModels } from "../hooks/useChatModels";
+import { useChatMessageActions } from "../hooks/useChatMessageActions";
+import { useChatPlanInteractions } from "../hooks/useChatPlanInteractions";
 import { useChatSkills } from "../hooks/useChatSkills";
 import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
@@ -126,49 +68,6 @@ import { updatePrimaryModel } from "../services/models";
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
 const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
-const VIRTUAL_FAILED_ASSISTANT_PREFIX = "virtual-failed-assistant:";
-
-const AGENT_STATUS_META: Record<
-  AgentTaskSnapshot["status"],
-  { label: string; bg: string; color: string; borderColor: string }
-> = {
-  running: {
-    label: "运行中",
-    bg: "green.50",
-    color: "green.700",
-    borderColor: "green.200",
-  },
-  completed: {
-    label: "已完成",
-    bg: "blue.50",
-    color: "blue.700",
-    borderColor: "blue.200",
-  },
-  failed: {
-    label: "失败",
-    bg: "red.50",
-    color: "red.700",
-    borderColor: "red.200",
-  },
-  closed: {
-    label: "已关闭",
-    bg: "myGray.100",
-    color: "myGray.700",
-    borderColor: "myGray.250",
-  },
-};
-
-const SESSION_TASK_STATUS_META: Record<
-  SessionTaskSnapshot["status"],
-  { label: string; bg: string; color: string; borderColor: string }
-> = {
-  pending: { label: "待处理", bg: "myGray.100", color: "myGray.700", borderColor: "myGray.250" },
-  in_progress: { label: "进行中", bg: "green.50", color: "green.700", borderColor: "green.200" },
-  completed: { label: "已完成", bg: "blue.50", color: "blue.700", borderColor: "blue.200" },
-  blocked: { label: "阻塞", bg: "orange.50", color: "orange.700", borderColor: "orange.200" },
-  deleted: { label: "已删除", bg: "myGray.100", color: "myGray.700", borderColor: "myGray.250" },
-  stopped: { label: "已停止", bg: "red.50", color: "red.700", borderColor: "red.200" },
-};
 
 const readThinkingEnabled = () => {
   if (typeof window === "undefined") return true;
@@ -191,29 +90,6 @@ const persistThinkingEnabled = (enabled: boolean) => {
   }
 };
 
-const derivePlanModeFromMessages = (list: ConversationMessage[]): "default" | "plan" => {
-  let active = false;
-  for (const message of list) {
-    const kwargs =
-      message.additional_kwargs && typeof message.additional_kwargs === "object"
-        ? (message.additional_kwargs as Record<string, unknown>)
-        : null;
-    if (!kwargs) continue;
-    if (typeof kwargs.planModeState === "boolean") {
-      active = kwargs.planModeState;
-      continue;
-    }
-    const approval =
-      kwargs.planModeApprovalResponse && typeof kwargs.planModeApprovalResponse === "object"
-        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
-        : null;
-    if (!approval) continue;
-    if (approval.decision !== "approve") continue;
-    if (approval.action === "enter") active = true;
-    if (approval.action === "exit") active = false;
-  }
-  return active ? "plan" : "default";
-};
 
 const ChatPanel = ({
   token,
@@ -990,6 +866,7 @@ const ChatPanel = ({
               const streamPayload = item as ToolStreamPayload;
               const responseForDisplay = streamPayload.response || "";
               const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
+              const parsedPayload = parseToolPayload(responseForDisplay, responseForFileUpdates);
               if (streamPayload.id) {
                 upsertToolMessage(streamPayload.id, {
                   toolName: streamPayload.toolName,
@@ -1003,9 +880,8 @@ const ChatPanel = ({
               }
               if (streamPayload.toolName && responseForDisplay) {
                 try {
-                  const parsed = JSON.parse(responseForDisplay) as
-                    | AgentTaskSnapshot
-                    | { agents?: AgentTaskSnapshot[] };
+                  const parsed = (parsedPayload ||
+                    JSON.parse(responseForDisplay)) as AgentTaskSnapshot | { agents?: AgentTaskSnapshot[] };
                   if (Array.isArray((parsed as { agents?: AgentTaskSnapshot[] }).agents)) {
                     upsertAgentTasks((parsed as { agents: AgentTaskSnapshot[] }).agents);
                     updateAssistantMetadata((current) => ({
@@ -1039,87 +915,107 @@ const ChatPanel = ({
                 }
               }
 
-              if (streamPayload.toolName === "request_user_input" && responseForDisplay) {
-                try {
-                  const parsed = JSON.parse(responseForDisplay) as {
-                    questions?: PlanQuestion[];
-                  };
-                  const questions = Array.isArray(parsed.questions)
-                    ? parsed.questions
-                        .filter((item): item is PlanQuestion => Boolean(item && typeof item === "object"))
-                        .map((item) => ({
-                          header: typeof item.header === "string" ? item.header : "确认",
-                          id: typeof item.id === "string" ? item.id : "",
-                          question: typeof item.question === "string" ? item.question : "",
-                          options: Array.isArray(item.options)
-                            ? item.options
-                                .filter((opt): opt is PlanQuestionOption => Boolean(opt && typeof opt === "object"))
-                                .map((opt) => ({
-                                  label: typeof opt.label === "string" ? opt.label : "",
-                                  description: typeof opt.description === "string" ? opt.description : "",
-                                }))
-                                .filter((opt) => opt.label.trim().length > 0)
-                            : [],
-                        }))
-                        .filter((item) => item.id && item.question)
-                    : [];
-                  if (questions.length > 0) {
-                    updateAssistantMetadata((current) => ({
-                      ...current,
-                      planQuestions: questions,
-                    }));
-                  }
-                } catch {
-                  // ignore parser failures
+              if (streamPayload.toolName === "request_user_input" && parsedPayload) {
+                const parsed = parsedPayload as {
+                  questions?: PlanQuestion[];
+                };
+                const questions = Array.isArray(parsed.questions)
+                  ? parsed.questions
+                      .filter((item): item is PlanQuestion => Boolean(item && typeof item === "object"))
+                      .map((item) => ({
+                        header: typeof item.header === "string" ? item.header : "确认",
+                        id: typeof item.id === "string" ? item.id : "",
+                        question: typeof item.question === "string" ? item.question : "",
+                        options: Array.isArray(item.options)
+                          ? item.options
+                              .filter((opt): opt is PlanQuestionOption => Boolean(opt && typeof opt === "object"))
+                              .map((opt) => ({
+                                label: typeof opt.label === "string" ? opt.label : "",
+                                description: typeof opt.description === "string" ? opt.description : "",
+                              }))
+                              .filter((opt) => opt.label.trim().length > 0)
+                          : [],
+                      }))
+                      .filter((item) => item.id && item.question)
+                  : [];
+                if (questions.length > 0) {
+                  updateAssistantMetadata((current) => ({
+                    ...current,
+                    planQuestions: questions,
+                  }));
+                }
+              }
+
+              if (streamPayload.toolName === "update_plan" && parsedPayload) {
+                const parsed = parsedPayload as {
+                  explanation?: string;
+                  plan?: Array<{ step?: string; status?: string }>;
+                };
+                const plan = Array.isArray(parsed.plan)
+                  ? parsed.plan
+                      .filter((item): item is { step?: string; status?: string } => Boolean(item && typeof item === "object"))
+                      .map((item) => ({
+                        step: typeof item.step === "string" ? item.step.trim() : "",
+                        status:
+                          item.status === "completed"
+                            ? ("completed" as const)
+                            : item.status === "in_progress"
+                            ? ("in_progress" as const)
+                            : ("pending" as const),
+                      }))
+                      .filter((item) => item.step.length > 0)
+                  : [];
+                if (plan.length > 0) {
+                  updateAssistantMetadata((current) => ({
+                    ...current,
+                    planProgress: {
+                      explanation: typeof parsed.explanation === "string" ? parsed.explanation : undefined,
+                      plan,
+                    },
+                  }));
                 }
               }
 
               if (
                 (streamPayload.toolName === "enter_plan_mode" ||
                   streamPayload.toolName === "exit_plan_mode") &&
-                responseForDisplay
+                parsedPayload
               ) {
-                try {
-                  const parsed = JSON.parse(responseForDisplay) as {
-                    approval?: PlanModeApprovalPayload;
-                  };
-                  if (parsed.approval && typeof parsed.approval === "object") {
-                    updateAssistantMetadata((current) => ({
-                      ...current,
-                      planModeApproval: parsed.approval,
-                    }));
-                  }
-                } catch {
-                  // ignore parser failures
+                const planPreview = streamingTextRef.current.trim().slice(0, 6000);
+                const parsed = parsedPayload as {
+                  approval?: PlanModeApprovalPayload;
+                };
+                if (parsed.approval && typeof parsed.approval === "object") {
+                  updateAssistantMetadata((current) => ({
+                    ...current,
+                    planModeApproval: parsed.approval,
+                    ...(planPreview ? { planPreview } : {}),
+                  }));
                 }
               }
 
-              if (responseForDisplay) {
-                try {
-                  const parsed = JSON.parse(responseForDisplay) as {
-                    requiresPermissionApproval?: boolean;
-                    permission?: PermissionApprovalPayload;
-                  };
-                  const permission = parsed.permission;
-                  if (
-                    parsed.requiresPermissionApproval === true &&
-                    permission &&
-                    typeof permission === "object" &&
-                    typeof permission.toolName === "string"
-                  ) {
-                    updateAssistantMetadata((current) => ({
-                      ...current,
-                      permissionApproval: {
-                        toolName: permission.toolName,
-                        reason:
-                          typeof permission.reason === "string"
-                            ? permission.reason
-                            : undefined,
-                      },
-                    }));
-                  }
-                } catch {
-                  // ignore parser failures
+              if (parsedPayload) {
+                const parsed = parsedPayload as {
+                  requiresPermissionApproval?: boolean;
+                  permission?: PermissionApprovalPayload;
+                };
+                const permission = parsed.permission;
+                if (
+                  parsed.requiresPermissionApproval === true &&
+                  permission &&
+                  typeof permission === "object" &&
+                  typeof permission.toolName === "string"
+                ) {
+                  updateAssistantMetadata((current) => ({
+                    ...current,
+                    permissionApproval: {
+                      toolName: permission.toolName,
+                      reason:
+                        typeof permission.reason === "string"
+                          ? permission.reason
+                          : undefined,
+                    },
+                  }));
                 }
               }
 
@@ -1468,338 +1364,33 @@ const ChatPanel = ({
       });
   }, [activeConversation?.id, token]);
 
-  const handlePlanQuestionSelect = useCallback(
-    (input: {
-      messageId: string;
-      questionId: string;
-      header?: string;
-      question: string;
-      optionLabel: string;
-      optionDescription?: string;
-    }) => {
-      if (!input.messageId || !input.questionId || !input.optionLabel || isSending) return;
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          const existingAnswers =
-            kwargs.planAnswers && typeof kwargs.planAnswers === "object" && !Array.isArray(kwargs.planAnswers)
-              ? (kwargs.planAnswers as Record<string, unknown>)
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              planAnswers: {
-                ...existingAnswers,
-                [input.questionId]: input.optionLabel,
-              },
-            },
-          };
-        })
-      );
+  const {
+    handlePlanQuestionSelect,
+    handlePlanModeApprovalSelect,
+    handlePermissionApprovalSelect,
+    chatInteractionContextValue,
+  } = useChatPlanInteractions({
+    isSending,
+    setMessages,
+    chatMode,
+    setChatMode,
+    handleSend,
+    selectedSkills,
+    thinkingEnabled,
+  });
 
-      const answerText = [
-        "Plan mode user selection:",
-        `- question_id: ${input.questionId}`,
-        `- header: ${input.header || "Confirm"}`,
-        `- question: ${input.question}`,
-        `- selected_option: ${input.optionLabel}`,
-        ...(input.optionDescription ? [`- selected_option_description: ${input.optionDescription}`] : []),
-      ].join("\n");
-
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        thinkingEnabled,
-      });
-    },
-    [handleSend, isSending, selectedSkills, thinkingEnabled]
-  );
-
-  const handlePlanModeApprovalSelect = useCallback(
-    (input: {
-      messageId: string;
-      action: "enter" | "exit";
-      decision: "approve" | "reject";
-    }) => {
-      if (!input.messageId || isSending) return;
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              planModeApprovalDecision: input.decision,
-            },
-          };
-        })
-      );
-
-      const nextMode =
-        input.decision !== "approve"
-          ? chatMode
-          : input.action === "enter"
-          ? "plan"
-          : "default";
-      if (nextMode !== chatMode) {
-        setChatMode(nextMode);
-      }
-
-      const answerText = [
-        "Plan mode approval response:",
-        `- action: ${input.action}`,
-        `- decision: ${input.decision}`,
-      ].join("\n");
-
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        planModeApprovalResponse: {
-          action: input.action,
-          decision: input.decision,
-        },
-        thinkingEnabled,
-      });
-    },
-    [chatMode, handleSend, isSending, selectedSkills, thinkingEnabled]
-  );
-
-  const handlePermissionApprovalSelect = useCallback(
-    (input: { messageId: string; toolName: string; decision: "approve" | "reject" }) => {
-      if (!input.messageId || !input.toolName || isSending) return;
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              permissionApprovalDecision: input.decision,
-            },
-          };
-        })
-      );
-
-      const answerText = [
-        "Tool permission approval response:",
-        `- tool_name: ${input.toolName}`,
-        `- decision: ${input.decision}`,
-      ].join("\n");
-
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        permissionApprovalResponse: {
-          toolName: input.toolName,
-          decision: input.decision,
-        },
-        thinkingEnabled,
-      });
-    },
-    [handleSend, isSending, selectedSkills, thinkingEnabled]
-  );
-
-  const handleRateMessage = useCallback(
-    async (messageId: string, nextRating: MessageRating) => {
-      const conversationId = activeConversation?.id;
-      if (!conversationId) return;
-
-      let previous: MessageRating | undefined;
-      let resolved: MessageRating | undefined;
-
-      setMessageRatings((prev) => {
-        previous = prev[messageId];
-        resolved = previous === nextRating ? undefined : nextRating;
-        return {
-          ...prev,
-          [messageId]: resolved,
-        };
-      });
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              userFeedback: resolved,
-            },
-          };
-        })
-      );
-
-      try {
-        await updateMessageFeedback({
-          token,
-          conversationId,
-          messageId,
-          feedback: resolved,
-        });
-      } catch {
-        setMessageRatings((prev) => ({
-          ...prev,
-          [messageId]: previous,
-        }));
-        setMessages((prev) =>
-          prev.map((message) => {
-            if (message.id !== messageId) return message;
-            const kwargs =
-              message.additional_kwargs && typeof message.additional_kwargs === "object"
-                ? message.additional_kwargs
-                : {};
-            return {
-              ...message,
-              additional_kwargs: {
-                ...kwargs,
-                userFeedback: previous,
-              },
-            };
-          })
-        );
-      }
-    },
-    [activeConversation?.id, token]
-  );
-
-  const handleDeleteMessage = useCallback(
-    async (messageId: string) => {
-      if (isSending) return;
-      const snapshot = [...messages];
-      const isVirtualFailedAssistant = messageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX);
-      const resolvedDeleteId = isVirtualFailedAssistant
-        ? messageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length)
-        : messageId;
-      if (!resolvedDeleteId) return;
-
-      const targetIndex = snapshot.findIndex((message) => message.id === resolvedDeleteId);
-      if (targetIndex < 0) return;
-
-      const remainedMessages = snapshot.filter((message) => message.id !== resolvedDeleteId);
-      const conversationId = activeConversation?.id;
-      if (conversationId) {
-        const deleted = await deleteConversationMessageById(token, conversationId, resolvedDeleteId);
-        if (!deleted) return;
-      }
-
-      setMessages(remainedMessages);
-      setMessageRatings((prev) => {
-        const next = { ...prev };
-        delete next[resolvedDeleteId];
-        return next;
-      });
-      if (streamingMessageId === resolvedDeleteId) {
-        setStreamingMessageId(null);
-      }
-    },
-    [activeConversation?.id, isSending, messages, streamingMessageId, token]
-  );
-
-  const handleRegenerateMessage = useCallback(
-    async (assistantMessageId: string) => {
-      if (isSending) return;
-      const snapshot = [...messages];
-      let userIndex = -1;
-      let assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
-      if (assistantIndex >= 0) {
-        const assistantMessage = snapshot[assistantIndex];
-        if (assistantMessage.role !== "assistant") return;
-        for (let i = assistantIndex - 1; i >= 0; i -= 1) {
-          if (snapshot[i].role === "user") {
-            userIndex = i;
-            break;
-          }
-        }
-      } else if (assistantMessageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX)) {
-        const failedUserId = assistantMessageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length);
-        userIndex = snapshot.findIndex((message) => message.role === "user" && message.id === failedUserId);
-        assistantIndex = userIndex >= 0 ? userIndex + 1 : -1;
-      }
-      if (userIndex < 0) return;
-      const userMessage = snapshot[userIndex];
-
-      const text = stripInlineImageMarkdown(
-        stripTagMarkersFromUserContent(extractText(userMessage.content))
-      );
-      if (!text) return;
-      const uploadedFiles =
-        userMessage.artifact && typeof userMessage.artifact === "object"
-          ? (Array.isArray((userMessage.artifact as { files?: unknown }).files) ? ((userMessage.artifact as { files?: unknown }).files as unknown[]) : [])
-              .filter((item): item is UploadedFileArtifact => Boolean(item && typeof item === "object"))
-          : [];
-
-      const conversationId = activeConversation?.id;
-      if (!conversationId) return;
-
-      // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
-      const cutIndex = Math.max(0, Math.min(assistantIndex, snapshot.length));
-      const truncated = await truncateConversationFromMessageId(
-        token,
-        conversationId,
-        assistantMessageId,
-        userMessage.id
-      );
-      if (!truncated) return;
-
-      setMessages((prev) => prev.slice(0, cutIndex));
-      setMessageRatings((prev) => {
-        const next = { ...prev };
-        for (const message of snapshot.slice(cutIndex)) {
-          if (!message.id) continue;
-          delete next[message.id];
-        }
-        return next;
-      });
-      if (streamingMessageId && snapshot.slice(cutIndex).some((message) => message.id === streamingMessageId)) {
-        setStreamingMessageId(null);
-      }
-
-      // Step 2: 重新回答当前 user 消息，避免重复持久化 user 记录。
-      await handleSend({
-        text,
-        files: [],
-        uploadedFiles,
-        selectedSkill: Array.from(new Set(selectedSkills.filter(Boolean)))[0],
-        selectedSkills: Array.from(new Set(selectedSkills.filter(Boolean))),
-        selectedFilePaths:
-          userMessage.additional_kwargs &&
-          typeof userMessage.additional_kwargs === "object" &&
-          Array.isArray((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
-            ? ((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
-                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-      }, {
-        echoUserMessage: false,
-        persistIncomingMessages: false,
-      });
-    },
-    [activeConversation?.id, handleSend, isSending, messages, selectedSkills, streamingMessageId, token]
-  );
+  const { handleRateMessage, handleDeleteMessage, handleRegenerateMessage } = useChatMessageActions({
+    token,
+    activeConversationId: activeConversation?.id,
+    isSending,
+    messages,
+    setMessages,
+    streamingMessageId,
+    setStreamingMessageId,
+    setMessageRatings,
+    selectedSkills,
+    handleSend,
+  });
 
   const activeConversationTitle = useMemo(
     () => activeConversation?.title || defaultHeaderTitle,
@@ -1852,439 +1443,147 @@ const ChatPanel = ({
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;
 
+  const chatPanelViewContextValue = useMemo(
+    () => ({
+      height,
+      t,
+      activeConversationId: activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messageCount: messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      onChangeModel: handleChangeModel,
+      onDeleteAllConversations: () => deleteAllConversations(),
+      onDeleteConversation: (id: string) => void deleteConversation(id),
+      onNewConversation: () => {
+        setContextUsageSnapshot(null);
+        void createNewConversation();
+      },
+      onSelectConversation: (id: string) => void loadConversation(id),
+      activeConversationTitle,
+      scrollRef,
+      onScroll: (event: { currentTarget: { scrollHeight: number; scrollTop: number; clientHeight: number } }) => {
+        const el = event.currentTarget;
+        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        shouldAutoScrollRef.current = distanceToBottom < 80;
+      },
+      agentTaskFilter,
+      sessionTaskFilter,
+      agentTasks,
+      sessionTasks,
+      filteredAgentTaskList,
+      filteredSessionTaskList,
+      onSetAgentTaskFilter: setAgentTaskFilter,
+      onSetSessionTaskFilter: setSessionTaskFilter,
+      onToggleShowAgentTasks: () => setShowAgentTasks((prev) => !prev),
+      onToggleShowSessionTasks: () => setShowSessionTasks((prev) => !prev),
+      onClearCompletedSessionTasks: clearCompletedSessionTasks,
+      showAgentTasks,
+      showSessionTasks,
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      onDeleteMessage: (messageId: string) => void handleDeleteMessage(messageId),
+      onRateMessage: (messageId: string, rating: MessageRating) => void handleRateMessage(messageId, rating),
+      onRegenerateMessage: (messageId: string) => void handleRegenerateMessage(messageId),
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      onChangeThinkingEnabled: handleChangeThinkingEnabled,
+      onChangeSelectedSkills: setSelectedSkills,
+      onUploadFiles: prepareUploadFiles,
+      onSend: handleSend,
+      onStop: handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      onCloseSkills: () => setIsSkillsOpen(false),
+      token,
+      onFilesApplied: onFilesUpdated,
+      onCreateSkillViaChat: handleCreateSkillViaChat,
+      onUseSkill: handleUseSkill,
+    }),
+    [
+      height,
+      t,
+      activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      handleChangeModel,
+      deleteAllConversations,
+      deleteConversation,
+      setContextUsageSnapshot,
+      createNewConversation,
+      loadConversation,
+      activeConversationTitle,
+      scrollRef,
+      agentTaskFilter,
+      sessionTaskFilter,
+      agentTasks,
+      sessionTasks,
+      filteredAgentTaskList,
+      filteredSessionTaskList,
+      clearCompletedSessionTasks,
+      showAgentTasks,
+      showSessionTasks,
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      handleDeleteMessage,
+      handleRateMessage,
+      handleRegenerateMessage,
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      handleChangeThinkingEnabled,
+      setSelectedSkills,
+      prepareUploadFiles,
+      handleSend,
+      handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      token,
+      onFilesUpdated,
+      handleCreateSkillViaChat,
+      handleUseSkill,
+    ]
+  );
+
   return (
-    <Flex
-      backdropFilter="none"
-      bg="#f7f8fc"
-      border="1px solid"
-      borderTop={0}
-      borderBottom={0}
-      borderBottomLeftRadius={0}
-      borderColor="#dbe2ec"
-      borderRight={0}
-      borderTopLeftRadius={0}
-      boxShadow="none"
-      direction="column"
-      h={height}
-      overflow="hidden"
-    >
-      <ChatHeader
-        activeConversationId={activeConversation?.id}
-        conversations={conversations}
-        contextUsage={contextUsage}
-        contextStatus={contextStatus}
-        messageCount={messages.length}
-        model={model}
-        modelLoading={modelLoading}
-        modelOptions={modelOptions}
-        onChangeModel={handleChangeModel}
-        onDeleteAllConversations={() => deleteAllConversations()}
-        onDeleteConversation={(id) => deleteConversation(id)}
-        onNewConversation={() => {
-          setContextUsageSnapshot(null);
-          void createNewConversation();
-        }}
-        onOpenSkills={undefined}
-        onSelectConversation={(id) => loadConversation(id)}
-        title={activeConversationTitle}
-      />
-
-      <Flex direction="column" flex="1" overflow="hidden">
-        <Box
-          ref={scrollRef}
-          bg="#f7f8fc"
-          flex="1"
-          overflowY="auto"
-          sx={{
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-            "&::-webkit-scrollbar": {
-              display: "none",
-            },
-          }}
-          px={4}
-          py={4}
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-            shouldAutoScrollRef.current = distanceToBottom < 80;
-          }}
-        >
-          {Object.keys(agentTasks).length > 0 ? (
-            <Box
-              bg="white"
-              border="1px solid"
-              borderColor="myGray.200"
-              borderRadius="10px"
-              mb={3}
-              px={3}
-              py={2}
-            >
-              <Flex align="center" justify="space-between" mb={showAgentTasks ? 2 : 0}>
-                <Text color="myGray.700" fontSize="12px" fontWeight={700}>
-                  子代理任务 ({Object.keys(agentTasks).length})
-                </Text>
-                <Flex align="center" gap={3}>
-                  {([
-                    ["all", "全部"],
-                    ["active", "运行中"],
-                    ["failed", "失败"],
-                    ["done", "已结束"],
-                  ] as Array<["all" | "active" | "done" | "failed", string]>).map(([value, label]) => (
-                    <Text
-                      key={`agent-task-filter-${value}`}
-                      as="button"
-                      color={agentTaskFilter === value ? "primary.700" : "myGray.500"}
-                      fontSize="11px"
-                      fontWeight={agentTaskFilter === value ? 700 : 500}
-                      onClick={() => setAgentTaskFilter(value)}
-                    >
-                      {label}
-                    </Text>
-                  ))}
-                  <Text
-                    as="button"
-                    color="myGray.500"
-                    fontSize="11px"
-                    onClick={() => setShowAgentTasks((prev) => !prev)}
-                  >
-                    {showAgentTasks ? "收起" : "展开"}
-                  </Text>
-                </Flex>
-              </Flex>
-              {showAgentTasks ? (
-                <Flex direction="column" gap={1.5}>
-                  {filteredAgentTaskList.map((task) => {
-                      const statusMeta = AGENT_STATUS_META[task.status] || AGENT_STATUS_META.completed;
-                      return (
-                        <Flex
-                          key={task.id}
-                          align="center"
-                          bg="myGray.50"
-                          border="1px solid"
-                          borderColor="myGray.150"
-                          borderRadius="8px"
-                          gap={2}
-                          px={2}
-                          py={1.5}
-                        >
-                          <Text color="myGray.700" fontSize="11px" fontWeight={700} noOfLines={1} minW="130px">
-                            {task.name || task.id}
-                          </Text>
-                          <Text
-                            bg={statusMeta.bg}
-                            border="1px solid"
-                            borderColor={statusMeta.borderColor}
-                            borderRadius="999px"
-                            color={statusMeta.color}
-                            fontSize="10px"
-                            fontWeight={700}
-                            px={2}
-                            py="1px"
-                          >
-                            {statusMeta.label}
-                          </Text>
-                          <Text color="myGray.500" fontSize="10px">
-                            turns {task.turns || 0}
-                          </Text>
-                          <Text color="myGray.500" fontSize="10px">
-                            queue {task.queueLength || 0}
-                          </Text>
-                          {task.outputFile ? (
-                            <Text color="myGray.500" fontSize="10px" maxW="220px" noOfLines={1} title={task.outputFile}>
-                              log: {task.outputFile}
-                            </Text>
-                          ) : null}
-                          <Text color="myGray.500" fontSize="10px" ml="auto">
-                            {task.isolation || "session"}
-                          </Text>
-                        </Flex>
-                      );
-                    })}
-                </Flex>
-              ) : null}
-            </Box>
-          ) : null}
-          {Object.keys(sessionTasks).length > 0 ? (
-            <Box
-              bg="white"
-              border="1px solid"
-              borderColor="myGray.200"
-              borderRadius="10px"
-              mb={3}
-              px={3}
-              py={2}
-            >
-              <Flex align="center" justify="space-between" mb={showSessionTasks ? 2 : 0}>
-                <Text color="myGray.700" fontSize="12px" fontWeight={700}>
-                  任务列表 ({Object.keys(sessionTasks).length})
-                </Text>
-                <Flex align="center" gap={3}>
-                  {([
-                    ["all", "全部"],
-                    ["active", "进行中"],
-                    ["blocked", "阻塞"],
-                    ["done", "已结束"],
-                  ] as Array<["all" | "active" | "done" | "blocked", string]>).map(([value, label]) => (
-                    <Text
-                      key={`session-task-filter-${value}`}
-                      as="button"
-                      color={sessionTaskFilter === value ? "primary.700" : "myGray.500"}
-                      fontSize="11px"
-                      fontWeight={sessionTaskFilter === value ? 700 : 500}
-                      onClick={() => setSessionTaskFilter(value)}
-                    >
-                      {label}
-                    </Text>
-                  ))}
-                  <Text
-                    as="button"
-                    color="myGray.500"
-                    fontSize="11px"
-                    onClick={clearCompletedSessionTasks}
-                  >
-                    清理已完成
-                  </Text>
-                  <Text
-                    as="button"
-                    color="myGray.500"
-                    fontSize="11px"
-                    onClick={() => setShowSessionTasks((prev) => !prev)}
-                  >
-                    {showSessionTasks ? "收起" : "展开"}
-                  </Text>
-                </Flex>
-              </Flex>
-              {showSessionTasks ? (
-                <Flex direction="column" gap={1.5}>
-                  {filteredSessionTaskList.map((task) => {
-                      const statusMeta = SESSION_TASK_STATUS_META[task.status] || SESSION_TASK_STATUS_META.pending;
-                      return (
-                        <Flex
-                          key={task.id}
-                          align="center"
-                          bg="myGray.50"
-                          border="1px solid"
-                          borderColor="myGray.150"
-                          borderRadius="8px"
-                          gap={2}
-                          px={2}
-                          py={1.5}
-                        >
-                          <Text color="myGray.700" fontSize="11px" fontWeight={700} noOfLines={1} minW="150px">
-                            #{task.id} {task.subject || "Untitled"}
-                          </Text>
-                          <Text
-                            bg={statusMeta.bg}
-                            border="1px solid"
-                            borderColor={statusMeta.borderColor}
-                            borderRadius="999px"
-                            color={statusMeta.color}
-                            fontSize="10px"
-                            fontWeight={700}
-                            px={2}
-                            py="1px"
-                          >
-                            {statusMeta.label}
-                          </Text>
-                          {task.owner ? (
-                            <Text color="myGray.500" fontSize="10px" ml="auto">
-                              {task.owner}
-                            </Text>
-                          ) : null}
-                        </Flex>
-                      );
-                    })}
-                </Flex>
-              ) : null}
-            </Box>
-          ) : null}
-          {showInitialLoading ? (
-            <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
-              <Spinner size="sm" />
-              <Text fontSize="sm">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-            </Flex>
-          ) : messages.length === 0 ? (
-            <Flex align="center" color="gray.500" h="full" justify="center">
-              <Box textAlign="center">
-                <Text color="myGray.700" fontSize="lg" fontWeight="700">
-                  {emptyStateTitle || t("chat:ready_start", { defaultValue: "准备开始" })}
-                </Text>
-                <Text fontSize="sm" mt={1}>
-                  {emptyStateDescription ||
-                    t("chat:ready_desc", { defaultValue: "描述你想改的功能，我会直接修改代码" })}
-                </Text>
-              </Box>
-            </Flex>
-          ) : (
-            <Flex direction="column" gap={3} pt={14}>
-              {(() => {
-                const rows: Array<{
-                  key: string;
-                  message: ConversationMessage;
-                  messageId: string;
-                  requestMessage?: ConversationMessage;
-                  requestContent?: string;
-                  summary: ReturnType<typeof getExecutionSummary>;
-                  isStreaming: boolean;
-                  canRegenerate: boolean;
-                  rating?: MessageRating;
-                }> = [];
-                for (let index = 0; index < messages.length; index += 1) {
-                  const message = messages[index];
-                  const nextMessage = messages[index + 1];
-                  if (message.role === "user" && nextMessage?.role === "assistant") {
-                    const userMessageId = message.id ?? `user-${index}`;
-                    const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
-                    const summary = getExecutionSummary(nextMessage);
-                    rows.push({
-                      key: `${userMessageId}__${assistantMessageId}`,
-                      message: nextMessage,
-                      messageId: assistantMessageId,
-                      requestMessage: message,
-                      requestContent: extractText(message.content),
-                      summary,
-                      isStreaming: nextMessage.id === streamingMessageId,
-                      canRegenerate: true,
-                      rating: messageRatings[assistantMessageId],
-                    });
-                    index += 1;
-                    continue;
-                  }
-                  if (message.role === "user" && !nextMessage && !isSending) {
-                    const userMessageId = message.id ?? `user-${index}`;
-                    const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
-                    const virtualMessage: ConversationMessage = {
-                      type: "assistant",
-                      subtype: "result",
-                      role: "assistant",
-                      id: virtualAssistantId,
-                      time: message.time,
-                      content: "请求失败（历史记录未保存回复），可点击重新生成。",
-                      status: "error",
-                    };
-                    rows.push({
-                      key: `${userMessageId}__${virtualAssistantId}`,
-                      message: virtualMessage,
-                      messageId: virtualAssistantId,
-                      requestMessage: message,
-                      requestContent: extractText(message.content),
-                      summary: getExecutionSummary(virtualMessage),
-                      isStreaming: false,
-                      canRegenerate: true,
-                    });
-                    continue;
-                  }
-
-                  const messageId = message.id ?? `${message.role}-${index}`;
-                  const summary = getExecutionSummary(message);
-                  let canRegenerate = false;
-                  if (message.role === "assistant") {
-                    canRegenerate = messages.slice(0, index).some((item) => item.role === "user");
-                  }
-                  rows.push({
-                    key: messageId,
-                    message,
-                    messageId,
-                    summary,
-                    isStreaming: message.id === streamingMessageId,
-                    canRegenerate,
-                    rating: messageRatings[messageId],
-                  });
-                }
-                return rows.map((row, rowIndex) => {
-                  const isLastRow = rowIndex === rows.length - 1;
-                  const rowStatusColor =
-                    row.isStreaming
-                      ? "green.500"
-                      : row.message.status === "error"
-                      ? "red.500"
-                      : "blue.500";
-                  return (
-                    <Flex key={row.key} align="stretch" gap={3} w="full">
-                      <Flex align="center" direction="column" w="16px">
-                        {row.isStreaming ? (
-                          <Spinner color="green.500" mt="8px" size="xs" speed="0.7s" thickness="2.5px" />
-                        ) : (
-                          <Box
-                            bg={rowStatusColor}
-                            borderRadius="full"
-                            h="9px"
-                            mt="10px"
-                            w="9px"
-                          />
-                        )}
-                        {!isLastRow ? <Box bg="myGray.200" flex="1" mt={1} w="2px" /> : null}
-                      </Flex>
-                      <Box flex="1" minW={0}>
-                        <ChatMessageBlock
-                          isLatestRun={isLastRow}
-                          isStreaming={row.isStreaming}
-                          message={row.message}
-                          messageId={row.messageId}
-                          planQuestionSubmitting={isSending}
-                          planModeApprovalSubmitting={isSending}
-                          requestMessage={row.requestMessage}
-                          requestContent={row.requestContent}
-                          summary={row.summary}
-                          canRegenerate={row.canRegenerate}
-                          onDelete={handleDeleteMessage}
-                          onPlanQuestionSelect={handlePlanQuestionSelect}
-                          onPlanModeApprovalSelect={handlePlanModeApprovalSelect}
-                          onPermissionApprovalSelect={handlePermissionApprovalSelect}
-                          onRate={handleRateMessage}
-                          onRegenerate={handleRegenerateMessage}
-                          rating={row.rating}
-                        />
-                      </Box>
-                    </Flex>
-                  );
-                });
-              })()}
-              {isLoadingConversation ? (
-                <Flex align="center" color="gray.500" gap={2} justify="center" py={1}>
-                  <Spinner size="xs" />
-                  <Text fontSize="xs">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-                </Flex>
-              ) : null}
-            </Flex>
-          )}
-        </Box>
-
-        <ChatInput
-          isSending={isSending}
-          model={model}
-          modelLoading={modelLoading}
-          modelOptions={modelOptions}
-          modelGroups={modelGroups}
-          thinkingEnabled={thinkingEnabled}
-          mode={chatMode}
-          showThinkingToggle={selectedModelSupportsReasoning}
-          thinkingTooltipEnabled={thinkingTooltipEnabled}
-          thinkingTooltipDisabled={thinkingTooltipDisabled}
-          selectedSkill={selectedSkills[0]}
-          selectedSkills={selectedSkills}
-          skillOptions={skillOptions}
-          fileOptions={fileOptions}
-          onChangeModel={handleChangeModel}
-          onChangeThinkingEnabled={handleChangeThinkingEnabled}
-          onChangeSelectedSkills={setSelectedSkills}
-          onUploadFiles={prepareUploadFiles}
-          onSend={handleSend}
-          onStop={handleStop}
-        />
-      </Flex>
-      {!hideSkillsManager ? (
-        <SkillsManagerModal
-          isOpen={isSkillsOpen}
-          onClose={() => setIsSkillsOpen(false)}
-          projectToken={token.startsWith("skill-studio:") ? "" : token}
-          onFilesApplied={onFilesUpdated}
-          onCreateViaChat={handleCreateSkillViaChat}
-          onUseSkill={handleUseSkill}
-        />
-      ) : null}
-    </Flex>
+    <ChatPanelViewProvider value={chatPanelViewContextValue}>
+      <ChatPanelView />
+    </ChatPanelViewProvider>
   );
 };
 

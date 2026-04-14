@@ -1,0 +1,373 @@
+import type { ConversationMessage } from "@/types/conversation";
+
+export interface MessageFile {
+  id?: string;
+  name?: string;
+  size?: number;
+  type?: string;
+  storagePath?: string;
+  previewUrl?: string;
+  downloadUrl?: string;
+  parse?: {
+    status?: "success" | "error" | "skipped";
+    progress?: number;
+    parser?: string;
+    error?: string;
+  };
+}
+
+export interface ToolDetail {
+  id?: string;
+  toolName?: string;
+  params?: string;
+  response?: string;
+}
+
+export interface TimelineItem {
+  type: "reasoning" | "answer" | "tool";
+  text?: string;
+  id?: string;
+  toolName?: string;
+  params?: string;
+  response?: string;
+}
+
+export interface PlanQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface PlanQuestion {
+  header: string;
+  id: string;
+  question: string;
+  options: PlanQuestionOption[];
+}
+
+export const MAX_TOOL_DETAIL_CHARS = 800;
+
+export const PLAN_MODE_TOOL_NAMES = new Set([
+  "enter_plan_mode",
+  "exit_plan_mode",
+  "request_user_input",
+  "update_plan",
+]);
+
+const normalizeToolPayload = (value?: string) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    return JSON.stringify(JSON.parse(trimmed));
+  } catch {
+    return trimmed.replace(/\s+/g, " ");
+  }
+};
+
+const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
+  const normalizedName = (toolName || "").trim().toLowerCase();
+  const normalizedParams = normalizeToolPayload(params);
+  const normalizedResponse = normalizeToolPayload(response);
+  return `${normalizedName}::${normalizedParams}::${normalizedResponse}`;
+};
+
+export const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
+  if (!message.artifact || typeof message.artifact !== "object") return [];
+  const files = (message.artifact as { files?: unknown }).files;
+  if (!Array.isArray(files)) return [];
+  return files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
+};
+
+export const isImageFile = (file: MessageFile) => {
+  if (typeof file.type === "string" && file.type.startsWith("image/")) return true;
+  const name = typeof file.name === "string" ? file.name.toLowerCase() : "";
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"].some((ext) =>
+    name.endsWith(ext)
+  );
+};
+
+export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
+  const kwargs = message.additional_kwargs as {
+    toolDetails?: unknown;
+    responseData?: unknown;
+  };
+
+  const detailsFromToolDetails = Array.isArray(kwargs.toolDetails)
+    ? kwargs.toolDetails.filter((item): item is ToolDetail => Boolean(item && typeof item === "object"))
+    : [];
+  const detailsFromResponseData = Array.isArray(kwargs.responseData)
+    ? kwargs.responseData
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+        .map((item, index) => ({
+          id: typeof item.nodeId === "string" ? `${item.nodeId}-${index}` : undefined,
+          toolName: typeof item.moduleName === "string" ? item.moduleName : undefined,
+          params:
+            typeof item.toolInput === "string"
+              ? item.toolInput
+              : item.toolInput == null
+              ? ""
+              : JSON.stringify(item.toolInput, null, 2),
+          response:
+            typeof item.toolRes === "string"
+              ? item.toolRes
+              : item.toolRes == null
+              ? ""
+              : JSON.stringify(item.toolRes, null, 2),
+        }))
+    : [];
+
+  return detailsFromResponseData.length > detailsFromToolDetails.length
+    ? detailsFromResponseData
+    : detailsFromToolDetails;
+};
+
+export const getReasoningText = (message: ConversationMessage): string => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const kwargs = message.additional_kwargs as {
+    reasoning_text?: unknown;
+    reasoning_content?: unknown;
+  };
+  const value = kwargs.reasoning_text ?? kwargs.reasoning_content;
+  return typeof value === "string" ? value : "";
+};
+
+export const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
+  const value = (message.additional_kwargs as { timeline?: unknown }).timeline;
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      type:
+        item.type === "reasoning" || item.type === "answer" || item.type === "tool"
+          ? item.type
+          : "answer",
+      text: typeof item.text === "string" ? item.text : undefined,
+      id: typeof item.id === "string" ? item.id : undefined,
+      toolName: typeof item.toolName === "string" ? item.toolName : undefined,
+      params: typeof item.params === "string" ? item.params : undefined,
+      response: typeof item.response === "string" ? item.response : undefined,
+    }));
+};
+
+export const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
+  const raw = (message.additional_kwargs as { planQuestions?: unknown }).planQuestions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      header: typeof item.header === "string" ? item.header : "确认",
+      id: typeof item.id === "string" ? item.id : "",
+      question: typeof item.question === "string" ? item.question : "",
+      options: Array.isArray(item.options)
+        ? item.options
+            .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
+            .map((opt) => ({
+              label: typeof opt.label === "string" ? opt.label : "",
+              description: typeof opt.description === "string" ? opt.description : "",
+            }))
+            .filter((opt) => opt.label.trim().length > 0)
+        : [],
+    }))
+    .filter((item) => item.id && item.question);
+};
+
+export const getPlanAnswers = (message: ConversationMessage): Record<string, string> => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return {};
+  const raw = (message.additional_kwargs as { planAnswers?: unknown }).planAnswers;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (typeof value === "string" && value.trim()) {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+};
+
+export const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const value = (message.additional_kwargs as { planModeApprovalDecision?: unknown }).planModeApprovalDecision;
+  return value === "approve" || value === "reject" ? value : "";
+};
+
+export const getPlanPreview = (message: ConversationMessage): string => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const value = (message.additional_kwargs as { planPreview?: unknown }).planPreview;
+  return typeof value === "string" ? value : "";
+};
+
+export const getRunStatus = (
+  message: ConversationMessage,
+  isStreaming?: boolean
+): "running" | "success" | "error" => {
+  if (isStreaming) return "running";
+  if (message.status === "error") return "error";
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "success";
+  const responseData = Array.isArray((message.additional_kwargs as { responseData?: unknown }).responseData)
+    ? ((message.additional_kwargs as { responseData?: Array<{ status?: string }> }).responseData ?? [])
+    : [];
+  if (responseData.some((item) => item && typeof item === "object" && item.status === "error")) {
+    return "error";
+  }
+  return "success";
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const toValidDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+};
+
+export const formatExecutionTimeForHeader = (value: unknown): string | null => {
+  const d = toValidDate(value);
+  if (!d) return null;
+
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+
+  const isSameDay =
+    now.getFullYear() === d.getFullYear() && now.getMonth() === d.getMonth() && now.getDate() === d.getDate();
+
+  const formatHMS = (date: Date) => `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  const formatYMD = (date: Date) =>
+    `${date.getFullYear()}年${pad2(date.getMonth() + 1)}月${pad2(date.getDate())}日`;
+
+  if (diffMs < 0) return formatHMS(d);
+  if (diffMs <= 10_000) return "刚刚";
+  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}秒前`;
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}分钟前`;
+  if (isSameDay) return formatHMS(d);
+  return formatYMD(d);
+};
+
+export const getPathTailLabel = (value: string): string => {
+  const normalized = (value || "").replace(/\\/g, "/");
+  const base = normalized.split("/").filter(Boolean).pop() || value;
+  try {
+    return decodeURIComponent(base);
+  } catch {
+    return base;
+  }
+};
+
+export const composeTimelineItems = ({
+  rawTimelineItems,
+  reasoningText,
+  toolDetails,
+}: {
+  rawTimelineItems: TimelineItem[];
+  reasoningText: string;
+  toolDetails: ToolDetail[];
+}): TimelineItem[] => {
+  const next: TimelineItem[] = [];
+
+  rawTimelineItems.forEach((item) => {
+    if ((item.type === "reasoning" || item.type === "answer") && typeof item.text === "string") {
+      const last = next[next.length - 1];
+      if (last && last.type === item.type && typeof last.text === "string") {
+        next[next.length - 1] = {
+          ...last,
+          text: `${last.text}${item.text}`,
+        };
+        return;
+      }
+      next.push({ ...item });
+      return;
+    }
+    next.push({ ...item });
+  });
+
+  const normalizedReasoning = reasoningText.trim();
+  const hasReasoningInTimeline = next.some(
+    (item) => item.type === "reasoning" && typeof item.text === "string" && item.text.trim().length > 0
+  );
+
+  if (!hasReasoningInTimeline && normalizedReasoning) {
+    next.unshift({
+      type: "reasoning",
+      id: "reasoning",
+      text: normalizedReasoning,
+    });
+  }
+
+  if (toolDetails.length === 0) return next;
+
+  const timelineToolIndexById = new Map<string, number>();
+  const timelineToolIndexByFingerprint = new Map<string, number>();
+  next.forEach((item, index) => {
+    if (item.type !== "tool") return;
+    timelineToolIndexByFingerprint.set(getToolFingerprint(item.toolName, item.params, item.response), index);
+    if (typeof item.id === "string" && item.id) {
+      timelineToolIndexById.set(item.id, index);
+    }
+  });
+
+  toolDetails.forEach((tool) => {
+    const toolId = typeof tool.id === "string" && tool.id ? tool.id : undefined;
+    const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
+    const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
+    if (targetIndexByFingerprint !== undefined) {
+      const target = next[targetIndexByFingerprint];
+      next[targetIndexByFingerprint] = {
+        ...target,
+        toolName: target.toolName || tool.toolName,
+        params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+        response: target.response || tool.response,
+      };
+      return;
+    }
+
+    if (toolId) {
+      const targetIndex = timelineToolIndexById.get(toolId);
+      if (targetIndex !== undefined) {
+        const target = next[targetIndex];
+        next[targetIndex] = {
+          ...target,
+          toolName: target.toolName || tool.toolName,
+          params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+          response: target.response || tool.response,
+        };
+        return;
+      }
+    }
+
+    const insertedIndex =
+      next.push({
+        type: "tool",
+        id: toolId,
+        toolName: tool.toolName || "",
+        params: tool.params || "",
+        response: tool.response || "",
+      }) - 1;
+    if (toolId) timelineToolIndexById.set(toolId, insertedIndex);
+    timelineToolIndexByFingerprint.set(toolFingerprint, insertedIndex);
+  });
+
+  return next;
+};
+
+export const truncateDetailText = (value?: string) => {
+  if (!value) return "";
+  const normalized = value.trim();
+  if (normalized.length <= MAX_TOOL_DETAIL_CHARS) return normalized;
+  return `${normalized.slice(0, MAX_TOOL_DETAIL_CHARS)}\n...`;
+};
+
+export const isDetailTruncated = (value?: string) => {
+  if (!value) return false;
+  return value.trim().length > MAX_TOOL_DETAIL_CHARS;
+};
+

@@ -84,3 +84,4 @@ tmp/docx/
 .files/derived/
 .next-derived/
 .next-dev/
+.idea/

@@ -3,6 +3,7 @@ import { extractText } from "@shared/chat/messages";
 import React from "react";
 import { useCopyData } from "@/hooks/useCopyData";
 import type { ConversationMessage } from "@/types/conversation";
+import { useChatInteractionContext } from "../../context/ChatInteractionContext";
 import type { MessageExecutionSummary } from "../../utils/executionSummary";
 import ChatItem from "../ChatItem";
 import MessageActionBar, { type MessageRating } from "./MessageActionBar";
@@ -17,29 +18,9 @@ interface ChatMessageBlockProps {
   isLatestRun?: boolean;
   rating?: MessageRating;
   canRegenerate?: boolean;
-  planQuestionSubmitting?: boolean;
-  planModeApprovalSubmitting?: boolean;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onRate?: (messageId: string, rating: MessageRating) => void;
-  onPlanQuestionSelect?: (input: {
-    messageId: string;
-    questionId: string;
-    header?: string;
-    question: string;
-    optionLabel: string;
-    optionDescription?: string;
-  }) => void;
-  onPlanModeApprovalSelect?: (input: {
-    messageId: string;
-    action: "enter" | "exit";
-    decision: "approve" | "reject";
-  }) => void;
-  onPermissionApprovalSelect?: (input: {
-    messageId: string;
-    toolName: string;
-    decision: "approve" | "reject";
-  }) => void;
 }
 
 const ChatMessageBlock = ({
@@ -52,16 +33,19 @@ const ChatMessageBlock = ({
   isLatestRun,
   rating,
   canRegenerate,
-  planQuestionSubmitting,
-  planModeApprovalSubmitting,
   onRegenerate,
   onDelete,
   onRate,
-  onPlanQuestionSelect,
-  onPlanModeApprovalSelect,
-  onPermissionApprovalSelect,
 }: ChatMessageBlockProps) => {
   const { copyData } = useCopyData();
+  const {
+    planQuestionSubmitting,
+    planModeApprovalSubmitting,
+    hideInteractiveCards,
+    onPlanQuestionSelect,
+    onPlanModeApprovalSelect,
+    onPermissionApprovalSelect,
+  } = useChatInteractionContext();
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
@@ -119,6 +103,7 @@ const ChatMessageBlock = ({
         requestContent={requestContent}
         planQuestionSubmitting={planQuestionSubmitting}
         planModeApprovalSubmitting={planModeApprovalSubmitting}
+        hideInteractiveCards={hideInteractiveCards}
         onPlanQuestionSelect={onPlanQuestionSelect}
         onPlanModeApprovalSelect={onPlanModeApprovalSelect}
         onPermissionApprovalSelect={onPermissionApprovalSelect}
@@ -140,12 +125,7 @@ export default React.memo(
     prevProps.isLatestRun === nextProps.isLatestRun &&
     prevProps.rating === nextProps.rating &&
     prevProps.canRegenerate === nextProps.canRegenerate &&
-    prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
-    prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
     prevProps.onRegenerate === nextProps.onRegenerate &&
     prevProps.onDelete === nextProps.onDelete &&
-    prevProps.onRate === nextProps.onRate &&
-    prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
-    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect &&
-    prevProps.onPermissionApprovalSelect === nextProps.onPermissionApprovalSelect
+    prevProps.onRate === nextProps.onRate
 );

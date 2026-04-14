@@ -17,593 +17,23 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
-import { extractText } from "@shared/chat/messages";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React from "react";
 import Markdown from "@/components/Markdown";
 import { useCopyData } from "@/hooks/useCopyData";
+import { ToolStreamText, useChatItemViewModel } from "../hooks/useChatItemViewModel";
 import type { MessageExecutionSummary } from "../utils/executionSummary";
+import {
+  PLAN_MODE_TOOL_NAMES,
+  isDetailTruncated,
+  isImageFile,
+  truncateDetailText,
+  type PlanQuestion,
+  type MessageFile,
+} from "../utils/chatItemParsers";
+import PlanModeTimelineCard from "./message/PlanModeTimelineCard";
 
 import type { ConversationMessage } from "@/types/conversation";
 
-interface MessageFile {
-  id?: string;
-  name?: string;
-  size?: number;
-  type?: string;
-  storagePath?: string;
-  previewUrl?: string;
-  downloadUrl?: string;
-  parse?: {
-    status?: "success" | "error" | "skipped";
-    progress?: number;
-    parser?: string;
-    error?: string;
-  };
-}
-
-interface ToolDetail {
-  id?: string;
-  toolName?: string;
-  params?: string;
-  response?: string;
-}
-interface TimelineItem {
-  type: "reasoning" | "answer" | "tool";
-  text?: string;
-  id?: string;
-  toolName?: string;
-  params?: string;
-  response?: string;
-}
-
-interface PlanQuestionOption {
-  label: string;
-  description?: string;
-}
-
-interface PlanQuestion {
-  header: string;
-  id: string;
-  question: string;
-  options: PlanQuestionOption[];
-}
-
-interface PlanModeApproval {
-  action: "enter" | "exit";
-  title?: string;
-  description?: string;
-  rationale?: string;
-  options?: Array<{
-    label: string;
-    value: "approve" | "reject";
-  }>;
-}
-
-interface PermissionApproval {
-  toolName: string;
-  reason?: string;
-}
-
-type ApprovalDecision = "approve" | "reject" | "";
-type ApprovalOption = { label: string; value: "approve" | "reject" };
-
-const ApprovalCard = ({
-  title,
-  description,
-  rationale,
-  decision,
-  options,
-  submitting,
-  onSelect,
-}: {
-  title: string;
-  description: string;
-  rationale?: string;
-  decision: ApprovalDecision;
-  options: ApprovalOption[];
-  submitting?: boolean;
-  onSelect: (decision: "approve" | "reject") => void;
-}) => (
-  <Box bg="primary.50" border="1px solid" borderColor="primary.200" borderRadius="10px" p={3}>
-    <Text color="primary.800" fontSize="12px" fontWeight={700}>
-      {title}
-    </Text>
-    <Text color="myGray.700" fontSize="12px" mt={1}>
-      {description}
-    </Text>
-    {rationale ? (
-      <Text color="myGray.600" fontSize="11px" mt={1.5}>
-        说明: {rationale}
-      </Text>
-    ) : null}
-    {decision ? (
-      <Text color="primary.700" fontSize="11px" mt={2}>
-        已选择: {decision === "approve" ? "批准" : "拒绝"}
-      </Text>
-    ) : null}
-    <Flex gap={2} mt={2}>
-      {options.map((option, idx) => (
-        <Button
-          key={`${title}-approval-option-${idx}`}
-          bg={decision === option.value ? "primary.100" : "white"}
-          border="1px solid"
-          borderColor={decision === option.value ? "primary.300" : "myGray.200"}
-          color={decision === option.value ? "primary.800" : "myGray.700"}
-          h="26px"
-          isDisabled={Boolean(submitting || decision)}
-          onClick={() => onSelect(option.value)}
-          px={2}
-          size="xs"
-          variant="ghost"
-        >
-          {option.label}
-        </Button>
-      ))}
-    </Flex>
-  </Box>
-);
-
-const MAX_TOOL_DETAIL_CHARS = 800;
-
-const normalizeToolPayload = (value?: string) => {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  try {
-    return JSON.stringify(JSON.parse(trimmed));
-  } catch {
-    return trimmed.replace(/\s+/g, " ");
-  }
-};
-
-const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
-  const normalizedName = (toolName || "").trim().toLowerCase();
-  const normalizedParams = normalizeToolPayload(params);
-  const normalizedResponse = normalizeToolPayload(response);
-  return `${normalizedName}::${normalizedParams}::${normalizedResponse}`;
-};
-
-const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
-  if (!message.artifact || typeof message.artifact !== "object") return [];
-  const files = (message.artifact as { files?: unknown }).files;
-  if (!Array.isArray(files)) return [];
-  return files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
-};
-
-const isImageFile = (file: MessageFile) => {
-  if (typeof file.type === "string" && file.type.startsWith("image/")) return true;
-  const name = typeof file.name === "string" ? file.name.toLowerCase() : "";
-  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"].some((ext) =>
-    name.endsWith(ext)
-  );
-};
-
-const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const kwargs = message.additional_kwargs as {
-    toolDetails?: unknown;
-    responseData?: unknown;
-  };
-
-  const detailsFromToolDetails = Array.isArray(kwargs.toolDetails)
-    ? kwargs.toolDetails.filter((item): item is ToolDetail => Boolean(item && typeof item === "object"))
-    : [];
-  const detailsFromResponseData = Array.isArray(kwargs.responseData)
-    ? kwargs.responseData
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item, index) => ({
-      id: typeof item.nodeId === "string" ? `${item.nodeId}-${index}` : undefined,
-      toolName: typeof item.moduleName === "string" ? item.moduleName : undefined,
-      params:
-        typeof item.toolInput === "string"
-          ? item.toolInput
-          : item.toolInput == null
-          ? ""
-          : JSON.stringify(item.toolInput, null, 2),
-      response:
-        typeof item.toolRes === "string"
-          ? item.toolRes
-          : item.toolRes == null
-          ? ""
-          : JSON.stringify(item.toolRes, null, 2),
-    }))
-    : [];
-
-  // 在历史数据中，toolDetails 可能只包含少量“工具调用壳子”，而 responseData 才是完整执行清单。
-  // 选择条目更多的来源，避免出现“调用工具数很多，但只展示少量同名工具”的问题。
-  return detailsFromResponseData.length > detailsFromToolDetails.length
-    ? detailsFromResponseData
-    : detailsFromToolDetails;
-};
-
-const getReasoningText = (message: ConversationMessage): string => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const kwargs = message.additional_kwargs as {
-    reasoning_text?: unknown;
-    reasoning_content?: unknown;
-  };
-  const value = kwargs.reasoning_text ?? kwargs.reasoning_content;
-  return typeof value === "string" ? value : "";
-};
-const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const value = (message.additional_kwargs as { timeline?: unknown }).timeline;
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      type:
-        item.type === "reasoning" || item.type === "answer" || item.type === "tool"
-          ? item.type
-          : "answer",
-      text: typeof item.text === "string" ? item.text : undefined,
-      id: typeof item.id === "string" ? item.id : undefined,
-      toolName: typeof item.toolName === "string" ? item.toolName : undefined,
-      params: typeof item.params === "string" ? item.params : undefined,
-      response: typeof item.response === "string" ? item.response : undefined,
-    }));
-};
-
-const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const raw = (message.additional_kwargs as { planQuestions?: unknown }).planQuestions;
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      header: typeof item.header === "string" ? item.header : "确认",
-      id: typeof item.id === "string" ? item.id : "",
-      question: typeof item.question === "string" ? item.question : "",
-      options: Array.isArray(item.options)
-        ? item.options
-            .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
-            .map((opt) => ({
-              label: typeof opt.label === "string" ? opt.label : "",
-              description: typeof opt.description === "string" ? opt.description : "",
-            }))
-            .filter((opt) => opt.label.trim().length > 0)
-        : [],
-    }))
-    .filter((item) => item.id && item.question);
-};
-
-const getPlanAnswers = (message: ConversationMessage): Record<string, string> => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return {};
-  const raw = (message.additional_kwargs as { planAnswers?: unknown }).planAnswers;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
-    if (typeof value === "string" && value.trim()) {
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
-};
-
-const getPlanModeApproval = (message: ConversationMessage): PlanModeApproval | null => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
-  const value = (message.additional_kwargs as { planModeApproval?: unknown }).planModeApproval;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const action = record.action === "exit" ? "exit" : record.action === "enter" ? "enter" : null;
-  if (!action) return null;
-  const options = Array.isArray(record.options)
-    ? record.options
-        .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
-        .map((opt) => ({
-          label: typeof opt.label === "string" ? opt.label : "",
-          value:
-            opt.value === "reject"
-              ? ("reject" as const)
-              : opt.value === "approve"
-              ? ("approve" as const)
-              : ("approve" as const),
-        }))
-        .filter((opt) => opt.label)
-    : [];
-  return {
-    action,
-    title: typeof record.title === "string" ? record.title : undefined,
-    description: typeof record.description === "string" ? record.description : undefined,
-    rationale: typeof record.rationale === "string" ? record.rationale : undefined,
-    options,
-  };
-};
-
-const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const value = (message.additional_kwargs as { planModeApprovalDecision?: unknown }).planModeApprovalDecision;
-  return value === "approve" || value === "reject" ? value : "";
-};
-
-const getPermissionApproval = (message: ConversationMessage): PermissionApproval | null => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
-  const value = (message.additional_kwargs as { permissionApproval?: unknown }).permissionApproval;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
-  if (!toolName) return null;
-  return {
-    toolName,
-    reason: typeof record.reason === "string" ? record.reason : undefined,
-  };
-};
-
-const getPermissionApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const value = (message.additional_kwargs as { permissionApprovalDecision?: unknown })
-    .permissionApprovalDecision;
-  return value === "approve" || value === "reject" ? value : "";
-};
-
-const getRunStatus = (
-  message: ConversationMessage,
-  isStreaming?: boolean
-): "running" | "success" | "error" => {
-  if (isStreaming) return "running";
-  if (message.status === "error") return "error";
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "success";
-  const responseData = Array.isArray((message.additional_kwargs as { responseData?: unknown }).responseData)
-    ? ((message.additional_kwargs as { responseData?: Array<{ status?: string }> }).responseData ?? [])
-    : [];
-  if (responseData.some((item) => item && typeof item === "object" && item.status === "error")) {
-    return "error";
-  }
-  return "success";
-};
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
-const toValidDate = (value: unknown): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  if (typeof value === "string") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    // Heuristic: treat small values as seconds.
-    const ms = value < 1e12 ? value * 1000 : value;
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  return null;
-};
-
-const formatExecutionTimeForHeader = (value: unknown): string | null => {
-  const d = toValidDate(value);
-  if (!d) return null;
-
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-
-  const isSameDay =
-    now.getFullYear() === d.getFullYear() && now.getMonth() === d.getMonth() && now.getDate() === d.getDate();
-
-  const formatHMS = (date: Date) => `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
-  const formatYMD = (date: Date) =>
-    `${date.getFullYear()}年${pad2(date.getMonth() + 1)}月${pad2(date.getDate())}日`;
-
-  // Future timestamps: fall back to the actual time.
-  if (diffMs < 0) return formatHMS(d);
-
-  // Relative phrases should take priority for fresh messages, even if
-  // upstream timestamp timezone formatting is inconsistent.
-  if (diffMs <= 10_000) return "刚刚";
-  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}秒前`;
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}分钟前`;
-
-  if (isSameDay) {
-    return formatHMS(d);
-  }
-
-  return formatYMD(d);
-};
-
-const getPathTailLabel = (value: string): string => {
-  const normalized = (value || "").replace(/\\/g, "/");
-  const base = normalized.split("/").filter(Boolean).pop() || value;
-  try {
-    return decodeURIComponent(base);
-  } catch {
-    return base;
-  }
-};
-
-const composeTimelineItems = ({
-  rawTimelineItems,
-  reasoningText,
-  toolDetails,
-}: {
-  rawTimelineItems: TimelineItem[];
-  reasoningText: string;
-  toolDetails: ToolDetail[];
-}): TimelineItem[] => {
-  const next: TimelineItem[] = [];
-
-  rawTimelineItems.forEach((item) => {
-    if ((item.type === "reasoning" || item.type === "answer") && typeof item.text === "string") {
-      const last = next[next.length - 1];
-      if (last && last.type === item.type && typeof last.text === "string") {
-        next[next.length - 1] = {
-          ...last,
-          text: `${last.text}${item.text}`,
-        };
-        return;
-      }
-      next.push({ ...item });
-      return;
-    }
-
-    next.push({ ...item });
-  });
-
-  const normalizedReasoning = reasoningText.trim();
-  const hasReasoningInTimeline = next.some(
-    (item) => item.type === "reasoning" && typeof item.text === "string" && item.text.trim().length > 0
-  );
-
-  if (!hasReasoningInTimeline && normalizedReasoning) {
-    next.unshift({
-      type: "reasoning",
-      id: "reasoning",
-      text: normalizedReasoning,
-    });
-  }
-
-  if (toolDetails.length === 0) return next;
-
-  const timelineToolIndexById = new Map<string, number>();
-  const timelineToolIndexByFingerprint = new Map<string, number>();
-  next.forEach((item, index) => {
-    if (item.type !== "tool") return;
-    timelineToolIndexByFingerprint.set(
-      getToolFingerprint(item.toolName, item.params, item.response),
-      index
-    );
-    if (typeof item.id === "string" && item.id) {
-      timelineToolIndexById.set(item.id, index);
-    }
-  });
-
-  toolDetails.forEach((tool) => {
-    const toolId = typeof tool.id === "string" && tool.id ? tool.id : undefined;
-    const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
-    const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
-    if (targetIndexByFingerprint !== undefined) {
-      const target = next[targetIndexByFingerprint];
-      next[targetIndexByFingerprint] = {
-        ...target,
-        toolName: target.toolName || tool.toolName,
-        params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-        response: target.response || tool.response,
-      };
-      return;
-    }
-
-    if (toolId) {
-      const targetIndex = timelineToolIndexById.get(toolId);
-      if (targetIndex !== undefined) {
-        const target = next[targetIndex];
-        next[targetIndex] = {
-          ...target,
-          toolName: target.toolName || tool.toolName,
-          params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-          response: target.response || tool.response,
-        };
-        return;
-      }
-    }
-    const insertedIndex = next.push({
-      type: "tool",
-      id: toolId,
-      toolName: tool.toolName || "",
-      params: tool.params || "",
-      response: tool.response || "",
-    }) - 1;
-    if (toolId) {
-      timelineToolIndexById.set(toolId, insertedIndex);
-    }
-    timelineToolIndexByFingerprint.set(toolFingerprint, insertedIndex);
-  });
-
-  return next;
-};
-
-const truncateDetailText = (value?: string) => {
-  if (!value) return "";
-  const normalized = value.trim();
-  if (normalized.length <= MAX_TOOL_DETAIL_CHARS) return normalized;
-  return `${normalized.slice(0, MAX_TOOL_DETAIL_CHARS)}\n...`;
-};
-
-const isDetailTruncated = (value?: string) => {
-  if (!value) return false;
-  return value.trim().length > MAX_TOOL_DETAIL_CHARS;
-};
-
-const useTypewriterText = (value: string, enabled: boolean) => {
-  const normalizedValue = value || "";
-  const [displayed, setDisplayed] = useState(normalizedValue);
-  const displayedRef = useRef(normalizedValue);
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    displayedRef.current = displayed;
-  }, [displayed]);
-
-  useEffect(() => {
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    if (!enabled) {
-      setDisplayed(normalizedValue);
-      displayedRef.current = normalizedValue;
-      return;
-    }
-
-    const current = displayedRef.current;
-    if (!normalizedValue.startsWith(current) || normalizedValue.length <= current.length) {
-      setDisplayed(normalizedValue);
-      displayedRef.current = normalizedValue;
-      return;
-    }
-
-    let cursor = current.length;
-    const target = normalizedValue;
-
-    const tick = () => {
-      if (cursor >= target.length) {
-        rafRef.current = null;
-        return;
-      }
-      const remaining = target.length - cursor;
-      const step = Math.max(1, Math.min(8, Math.ceil(remaining / 24)));
-      cursor = Math.min(target.length, cursor + step);
-      const nextText = target.slice(0, cursor);
-      displayedRef.current = nextText;
-      setDisplayed(nextText);
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [enabled, normalizedValue]);
-
-  return displayed;
-};
-
-const ToolStreamText = ({
-  value,
-  isStreaming,
-  color,
-  fontSize = "11px",
-}: {
-  value: string;
-  isStreaming?: boolean;
-  color: string;
-  fontSize?: string;
-}) => {
-  const displayValue = useTypewriterText(value, Boolean(isStreaming));
-  return (
-    <Text
-      color={color}
-      fontFamily="mono"
-      fontSize={fontSize}
-      overflowWrap="anywhere"
-      whiteSpace="pre-wrap"
-      wordBreak="break-word"
-    >
-      {displayValue}
-    </Text>
-  );
-};
 
 const ChatItem = ({
   message,
@@ -615,6 +45,7 @@ const ChatItem = ({
   isLatestRun,
   planQuestionSubmitting,
   planModeApprovalSubmitting,
+  hideInteractiveCards,
   onPlanQuestionSelect,
   onPlanModeApprovalSelect,
   onPermissionApprovalSelect,
@@ -628,6 +59,7 @@ const ChatItem = ({
   isLatestRun?: boolean;
   planQuestionSubmitting?: boolean;
   planModeApprovalSubmitting?: boolean;
+  hideInteractiveCards?: boolean;
   onPlanQuestionSelect?: (input: {
     messageId: string;
     questionId: string;
@@ -647,205 +79,58 @@ const ChatItem = ({
     decision: "approve" | "reject";
   }) => void;
 }) => {
-  const content = extractText(message.content);
-  const messageType = (message.type || message.role || "assistant") as
-    | "user"
-    | "assistant"
-    | "system"
-    | "tool"
-    | "progress";
-  const isUser = messageType === "user";
-  const isSystem = messageType === "system";
-  const isAssistant = !isUser && !isSystem;
-
-  const files = useMemo(() => getMessageFiles(message), [message]);
-  const sortedFiles = useMemo(() => {
-    return [...files].sort((a, b) => {
-      const aImage = isImageFile(a);
-      const bImage = isImageFile(b);
-      if (aImage === bImage) return 0;
-      return aImage ? 1 : -1;
-    });
-  }, [files]);
-  const requestFiles = useMemo(() => (requestMessage ? getMessageFiles(requestMessage) : []), [requestMessage]);
-  const sortedRequestFiles = useMemo(() => {
-    return [...requestFiles].sort((a, b) => {
-      const aImage = isImageFile(a);
-      const bImage = isImageFile(b);
-      if (aImage === bImage) return 0;
-      return aImage ? 1 : -1;
-    });
-  }, [requestFiles]);
-  const toolDetails = useMemo(() => getToolDetails(message), [message]);
-  const reasoningText = useMemo(() => getReasoningText(message), [message]);
-  const rawTimelineItems = useMemo(() => getTimelineItems(message), [message]);
-  const timelineItems = useMemo(
-    () =>
-      composeTimelineItems({
-        rawTimelineItems,
-        reasoningText,
-        toolDetails,
-      }),
-    [rawTimelineItems, reasoningText, toolDetails]
-  );
-  const timelineStepIndexes = useMemo(
-    () =>
-      timelineItems
-        .map((item, index) => (item.type === "tool" || item.type === "reasoning" ? index : -1))
-        .filter((index) => index >= 0),
-    [timelineItems]
-  );
-  const [expandedTimelineReasoningKeys, setExpandedTimelineReasoningKeys] = useState<
-    Record<string, boolean>
-  >({});
-  const [expandedTimelineToolKeys, setExpandedTimelineToolKeys] = useState<Record<string, boolean>>({});
-  const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
-  const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const { copyData } = useCopyData();
-  const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
-  const planAnswers = useMemo(() => getPlanAnswers(message), [message]);
-  const planModeApproval = useMemo(() => getPlanModeApproval(message), [message]);
-  const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
-  const permissionApproval = useMemo(() => getPermissionApproval(message), [message]);
-  const permissionApprovalDecision = useMemo(() => getPermissionApprovalDecision(message), [message]);
-
-  const toggleTimelineReasoningDetails = useCallback((key: string) => {
-    setExpandedTimelineReasoningKeys((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  }, []);
-  const toggleTimelineToolDetails = useCallback((key: string) => {
-    setExpandedTimelineToolKeys((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  }, []);
-
-  const openToolDetailModal = useCallback(
-    (title: string, content?: string) => {
-      setDetailModalData({
-        title,
-        content: content || "",
-      });
-      openDetailModal();
-    },
-    [openDetailModal]
-  );
-
-  const handleCloseDetailModal = useCallback(() => {
-    closeDetailModal();
-    setDetailModalData(null);
-  }, [closeDetailModal]);
-
-  const timelineHasAnswer = timelineItems.some(
-    (item) => item.type === "answer" && typeof item.text === "string" && item.text.trim().length > 0
-  );
-  const hasAnswerText = content.trim().length > 0;
-  const latestReasoningIndex = useMemo(() => {
-    let latest = -1;
-    timelineItems.forEach((item, index) => {
-      if (item.type === "reasoning") latest = index;
-    });
-    return latest;
-  }, [timelineItems]);
-  const latestAnswerIndex = useMemo(() => {
-    let latest = -1;
-    timelineItems.forEach((item, index) => {
-      if (item.type === "answer") latest = index;
-    });
-    return latest;
-  }, [timelineItems]);
-  const getReasoningPhaseText = useCallback(
-    (index: number) => {
-      if (!isStreaming || index !== latestReasoningIndex) return "";
-      return hasAnswerText || timelineHasAnswer ? "回复中..." : "思考中...";
-    },
-    [hasAnswerText, isStreaming, latestReasoningIndex, timelineHasAnswer]
-  );
-  const showAssistantAnimation = Boolean(isStreaming && !isUser && !isSystem);
-  const hasRunningTool = useMemo(
-    () => timelineItems.some((item) => item.type === "tool" && !item.response),
-    [timelineItems]
-  );
-  const headerStatusText = useMemo(() => {
-    if (!isAssistant || !isStreaming) return "";
-    if (hasRunningTool) return "调用工具中...";
-    return hasAnswerText || timelineHasAnswer ? "回复中..." : "思考中...";
-  }, [hasAnswerText, hasRunningTool, isAssistant, isStreaming, timelineHasAnswer]);
-  const runStatus = useMemo(() => getRunStatus(message, isStreaming), [isStreaming, message]);
-  const executionTimeText = useMemo(() => formatExecutionTimeForHeader((message as { time?: unknown }).time), [message]);
-  const roleTitle = isUser
-    ? "输入"
-    : isSystem
-    ? "系统消息"
-    : executionTimeText
-    ? `${executionTimeText}`
-    : "执行时间";
+  const {
+    content,
+    isUser,
+    isSystem,
+    isAssistant,
+    files,
+    sortedFiles,
+    sortedRequestFiles,
+    timelineItems,
+    timelineStepIndexes,
+    expandedTimelineReasoningKeys,
+    expandedTimelineToolKeys,
+    detailModalData,
+    isDetailModalOpen,
+    planQuestions,
+    planAnswers,
+    planModeApprovalDecision,
+    planPreview,
+    planProgress,
+    planModeApproval,
+    timelineHasAnswer,
+    hasAnswerText,
+    latestAnswerIndex,
+    showAssistantAnimation,
+    hasRunningTool,
+    headerStatusText,
+    roleTitle,
+    hasRequestContent,
+    requestPreview,
+    requestImageCount,
+    requestFileCount,
+    requestSelectedProjectFiles,
+    requestSelectedProjectFileLabel,
+    requestFileNamePreview,
+    headerDotColor,
+    isRunExpanded,
+    setIsRunExpanded,
+    toggleTimelineReasoningDetails,
+    toggleTimelineToolDetails,
+    openToolDetailModal,
+    handleCloseDetailModal,
+    getReasoningPhaseText,
+  } = useChatItemViewModel({
+    message,
+    requestMessage,
+    requestContent,
+    isStreaming,
+    isLatestRun,
+    messageId,
+  });
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
-  const hasRequestContent = Boolean(requestContent?.trim());
-  const requestPreview = useMemo(
-    () =>
-      (requestContent || "")
-        .replace(/\[[^\]]+\]\((?:FILETAG|SKILLTAG):[^)]+\)/g, " ")
-        .replace(/(?:FILETAG|SKILLTAG):[^\s)\]]+/g, " ")
-        .replace(/(?:^|\s)(?:FILETAG|SKILLTAG):\S+/g, " ")
-        .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-        .replace(/[`*_>#\[\]\(\)\-!]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
-    [requestContent]
-  );
-  const requestImageCount = useMemo(
-    () => sortedRequestFiles.filter((file) => isImageFile(file)).length,
-    [sortedRequestFiles]
-  );
-  const requestFileCount = useMemo(
-    () => sortedRequestFiles.length - requestImageCount,
-    [requestImageCount, sortedRequestFiles.length]
-  );
-  const requestFileNamePreview = useMemo(() => {
-    const names = sortedRequestFiles
-      .map((file) => (file.name || "").trim())
-      .filter(Boolean)
-      .slice(0, 2);
-    return names.join("、");
-  }, [sortedRequestFiles]);
-  const requestSelectedProjectFiles = useMemo(() => {
-    if (!requestMessage?.additional_kwargs || typeof requestMessage.additional_kwargs !== "object") return [];
-    const raw = (requestMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths;
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      .map((item) => item.trim());
-  }, [requestMessage]);
-  const requestSelectedProjectFileLabel = useMemo(() => {
-    if (requestSelectedProjectFiles.length === 0) return "";
-    const labels = requestSelectedProjectFiles.map((path) => getPathTailLabel(path)).filter(Boolean);
-    const unique = Array.from(new Set(labels)).slice(0, 2);
-    return unique.join("、");
-  }, [requestSelectedProjectFiles]);
-  const headerDotColor = isUser
-    ? "adora.500"
-    : isSystem
-    ? "myGray.500"
-    : runStatus === "running"
-    ? "green.500"
-    : runStatus === "error"
-    ? "red.500"
-    : "blue.500";
-  const [isRunExpanded, setIsRunExpanded] = useState(() => !isAssistant || Boolean(isStreaming));
-  useEffect(() => {
-    if (!isAssistant) {
-      setIsRunExpanded(true);
-      return;
-    }
-    if (isStreaming || isLatestRun) {
-      setIsRunExpanded(true);
-      return;
-    }
-    setIsRunExpanded(false);
-  }, [isAssistant, isLatestRun, isStreaming, messageId]);
 
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
 
@@ -1089,54 +374,7 @@ const ChatItem = ({
           </Text>
         ) : (
           <Flex direction="column" gap={2}>
-            {planModeApproval ? (
-              <ApprovalCard
-                decision={planModeApprovalDecision}
-                description={
-                  planModeApproval.description ||
-                  (planModeApproval.action === "enter" ? "请求进入计划模式。" : "请求退出计划模式。")
-                }
-                onSelect={(decision) =>
-                  onPlanModeApprovalSelect?.({
-                    messageId,
-                    action: planModeApproval.action,
-                    decision,
-                  })
-                }
-                options={
-                  planModeApproval.options && planModeApproval.options.length > 0
-                    ? planModeApproval.options
-                    : [
-                        { label: "批准", value: "approve" as const },
-                        { label: "拒绝", value: "reject" as const },
-                      ]
-                }
-                rationale={planModeApproval.rationale}
-                submitting={planModeApprovalSubmitting}
-                title={planModeApproval.title || "计划模式审批"}
-              />
-            ) : null}
-            {permissionApproval ? (
-              <ApprovalCard
-                decision={permissionApprovalDecision}
-                description={`工具 \`${permissionApproval.toolName}\` 请求执行，请确认是否批准。`}
-                onSelect={(decision) =>
-                  onPermissionApprovalSelect?.({
-                    messageId,
-                    toolName: permissionApproval.toolName,
-                    decision,
-                  })
-                }
-                options={[
-                  { label: "批准", value: "approve" as const },
-                  { label: "拒绝", value: "reject" as const },
-                ]}
-                rationale={permissionApproval.reason}
-                submitting={planModeApprovalSubmitting}
-                title="工具权限审批"
-              />
-            ) : null}
-            {planQuestions.length > 0 ? (
+            {!hideInteractiveCards && planQuestions.length > 0 ? (
               <Box bg="amber.50" border="1px solid" borderColor="orange.200" borderRadius="10px" p={3}>
                 <Text color="orange.800" fontSize="12px" fontWeight={700} mb={2}>
                   计划确认
@@ -1362,6 +600,27 @@ const ChatItem = ({
                     const toolKey = `${messageId}-timeline-tool-${item.id || "unknown"}-${index}`;
                     const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
                     const isRunning = isStreaming && !item.response;
+                    const normalizedToolName = (item.toolName || "").trim().toLowerCase();
+                    const isPlanModeTool = PLAN_MODE_TOOL_NAMES.has(normalizedToolName);
+                    if (isPlanModeTool) {
+                      return hideInteractiveCards ? null : (
+                        <PlanModeTimelineCard
+                          isStreaming={isStreaming}
+                          key={toolKey}
+                          messageId={messageId}
+                          onPlanModeApprovalSelect={onPlanModeApprovalSelect}
+                          planModeApproval={planModeApproval}
+                          planModeApprovalDecision={planModeApprovalDecision}
+                          planModeApprovalSubmitting={planModeApprovalSubmitting}
+                          planPreview={planPreview}
+                          planProgress={planProgress}
+                          toolItem={{
+                            toolName: item.toolName,
+                            response: item.response,
+                          }}
+                        />
+                      );
+                    }
                     const truncatedParams = truncateDetailText(item.params);
                     const truncatedResponse = truncateDetailText(item.response);
                     const paramsTruncated = isDetailTruncated(item.params);
@@ -1423,72 +682,72 @@ const ChatItem = ({
                           </Flex>
                           <Collapse animateOpacity in={isExpanded}>
                             <Flex direction="column" gap={2} mt={2}>
-                              <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                <Flex align="center" justify="space-between" mb={1}>
-                                  <Text color="blue.700" fontSize="10px" fontWeight="700">
-                                    入参
-                                  </Text>
-                                  {paramsTruncated ? (
-                                    <Button
-                                      colorScheme="blue"
-                                      h="20px"
-                                      minW="auto"
-                                      onClick={() =>
-                                        openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 入参`, item.params)
-                                      }
-                                      px={2}
-                                      size="xs"
-                                      variant="ghost"
-                                    >
-                                      查看完整
-                                    </Button>
-                                  ) : null}
-                                </Flex>
-                                <ToolStreamText
-                                  color="myGray.600"
-                                  isStreaming={isStreaming}
-                                  value={truncatedParams || "{}"}
-                                />
-                              </Box>
-
-                              <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                <Flex align="center" justify="space-between" mb={1}>
-                                  <Text color="primary.700" fontSize="10px" fontWeight="700">
-                                    出参
-                                  </Text>
-                                  {responseTruncated ? (
-                                    <Button
-                                      colorScheme="primary"
-                                      h="20px"
-                                      minW="auto"
-                                      onClick={() =>
-                                        openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)
-                                      }
-                                      px={2}
-                                      size="xs"
-                                      variant="ghost"
-                                    >
-                                      查看完整
-                                    </Button>
-                                  ) : null}
-                                </Flex>
-                                {truncatedResponse ? (
+                                <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                  <Flex align="center" justify="space-between" mb={1}>
+                                    <Text color="blue.700" fontSize="10px" fontWeight="700">
+                                      入参
+                                    </Text>
+                                    {paramsTruncated ? (
+                                      <Button
+                                        colorScheme="blue"
+                                        h="20px"
+                                        minW="auto"
+                                        onClick={() =>
+                                          openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 入参`, item.params)
+                                        }
+                                        px={2}
+                                        size="xs"
+                                        variant="ghost"
+                                      >
+                                        查看完整
+                                      </Button>
+                                    ) : null}
+                                  </Flex>
                                   <ToolStreamText
-                                    color="myGray.800"
+                                    color="myGray.600"
                                     isStreaming={isStreaming}
-                                    value={truncatedResponse}
+                                    value={truncatedParams || "{}"}
                                   />
-                                ) : isRunning ? (
-                                  <Text color="myGray.500" fontSize="12px">
-                                    执行中...
-                                  </Text>
-                                ) : (
-                                  <Text color="myGray.400" fontSize="12px">
-                                    暂无输出
-                                  </Text>
-                                )}
-                              </Box>
-                            </Flex>
+                                </Box>
+
+                                <Box bg="myWhite.100" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                  <Flex align="center" justify="space-between" mb={1}>
+                                    <Text color="primary.700" fontSize="10px" fontWeight="700">
+                                      出参
+                                    </Text>
+                                    {responseTruncated ? (
+                                      <Button
+                                        colorScheme="primary"
+                                        h="20px"
+                                        minW="auto"
+                                        onClick={() =>
+                                          openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)
+                                        }
+                                        px={2}
+                                        size="xs"
+                                        variant="ghost"
+                                      >
+                                        查看完整
+                                      </Button>
+                                    ) : null}
+                                  </Flex>
+                                  {truncatedResponse ? (
+                                    <ToolStreamText
+                                      color="myGray.800"
+                                      isStreaming={isStreaming}
+                                      value={truncatedResponse}
+                                    />
+                                  ) : isRunning ? (
+                                    <Text color="myGray.500" fontSize="12px">
+                                      执行中...
+                                    </Text>
+                                  ) : (
+                                    <Text color="myGray.400" fontSize="12px">
+                                      暂无输出
+                                    </Text>
+                                  )}
+                                </Box>
+                              </Flex>
                           </Collapse>
                         </Box>
                       </Flex>
@@ -1579,6 +838,7 @@ export default React.memo(
     prevProps.isLatestRun === nextProps.isLatestRun &&
     prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
     prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
+    prevProps.hideInteractiveCards === nextProps.hideInteractiveCards &&
     prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
     prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect &&
     prevProps.onPermissionApprovalSelect === nextProps.onPermissionApprovalSelect

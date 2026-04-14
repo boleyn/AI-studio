@@ -12,10 +12,12 @@ export interface ChatInputSubmitPayload {
   permissionApprovalResponse?: {
     toolName: string;
     decision: "approve" | "reject";
+    note?: string;
   };
   planModeApprovalResponse?: {
     action: "enter" | "exit";
     decision: "approve" | "reject";
+    note?: string;
   };
   selectedSkill?: string;
   selectedSkills?: string[];
