@@ -136,12 +136,54 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         isPlanInteractionEnvelope((item.toolRes as { interaction?: unknown }).interaction)
           ? (item.toolRes as { interaction: PlanInteractionEnvelope }).interaction
           : undefined,
+      progressStatus: undefined,
     }))
     : [];
 
-  return detailsFromResponseData.length > detailsFromToolDetails.length
-    ? detailsFromResponseData
-    : detailsFromToolDetails;
+  if (detailsFromToolDetails.length === 0) return detailsFromResponseData;
+  if (detailsFromResponseData.length === 0) return detailsFromToolDetails;
+
+  const merged = [...detailsFromToolDetails];
+  const byId = new Map<string, number>();
+  const byFingerprint = new Map<string, number>();
+
+  merged.forEach((item, index) => {
+    if (typeof item.id === "string" && item.id) {
+      byId.set(item.id, index);
+    }
+    byFingerprint.set(getToolFingerprint(item.toolName, item.params, item.response), index);
+  });
+
+  detailsFromResponseData.forEach((item) => {
+    const id = typeof item.id === "string" && item.id ? item.id : "";
+    const fingerprint = getToolFingerprint(item.toolName, item.params, item.response);
+    const hitIndex = (id && byId.has(id) ? byId.get(id) : undefined) ?? byFingerprint.get(fingerprint);
+
+    if (hitIndex == null) {
+      const insertedIndex = merged.push(item) - 1;
+      if (id) byId.set(id, insertedIndex);
+      byFingerprint.set(fingerprint, insertedIndex);
+      return;
+    }
+
+    const target = merged[hitIndex];
+    merged[hitIndex] = {
+      ...target,
+      toolName: item.toolName || target.toolName,
+      params:
+        (item.params?.length || 0) > (target.params?.length || 0)
+          ? item.params
+          : target.params,
+      response:
+        (item.response?.length || 0) > (target.response?.length || 0)
+          ? item.response
+          : target.response,
+      interaction: item.interaction || target.interaction,
+      progressStatus: target.progressStatus || item.progressStatus,
+    };
+  });
+
+  return merged;
 };
 
 export const getReasoningText = (message: ConversationMessage): string => {
@@ -378,7 +420,10 @@ export const composeTimelineItems = ({
         ...target,
         toolName: target.toolName || tool.toolName,
         params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-        response: target.response || tool.response,
+        response:
+          (target.response?.length || 0) >= (tool.response?.length || 0)
+            ? target.response
+            : tool.response,
         interaction: target.interaction || tool.interaction,
         progressStatus: target.progressStatus || tool.progressStatus,
       };
@@ -393,10 +438,13 @@ export const composeTimelineItems = ({
           ...target,
           toolName: target.toolName || tool.toolName,
           params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-        response: target.response || tool.response,
-        interaction: target.interaction || tool.interaction,
-        progressStatus: target.progressStatus || tool.progressStatus,
-      };
+          response:
+            (target.response?.length || 0) >= (tool.response?.length || 0)
+              ? target.response
+              : tool.response,
+          interaction: target.interaction || tool.interaction,
+          progressStatus: target.progressStatus || tool.progressStatus,
+        };
         return;
       }
     }

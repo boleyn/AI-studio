@@ -194,6 +194,7 @@ const ChatPanel = ({
   const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
 
   const handleChangeModel = useCallback(
     (nextModel: string) => {
@@ -301,6 +302,10 @@ const ChatPanel = ({
   }, [messages]);
 
   useEffect(() => {
+    streamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
+
+  useEffect(() => {
     const nextMessages = activeConversation?.messages ?? [];
     const chatId = activeConversation?.id || "";
     const hydratedMessages =
@@ -322,7 +327,7 @@ const ChatPanel = ({
       const localMessages = messagesRef.current;
       const localCount = localMessages.length;
       const hydratedCount = normalizedHydratedMessages.length;
-      const activeStreamingId = (streamingMessageId || "").trim();
+      const activeStreamingId = (streamingMessageIdRef.current || "").trim();
       const localHasStreamingMessage = activeStreamingId
         ? localMessages.some((message) => message.id === activeStreamingId)
         : false;
@@ -379,6 +384,60 @@ const ChatPanel = ({
           };
         }
       }
+      if (Array.isArray(kwargs.responseData)) {
+        for (const node of kwargs.responseData as unknown[]) {
+          if (!node || typeof node !== "object") continue;
+          const toolRes = (node as { toolRes?: unknown }).toolRes;
+          if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) continue;
+
+          const record = toolRes as Record<string, unknown>;
+          if (Array.isArray(record.agents)) {
+            for (const task of record.agents as unknown[]) {
+              if (!task || typeof task !== "object") continue;
+              const item = task as AgentTaskSnapshot;
+              if (typeof item.id !== "string" || !item.id) continue;
+              restoredAgentTasks[item.id] = {
+                ...(restoredAgentTasks[item.id] || {}),
+                ...item,
+              };
+            }
+          } else if (record.agent && typeof record.agent === "object" && !Array.isArray(record.agent)) {
+            const item = record.agent as AgentTaskSnapshot;
+            if (typeof item.id === "string" && item.id) {
+              restoredAgentTasks[item.id] = {
+                ...(restoredAgentTasks[item.id] || {}),
+                ...item,
+              };
+            }
+          } else if (typeof record.id === "string" && record.id) {
+            const item = record as AgentTaskSnapshot;
+            restoredAgentTasks[item.id] = {
+              ...(restoredAgentTasks[item.id] || {}),
+              ...item,
+            };
+          }
+
+          if (Array.isArray(record.tasks)) {
+            for (const task of record.tasks as unknown[]) {
+              if (!task || typeof task !== "object") continue;
+              const item = task as SessionTaskSnapshot;
+              if (typeof item.id !== "string" || !item.id) continue;
+              restoredSessionTasks[item.id] = {
+                ...(restoredSessionTasks[item.id] || {}),
+                ...item,
+              };
+            }
+          } else if (record.task && typeof record.task === "object" && !Array.isArray(record.task)) {
+            const item = record.task as SessionTaskSnapshot;
+            if (typeof item.id === "string" && item.id) {
+              restoredSessionTasks[item.id] = {
+                ...(restoredSessionTasks[item.id] || {}),
+                ...item,
+              };
+            }
+          }
+        }
+      }
     }
     setAgentTasks(restoredAgentTasks);
     setSessionTasks(restoredSessionTasks);
@@ -397,7 +456,6 @@ const ChatPanel = ({
     getCachedContextUsage,
     model,
     setContextUsageSnapshot,
-    streamingMessageId,
     token,
   ]);
 

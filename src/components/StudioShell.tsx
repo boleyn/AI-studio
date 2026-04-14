@@ -308,9 +308,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         token || "no-token",
         template || "no-template",
         providerTemplate || "auto-template",
-        Object.keys(providerFiles).sort().join("|"),
       ].join("::"),
-    [providerFiles, providerTemplate, template, token]
+    [providerTemplate, template, token]
   );
   useEffect(() => {
     if (typeof window === "undefined") return;

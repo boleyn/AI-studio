@@ -151,7 +151,7 @@ export const useChatPlanInteractions = ({
           ...(shouldExecuteNow
             ? {
                 planModeApprovalResponse: {
-                  requestId: `${input.requestId}:execute`,
+                  requestId: input.requestId,
                   action: "exit" as const,
                   decision: "approve" as const,
                   note: "execute_confirmed",

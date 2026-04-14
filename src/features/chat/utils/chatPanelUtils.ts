@@ -53,7 +53,232 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
     if (!id) return true;
     return latestIndexById.get(id) === index;
   });
-  return deduped;
+
+  // Replay hidden interaction responses (plan question/approval) back onto the preceding
+  // assistant message so timeline state is stable after reloading history.
+  const next = [...deduped];
+
+  const findTargetAssistantIndex = (fromIndex: number, matcher: (message: ConversationMessage) => boolean) => {
+    for (let i = fromIndex - 1; i >= 0; i -= 1) {
+      const message = next[i];
+      if (message.role !== "assistant") continue;
+      if (matcher(message)) return i;
+    }
+    return -1;
+  };
+
+  for (let index = 0; index < next.length; index += 1) {
+    const message = next[index];
+    if (message.role !== "user") continue;
+    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") continue;
+    const kwargs = message.additional_kwargs as Record<string, unknown>;
+    if (kwargs.hiddenFromTimeline !== true) continue;
+
+    const planQuestionResponse =
+      kwargs.planQuestionResponse &&
+      typeof kwargs.planQuestionResponse === "object" &&
+      !Array.isArray(kwargs.planQuestionResponse)
+        ? (kwargs.planQuestionResponse as { requestId?: unknown; answers?: unknown })
+        : null;
+    const planApprovalResponse =
+      kwargs.planModeApprovalResponse &&
+      typeof kwargs.planModeApprovalResponse === "object" &&
+      !Array.isArray(kwargs.planModeApprovalResponse)
+        ? (kwargs.planModeApprovalResponse as { requestId?: unknown; decision?: unknown; note?: unknown })
+        : null;
+
+    const responseRequestId =
+      typeof planQuestionResponse?.requestId === "string" && planQuestionResponse.requestId.trim()
+        ? planQuestionResponse.requestId.trim()
+        : "";
+    const responseAnswers =
+      planQuestionResponse?.answers &&
+      typeof planQuestionResponse.answers === "object" &&
+      !Array.isArray(planQuestionResponse.answers)
+        ? Object.entries(planQuestionResponse.answers as Record<string, unknown>).reduce<Record<string, string>>(
+            (acc, [key, value]) => {
+              if (typeof value === "string" && value.trim()) {
+                acc[key] = value;
+              }
+              return acc;
+            },
+            {}
+          )
+        : {};
+
+    const hasPlanQuestionResponse = Boolean(responseRequestId && Object.keys(responseAnswers).length > 0);
+    const hasPlanApprovalDecision =
+      planApprovalResponse?.decision === "approve" || planApprovalResponse?.decision === "reject";
+
+    if (!hasPlanQuestionResponse && !hasPlanApprovalDecision) continue;
+
+    const targetAssistantIndex = findTargetAssistantIndex(index, (assistantMessage) => {
+      const assistantKwargs =
+        assistantMessage.additional_kwargs && typeof assistantMessage.additional_kwargs === "object"
+          ? (assistantMessage.additional_kwargs as Record<string, unknown>)
+          : {};
+      if (hasPlanQuestionResponse) {
+        const questions = Array.isArray(assistantKwargs.planQuestions)
+          ? (assistantKwargs.planQuestions as Array<Record<string, unknown>>)
+          : [];
+        if (
+          questions.some(
+            (item) =>
+              typeof item?.requestId === "string" &&
+              item.requestId.trim() === responseRequestId
+          )
+        ) {
+          return true;
+        }
+      }
+      if (hasPlanApprovalDecision) {
+        return true;
+      }
+      return false;
+    });
+    if (targetAssistantIndex < 0) continue;
+
+    const assistantMessage = next[targetAssistantIndex];
+    const assistantKwargs =
+      assistantMessage.additional_kwargs && typeof assistantMessage.additional_kwargs === "object"
+        ? (assistantMessage.additional_kwargs as Record<string, unknown>)
+        : {};
+    const nextKwargs: Record<string, unknown> = { ...assistantKwargs };
+
+    if (hasPlanQuestionResponse) {
+      const existingAnswers =
+        nextKwargs.planAnswers && typeof nextKwargs.planAnswers === "object" && !Array.isArray(nextKwargs.planAnswers)
+          ? (nextKwargs.planAnswers as Record<string, unknown>)
+          : {};
+      nextKwargs.planAnswers = {
+        ...existingAnswers,
+        ...responseAnswers,
+      };
+      nextKwargs.planQuestionSubmission = {
+        requestId: responseRequestId,
+        answers: responseAnswers,
+        submittedAt: message.time,
+      };
+      nextKwargs.planQuestions = [];
+
+      const interactionState =
+        nextKwargs.planModeInteractionState &&
+        typeof nextKwargs.planModeInteractionState === "object" &&
+        !Array.isArray(nextKwargs.planModeInteractionState)
+          ? (nextKwargs.planModeInteractionState as Record<string, unknown>)
+          : {};
+      nextKwargs.planModeInteractionState = {
+        ...interactionState,
+        [responseRequestId]: {
+          type: "plan_question",
+          status: "submitted",
+        },
+      };
+    }
+
+    if (hasPlanApprovalDecision) {
+      nextKwargs.planModeApprovalDecision = planApprovalResponse?.decision;
+      nextKwargs.planModeApproval = null;
+      if (typeof planApprovalResponse?.note === "string" && planApprovalResponse.note.trim()) {
+        nextKwargs.planModeApprovalNote = planApprovalResponse.note.trim();
+      }
+    }
+
+    next[targetAssistantIndex] = {
+      ...assistantMessage,
+      additional_kwargs: nextKwargs,
+    };
+  }
+
+  // Rebuild plan progress state from execution traces so history reflects final status.
+  for (let index = 0; index < next.length; index += 1) {
+    const message = next[index];
+    if (message.role !== "assistant") continue;
+    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") continue;
+    const kwargs = message.additional_kwargs as Record<string, unknown>;
+
+    const extractPlanFromInteraction = (interaction: unknown) => {
+      if (!interaction || typeof interaction !== "object" || Array.isArray(interaction)) return null;
+      const interactionRecord = interaction as Record<string, unknown>;
+      if (interactionRecord.type !== "plan_progress") return null;
+      const payload =
+        interactionRecord.payload &&
+        typeof interactionRecord.payload === "object" &&
+        !Array.isArray(interactionRecord.payload)
+          ? (interactionRecord.payload as Record<string, unknown>)
+          : null;
+      if (!payload) return null;
+      const plan = Array.isArray(payload.plan)
+        ? (payload.plan as unknown[])
+            .filter(
+              (item): item is Record<string, unknown> =>
+                Boolean(item && typeof item === "object" && typeof (item as { step?: unknown }).step === "string")
+            )
+            .map((item) => ({
+              step: String(item.step || "").trim(),
+              status:
+                item.status === "completed"
+                  ? ("completed" as const)
+                  : item.status === "in_progress"
+                  ? ("in_progress" as const)
+                  : ("pending" as const),
+            }))
+            .filter((item) => item.step.length > 0)
+        : [];
+      if (plan.length === 0) return null;
+      return {
+        explanation: typeof payload.explanation === "string" ? payload.explanation.trim() : undefined,
+        plan,
+      };
+    };
+
+    let rebuiltPlanProgress: { explanation?: string; plan: Array<{ step: string; status: "pending" | "in_progress" | "completed" }> } | null = null;
+
+    const responseData = Array.isArray(kwargs.responseData) ? (kwargs.responseData as unknown[]) : [];
+    for (let i = 0; i < responseData.length; i += 1) {
+      const node = responseData[i];
+      if (!node || typeof node !== "object" || Array.isArray(node)) continue;
+      const toolRes = (node as { toolRes?: unknown }).toolRes;
+      if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) continue;
+      const interaction = (toolRes as { interaction?: unknown }).interaction;
+      const parsed = extractPlanFromInteraction(interaction);
+      if (parsed) rebuiltPlanProgress = parsed;
+    }
+
+    const toolDetails = Array.isArray(kwargs.toolDetails) ? (kwargs.toolDetails as unknown[]) : [];
+    for (let i = 0; i < toolDetails.length; i += 1) {
+      const detail = toolDetails[i];
+      if (!detail || typeof detail !== "object" || Array.isArray(detail)) continue;
+      const interaction = (detail as { interaction?: unknown }).interaction;
+      const parsed = extractPlanFromInteraction(interaction);
+      if (parsed) rebuiltPlanProgress = parsed;
+    }
+
+    if (!rebuiltPlanProgress) continue;
+
+    const nextKwargs: Record<string, unknown> = {
+      ...kwargs,
+      planProgress: rebuiltPlanProgress,
+    };
+    const hasSubmission =
+      nextKwargs.planQuestionSubmission &&
+      typeof nextKwargs.planQuestionSubmission === "object" &&
+      !Array.isArray(nextKwargs.planQuestionSubmission);
+    const allCompleted = rebuiltPlanProgress.plan.every((item) => item.status === "completed");
+    if (hasSubmission || allCompleted) {
+      nextKwargs.planQuestions = [];
+    }
+    if (allCompleted && !nextKwargs.planModeApprovalDecision) {
+      nextKwargs.planModeApprovalDecision = "approve";
+    }
+
+    next[index] = {
+      ...message,
+      additional_kwargs: nextKwargs,
+    };
+  }
+
+  return next;
 };
 
 export const buildConversationTitle = (value: string): string | null => {
