@@ -202,6 +202,8 @@ export const createSubAgentTools = ({
         });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -223,6 +225,8 @@ export const createSubAgentTools = ({
         });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -244,6 +248,8 @@ export const createSubAgentTools = ({
         });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -262,6 +268,8 @@ export const createSubAgentTools = ({
         });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -277,6 +285,8 @@ export const createSubAgentTools = ({
         const snapshot = resumeSubAgent(buildRuntime(), { target });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -310,6 +320,8 @@ export const createSubAgentTools = ({
         });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },
@@ -325,6 +337,8 @@ export const createSubAgentTools = ({
         const snapshot = closeSubAgent(buildRuntime(), { target });
         return {
           ok: true,
+          agent: snapshot,
+          agents: [snapshot],
           ...snapshot,
         };
       },

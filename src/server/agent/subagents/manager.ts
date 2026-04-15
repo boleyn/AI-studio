@@ -76,6 +76,10 @@ type AgentTask = {
   requiredMcpServers?: string[];
   outputFile?: string;
   currentPrompt?: string;
+  lastToolName?: string;
+  lastToolStatus?: "pending" | "in_progress" | "completed" | "error";
+  lastToolMessage?: string;
+  uiFiles?: Record<string, { code: string }>;
 };
 
 type SessionState = {
@@ -98,6 +102,11 @@ export type AgentSnapshot = {
   worktreePath?: string;
   requiredMcpServers?: string[];
   outputFile?: string;
+  currentPrompt?: string;
+  lastToolName?: string;
+  lastToolStatus?: "pending" | "in_progress" | "completed" | "error";
+  lastToolMessage?: string;
+  uiFiles?: Record<string, { code: string }>;
 };
 
 const sessions = new Map<string, SessionState>();
@@ -113,6 +122,67 @@ export const getResumeStrategy = (): "fail" | "requeue" =>
   (process.env.AISTUDIO_SUBAGENT_RESUME_STRATEGY || "fail").trim().toLowerCase() === "requeue"
     ? "requeue"
     : "fail";
+
+const toUiFilesMap = (input: unknown): Record<string, { code: string }> => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const next: Record<string, { code: string }> = {};
+  for (const [filePath, value] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof filePath !== "string" || !filePath.trim()) continue;
+    if (typeof value === "string") {
+      next[filePath] = { code: value };
+      continue;
+    }
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof (value as { code?: unknown }).code === "string"
+    ) {
+      next[filePath] = { code: (value as { code: string }).code };
+    }
+  }
+  return next;
+};
+
+const extractUiFilesFromToolPayload = (raw: unknown) => {
+  const parseRecord = (record: Record<string, unknown>) => {
+    const rootUiFiles = toUiFilesMap(record.uiFiles);
+    if (Object.keys(rootUiFiles).length > 0) return rootUiFiles;
+    const rootFiles = toUiFilesMap(record.files);
+    if (Object.keys(rootFiles).length > 0) return rootFiles;
+    const data =
+      record.data && typeof record.data === "object" && !Array.isArray(record.data)
+        ? (record.data as Record<string, unknown>)
+        : null;
+    if (!data) return {};
+    const dataUiFiles = toUiFilesMap(data.uiFiles);
+    if (Object.keys(dataUiFiles).length > 0) return dataUiFiles;
+    return toUiFilesMap(data.files);
+  };
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    try {
+      return parseRecord(JSON.parse(trimmed) as Record<string, unknown>);
+    } catch {
+      return {};
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return parseRecord(raw as Record<string, unknown>);
+};
+
+const mergeUiFiles = (
+  base: Record<string, { code: string }> | undefined,
+  incoming: Record<string, { code: string }>
+) => {
+  if (Object.keys(incoming).length === 0) return base;
+  return {
+    ...(base || {}),
+    ...incoming,
+  };
+};
 
 export const recoverRunningTaskState = ({
   status,
@@ -201,6 +271,16 @@ const getOrCreateSession = (sessionId: string): SessionState => {
             : undefined,
           outputFile: typeof item.outputFile === "string" ? item.outputFile : undefined,
           currentPrompt: typeof item.currentPrompt === "string" ? item.currentPrompt : undefined,
+          lastToolName: typeof item.lastToolName === "string" ? item.lastToolName : undefined,
+          lastToolStatus:
+            item.lastToolStatus === "pending" ||
+            item.lastToolStatus === "in_progress" ||
+            item.lastToolStatus === "completed" ||
+            item.lastToolStatus === "error"
+              ? item.lastToolStatus
+              : undefined,
+          lastToolMessage: typeof item.lastToolMessage === "string" ? item.lastToolMessage : undefined,
+          uiFiles: toUiFilesMap(item.uiFiles),
         };
         if (restored.status === "running") {
           const recovered = recoverRunningTaskState({
@@ -248,6 +328,10 @@ const persistSessionState = (sessionId: string, session: SessionState) => {
       requiredMcpServers: task.requiredMcpServers,
       outputFile: task.outputFile,
       currentPrompt: task.currentPrompt,
+      lastToolName: task.lastToolName,
+      lastToolStatus: task.lastToolStatus,
+      lastToolMessage: task.lastToolMessage,
+      uiFiles: task.uiFiles,
     })),
   };
   try {
@@ -272,6 +356,11 @@ const toSnapshot = (task: AgentTask): AgentSnapshot => ({
   worktreePath: task.worktreePath,
   requiredMcpServers: task.requiredMcpServers,
   outputFile: task.outputFile,
+  currentPrompt: task.currentPrompt,
+  lastToolName: task.lastToolName,
+  lastToolStatus: task.lastToolStatus,
+  lastToolMessage: task.lastToolMessage,
+  uiFiles: task.uiFiles,
 });
 
 const inferAvailableMcpServers = (tools: AgentToolDefinition[]) => {
@@ -393,6 +482,8 @@ export const waitForPumpWithTimeout = async (task: AgentTask, timeoutMs: number)
   }
   task.status = "failed";
   task.error = `Subagent timed out after ${timeout}ms`;
+  task.lastToolStatus = "error";
+  task.lastToolMessage = task.error;
   task.updatedAt = Date.now();
   return true;
 };
@@ -446,6 +537,10 @@ const ensurePump = (task: AgentTask, runtime: AgentRuntimeOptions) => {
       if (!nextPrompt.trim()) continue;
       task.status = "running";
       task.currentPrompt = nextPrompt;
+      // Reset per-turn live tool status to avoid leaking stale status into the next prompt.
+      task.lastToolName = undefined;
+      task.lastToolStatus = undefined;
+      task.lastToolMessage = undefined;
       task.updatedAt = Date.now();
       const abortController = new AbortController();
       task.currentAbort = abortController;
@@ -472,6 +567,37 @@ const ensurePump = (task: AgentTask, runtime: AgentRuntimeOptions) => {
           allTools,
           tools,
           abortSignal: abortController.signal,
+          onEvent: (event, data) => {
+            if (event === "toolProgress") {
+              const status =
+                data.status === "pending" ||
+                data.status === "in_progress" ||
+                data.status === "completed" ||
+                data.status === "error"
+                  ? data.status
+                  : undefined;
+              if (typeof data.toolName === "string" && data.toolName.trim()) {
+                task.lastToolName = data.toolName;
+              }
+              if (status) {
+                task.lastToolStatus = status;
+              }
+              if (typeof data.message === "string" && data.message.trim()) {
+                task.lastToolMessage = data.message;
+              }
+              task.updatedAt = Date.now();
+              persistSessionState(runtime.sessionId, getOrCreateSession(runtime.sessionId));
+              return;
+            }
+            if (event === "toolResponse") {
+              const uiFiles = extractUiFilesFromToolPayload(data.rawResponse || data.response);
+              if (Object.keys(uiFiles).length > 0) {
+                task.uiFiles = mergeUiFiles(task.uiFiles, uiFiles);
+              }
+              task.updatedAt = Date.now();
+              persistSessionState(runtime.sessionId, getOrCreateSession(runtime.sessionId));
+            }
+          },
         });
         task.messages = runResult.runResult.completeMessages;
         task.lastOutput = runResult.finalMessage;
@@ -571,10 +697,19 @@ export const spawnSubAgent = async (
         task.worktreePath = setup.worktreePath;
         task.cwd = setup.worktreePath;
         task.updatedAt = Date.now();
+        persistSessionState(runtime.sessionId, session);
       } catch (error) {
         task.status = "failed";
         task.error = error instanceof Error ? error.message : String(error ?? "worktree setup failed");
         task.updatedAt = Date.now();
+        persistSessionState(runtime.sessionId, session);
+        void runSubagentHooks({
+          event: "SubagentStop",
+          sessionId: runtime.sessionId,
+          agentId: task.id,
+          agentName: task.name,
+          status: task.status,
+        });
       } finally {
         if (task.status !== "failed") {
           ensurePump(task, runtime);
@@ -650,6 +785,8 @@ export const waitSubAgent = async (
     if (task.status === "failed" || task.status === "closed" || isIdle) {
       if (isIdle && task.status === "running") {
         task.status = "completed";
+        task.updatedAt = Date.now();
+        persistSessionState(runtime.sessionId, session);
       }
       return toSnapshot(task);
     }

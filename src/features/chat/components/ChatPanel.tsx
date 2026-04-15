@@ -1080,13 +1080,38 @@ const ChatPanel = ({
               if (streamPayload.toolName && responseForDisplay) {
                 try {
                   const parsed = (parsedPayload ||
-                    JSON.parse(responseForDisplay)) as AgentTaskSnapshot | { agents?: AgentTaskSnapshot[] };
+                    JSON.parse(responseForDisplay)) as
+                    | AgentTaskSnapshot
+                    | { agent?: AgentTaskSnapshot; agents?: AgentTaskSnapshot[] };
                   if (Array.isArray((parsed as { agents?: AgentTaskSnapshot[] }).agents)) {
-                    upsertAgentTasks((parsed as { agents: AgentTaskSnapshot[] }).agents);
+                    const snapshots = (parsed as { agents: AgentTaskSnapshot[] }).agents;
+                    upsertAgentTasks(snapshots);
                     updateAssistantMetadata((current) => ({
                       ...current,
-                      agentTasks: (parsed as { agents: AgentTaskSnapshot[] }).agents,
+                      agentTasks: snapshots,
                     }));
+                  } else if (
+                    parsed &&
+                    typeof parsed === "object" &&
+                    "agent" in parsed &&
+                    (parsed as { agent?: unknown }).agent &&
+                    typeof (parsed as { agent: AgentTaskSnapshot }).agent.id === "string"
+                  ) {
+                    const snapshot = (parsed as { agent: AgentTaskSnapshot }).agent;
+                    upsertAgentTasks(snapshot);
+                    updateAssistantMetadata((current) => {
+                      const existing = Array.isArray(current.agentTasks)
+                        ? (current.agentTasks as AgentTaskSnapshot[])
+                        : [];
+                      const index = existing.findIndex((item) => item.id === snapshot.id);
+                      const next = [...existing];
+                      if (index >= 0) next[index] = { ...next[index], ...snapshot };
+                      else next.push(snapshot);
+                      return {
+                        ...current,
+                        agentTasks: next,
+                      };
+                    });
                   } else if (
                     parsed &&
                     typeof parsed === "object" &&
@@ -1242,6 +1267,10 @@ const ChatPanel = ({
                   const filesCandidate =
                     (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
                     (parsed as { files?: Record<string, { code: string }> }).files ||
+                    (parsed as { agent?: { uiFiles?: Record<string, { code: string }> } }).agent?.uiFiles ||
+                    (parsed as { agents?: Array<{ uiFiles?: Record<string, { code: string }> }> }).agents?.reduce<
+                      Record<string, { code: string }>
+                    >((acc, item) => ({ ...acc, ...(item?.uiFiles || {}) }), {}) ||
                     (parsed as {
                       data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
                     }).data?.uiFiles ||
