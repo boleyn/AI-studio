@@ -29,7 +29,7 @@ import {
   truncateDetailText,
   type MessageFile,
 } from "../utils/chatItemParsers";
-import PlanModeToolApprovalCard from "./message/PlanModeToolApprovalCard";
+import SubAgentTimelineCard from "./message/SubAgentTimelineCard";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -96,6 +96,7 @@ const ChatItem = ({
     sortedFiles,
     sortedRequestFiles,
     timelineItems,
+    subAgentTimelineEvents,
     timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,
@@ -148,23 +149,6 @@ const ChatItem = ({
   const shouldSuppressPlanVerboseAnswer = Boolean(
     shouldHidePlanReasoning && isAssistant
   );
-  const shouldShowUnifiedPlanCard = Boolean(
-    isAssistant &&
-      !hideInteractiveCards &&
-      (planProgress || hasPendingPlanQuestions || planQuestionSubmission || (planModeApproval && !planModeApprovalDecision))
-  );
-  const planModeApprovalRequestId = React.useMemo(() => {
-    for (let i = timelineItems.length - 1; i >= 0; i -= 1) {
-      const item = timelineItems[i];
-      if (item.type !== "tool") continue;
-      const normalizedToolName = (item.toolName || "").trim().toLowerCase();
-      if (normalizedToolName !== "enter_plan_mode" && normalizedToolName !== "exit_plan_mode") continue;
-      if (item.interaction?.type === "plan_approval" && item.interaction.requestId.trim()) {
-        return item.interaction.requestId.trim();
-      }
-    }
-    return "";
-  }, [timelineItems]);
 
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
 
@@ -578,6 +562,44 @@ const ChatItem = ({
                     const normalizedToolName = (item.toolName || "").trim().toLowerCase();
                     const isPlanModeTool = PLAN_MODE_TOOL_NAMES.has(normalizedToolName);
                     if (isPlanModeTool) return null;
+                    const isSubAgentTool =
+                      normalizedToolName === "spawn_agent" ||
+                      normalizedToolName === "send_input" ||
+                      normalizedToolName === "send_message" ||
+                      normalizedToolName === "wait_agent" ||
+                      normalizedToolName === "list_agents" ||
+                      normalizedToolName === "get_agent_result" ||
+                      normalizedToolName === "close_agent" ||
+                      normalizedToolName === "resume_agent";
+                    if (isSubAgentTool) {
+                      const event = subAgentTimelineEvents.find(
+                        (entry) => entry.id === (item.id || "")
+                      );
+                      return (
+                        <Flex key={toolKey} align="stretch" gap={2}>
+                          <Flex align="center" direction="column" w="12px">
+                            {isRunning ? (
+                              <Spinner color="green.500" mt="5px" size="xs" speed="0.7s" thickness="2.5px" />
+                            ) : (
+                              <Box bg="green.500" borderRadius="full" h="7px" mt="7px" w="7px" />
+                            )}
+                          </Flex>
+                          <Box flex="1" minW={0}>
+                            <SubAgentTimelineCard
+                              event={
+                                event || {
+                                  id: item.id || `${messageId}-subagent-${index}`,
+                                  toolName: item.toolName || "subagent",
+                                  params: item.params || "",
+                                  response: item.response || "",
+                                  taskSnapshots: [],
+                                }
+                              }
+                            />
+                          </Box>
+                        </Flex>
+                      );
+                    }
                     const truncatedParams = truncateDetailText(item.params);
                     const truncatedResponse = truncateDetailText(item.response);
                     const paramsTruncated = isDetailTruncated(item.params);
@@ -753,135 +775,6 @@ const ChatItem = ({
                   </Text>
                 ) : null}
               </Flex>
-            ) : null}
-            {shouldShowUnifiedPlanCard ? (
-              <Box bg="primary.50" border="1px solid" borderColor="primary.200" borderRadius="10px" mt={1} p={3}>
-                <PlanModeToolApprovalCard
-                  checklist={
-                    planProgress?.plan?.map((item) => ({ text: item.step, status: item.status })) || undefined
-                  }
-                  decision={planModeApprovalDecision}
-                  description={
-                    planProgress?.explanation ||
-                    planModeApproval?.description ||
-                    "计划已生成，请确认后继续执行。"
-                  }
-                  onSelect={
-                    planModeApproval && !planModeApprovalDecision
-                      ? (decision) => {
-                          if (!planModeApprovalRequestId) return;
-                          onPlanModeApprovalSelect?.({
-                            messageId,
-                            requestId: planModeApprovalRequestId,
-                            action: planModeApproval.action,
-                            decision,
-                          });
-                        }
-                      : undefined
-                  }
-                  options={
-                    planModeApproval && !planModeApprovalDecision
-                      ? Array.isArray(planModeApproval.options) && planModeApproval.options.length > 0
-                        ? planModeApproval.options
-                        : [
-                            { label: "批准", value: "approve" as const },
-                            { label: "拒绝", value: "reject" as const },
-                          ]
-                      : undefined
-                  }
-                  rationale={planModeApproval?.rationale}
-                  submitting={Boolean(
-                    planModeApproval
-                      ? planModeApprovalSubmitting || (!planModeApprovalDecision && !planModeApprovalRequestId)
-                      : false
-                  )}
-                  title={planModeApproval?.title || "计划清单"}
-                />
-                {hasPendingPlanQuestions ? (
-                  <Box bg="myWhite.100" border="1px solid" borderColor="myGray.250" borderRadius="8px" mt={2.5} p={2.5}>
-                    <Text color="myGray.900" fontSize="12px" fontWeight={700} mb={2}>
-                      执行确认
-                    </Text>
-                    {planQuestions.map((question) => {
-                      const selectedLabel = planAnswers[question.id] || "";
-                      return (
-                        <Box key={`${messageId}-plan-question-${question.id}`} mt={2}>
-                          <Text color="myGray.700" fontSize="12px">
-                            {question.question}
-                          </Text>
-                          <Flex flexWrap="wrap" gap={2} mt={2}>
-                            {question.options.map((option, optionIndex) => {
-                              const isSelected = selectedLabel === option.label;
-                              return (
-                                <Button
-                                  key={`${messageId}-plan-option-${question.id}-${optionIndex}`}
-                                  bg={isSelected ? "primary.100" : "white"}
-                                  border="1px solid"
-                                  borderColor={isSelected ? "primary.300" : "myGray.250"}
-                                  color={isSelected ? "primary.700" : "myGray.700"}
-                                  h="26px"
-                                  isDisabled={Boolean(planQuestionSubmitting || selectedLabel)}
-                                  onClick={() =>
-                                    onPlanQuestionSelect?.({
-                                      messageId,
-                                      requestId: question.requestId,
-                                      questionId: question.id,
-                                      header: question.header,
-                                      question: question.question,
-                                      optionLabel: option.label,
-                                      optionDescription: option.description,
-                                    })
-                                  }
-                                  px={2}
-                                  size="xs"
-                                  variant="ghost"
-                                >
-                                  {option.label}
-                                </Button>
-                              );
-                            })}
-                          </Flex>
-                        </Box>
-                      );
-                    })}
-                    {(() => {
-                      const requestId =
-                        planQuestions.find((item) => typeof item.requestId === "string" && item.requestId.trim())
-                          ?.requestId || "";
-                      const answerEntries = planQuestions
-                        .map((item) => [item.id, planAnswers[item.id] || ""] as const)
-                        .filter(([_, value]) => Boolean(value));
-                      const allAnswered = planQuestions.length > 0 && answerEntries.length === planQuestions.length;
-                      return (
-                        <Flex justify="flex-end" mt={3}>
-                          <Button
-                            colorScheme="primary"
-                            isDisabled={Boolean(planQuestionSubmitting || !allAnswered || !requestId)}
-                            onClick={() => {
-                              if (!requestId) return;
-                              onPlanQuestionsSubmit?.({
-                                messageId,
-                                requestId,
-                                answers: Object.fromEntries(answerEntries),
-                              });
-                            }}
-                            size="xs"
-                          >
-                            确认执行
-                          </Button>
-                        </Flex>
-                      );
-                    })()}
-                  </Box>
-                ) : null}
-                {planQuestionSubmission ? (
-                  <Flex align="center" justify="flex-end" mt={2}>
-                    <Text color="primary.700" fontSize="11px" fontWeight={700}>
-                      已确认执行
-                    </Text>
-                  </Flex>
-                ) : null}
-              </Box>
             ) : null}
           </Flex>
         )}

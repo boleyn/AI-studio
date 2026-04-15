@@ -55,6 +55,10 @@ import {
   normalizeToolDetails,
   toToolMemoryMessages,
 } from "@server/chat/completions/toolMemory";
+import {
+  mergeAssistantAdditionalKwargs,
+  resolveAssistantContentForPersistence,
+} from "./completions/persistenceMerge";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import { SseResponseEventEnum } from "@shared/network/sseEvents";
@@ -958,6 +962,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   })();
   const enforceSpawnDelegationPolicy = process.env.AISTUDIO_ENFORCE_SPAWN_AGENT_POLICY === "true";
+  const enforceUpdatePlanProgressPolicy =
+    process.env.AISTUDIO_ENFORCE_UPDATE_PLAN_PROGRESS_POLICY === "true";
   const spawnedAgent = stepResponses.some((node) => node.moduleName === "spawn_agent");
   if (planExecutionConfirmed) {
     const updatePlanSnapshots = stepResponses
@@ -990,6 +996,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         Boolean(item && item.length > 0)
       );
     const latestPlan = updatePlanSnapshots.length > 0 ? updatePlanSnapshots[updatePlanSnapshots.length - 1] : null;
+    const effectivePlannedStepCount = latestPlan?.length || plannedStepCount;
     const latestCompletedCount = latestPlan
       ? latestPlan.filter((item) => item.status === "completed").length
       : 0;
@@ -1009,15 +1016,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     if (!latestPlan) {
-      throw new Error(
-        "Execution policy violated: execution finished without update_plan progress callbacks."
-      );
+      const message =
+        "Execution policy violated: execution finished without update_plan progress callbacks.";
+      if (enforceUpdatePlanProgressPolicy) {
+        throw new Error(message);
+      }
+      console.warn("[plan-policy][update-plan-missing]", {
+        plannedStepCount,
+        latestPlanCount,
+        latestCompletedCount,
+        enforced: false,
+      });
     }
-    if (plannedStepCount > 0) {
-      if (latestPlanCount < plannedStepCount || latestCompletedCount < plannedStepCount) {
-        throw new Error(
-          `Execution policy violated: plan not fully completed (${latestCompletedCount}/${plannedStepCount}) via update_plan.`
-        );
+    if (effectivePlannedStepCount > 0 && latestPlan) {
+      if (latestPlanCount < effectivePlannedStepCount || latestCompletedCount < effectivePlannedStepCount) {
+        const message = `Execution policy violated: plan not fully completed (${latestCompletedCount}/${effectivePlannedStepCount}) via update_plan.`;
+        if (enforceUpdatePlanProgressPolicy) {
+          throw new Error(message);
+        }
+        console.warn("[plan-policy][update-plan-incomplete]", {
+          plannedStepCount: effectivePlannedStepCount,
+          latestPlanCount,
+          latestCompletedCount,
+          enforced: false,
+        });
       }
     }
   }
@@ -1205,6 +1227,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return -1;
     })();
 
+    const existingAssistantMessage =
+      continueAssistantMessageId && conversation
+        ? conversation.messages.find(
+            (item) => item.role === "assistant" && item.id === continueAssistantMessageId
+          ) || null
+        : null;
+
     let assistantToStore: ConversationMessage | null = null;
     if (assistantIndex >= 0) {
       const current = mergedAssistantMessages[assistantIndex];
@@ -1215,14 +1244,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const existingToolDetails = normalizeToolDetails(
         (currentKwargs as { toolDetails?: unknown }).toolDetails
       );
-      const currentText = extractText(current.content);
-      assistantToStore = {
-        type: "assistant",
-        subtype: planModeActive ? "plan_result" : "result",
-        ...current,
-        ...(continueAssistantMessageId ? { id: continueAssistantMessageId } : {}),
-        content: currentText || resolvedFinalMessage,
-        additional_kwargs: {
+      const currentText = resolveAssistantContentForPersistence({
+        generatedContent: current.content,
+        resolvedFinalMessage,
+        existingMessage: existingAssistantMessage,
+      });
+      const mergedKwargs = mergeAssistantAdditionalKwargs({
+        existing: existingAssistantMessage?.additional_kwargs,
+        incoming: {
           ...currentKwargs,
           planModeState: planModeActive,
           reasoning_text: finalReasoning,
@@ -1260,15 +1289,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
           ...(memoryUpdateAudit ? { memoryUpdate: memoryUpdateAudit } : {}),
         },
-      };
-    } else if (resolvedFinalMessage) {
+      });
       assistantToStore = {
         type: "assistant",
         subtype: planModeActive ? "plan_result" : "result",
-        role: "assistant",
-        content: resolvedFinalMessage,
-        id: continueAssistantMessageId || createDataId(),
-        additional_kwargs: {
+        ...current,
+        ...(continueAssistantMessageId ? { id: continueAssistantMessageId } : {}),
+        content: currentText,
+        additional_kwargs: mergedKwargs,
+      };
+    } else if (resolvedFinalMessage) {
+      const mergedKwargs = mergeAssistantAdditionalKwargs({
+        existing: existingAssistantMessage?.additional_kwargs,
+        incoming: {
           planModeState: planModeActive,
           reasoning_text: finalReasoning,
           toolDetails: toolDetailsFromFlow,
@@ -1305,6 +1338,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(memoryRecallAudit ? { memoryRecall: memoryRecallAudit } : {}),
           ...(memoryUpdateAudit ? { memoryUpdate: memoryUpdateAudit } : {}),
         },
+      });
+      assistantToStore = {
+        type: "assistant",
+        subtype: planModeActive ? "plan_result" : "result",
+        role: "assistant",
+        content: resolvedFinalMessage,
+        id: continueAssistantMessageId || createDataId(),
+        additional_kwargs: mergedKwargs,
       };
     }
 

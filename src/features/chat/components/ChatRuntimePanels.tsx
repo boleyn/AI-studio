@@ -120,7 +120,9 @@ const ChatRuntimePanels = ({
         </Box>
       ) : null}
 
-      {Object.keys(sessionTasks).length > 0 ? (
+      {Object.values(sessionTasks).some(
+        (task) => task.status === "pending" || task.status === "in_progress" || task.status === "blocked"
+      ) ? (
         <Box bg="white" border="1px solid" borderColor="myGray.200" borderRadius="10px" mb={3} px={3} py={2}>
           <Flex align="center" justify="space-between" mb={showSessionTasks ? 2 : 0}>
             <Text color="myGray.700" fontSize="12px" fontWeight={700}>
@@ -201,4 +203,3 @@ const ChatRuntimePanels = ({
 };
 
 export default ChatRuntimePanels;
-

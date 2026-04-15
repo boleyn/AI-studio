@@ -686,6 +686,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const durationSeconds = Number(((Date.now() - agentRuntimeStartAt) / 1000).toFixed(2));
     const enforceSpawnDelegationPolicy = process.env.AISTUDIO_ENFORCE_SPAWN_AGENT_POLICY === "true";
+    const enforceUpdatePlanProgressPolicy =
+      process.env.AISTUDIO_ENFORCE_UPDATE_PLAN_PROGRESS_POLICY === "true";
     const spawnedAgent = result.stepResponses.some((node) => node.moduleName === "spawn_agent");
     if (planExecutionConfirmed) {
       const updatePlanSnapshots = result.stepResponses
@@ -726,6 +728,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           Boolean(item && item.length > 0)
         );
       const latestPlan = updatePlanSnapshots.length > 0 ? updatePlanSnapshots[updatePlanSnapshots.length - 1] : null;
+      const effectivePlannedStepCount = latestPlan?.length || plannedStepCount;
       const latestCompletedCount = latestPlan
         ? latestPlan.filter((item) => item.status === "completed").length
         : 0;
@@ -745,15 +748,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       if (!latestPlan) {
-        throw new Error(
-          "Execution policy violated: execution finished without update_plan progress callbacks."
-        );
+        const message =
+          "Execution policy violated: execution finished without update_plan progress callbacks.";
+        if (enforceUpdatePlanProgressPolicy) {
+          throw new Error(message);
+        }
+        console.warn("[plan-policy][update-plan-missing][skills]", {
+          plannedStepCount,
+          latestPlanCount,
+          latestCompletedCount,
+          enforced: false,
+        });
       }
-      if (plannedStepCount > 0) {
-        if (latestPlanCount < plannedStepCount || latestCompletedCount < plannedStepCount) {
-          throw new Error(
-            `Execution policy violated: plan not fully completed (${latestCompletedCount}/${plannedStepCount}) via update_plan.`
-          );
+      if (effectivePlannedStepCount > 0 && latestPlan) {
+        if (latestPlanCount < effectivePlannedStepCount || latestCompletedCount < effectivePlannedStepCount) {
+          const message = `Execution policy violated: plan not fully completed (${latestCompletedCount}/${effectivePlannedStepCount}) via update_plan.`;
+          if (enforceUpdatePlanProgressPolicy) {
+            throw new Error(message);
+          }
+          console.warn("[plan-policy][update-plan-incomplete][skills]", {
+            plannedStepCount: effectivePlannedStepCount,
+            latestPlanCount,
+            latestCompletedCount,
+            enforced: false,
+          });
         }
       }
     }

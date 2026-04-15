@@ -16,6 +16,7 @@ const PlanModeToolApprovalCard = ({
   decision,
   submitting,
   onSelect,
+  compact = false,
 }: {
   title: string;
   description: string;
@@ -26,6 +27,7 @@ const PlanModeToolApprovalCard = ({
   decision?: PlanApprovalDecision;
   submitting?: boolean;
   onSelect?: (decision: "approve" | "reject") => void;
+  compact?: boolean;
 }) => {
   const parsedChecklist = parseChecklistItems(preview || rationale).map((text) => ({
     text,
@@ -46,31 +48,38 @@ const PlanModeToolApprovalCard = ({
 
   return (
     <Box
-      bg="myWhite.100"
-      border="1px solid"
-      borderColor="primary.200"
-      borderRadius="12px"
-      p={3}
-      shadow="xs"
+      bg={compact ? "transparent" : "myWhite.100"}
+      border={compact ? "0" : "1px solid"}
+      borderColor={compact ? "transparent" : "primary.200"}
+      borderRadius={compact ? "0" : "12px"}
+      p={compact ? 0 : 3}
+      shadow={compact ? "none" : "xs"}
     >
-      <Text color="myGray.900" fontSize="12px" fontWeight={700}>
+      <Text color="myGray.900" fontSize="12px" fontWeight={700} letterSpacing="0.01em">
         {title}
       </Text>
-      <Text color="myGray.700" fontSize="12px" mt={1}>
+      <Text color="myGray.700" fontSize="12px" mt={1} noOfLines={compact ? 2 : undefined}>
         {description}
       </Text>
       {rationale ? (
-        <Text color="myGray.600" fontSize="11px" mt={1.5}>
+        <Text color="myGray.600" fontSize="11px" mt={1.5} noOfLines={compact ? 2 : undefined}>
           说明: {rationale}
         </Text>
       ) : null}
       {finalChecklist.length > 0 ? (
-        <Box bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="10px" mt={2.5} p={2.5}>
+        <Box
+          bg={compact ? "myGray.25" : "myGray.50"}
+          border="1px solid"
+          borderColor={compact ? "myGray.150" : "myGray.200"}
+          borderRadius="8px"
+          mt={2}
+          p={compact ? 2 : 2.5}
+        >
           <Text color="myGray.600" fontSize="11px" fontWeight={700} mb={1.5}>
-            计划清单
+            计划进度
           </Text>
-          <Flex direction="column" gap={2}>
-            {finalChecklist.map((item, index) => {
+          <Flex direction="column" gap={1.5}>
+            {(compact ? finalChecklist.slice(0, 3) : finalChecklist).map((item, index) => {
               const status = statusPalette[item.status || "pending"];
               return (
               <Flex key={`plan-check-${index}`} align="center" gap={2} justify="space-between">
@@ -87,7 +96,7 @@ const PlanModeToolApprovalCard = ({
                     {item.text}
                   </Text>
                 </Flex>
-                {hasActiveStatus ? (
+                {hasActiveStatus && !compact ? (
                   <Text
                     bg="white"
                     border="1px solid"
@@ -105,6 +114,11 @@ const PlanModeToolApprovalCard = ({
               </Flex>
             )})}
           </Flex>
+          {compact && finalChecklist.length > 3 ? (
+            <Text color="myGray.500" fontSize="10px" mt={1.5}>
+              还有 {finalChecklist.length - 3} 个步骤
+            </Text>
+          ) : null}
         </Box>
       ) : null}
       {Array.isArray(options) && options.length > 0 ? (
@@ -136,7 +150,7 @@ const PlanModeToolApprovalCard = ({
         )})}
       </Flex>
       ) : null}
-      {decision ? (
+      {decision && Array.isArray(options) && options.length > 0 ? (
         <Text color="myGray.500" fontSize="11px" mt={1.5}>
           已选择: {decision === "approve" ? "批准" : "拒绝"}
         </Text>

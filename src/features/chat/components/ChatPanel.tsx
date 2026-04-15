@@ -45,6 +45,7 @@ import {
   parseToolPayload,
   type PlanModeApprovalPayload,
 } from "../utils/planModeDisplay";
+import { derivePlanResumeState } from "../utils/planResume";
 
 import ChatPanelView from "./ChatPanelView";
 import type { MessageRating } from "./message/MessageActionBar";
@@ -159,6 +160,7 @@ const ChatPanel = ({
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
   const [chatMode, setChatMode] = useState<"default" | "plan">("default");
+  const [planResumeInputEnabled, setPlanResumeInputEnabled] = useState(false);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
@@ -343,6 +345,7 @@ const ChatPanel = ({
     }
     setMessages(normalizedHydratedMessages);
     setChatMode(derivePlanModeFromMessages(normalizedHydratedMessages));
+    setPlanResumeInputEnabled(false);
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
       for (const message of normalizedHydratedMessages) {
@@ -442,20 +445,9 @@ const ChatPanel = ({
     setAgentTasks(restoredAgentTasks);
     setSessionTasks(restoredSessionTasks);
     shouldAutoScrollRef.current = true;
-    const activeId = activeConversation?.id || "";
-    const cachedUsage = getCachedContextUsage(activeId || null, model);
-    const recoveredUsage = getLatestContextUsageFromMessages(normalizedHydratedMessages, model);
-    const matchedRecoveredUsage =
-      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
-        ? recoveredUsage
-        : null;
-    setContextUsageSnapshot(cachedUsage || matchedRecoveredUsage || null, activeId || null, model);
   }, [
     activeConversation?.id,
     activeConversation?.messages,
-    getCachedContextUsage,
-    model,
-    setContextUsageSnapshot,
     token,
   ]);
 
@@ -560,6 +552,9 @@ const ChatPanel = ({
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
       const hasArtifacts = finalArtifacts.length > 0;
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
+      if (planResumeInputEnabled) {
+        setPlanResumeInputEnabled(false);
+      }
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
       const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
@@ -794,11 +789,19 @@ const ChatPanel = ({
               : [];
             const index = list.findIndex((item) => item.id === id);
             const base = index >= 0 ? list[index] : { id, params: "", response: "" };
+            const baseParams = typeof base.params === "string" ? base.params : "";
+            const incomingParams = typeof nextPartial.params === "string" ? nextPartial.params : "";
+            const mergedParams = (() => {
+              if (!incomingParams) return baseParams;
+              // Avoid duplicate incremental params chunks when stream re-delivers events.
+              if (baseParams.endsWith(incomingParams)) return baseParams;
+              return `${baseParams}${incomingParams}`;
+            })();
             const merged = {
               ...base,
               id,
               toolName: nextPartial.toolName ?? base.toolName,
-              params: `${base.params || ""}${nextPartial.params || ""}`,
+              params: mergedParams,
               response: nextPartial.response ?? base.response,
               interaction: nextPartial.interaction ?? base.interaction,
               progressStatus: nextPartial.progressStatus ?? base.progressStatus,
@@ -854,13 +857,21 @@ const ChatPanel = ({
               const index = list.findIndex((item) => item.type === "tool" && item.id === toolId);
               if (index >= 0) {
                 const target = list[index];
+                const targetParams = typeof target.params === "string" ? target.params : "";
+                const incomingParams =
+                  typeof nextPartial.params === "string" ? nextPartial.params : "";
+                const mergedParams = (() => {
+                  if (!incomingParams) return targetParams;
+                  if (targetParams.endsWith(incomingParams)) return targetParams;
+                  return `${targetParams}${incomingParams}`;
+                })();
                 const next = [...list];
                 next[index] = {
                   ...target,
                   id: toolId,
                   toolName:
                     typeof nextPartial.toolName === "string" ? nextPartial.toolName : target.toolName,
-                  params: `${typeof target.params === "string" ? target.params : ""}${typeof nextPartial.params === "string" ? nextPartial.params : ""}`,
+                  params: mergedParams,
                   response:
                     typeof nextPartial.response === "string" ? nextPartial.response : target.response,
                   interaction: nextPartial.interaction ?? target.interaction,
@@ -1580,14 +1591,13 @@ const ChatPanel = ({
 
   const {
     handlePlanQuestionSelect,
+    handlePlanQuestionsSubmit,
     handlePlanModeApprovalSelect,
     handlePermissionApprovalSelect,
     chatInteractionContextValue,
   } = useChatPlanInteractions({
     isSending,
     setMessages,
-    chatMode,
-    setChatMode,
     handleSend,
     selectedSkills,
     thinkingEnabled,
@@ -1656,6 +1666,57 @@ const ChatPanel = ({
     );
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;
+  const planResumeState = useMemo(() => derivePlanResumeState(messages), [messages]);
+
+  const handleResumePlanExecute = useCallback(() => {
+    if (isSending || !planResumeState.visible) return;
+    setPlanResumeInputEnabled(false);
+    setChatMode("plan");
+    const targetMessageId = planResumeState.messageId;
+    const pendingQuestion = planResumeState.pendingQuestion;
+    if (!targetMessageId) return;
+
+    if (pendingQuestion) {
+      const executeOption =
+        pendingQuestion.options.find((option) => /确认执行|执行|approve|proceed|yes/i.test(option.label.trim())) ||
+        pendingQuestion.options[0];
+      if (!executeOption) return;
+      handlePlanQuestionsSubmit({
+        messageId: targetMessageId,
+        requestId: pendingQuestion.requestId,
+        answers: {
+          [pendingQuestion.questionId]: executeOption.label,
+        },
+      });
+      return;
+    }
+
+    void handleSend({
+      text: "继续执行当前未完成计划，并保持计划进度持续回写。",
+      uploadedFiles: [],
+      files: [],
+      selectedSkills,
+      thinkingEnabled,
+    });
+  }, [
+    handlePlanQuestionsSubmit,
+    handleSend,
+    isSending,
+    planResumeState.messageId,
+    planResumeState.pendingQuestion,
+    planResumeState.visible,
+    selectedSkills,
+    thinkingEnabled,
+  ]);
+
+  const handleResumePlanAdjust = useCallback(() => {
+    if (isSending || !planResumeState.visible) return;
+    setPlanResumeInputEnabled(true);
+    setChatMode("plan");
+  }, [isSending, planResumeState.visible]);
+  const handleExitPlanAdjusting = useCallback(() => {
+    setPlanResumeInputEnabled(false);
+  }, []);
 
   const chatPanelViewContextValue = useMemo(
     () => ({
@@ -1711,6 +1772,11 @@ const ChatPanel = ({
       onRateMessage: (messageId: string, rating: MessageRating) => void handleRateMessage(messageId, rating),
       onRegenerateMessage: (messageId: string) => void handleRegenerateMessage(messageId),
       streamingMessageId,
+      planResumeState,
+      planResumeInputEnabled,
+      onResumePlanExecute: handleResumePlanExecute,
+      onResumePlanAdjust: handleResumePlanAdjust,
+      onExitPlanAdjusting: handleExitPlanAdjusting,
       thinkingEnabled,
       chatMode,
       selectedModelSupportsReasoning,
@@ -1773,6 +1839,11 @@ const ChatPanel = ({
       handleRateMessage,
       handleRegenerateMessage,
       streamingMessageId,
+      planResumeState,
+      planResumeInputEnabled,
+      handleResumePlanExecute,
+      handleResumePlanAdjust,
+      handleExitPlanAdjusting,
       thinkingEnabled,
       chatMode,
       selectedModelSupportsReasoning,

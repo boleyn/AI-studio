@@ -45,9 +45,11 @@ const ChatInput = ({
   fileOptions = [],
   prefillText,
   prefillVersion,
+  planAdjusting = false,
   onChangeModel,
   onChangeMode,
   onChangeThinkingEnabled,
+  onExitPlanAdjusting,
   onChangeSelectedSkill,
   onChangeSelectedSkills,
   onUploadFiles,
@@ -69,6 +71,7 @@ const ChatInput = ({
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
+  const inputBaseHeight = planAdjusting ? 36 : 50;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const skillPickerRef = useRef<HTMLDivElement | null>(null);
@@ -104,9 +107,9 @@ const ChatInput = ({
   const resetTextareaHeight = useCallback(() => {
     const textarea = textAreaRef.current;
     if (!textarea) return;
-    textarea.style.height = "50px";
+    textarea.style.height = `${inputBaseHeight}px`;
     textarea.style.overflowY = "hidden";
-  }, []);
+  }, [inputBaseHeight]);
   const isInputLocked = isSending || isSubmitting;
   const hasUploadingFiles = useMemo(
     () => files.some((item) => item.uploadState === "uploading"),
@@ -218,11 +221,11 @@ const ChatInput = ({
       if (!textarea) return;
       textarea.focus();
       resetTextareaHeight();
-      const nextHeight = Math.min(textarea.scrollHeight, 128);
+      const nextHeight = Math.max(inputBaseHeight, Math.min(textarea.scrollHeight, 128));
       textarea.style.height = `${nextHeight}px`;
       textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
     }, 0);
-  }, [prefillText, prefillVersion, resetTextareaHeight]);
+  }, [inputBaseHeight, prefillText, prefillVersion, resetTextareaHeight]);
 
   useEffect(() => {
     if (text.length > 0) return;
@@ -278,12 +281,12 @@ const ChatInput = ({
         textarea.focus();
         textarea.setSelectionRange(cursor, cursor);
         resetTextareaHeight();
-        const nextHeight = Math.min(textarea.scrollHeight, 128);
+        const nextHeight = Math.max(inputBaseHeight, Math.min(textarea.scrollHeight, 128));
         textarea.style.height = `${nextHeight}px`;
         textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
       });
     },
-    [commitSelectedSkills, mentionRange, resetTextareaHeight, selectedSkillList, text]
+    [commitSelectedSkills, inputBaseHeight, mentionRange, resetTextareaHeight, selectedSkillList, text]
   );
   const applySelectedFile = useCallback(
     (filePath: string) => {
@@ -301,12 +304,12 @@ const ChatInput = ({
         textarea.focus();
         textarea.setSelectionRange(nextCursor, nextCursor);
         resetTextareaHeight();
-        const nextHeight = Math.min(textarea.scrollHeight, 128);
+        const nextHeight = Math.max(inputBaseHeight, Math.min(textarea.scrollHeight, 128));
         textarea.style.height = `${nextHeight}px`;
         textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
       });
     },
-    [fileRange, resetTextareaHeight, text]
+    [fileRange, inputBaseHeight, resetTextareaHeight, text]
   );
 
   const uploadSingleFile = useCallback(
@@ -615,134 +618,164 @@ const ChatInput = ({
                 </Flex>
               </Flex>
             ) : null}
-            <Textarea
-              ref={textAreaRef}
-              _focusVisible={{ border: "none", boxShadow: "none" }}
-              _placeholder={{
-                color: "#707070",
-                fontSize: "13px",
-              }}
-              border="none"
-              color="myGray.700"
-              fontSize="15px"
-              fontWeight={400}
-              lineHeight="1.45"
-              maxH="128px"
-              mb={0}
-              minH="50px"
-              isDisabled={isInputLocked}
-              onBlur={() => {
-                setIsFocused(false);
-                window.setTimeout(() => {
-                  setMentionRange(null);
-                  setSkillQuery("");
-                  setFileRange(null);
-                  setFileQuery("");
-                }, 80);
-              }}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setText(nextValue);
-                updateTriggerState(nextValue, event.target.selectionStart ?? nextValue.length);
-                const textarea = event.target;
-                resetTextareaHeight();
-                const nextHeight = Math.min(textarea.scrollHeight, 128);
-                textarea.style.height = `${nextHeight}px`;
-                textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
-              }}
-              onFocus={() => setIsFocused(true)}
-              onPaste={(event) => {
-                if (isInputLocked) return;
-                const pastedFiles = getPastedFiles(event.clipboardData);
-                if (pastedFiles.length === 0) return;
-
-                void onPickFiles(pastedFiles);
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onKeyDown={(event) => {
-                if (showFilePicker) {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setActiveFileIndex((prev) => (prev + 1) % filteredFileOptions.length);
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setActiveFileIndex((prev) => (prev <= 0 ? filteredFileOptions.length - 1 : prev - 1));
-                    return;
-                  }
-                  if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
-                    event.preventDefault();
-                    const picked = filteredFileOptions[activeFileIndex];
-                    if (picked) {
-                      applySelectedFile(picked);
-                    }
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setFileRange(null);
-                    setFileQuery("");
-                    return;
-                  }
-                }
-                if (showSkillPicker) {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setActiveSkillIndex((prev) => (prev + 1) % filteredSkillOptions.length);
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setActiveSkillIndex((prev) =>
-                      prev <= 0 ? filteredSkillOptions.length - 1 : prev - 1
-                    );
-                    return;
-                  }
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    const picked = filteredSkillOptions[activeSkillIndex];
-                    if (picked?.name) {
-                      applySelectedSkill(picked.name);
-                    } else {
-                      setMentionRange(null);
-                      setSkillQuery("");
-                    }
-                    return;
-                  }
-                  if (event.key === "Tab") {
-                    event.preventDefault();
-                    const picked = filteredSkillOptions[activeSkillIndex];
-                    if (picked?.name) {
-                      applySelectedSkill(picked.name);
-                    }
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
+            <Flex align="center" gap={2} px={2} pt={2}>
+              {planAdjusting ? (
+                <Flex
+                  align="center"
+                  bg="orange.50"
+                  border="1px solid"
+                  borderColor="orange.200"
+                  borderRadius="10px"
+                  color="orange.800"
+                  flexShrink={0}
+                  gap={1.5}
+                  h="28px"
+                  pl={2}
+                  pr={1}
+                >
+                  <Text fontSize="12px" fontWeight={700}>
+                    调整计划
+                  </Text>
+                  <CloseButton
+                    color="orange.700"
+                    onClick={onExitPlanAdjusting}
+                    aria-label="退出调整计划"
+                    size="sm"
+                    transform="scale(0.88)"
+                  />
+                </Flex>
+              ) : null}
+              <Textarea
+                ref={textAreaRef}
+                _focusVisible={{ border: "none", boxShadow: "none" }}
+                _placeholder={{
+                  color: "#707070",
+                  fontSize: "13px",
+                }}
+                border="none"
+                color="myGray.700"
+                flex="1"
+                fontSize="15px"
+                fontWeight={400}
+                lineHeight="1.45"
+                maxH="128px"
+                mb={0}
+                minH={`${inputBaseHeight}px`}
+                isDisabled={isInputLocked}
+                onBlur={() => {
+                  setIsFocused(false);
+                  window.setTimeout(() => {
                     setMentionRange(null);
                     setSkillQuery("");
-                    return;
-                  }
-                }
-                if (event.key === "Enter" && !event.shiftKey) {
-                  const nativeEvent = event.nativeEvent as { isComposing?: boolean; keyCode?: number };
-                  if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+                    setFileRange(null);
+                    setFileQuery("");
+                  }, 80);
+                }}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setText(nextValue);
+                  updateTriggerState(nextValue, event.target.selectionStart ?? nextValue.length);
+                  const textarea = event.target;
+                  resetTextareaHeight();
+                  const nextHeight = Math.max(inputBaseHeight, Math.min(textarea.scrollHeight, 128));
+                  textarea.style.height = `${nextHeight}px`;
+                  textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
+                }}
+                onFocus={() => setIsFocused(true)}
+                onPaste={(event) => {
+                  if (isInputLocked) return;
+                  const pastedFiles = getPastedFiles(event.clipboardData);
+                  if (pastedFiles.length === 0) return;
+
+                  void onPickFiles(pastedFiles);
                   event.preventDefault();
-                  handleSend();
-                }
-              }}
-              overflowX="hidden"
-              overflowY="hidden"
-              placeholder={inputPlaceholder}
-              px={2}
-              resize="none"
-              rows={1}
-              value={text}
-              w="100%"
-              whiteSpace="pre-wrap"
-            />
+                  event.stopPropagation();
+                }}
+                onKeyDown={(event) => {
+                  if (showFilePicker) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActiveFileIndex((prev) => (prev + 1) % filteredFileOptions.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveFileIndex((prev) => (prev <= 0 ? filteredFileOptions.length - 1 : prev - 1));
+                      return;
+                    }
+                    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+                      event.preventDefault();
+                      const picked = filteredFileOptions[activeFileIndex];
+                      if (picked) {
+                        applySelectedFile(picked);
+                      }
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setFileRange(null);
+                      setFileQuery("");
+                      return;
+                    }
+                  }
+                  if (showSkillPicker) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActiveSkillIndex((prev) => (prev + 1) % filteredSkillOptions.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveSkillIndex((prev) =>
+                        prev <= 0 ? filteredSkillOptions.length - 1 : prev - 1
+                      );
+                      return;
+                    }
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      const picked = filteredSkillOptions[activeSkillIndex];
+                      if (picked?.name) {
+                        applySelectedSkill(picked.name);
+                      } else {
+                        setMentionRange(null);
+                        setSkillQuery("");
+                      }
+                      return;
+                    }
+                    if (event.key === "Tab") {
+                      event.preventDefault();
+                      const picked = filteredSkillOptions[activeSkillIndex];
+                      if (picked?.name) {
+                        applySelectedSkill(picked.name);
+                      }
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setMentionRange(null);
+                      setSkillQuery("");
+                      return;
+                    }
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    const nativeEvent = event.nativeEvent as { isComposing?: boolean; keyCode?: number };
+                    if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+                    event.preventDefault();
+                    handleSend();
+                  }
+                }}
+                overflowX="hidden"
+                overflowY="hidden"
+                placeholder={inputPlaceholder}
+                px={2}
+                py={planAdjusting ? "6px" : undefined}
+                resize="none"
+                rows={1}
+                value={text}
+                w="100%"
+                whiteSpace="pre-wrap"
+              />
+            </Flex>
             {showFilePicker ? (
               <SlashFilePicker
                 activeIndex={activeFileIndex}
@@ -762,7 +795,7 @@ const ChatInput = ({
           </Box>
         </Flex>
 
-        <Flex align="center" h="44px" justify="space-between" pb={2} pl={3} pr={3}>
+        <Flex align="center" h="44px" justify="space-between" mt="auto" pb={2} pl={3} pr={3}>
           <Flex align="center" gap={2} minW={0}>
             <ModelCascader
               disabled={Boolean(modelLoading || isSending || isSubmitting)}

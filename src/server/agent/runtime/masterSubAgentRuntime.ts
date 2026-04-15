@@ -488,6 +488,7 @@ export const runMasterSubAgentRuntime = async ({
               } as ChatCompletionMessageParam,
             ],
         usages: [],
+        isError: status === "error",
         ...(shouldStop ? { stop: true } : {}),
       };
     },

@@ -6,16 +6,12 @@ import type { ChatInputSubmitPayload } from "../types/chatInput";
 export const useChatPlanInteractions = ({
   isSending,
   setMessages,
-  chatMode,
-  setChatMode,
   handleSend,
   selectedSkills,
   thinkingEnabled,
 }: {
   isSending: boolean;
   setMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
-  chatMode: "default" | "plan";
-  setChatMode: Dispatch<SetStateAction<"default" | "plan">>;
   handleSend: (
     input: ChatInputSubmitPayload,
     options?: {
@@ -129,9 +125,8 @@ export const useChatPlanInteractions = ({
           };
         })
       );
-      if (shouldExecuteNow && chatMode !== "default") {
-        setChatMode("default");
-      }
+      // Keep mode transition server-driven (via persisted planModeState),
+      // avoiding optimistic local flips that can desync with history replay.
 
       const answerText = [
         "Plan mode user selection:",
@@ -167,7 +162,7 @@ export const useChatPlanInteractions = ({
         }
       );
     },
-    [chatMode, handleSend, isSending, selectedSkills, setChatMode, setMessages, thinkingEnabled]
+    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
   );
 
   const handlePlanModeApprovalSelect = useCallback(
@@ -211,10 +206,8 @@ export const useChatPlanInteractions = ({
         })
       );
 
-      const nextMode = input.decision !== "approve" ? chatMode : input.action === "enter" ? "plan" : "default";
-      if (nextMode !== chatMode) {
-        setChatMode(nextMode);
-      }
+      // Keep mode transition server-driven (via persisted planModeState),
+      // avoiding optimistic local flips that can desync with history replay.
 
       const answerText = [
         "Plan mode approval response:",
@@ -244,7 +237,7 @@ export const useChatPlanInteractions = ({
         }
       );
     },
-    [chatMode, handleSend, isSending, selectedSkills, setChatMode, setMessages, thinkingEnabled]
+    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
   );
 
   const handlePermissionApprovalSelect = useCallback(

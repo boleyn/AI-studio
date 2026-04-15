@@ -190,7 +190,7 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
     };
   }
 
-  // Rebuild plan progress state from execution traces so history reflects final status.
+  // Rebuild missing plan progress state from execution traces without overriding persisted state.
   for (let index = 0; index < next.length; index += 1) {
     const message = next[index];
     if (message.role !== "assistant") continue;
@@ -255,22 +255,14 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
     }
 
     if (!rebuiltPlanProgress) continue;
+    if (kwargs.planProgress && typeof kwargs.planProgress === "object" && !Array.isArray(kwargs.planProgress)) {
+      continue;
+    }
 
     const nextKwargs: Record<string, unknown> = {
       ...kwargs,
       planProgress: rebuiltPlanProgress,
     };
-    const hasSubmission =
-      nextKwargs.planQuestionSubmission &&
-      typeof nextKwargs.planQuestionSubmission === "object" &&
-      !Array.isArray(nextKwargs.planQuestionSubmission);
-    const allCompleted = rebuiltPlanProgress.plan.every((item) => item.status === "completed");
-    if (hasSubmission || allCompleted) {
-      nextKwargs.planQuestions = [];
-    }
-    if (allCompleted && !nextKwargs.planModeApprovalDecision) {
-      nextKwargs.planModeApprovalDecision = "approve";
-    }
 
     next[index] = {
       ...message,

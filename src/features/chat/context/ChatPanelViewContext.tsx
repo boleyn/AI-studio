@@ -9,6 +9,7 @@ import type { MessageRating } from "../components/message/MessageActionBar";
 import type { AgentTaskSnapshot, SessionTaskSnapshot } from "../types/chatPanelRuntime";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
+import type { PlanResumeState } from "../utils/planResume";
 
 export type ChatPanelViewContextValue = {
   height: string;
@@ -56,6 +57,11 @@ export type ChatPanelViewContextValue = {
   onRateMessage: (messageId: string, rating: MessageRating) => void;
   onRegenerateMessage: (messageId: string) => void;
   streamingMessageId: string | null;
+  planResumeState: PlanResumeState;
+  planResumeInputEnabled: boolean;
+  onResumePlanExecute: () => void;
+  onResumePlanAdjust: () => void;
+  onExitPlanAdjusting: () => void;
   thinkingEnabled: boolean;
   chatMode: "default" | "plan";
   selectedModelSupportsReasoning?: boolean;
