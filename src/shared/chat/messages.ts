@@ -1,38 +1,32 @@
 import { createDataId } from "./ids";
 
-export type AgentToolCall = {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
-  };
-};
-
-export type AgentMessage = {
-  type?: "user" | "assistant" | "system" | "tool" | "progress";
-  subtype?: string;
-  role: "user" | "assistant" | "system" | "tool";
-  content?: string | null;
-  id?: string;
-  name?: string;
-  tool_call_id?: string;
-  tool_calls?: AgentToolCall[];
-};
-
 export type IncomingMessage = {
   type?: "user" | "assistant" | "system" | "tool" | "progress";
-  subtype?: string;
+  role?: "user" | "assistant" | "system" | "tool";
   uuid?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    content?: unknown;
+    id?: string;
+  };
+  content?: unknown;
+  subtype?: string;
   parent_uuid?: string;
   is_sidechain?: boolean;
   session_id?: string;
-  role: "user" | "assistant" | "system" | "tool";
-  content: unknown;
   id?: string;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: AgentToolCall[];
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+  meta?: Record<string, unknown>;
   additional_kwargs?: Record<string, unknown>;
   status?: "success" | "error";
   artifact?: unknown;
@@ -45,21 +39,26 @@ export const extractText = (content: unknown): string => {
     return content
       .map((item) => {
         if (typeof item === "string") return item;
-        if (item && typeof item === "object" && "text" in item) {
-          const value = (item as { text?: unknown }).text;
-          return typeof value === "string" ? value : String(value ?? "");
+        if (!item || typeof item !== "object") return "";
+        const block = item as Record<string, unknown>;
+        if (typeof block.text === "string") return block.text;
+        if (typeof block.thinking === "string") return block.thinking;
+        if (typeof block.content === "string") return block.content;
+        if (block.type === "tool_use") {
+          const name = typeof block.name === "string" ? block.name : "tool";
+          return `[tool_use:${name}]`;
         }
-        return String(item ?? "");
+        return "";
       })
       .join("");
   }
-  if (typeof content === "object" && "text" in content) {
-    const value = (content as { text?: unknown }).text;
-    return typeof value === "string" ? value : String(value ?? "");
+  if (typeof content === "object") {
+    const value = content as Record<string, unknown>;
+    if (typeof value.text === "string") return value.text;
+    if (typeof value.thinking === "string") return value.thinking;
+    if (typeof value.content === "string") return value.content;
   }
   return String(content);
 };
 
-export const createId = () => {
-  return createDataId();
-};
+export const createId = () => createDataId();

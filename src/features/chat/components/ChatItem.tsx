@@ -27,9 +27,7 @@ import {
   isDetailTruncated,
   isImageFile,
   truncateDetailText,
-  type MessageFile,
 } from "../utils/chatItemParsers";
-import SubAgentTimelineCard from "./message/SubAgentTimelineCard";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -96,7 +94,6 @@ const ChatItem = ({
     sortedFiles,
     sortedRequestFiles,
     timelineItems,
-    subAgentTimelineEvents,
     timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,
@@ -139,11 +136,6 @@ const ChatItem = ({
     messageId,
   });
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
-  const executionDelegationMode = (() => {
-    if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-    const value = (message.additional_kwargs as { executionDelegationMode?: unknown }).executionDelegationMode;
-    return value === "subagent" || value === "direct" ? value : "";
-  })();
   const hasPendingPlanQuestions = planQuestions.length > 0 && !planQuestionSubmission;
   const shouldHidePlanReasoning = Boolean(hasPendingPlanQuestions || (planModeApproval && !planModeApprovalDecision));
   const shouldSuppressPlanVerboseAnswer = Boolean(
@@ -562,44 +554,6 @@ const ChatItem = ({
                     const normalizedToolName = (item.toolName || "").trim().toLowerCase();
                     const isPlanModeTool = PLAN_MODE_TOOL_NAMES.has(normalizedToolName);
                     if (isPlanModeTool) return null;
-                    const isSubAgentTool =
-                      normalizedToolName === "spawn_agent" ||
-                      normalizedToolName === "send_input" ||
-                      normalizedToolName === "send_message" ||
-                      normalizedToolName === "wait_agent" ||
-                      normalizedToolName === "list_agents" ||
-                      normalizedToolName === "get_agent_result" ||
-                      normalizedToolName === "close_agent" ||
-                      normalizedToolName === "resume_agent";
-                    if (isSubAgentTool) {
-                      const event = subAgentTimelineEvents.find(
-                        (entry) => entry.id === (item.id || "")
-                      );
-                      return (
-                        <Flex key={toolKey} align="stretch" gap={2}>
-                          <Flex align="center" direction="column" w="12px">
-                            {isRunning ? (
-                              <Spinner color="green.500" mt="5px" size="xs" speed="0.7s" thickness="2.5px" />
-                            ) : (
-                              <Box bg="green.500" borderRadius="full" h="7px" mt="7px" w="7px" />
-                            )}
-                          </Flex>
-                          <Box flex="1" minW={0}>
-                            <SubAgentTimelineCard
-                              event={
-                                event || {
-                                  id: item.id || `${messageId}-subagent-${index}`,
-                                  toolName: item.toolName || "subagent",
-                                  params: item.params || "",
-                                  response: item.response || "",
-                                  taskSnapshots: [],
-                                }
-                              }
-                            />
-                          </Box>
-                        </Flex>
-                      );
-                    }
                     const truncatedParams = truncateDetailText(item.params);
                     const truncatedResponse = truncateDetailText(item.response);
                     const paramsTruncated = isDetailTruncated(item.params);
@@ -768,11 +722,6 @@ const ChatItem = ({
                 </Text>
                 {executionSummary?.durationSeconds !== undefined ? (
                   <Text>耗时: {executionSummary.durationSeconds.toFixed(2)}s</Text>
-                ) : null}
-                {executionDelegationMode ? (
-                  <Text>
-                    子代理: {executionDelegationMode === "subagent" ? "已启用" : "未启用（主代理直执）"}
-                  </Text>
                 ) : null}
               </Flex>
             ) : null}

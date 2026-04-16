@@ -980,7 +980,7 @@ const SkillCreatePage = () => {
                   key={workspaceId}
                   token={`skill-studio:${workspaceId}`}
                   height="100%"
-                  completionsPath="/api/skills/chat/completions"
+                  completionsPath="/api/v2/chat/completions"
                   completionsStream
                   completionsExtraBody={{
                     workspaceId,

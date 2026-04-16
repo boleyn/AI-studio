@@ -42,6 +42,68 @@ const toToolItem = (value: unknown, fallbackName?: string): ToolModuleResponseIt
   };
 };
 
+const parseSdkBlocksToValues = (content: unknown): ChatItemValueItemType[] => {
+  if (!Array.isArray(content)) return [];
+  const values: ChatItemValueItemType[] = [];
+  const toolCache = new Map<string, ToolModuleResponseItemType>();
+
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const item = block as Record<string, unknown>;
+    if (item.type === "thinking" && typeof item.thinking === "string") {
+      values.push({
+        type: ChatItemValueTypeEnum.reasoning,
+        reasoning: { content: item.thinking },
+      });
+      continue;
+    }
+    if (item.type === "text" && typeof item.text === "string") {
+      values.push({
+        type: ChatItemValueTypeEnum.text,
+        text: { content: item.text },
+      });
+      continue;
+    }
+    if (item.type === "tool_use" && typeof item.id === "string") {
+      const toolName = typeof item.name === "string" ? item.name : "工具";
+      const params =
+        item.input && typeof item.input === "object"
+          ? JSON.stringify(item.input, null, 2)
+          : "";
+      const tool = {
+        id: item.id,
+        toolName,
+        params,
+        response: "",
+      } satisfies ToolModuleResponseItemType;
+      toolCache.set(item.id, tool);
+      values.push({
+        type: ChatItemValueTypeEnum.tool,
+        tools: [tool],
+      });
+      continue;
+    }
+    if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
+      const response = typeof item.content === "string" ? item.content : toStringValue(item.content);
+      const cached = toolCache.get(item.tool_use_id);
+      const tool = cached
+        ? { ...cached, response }
+        : ({
+            id: item.tool_use_id,
+            toolName: "工具",
+            params: "",
+            response,
+          } satisfies ToolModuleResponseItemType);
+      values.push({
+        type: ChatItemValueTypeEnum.tool,
+        tools: [tool],
+      });
+    }
+  }
+
+  return values;
+};
+
 const normalizeStructuredValue = (value: unknown): ChatItemValueItemType | null => {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -164,24 +226,15 @@ export const adaptConversationMessageToValues = (
   }
 
   if (message.role === "assistant") {
-    const toolDetails = Array.isArray(message.additional_kwargs?.toolDetails)
-      ? message.additional_kwargs.toolDetails
-      : [];
+    const sdkValues = parseSdkBlocksToValues(
+      message.message && typeof message.message === "object"
+        ? (message.message as { content?: unknown }).content
+        : message.content
+    );
+    if (sdkValues.length > 0) return sdkValues;
 
     const structured = parseAssistantStructuredValues(message.content);
     const values: ChatItemValueItemType[] = [];
-
-    if (toolDetails.length > 0) {
-      const tools = toolDetails
-        .map((tool) => toToolItem(tool))
-        .filter((tool) => Boolean(tool.toolName));
-      if (tools.length > 0) {
-        values.push({
-          type: ChatItemValueTypeEnum.tool,
-          tools,
-        });
-      }
-    }
 
     if (structured && structured.length > 0) {
       values.push(...structured);

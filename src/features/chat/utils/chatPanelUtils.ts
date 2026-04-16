@@ -1,5 +1,6 @@
 import { createChatId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
+import { isPlanInteractionEnvelope } from "@shared/chat/planInteraction";
 import {
   buildDownloadUrl,
   buildPreviewUrl,
@@ -55,7 +56,7 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
   });
 
   // Replay hidden interaction responses (plan question/approval) back onto the preceding
-  // assistant message so timeline state is stable after reloading history.
+  // assistant message so v2 control state is stable after reloading history.
   const next = [...deduped];
 
   const findTargetAssistantIndex = (fromIndex: number, matcher: (message: ConversationMessage) => boolean) => {
@@ -118,18 +119,12 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
           ? (assistantMessage.additional_kwargs as Record<string, unknown>)
           : {};
       if (hasPlanQuestionResponse) {
-        const questions = Array.isArray(assistantKwargs.planQuestions)
-          ? (assistantKwargs.planQuestions as Array<Record<string, unknown>>)
-          : [];
-        if (
-          questions.some(
-            (item) =>
-              typeof item?.requestId === "string" &&
-              item.requestId.trim() === responseRequestId
-          )
-        ) {
-          return true;
-        }
+        const controlEvents = Array.isArray(assistantKwargs.controlEvents) ? assistantKwargs.controlEvents : [];
+        const hasMatchingQuestionEvent = controlEvents.some((item) => {
+          if (!isPlanInteractionEnvelope(item) || item.type !== "plan_question") return false;
+          return item.requestId.trim() === responseRequestId;
+        });
+        if (hasMatchingQuestionEvent) return true;
       }
       if (hasPlanApprovalDecision) {
         return true;
@@ -190,7 +185,7 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
     };
   }
 
-  // Rebuild missing plan progress state from execution traces without overriding persisted state.
+  // Rebuild missing plan progress state from control events without overriding persisted state.
   for (let index = 0; index < next.length; index += 1) {
     const message = next[index];
     if (message.role !== "assistant") continue;
@@ -234,23 +229,9 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
 
     let rebuiltPlanProgress: { explanation?: string; plan: Array<{ step: string; status: "pending" | "in_progress" | "completed" }> } | null = null;
 
-    const responseData = Array.isArray(kwargs.responseData) ? (kwargs.responseData as unknown[]) : [];
-    for (let i = 0; i < responseData.length; i += 1) {
-      const node = responseData[i];
-      if (!node || typeof node !== "object" || Array.isArray(node)) continue;
-      const toolRes = (node as { toolRes?: unknown }).toolRes;
-      if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) continue;
-      const interaction = (toolRes as { interaction?: unknown }).interaction;
-      const parsed = extractPlanFromInteraction(interaction);
-      if (parsed) rebuiltPlanProgress = parsed;
-    }
-
-    const toolDetails = Array.isArray(kwargs.toolDetails) ? (kwargs.toolDetails as unknown[]) : [];
-    for (let i = 0; i < toolDetails.length; i += 1) {
-      const detail = toolDetails[i];
-      if (!detail || typeof detail !== "object" || Array.isArray(detail)) continue;
-      const interaction = (detail as { interaction?: unknown }).interaction;
-      const parsed = extractPlanFromInteraction(interaction);
+    const controlEvents = Array.isArray(kwargs.controlEvents) ? (kwargs.controlEvents as unknown[]) : [];
+    for (let i = 0; i < controlEvents.length; i += 1) {
+      const parsed = extractPlanFromInteraction(controlEvents[i]);
       if (parsed) rebuiltPlanProgress = parsed;
     }
 

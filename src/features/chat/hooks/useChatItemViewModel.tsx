@@ -23,10 +23,6 @@ import {
   isImageFile,
   type MessageFile,
 } from "../utils/chatItemParsers";
-import {
-  buildSubAgentTimelineEvents,
-  SUB_AGENT_TOOL_NAMES,
-} from "../utils/subAgentTimeline";
 
 const useTypewriterText = (value: string, enabled: boolean) => {
   const normalizedValue = value || "";
@@ -173,10 +169,6 @@ export const useChatItemViewModel = ({
       }),
     [rawTimelineItems, reasoningText, toolDetails]
   );
-  const subAgentTimelineEvents = useMemo(
-    () => buildSubAgentTimelineEvents(timelineItems),
-    [timelineItems]
-  );
   const timelineStepIndexes = useMemo(
     () =>
       timelineItems
@@ -255,8 +247,6 @@ export const useChatItemViewModel = ({
     () =>
       timelineItems.some((item) => {
         if (item.type !== "tool") return false;
-        const normalizedToolName = (item.toolName || "").trim().toLowerCase();
-        if (SUB_AGENT_TOOL_NAMES.has(normalizedToolName)) return false;
         return !item.response;
       }),
     [timelineItems]
@@ -348,7 +338,6 @@ export const useChatItemViewModel = ({
     sortedFiles,
     sortedRequestFiles,
     timelineItems,
-    subAgentTimelineEvents,
     timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,

@@ -17,12 +17,19 @@ test("derivePlanResumeState returns visible for pending plan question", () => {
             { step: "step 2", status: "pending" },
           ],
         },
-        planQuestions: [
+        controlEvents: [
           {
+            type: "plan_question",
             requestId: "req-1",
-            id: "plan_execute_confirm",
-            question: "是否执行",
-            options: [{ label: "确认执行", description: "继续" }],
+            payload: {
+              questions: [
+                {
+                  id: "plan_execute_confirm",
+                  question: "是否执行",
+                  options: [{ label: "确认执行", description: "继续" }],
+                },
+              ],
+            },
           },
         ],
       },

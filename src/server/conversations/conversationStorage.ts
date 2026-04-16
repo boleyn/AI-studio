@@ -16,6 +16,14 @@ export type ConversationMessage = {
   parent_uuid?: string;
   is_sidechain?: boolean;
   session_id?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    id?: string;
+    content?: unknown;
+    [key: string]: unknown;
+  };
+  meta?: Record<string, unknown>;
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
   /**
@@ -67,6 +75,14 @@ type ConversationItemDoc = {
   parent_uuid?: string;
   is_sidechain?: boolean;
   session_id?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    id?: string;
+    content?: unknown;
+    [key: string]: unknown;
+  };
+  meta?: Record<string, unknown>;
   role: ConversationMessage["role"];
   content: unknown;
   name?: string;
@@ -216,6 +232,9 @@ const messageToDoc = ({
   parent_uuid: message.parent_uuid,
   is_sidechain: message.is_sidechain,
   session_id: message.session_id,
+  timestamp: message.timestamp,
+  message: message.message,
+  meta: message.meta,
   content: message.content,
   name: message.name,
   tool_call_id: message.tool_call_id,
@@ -233,6 +252,9 @@ const docToMessage = (doc: ConversationItemDoc): ConversationMessage => ({
   parent_uuid: doc.parent_uuid,
   is_sidechain: doc.is_sidechain,
   session_id: doc.session_id,
+  timestamp: doc.timestamp,
+  message: doc.message,
+  meta: doc.meta,
   content: doc.content,
   time: doc.time,
   id: doc.dataId,

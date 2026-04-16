@@ -2,7 +2,6 @@ import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import ChatHeader from "./ChatHeader";
 import ChatInput from "./ChatInput";
-import ChatRuntimePanels from "./ChatRuntimePanels";
 import SkillsManagerModal from "./SkillsManagerModal";
 import ChatMessageTimeline from "./message/ChatMessageTimeline";
 import PlanProgressDock from "./message/PlanProgressDock";
@@ -63,22 +62,6 @@ const ChatPanelView = () => {
           py={4}
           onScroll={context.onScroll}
         >
-          <ChatRuntimePanels
-            agentTaskFilter={context.agentTaskFilter}
-            agentTasks={context.agentTasks}
-            filteredAgentTaskList={context.filteredAgentTaskList}
-            filteredSessionTaskList={context.filteredSessionTaskList}
-            onClearCompletedSessionTasks={context.onClearCompletedSessionTasks}
-            onSetAgentTaskFilter={context.onSetAgentTaskFilter}
-            onSetSessionTaskFilter={context.onSetSessionTaskFilter}
-            onToggleShowAgentTasks={context.onToggleShowAgentTasks}
-            onToggleShowSessionTasks={context.onToggleShowSessionTasks}
-            sessionTaskFilter={context.sessionTaskFilter}
-            sessionTasks={context.sessionTasks}
-            showAgentTasks={context.showAgentTasks}
-            showSessionTasks={context.showSessionTasks}
-          />
-
           {context.showInitialLoading ? (
             <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
               <Spinner size="sm" />

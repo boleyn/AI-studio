@@ -79,6 +79,16 @@ const normalizeToolPayload = (value?: string) => {
   }
 };
 
+const toStringValue = (value: unknown) => {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
 const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
   const normalizedName = (toolName || "").trim().toLowerCase();
   const normalizedParams = normalizeToolPayload(params);
@@ -102,91 +112,73 @@ export const isImageFile = (file: MessageFile) => {
 };
 
 export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const kwargs = message.additional_kwargs as {
-    toolDetails?: unknown;
-    responseData?: unknown;
-  };
-
-  const detailsFromToolDetails = Array.isArray(kwargs.toolDetails)
-    ? kwargs.toolDetails.filter((item): item is ToolDetail => Boolean(item && typeof item === "object"))
-    : [];
-  const detailsFromResponseData = Array.isArray(kwargs.responseData)
-    ? kwargs.responseData
-        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-        .map((item, index) => ({
-          id: typeof item.nodeId === "string" ? `${item.nodeId}-${index}` : undefined,
-          toolName: typeof item.moduleName === "string" ? item.moduleName : undefined,
-          params:
-            typeof item.toolInput === "string"
-              ? item.toolInput
-              : item.toolInput == null
-              ? ""
-              : JSON.stringify(item.toolInput, null, 2),
-      response:
-        typeof item.toolRes === "string"
-          ? item.toolRes
-          : item.toolRes == null
-          ? ""
-          : JSON.stringify(item.toolRes, null, 2),
-      interaction:
-        item.toolRes &&
-        typeof item.toolRes === "object" &&
-        !Array.isArray(item.toolRes) &&
-        isPlanInteractionEnvelope((item.toolRes as { interaction?: unknown }).interaction)
-          ? (item.toolRes as { interaction: PlanInteractionEnvelope }).interaction
-          : undefined,
-      progressStatus: undefined,
-    }))
-    : [];
-
-  if (detailsFromToolDetails.length === 0) return detailsFromResponseData;
-  if (detailsFromResponseData.length === 0) return detailsFromToolDetails;
-
-  const merged = [...detailsFromToolDetails];
-  const byId = new Map<string, number>();
-  const byFingerprint = new Map<string, number>();
-
-  merged.forEach((item, index) => {
-    if (typeof item.id === "string" && item.id) {
-      byId.set(item.id, index);
+  const sdkContent =
+    message.message && typeof message.message === "object"
+      ? (message.message as { content?: unknown }).content
+      : message.content;
+  if (Array.isArray(sdkContent)) {
+    const details: ToolDetail[] = [];
+    const byId = new Map<string, ToolDetail>();
+    for (const block of sdkContent) {
+      if (!block || typeof block !== "object") continue;
+      const item = block as Record<string, unknown>;
+      if (item.type === "tool_use" && typeof item.id === "string") {
+        const id = item.id;
+        const toolName = typeof item.name === "string" ? item.name : "tool";
+        const params =
+          item.input && typeof item.input === "object"
+            ? JSON.stringify(item.input, null, 2)
+            : "";
+        const next: ToolDetail = {
+          id,
+          toolName,
+          params,
+          response: "",
+          progressStatus: "in_progress",
+        };
+        byId.set(id, next);
+        details.push(next);
+        continue;
+      }
+      if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
+        const id = item.tool_use_id;
+        const target = byId.get(id);
+        const response = typeof item.content === "string" ? item.content : toStringValue(item.content);
+        const status = item.is_error === true ? "error" : "completed";
+        if (target) {
+          target.response = response;
+          target.progressStatus = status;
+        } else {
+          details.push({
+            id,
+            toolName: "tool",
+            response,
+            progressStatus: status,
+          });
+        }
+      }
     }
-    byFingerprint.set(getToolFingerprint(item.toolName, item.params, item.response), index);
-  });
-
-  detailsFromResponseData.forEach((item) => {
-    const id = typeof item.id === "string" && item.id ? item.id : "";
-    const fingerprint = getToolFingerprint(item.toolName, item.params, item.response);
-    const hitIndex = (id && byId.has(id) ? byId.get(id) : undefined) ?? byFingerprint.get(fingerprint);
-
-    if (hitIndex == null) {
-      const insertedIndex = merged.push(item) - 1;
-      if (id) byId.set(id, insertedIndex);
-      byFingerprint.set(fingerprint, insertedIndex);
-      return;
-    }
-
-    const target = merged[hitIndex];
-    merged[hitIndex] = {
-      ...target,
-      toolName: item.toolName || target.toolName,
-      params:
-        (item.params?.length || 0) > (target.params?.length || 0)
-          ? item.params
-          : target.params,
-      response:
-        (item.response?.length || 0) > (target.response?.length || 0)
-          ? item.response
-          : target.response,
-      interaction: item.interaction || target.interaction,
-      progressStatus: target.progressStatus || item.progressStatus,
-    };
-  });
-
-  return merged;
+    if (details.length > 0) return details;
+  }
+  return [];
 };
 
 export const getReasoningText = (message: ConversationMessage): string => {
+  const sdkContent =
+    message.message && typeof message.message === "object"
+      ? (message.message as { content?: unknown }).content
+      : message.content;
+  if (Array.isArray(sdkContent)) {
+    const text = sdkContent
+      .map((block) => {
+        if (!block || typeof block !== "object") return "";
+        const item = block as Record<string, unknown>;
+        return item.type === "thinking" && typeof item.thinking === "string" ? item.thinking : "";
+      })
+      .join("");
+    if (text.trim()) return text;
+  }
+
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
   const kwargs = message.additional_kwargs as {
     reasoning_text?: unknown;
@@ -197,33 +189,102 @@ export const getReasoningText = (message: ConversationMessage): string => {
 };
 
 export const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const value = (message.additional_kwargs as { timeline?: unknown }).timeline;
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      type:
-        item.type === "reasoning" || item.type === "answer" || item.type === "tool"
-          ? item.type
-          : "answer",
-      text: typeof item.text === "string" ? item.text : undefined,
-      id: typeof item.id === "string" ? item.id : undefined,
-      toolName: typeof item.toolName === "string" ? item.toolName : undefined,
-      params: typeof item.params === "string" ? item.params : undefined,
-      response: typeof item.response === "string" ? item.response : undefined,
-      interaction: isPlanInteractionEnvelope(item.interaction) ? item.interaction : undefined,
-      progressStatus:
-        item.progressStatus === "pending" ||
-        item.progressStatus === "in_progress" ||
-        item.progressStatus === "completed" ||
-        item.progressStatus === "error"
-          ? item.progressStatus
-          : undefined,
-    }));
+  const sdkContent =
+    message.message && typeof message.message === "object"
+      ? (message.message as { content?: unknown }).content
+      : message.content;
+  if (Array.isArray(sdkContent)) {
+    const timeline: TimelineItem[] = [];
+    const toolIndexById = new Map<string, number>();
+    for (const block of sdkContent) {
+      if (!block || typeof block !== "object") continue;
+      const item = block as Record<string, unknown>;
+      if (item.type === "thinking" && typeof item.thinking === "string") {
+        timeline.push({ type: "reasoning", text: item.thinking });
+        continue;
+      }
+      if (item.type === "text" && typeof item.text === "string") {
+        timeline.push({ type: "answer", text: item.text });
+        continue;
+      }
+      if (item.type === "tool_use" && typeof item.id === "string") {
+        const params =
+          item.input && typeof item.input === "object"
+            ? JSON.stringify(item.input, null, 2)
+            : undefined;
+        const index = timeline.push({
+          type: "tool",
+          id: item.id,
+          toolName: typeof item.name === "string" ? item.name : "tool",
+          params,
+          progressStatus: "in_progress",
+        }) - 1;
+        toolIndexById.set(item.id, index);
+        continue;
+      }
+      if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
+        const idx = toolIndexById.get(item.tool_use_id);
+        const response = typeof item.content === "string" ? item.content : toStringValue(item.content);
+        const status = item.is_error === true ? "error" : "completed";
+        if (typeof idx === "number" && timeline[idx]) {
+          timeline[idx] = {
+            ...timeline[idx],
+            response,
+            progressStatus: status,
+          };
+        } else {
+          timeline.push({
+            type: "tool",
+            id: item.tool_use_id,
+            toolName: "tool",
+            response,
+            progressStatus: status,
+          });
+        }
+      }
+    }
+    if (timeline.length > 0) return timeline;
+  }
+  return [];
 };
 
 export const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] => {
+  const controlEvents =
+    message.additional_kwargs && typeof message.additional_kwargs === "object"
+      ? (message.additional_kwargs as { controlEvents?: unknown }).controlEvents
+      : undefined;
+  if (Array.isArray(controlEvents)) {
+    const questions = controlEvents
+      .filter((item): item is PlanInteractionEnvelope => isPlanInteractionEnvelope(item))
+      .filter((item) => item.type === "plan_question")
+      .flatMap((item) => {
+        const payload =
+          item.payload && typeof item.payload === "object" && !Array.isArray(item.payload)
+            ? (item.payload as Record<string, unknown>)
+            : null;
+        const list = payload && Array.isArray(payload.questions) ? payload.questions : [];
+        return list
+          .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object"))
+          .map((value) => ({
+            requestId: item.requestId,
+            header: typeof value.header === "string" ? value.header : "确认",
+            id: typeof value.id === "string" ? value.id : "",
+            question: typeof value.question === "string" ? value.question : "",
+            options: Array.isArray(value.options)
+              ? value.options
+                  .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
+                  .map((opt) => ({
+                    label: typeof opt.label === "string" ? opt.label : "",
+                    description: typeof opt.description === "string" ? opt.description : "",
+                  }))
+                  .filter((opt) => opt.label.trim().length > 0)
+              : [],
+          }));
+      })
+      .filter((item) => item.id && item.question);
+    if (questions.length > 0) return questions;
+  }
+
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
   const raw = (message.additional_kwargs as { planQuestions?: unknown }).planQuestions;
   if (!Array.isArray(raw)) return [];
@@ -299,13 +360,6 @@ export const getRunStatus = (
 ): "running" | "success" | "error" => {
   if (isStreaming) return "running";
   if (message.status === "error") return "error";
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "success";
-  const responseData = Array.isArray((message.additional_kwargs as { responseData?: unknown }).responseData)
-    ? ((message.additional_kwargs as { responseData?: Array<{ status?: string }> }).responseData ?? [])
-    : [];
-  if (responseData.some((item) => item && typeof item === "object" && item.status === "error")) {
-    return "error";
-  }
   return "success";
 };
 

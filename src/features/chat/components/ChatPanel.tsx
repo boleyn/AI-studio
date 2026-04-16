@@ -5,9 +5,9 @@ import {
   isPlanInteractionEnvelope,
   type PlanInteractionEnvelope,
   type PlanProgressInteractionPayload,
-  type PlanQuestionInteractionPayload,
 } from "@shared/chat/planInteraction";
-import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
+import { streamFetch } from "@shared/network/streamFetch";
+import { SdkStreamEventEnum } from "@shared/network/sdkStreamEvents";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,19 +27,8 @@ import {
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import {
-  type AgentDurationPayload,
-  type AgentTaskSnapshot,
-  type PermissionApprovalPayload,
-  type PlanQuestion,
-  type PlanQuestionOption,
-  type ReasoningStreamPayload,
-  type SessionTaskSnapshot,
-  type ToolProgressPayload,
-  type ToolStreamPayload,
-} from "../types/chatPanelRuntime";
+import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
 import { getExecutionSummary } from "../utils/executionSummary";
-import { type FlowNodeResponsePayload } from "../utils/flowNodeMessages";
 import {
   derivePlanModeFromMessages,
   parseToolPayload,
@@ -99,12 +88,43 @@ const persistThinkingEnabled = (enabled: boolean) => {
   }
 };
 
+const isSdkLikeMessage = (value: unknown): value is {
+  type: "user" | "assistant" | "system" | "progress";
+  uuid?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    content?: unknown;
+  };
+  meta?: Record<string, unknown>;
+} => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "";
+  return type === "user" || type === "assistant" || type === "system" || type === "progress";
+};
+
+const sdkContentToText = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const block = item as Record<string, unknown>;
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      if (block.type === "thinking" && typeof block.thinking === "string") return block.thinking;
+      if (block.type === "tool_result" && typeof block.content === "string") return block.content;
+      return "";
+    })
+    .join("");
+};
+
 
 const ChatPanel = ({
   token,
   onFilesUpdated,
   height = "100%",
-  completionsPath = "/api/chat/completions",
+  completionsPath = "/api/v2/chat/completions",
   completionsStream = true,
   completionsExtraBody,
   hideSkillsManager = false,
@@ -164,12 +184,6 @@ const ChatPanel = ({
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
-  const [agentTasks, setAgentTasks] = useState<Record<string, AgentTaskSnapshot>>({});
-  const [showAgentTasks, setShowAgentTasks] = useState(true);
-  const [agentTaskFilter, setAgentTaskFilter] = useState<"all" | "active" | "done" | "failed">("all");
-  const [sessionTasks, setSessionTasks] = useState<Record<string, SessionTaskSnapshot>>({});
-  const [showSessionTasks, setShowSessionTasks] = useState(true);
-  const [sessionTaskFilter, setSessionTaskFilter] = useState<"all" | "active" | "done" | "blocked">("all");
   const messagesRef = useRef<ConversationMessage[]>([]);
   const { model, setModel, channel, modelOptions, modelGroups, modelLoading, modelCatalog } = useChatModels(
     user?.primaryModel
@@ -248,50 +262,6 @@ const ChatPanel = ({
     []
   );
 
-  const upsertAgentTasks = useCallback((incoming: AgentTaskSnapshot | AgentTaskSnapshot[]) => {
-    const list = Array.isArray(incoming) ? incoming : [incoming];
-    if (list.length === 0) return;
-    setAgentTasks((prev) => {
-      const next = { ...prev };
-      for (const item of list) {
-        if (!item || typeof item !== "object" || !item.id) continue;
-        next[item.id] = {
-          ...(next[item.id] || {}),
-          ...item,
-        };
-      }
-      return next;
-    });
-  }, []);
-
-  const upsertSessionTasks = useCallback((incoming: SessionTaskSnapshot | SessionTaskSnapshot[]) => {
-    const list = Array.isArray(incoming) ? incoming : [incoming];
-    if (list.length === 0) return;
-    setSessionTasks((prev) => {
-      const next = { ...prev };
-      for (const item of list) {
-        if (!item || typeof item !== "object" || !item.id) continue;
-        next[item.id] = {
-          ...(next[item.id] || {}),
-          ...item,
-        };
-      }
-      return next;
-    });
-  }, []);
-
-  const clearCompletedSessionTasks = useCallback(() => {
-    setSessionTasks((prev) => {
-      const next: Record<string, SessionTaskSnapshot> = {};
-      for (const [id, task] of Object.entries(prev)) {
-        if (!task || typeof task !== "object") continue;
-        if (task.status === "completed" || task.status === "deleted") continue;
-        next[id] = task;
-      }
-      return next;
-    });
-  }, []);
-
   const getCachedContextUsage = useCallback((conversationId?: string | null, modelId?: string | null) => {
     const safeConversationId = (conversationId || "").trim();
     const safeModelId = (modelId || "").trim();
@@ -357,93 +327,6 @@ const ChatPanel = ({
       }
       return next;
     });
-    const restoredAgentTasks: Record<string, AgentTaskSnapshot> = {};
-    const restoredSessionTasks: Record<string, SessionTaskSnapshot> = {};
-    for (const message of normalizedHydratedMessages) {
-      const kwargs =
-        message.additional_kwargs && typeof message.additional_kwargs === "object"
-          ? (message.additional_kwargs as Record<string, unknown>)
-          : null;
-      if (!kwargs) continue;
-      if (Array.isArray(kwargs.agentTasks)) {
-        for (const task of kwargs.agentTasks as unknown[]) {
-          if (!task || typeof task !== "object") continue;
-          const item = task as AgentTaskSnapshot;
-          if (typeof item.id !== "string" || !item.id) continue;
-          restoredAgentTasks[item.id] = {
-            ...(restoredAgentTasks[item.id] || {}),
-            ...item,
-          };
-        }
-      }
-      if (Array.isArray(kwargs.sessionTasks)) {
-        for (const task of kwargs.sessionTasks as unknown[]) {
-          if (!task || typeof task !== "object") continue;
-          const item = task as SessionTaskSnapshot;
-          if (typeof item.id !== "string" || !item.id) continue;
-          restoredSessionTasks[item.id] = {
-            ...(restoredSessionTasks[item.id] || {}),
-            ...item,
-          };
-        }
-      }
-      if (Array.isArray(kwargs.responseData)) {
-        for (const node of kwargs.responseData as unknown[]) {
-          if (!node || typeof node !== "object") continue;
-          const toolRes = (node as { toolRes?: unknown }).toolRes;
-          if (!toolRes || typeof toolRes !== "object" || Array.isArray(toolRes)) continue;
-
-          const record = toolRes as Record<string, unknown>;
-          if (Array.isArray(record.agents)) {
-            for (const task of record.agents as unknown[]) {
-              if (!task || typeof task !== "object") continue;
-              const item = task as AgentTaskSnapshot;
-              if (typeof item.id !== "string" || !item.id) continue;
-              restoredAgentTasks[item.id] = {
-                ...(restoredAgentTasks[item.id] || {}),
-                ...item,
-              };
-            }
-          } else if (record.agent && typeof record.agent === "object" && !Array.isArray(record.agent)) {
-            const item = record.agent as AgentTaskSnapshot;
-            if (typeof item.id === "string" && item.id) {
-              restoredAgentTasks[item.id] = {
-                ...(restoredAgentTasks[item.id] || {}),
-                ...item,
-              };
-            }
-          } else if (typeof record.id === "string" && record.id) {
-            const item = record as AgentTaskSnapshot;
-            restoredAgentTasks[item.id] = {
-              ...(restoredAgentTasks[item.id] || {}),
-              ...item,
-            };
-          }
-
-          if (Array.isArray(record.tasks)) {
-            for (const task of record.tasks as unknown[]) {
-              if (!task || typeof task !== "object") continue;
-              const item = task as SessionTaskSnapshot;
-              if (typeof item.id !== "string" || !item.id) continue;
-              restoredSessionTasks[item.id] = {
-                ...(restoredSessionTasks[item.id] || {}),
-                ...item,
-              };
-            }
-          } else if (record.task && typeof record.task === "object" && !Array.isArray(record.task)) {
-            const item = record.task as SessionTaskSnapshot;
-            if (typeof item.id === "string" && item.id) {
-              restoredSessionTasks[item.id] = {
-                ...(restoredSessionTasks[item.id] || {}),
-                ...item,
-              };
-            }
-          }
-        }
-      }
-    }
-    setAgentTasks(restoredAgentTasks);
-    setSessionTasks(restoredSessionTasks);
     shouldAutoScrollRef.current = true;
   }, [
     activeConversation?.id,
@@ -679,7 +562,6 @@ const ChatPanel = ({
             : {}),
         },
       };
-
       const continuedAssistantMessage = continueAssistantMessageId
         ? messagesRef.current.find(
             (item) => item.id === continueAssistantMessageId && item.role === "assistant"
@@ -702,6 +584,17 @@ const ChatPanel = ({
         !isInteractionContinuation && typeof existingAssistantKwargs.reasoning_text === "string"
           ? existingAssistantKwargs.reasoning_text
           : "";
+
+      const requestMessagesForApi = [
+        ...messagesRef.current
+          .filter((item) => !(item.role === "assistant" && item.id === assistantMessageId))
+          .map((item) => ({
+            ...item,
+            role: item.role || (item.type as ConversationMessage["role"]) || "user",
+            content: item.content,
+          })),
+        requestMessage,
+      ];
       if (continuedAssistantMessage && isInteractionContinuation) {
         setMessages((prev) =>
           prev.map((msg) => {
@@ -710,16 +603,42 @@ const ChatPanel = ({
               msg.additional_kwargs && typeof msg.additional_kwargs === "object"
                 ? (msg.additional_kwargs as Record<string, unknown>)
                 : {};
-            const timeline = Array.isArray(kwargs.timeline)
-              ? (kwargs.timeline as Array<Record<string, unknown>>).filter((item) => item?.type !== "reasoning")
-              : kwargs.timeline;
+            const sdkMessage =
+              kwargs.sdkMessage && typeof kwargs.sdkMessage === "object"
+                ? (kwargs.sdkMessage as Record<string, unknown>)
+                : null;
+            const sdkPayload =
+              sdkMessage?.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : null;
+            const content = Array.isArray(sdkPayload?.content)
+              ? (sdkPayload?.content as unknown[]).filter(
+                  (item) =>
+                    !(
+                      item &&
+                      typeof item === "object" &&
+                      (item as Record<string, unknown>).type === "thinking"
+                    )
+                )
+              : [];
             return {
               ...msg,
               additional_kwargs: {
                 ...kwargs,
                 reasoning_text: "",
                 reasoning_content: "",
-                ...(Array.isArray(timeline) ? { timeline } : {}),
+                ...(sdkMessage
+                  ? {
+                      sdkMessage: {
+                        ...sdkMessage,
+                        message: {
+                          ...(sdkPayload || {}),
+                          role: (sdkPayload?.role as string) || "assistant",
+                          content,
+                        },
+                      },
+                    }
+                  : {}),
               },
             };
           })
@@ -766,134 +685,29 @@ const ChatPanel = ({
         );
       };
       try {
-        const upsertToolMessage = (
-          id: string,
-          nextPartial: {
-            toolName?: string;
-            params?: string;
-            response?: string;
-            interaction?: PlanInteractionEnvelope;
-            progressStatus?: "pending" | "in_progress" | "completed" | "error";
-          }
-        ) => {
+        const appendSdkBlock = (block: Record<string, unknown>) => {
           updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.toolDetails)
-              ? (current.toolDetails as Array<{
-                  id?: string;
-                  toolName?: string;
-                  params?: string;
-                  response?: string;
-                  interaction?: PlanInteractionEnvelope;
-                  progressStatus?: "pending" | "in_progress" | "completed" | "error";
-                }>)
+            const sdkMessage =
+              current.sdkMessage && typeof current.sdkMessage === "object"
+                ? (current.sdkMessage as Record<string, unknown>)
+                : { type: "assistant", message: { role: "assistant", content: [] as unknown[] } };
+            const sdkPayload =
+              sdkMessage.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : { role: "assistant", content: [] as unknown[] };
+            const content = Array.isArray(sdkPayload.content)
+              ? (sdkPayload.content as unknown[])
               : [];
-            const index = list.findIndex((item) => item.id === id);
-            const base = index >= 0 ? list[index] : { id, params: "", response: "" };
-            const baseParams = typeof base.params === "string" ? base.params : "";
-            const incomingParams = typeof nextPartial.params === "string" ? nextPartial.params : "";
-            const mergedParams = (() => {
-              if (!incomingParams) return baseParams;
-              // Avoid duplicate incremental params chunks when stream re-delivers events.
-              if (baseParams.endsWith(incomingParams)) return baseParams;
-              return `${baseParams}${incomingParams}`;
-            })();
-            const merged = {
-              ...base,
-              id,
-              toolName: nextPartial.toolName ?? base.toolName,
-              params: mergedParams,
-              response: nextPartial.response ?? base.response,
-              interaction: nextPartial.interaction ?? base.interaction,
-              progressStatus: nextPartial.progressStatus ?? base.progressStatus,
-            };
-            const next = [...list];
-            if (index >= 0) {
-              next[index] = merged;
-            } else {
-              next.push(merged);
-            }
             return {
               ...current,
-              toolDetails: next,
-            };
-          });
-        };
-        const appendTimelineText = (type: "reasoning" | "answer", text: string) => {
-          if (!text) return;
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const last = list[list.length - 1];
-            if (last && last.type === type && typeof last.text === "string") {
-              const next = [...list];
-              next[next.length - 1] = {
-                ...last,
-                text: `${last.text}${text}`,
-              };
-              return { ...current, timeline: next };
-            }
-
-            return {
-              ...current,
-              timeline: [...list, { type, text }],
-            };
-          });
-        };
-        const upsertTimelineTool = (nextPartial: {
-          id?: string;
-          toolName?: string;
-          params?: string;
-          response?: string;
-          interaction?: PlanInteractionEnvelope;
-          progressStatus?: "pending" | "in_progress" | "completed" | "error";
-        }) => {
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const toolId = typeof nextPartial.id === "string" ? nextPartial.id : "";
-            if (toolId) {
-              const index = list.findIndex((item) => item.type === "tool" && item.id === toolId);
-              if (index >= 0) {
-                const target = list[index];
-                const targetParams = typeof target.params === "string" ? target.params : "";
-                const incomingParams =
-                  typeof nextPartial.params === "string" ? nextPartial.params : "";
-                const mergedParams = (() => {
-                  if (!incomingParams) return targetParams;
-                  if (targetParams.endsWith(incomingParams)) return targetParams;
-                  return `${targetParams}${incomingParams}`;
-                })();
-                const next = [...list];
-                next[index] = {
-                  ...target,
-                  id: toolId,
-                  toolName:
-                    typeof nextPartial.toolName === "string" ? nextPartial.toolName : target.toolName,
-                  params: mergedParams,
-                  response:
-                    typeof nextPartial.response === "string" ? nextPartial.response : target.response,
-                  interaction: nextPartial.interaction ?? target.interaction,
-                  progressStatus: nextPartial.progressStatus ?? target.progressStatus,
-                };
-                return { ...current, timeline: next };
-              }
-            }
-            return {
-              ...current,
-              timeline: [
-                ...list,
-                {
-                  type: "tool",
-                  id: toolId || undefined,
-                  toolName: nextPartial.toolName || "",
-                  params: nextPartial.params || "",
-                  response: nextPartial.response || "",
-                  interaction: nextPartial.interaction,
-                  progressStatus: nextPartial.progressStatus,
+              sdkMessage: {
+                ...sdkMessage,
+                message: {
+                  ...sdkPayload,
+                  role: sdkPayload.role || "assistant",
+                  content: [...content, block],
                 },
-              ],
+              },
             };
           });
         };
@@ -994,403 +808,166 @@ const ChatPanel = ({
               }
             };
 
-            if (event === SseResponseEventEnum.answer) {
-              const answerPayload = item as { text?: string; reasoningText?: string };
-              if (answerPayload.reasoningText) {
+            if (event === SdkStreamEventEnum.streamEvent) {
+              const payload = item as {
+                subtype?: unknown;
+                text?: unknown;
+                id?: unknown;
+                name?: unknown;
+                input?: unknown;
+                content?: unknown;
+                is_error?: unknown;
+              };
+              const subtype = typeof payload.subtype === "string" ? payload.subtype : "";
+              if (subtype === "thinking_delta" && typeof payload.text === "string" && payload.text) {
                 shouldAutoScrollRef.current = true;
-                const reasoningText = answerPayload.reasoningText;
-                streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
+                streamingReasoningRef.current = `${streamingReasoningRef.current}${payload.text}`;
                 scheduleAssistantReasoningFlush(assistantMessageId);
-                appendTimelineText("reasoning", reasoningText);
+                appendSdkBlock({ type: "thinking", thinking: payload.text });
+                return;
               }
-              if (answerPayload.text) {
+              if (subtype === "text_delta" && typeof payload.text === "string" && payload.text) {
                 shouldAutoScrollRef.current = true;
-                streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
+                streamingTextRef.current = `${streamingTextRef.current}${payload.text}`;
                 scheduleAssistantTextFlush(assistantMessageId);
-                appendTimelineText("answer", answerPayload.text);
+                appendSdkBlock({ type: "text", text: payload.text });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolCall) {
-              // 保证视觉顺序与事件顺序一致：在工具卡片出现前先提交已到达的文本片段
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  params: "",
-                  response: "",
-                  progressStatus: "pending",
+              if (subtype === "tool_use_start" && typeof payload.id === "string") {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  progressStatus: "pending",
-                });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolParams) {
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  params: streamPayload.params || "",
+              if (subtype === "tool_use_delta" && typeof payload.id === "string") {
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input && typeof payload.input === "object"
+                    ? { input: payload.input as Record<string, unknown> }
+                    : {}),
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  params: streamPayload.params || "",
-                });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolResponse) {
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              const responseForDisplay = streamPayload.response || "";
-              const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
-              const parsedPayload = parseToolPayload(responseForDisplay, responseForFileUpdates);
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  response: responseForDisplay,
-                  interaction: isPlanInteractionEnvelope(streamPayload.interaction)
-                    ? streamPayload.interaction
-                    : undefined,
-                  progressStatus: "completed",
+              if (subtype === "tool_result" && typeof payload.id === "string") {
+                const responseText =
+                  typeof payload.content === "string"
+                    ? payload.content
+                    : JSON.stringify(payload.content ?? "", null, 2);
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content: responseText,
+                  ...(payload.is_error === true ? { is_error: true } : {}),
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  response: responseForDisplay,
-                  interaction: isPlanInteractionEnvelope(streamPayload.interaction)
-                    ? streamPayload.interaction
-                    : undefined,
-                  progressStatus: "completed",
-                });
-              }
-              if ((streamPayload.toolName || "").trim().toLowerCase() === "spawn_agent") {
-                updateAssistantMetadata((current) => ({
-                  ...current,
-                  executionDelegationMode: "subagent",
-                }));
-              }
-              if (streamPayload.toolName && responseForDisplay) {
-                try {
-                  const parsed = (parsedPayload ||
-                    JSON.parse(responseForDisplay)) as
-                    | AgentTaskSnapshot
-                    | { agent?: AgentTaskSnapshot; agents?: AgentTaskSnapshot[] };
-                  if (Array.isArray((parsed as { agents?: AgentTaskSnapshot[] }).agents)) {
-                    const snapshots = (parsed as { agents: AgentTaskSnapshot[] }).agents;
-                    upsertAgentTasks(snapshots);
+                const parsedPayload = parseToolPayload(responseText, responseText);
+                if (parsedPayload) {
+                  const parsed = parsedPayload as {
+                    requiresPermissionApproval?: boolean;
+                    permission?: PermissionApprovalPayload;
+                  };
+                  const permission = parsed.permission;
+                  if (
+                    parsed.requiresPermissionApproval === true &&
+                    permission &&
+                    typeof permission === "object" &&
+                    typeof permission.toolName === "string"
+                  ) {
                     updateAssistantMetadata((current) => ({
                       ...current,
-                      agentTasks: snapshots,
-                    }));
-                  } else if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    "agent" in parsed &&
-                    (parsed as { agent?: unknown }).agent &&
-                    typeof (parsed as { agent: AgentTaskSnapshot }).agent.id === "string"
-                  ) {
-                    const snapshot = (parsed as { agent: AgentTaskSnapshot }).agent;
-                    upsertAgentTasks(snapshot);
-                    updateAssistantMetadata((current) => {
-                      const existing = Array.isArray(current.agentTasks)
-                        ? (current.agentTasks as AgentTaskSnapshot[])
-                        : [];
-                      const index = existing.findIndex((item) => item.id === snapshot.id);
-                      const next = [...existing];
-                      if (index >= 0) next[index] = { ...next[index], ...snapshot };
-                      else next.push(snapshot);
-                      return {
-                        ...current,
-                        agentTasks: next,
-                      };
-                    });
-                  } else if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    "id" in parsed &&
-                    typeof (parsed as AgentTaskSnapshot).id === "string"
-                  ) {
-                    const snapshot = parsed as AgentTaskSnapshot;
-                    upsertAgentTasks(snapshot);
-                    updateAssistantMetadata((current) => {
-                      const existing = Array.isArray(current.agentTasks)
-                        ? (current.agentTasks as AgentTaskSnapshot[])
-                        : [];
-                      const index = existing.findIndex((item) => item.id === snapshot.id);
-                      const next = [...existing];
-                      if (index >= 0) next[index] = { ...next[index], ...snapshot };
-                      else next.push(snapshot);
-                      return {
-                        ...current,
-                        agentTasks: next,
-                      };
-                    });
-                  }
-                } catch {
-                  // ignore non-JSON tool responses
-                }
-              }
-
-              const interaction = isPlanInteractionEnvelope(streamPayload.interaction)
-                ? streamPayload.interaction
-                : undefined;
-              if (interaction) {
-                const planPreview = streamingTextRef.current.trim().slice(0, 6000);
-                updateAssistantMetadata((current) => {
-                  const currentInteractionState =
-                    current.planModeInteractionState &&
-                    typeof current.planModeInteractionState === "object" &&
-                    !Array.isArray(current.planModeInteractionState)
-                      ? (current.planModeInteractionState as Record<string, unknown>)
-                      : {};
-                  const next: Record<string, unknown> = {
-                    ...current,
-                    planModeProtocolVersion: 2,
-                    planModeInteractionState: {
-                      ...currentInteractionState,
-                      [interaction.requestId]: {
-                        type: interaction.type,
-                        status: "pending",
+                      permissionApproval: {
+                        toolName: permission.toolName,
+                        reason:
+                          typeof permission.reason === "string"
+                            ? permission.reason
+                            : undefined,
                       },
-                    },
-                  };
-                  if (interaction.type === "plan_question") {
-                    // Ignore model-generated question cards to keep plan flow deterministic.
-                    // Confirmation card is derived from plan_progress.
-                  } else if (interaction.type === "plan_progress") {
-                    const payload = interaction.payload as PlanProgressInteractionPayload;
-                    next.planProgress = {
-                      explanation: payload.explanation,
-                      plan: payload.plan,
-                    };
-                    const hasPendingPlanQuestions =
-                      Array.isArray(current.planQuestions) &&
-                      (current.planQuestions as Array<Record<string, unknown>>).length > 0;
-                    if (!hasPendingPlanQuestions) {
-                      next.planQuestions = [
-                        {
-                          requestId: `${interaction.requestId}:execute`,
-                          header: "执行确认",
-                          id: "plan_execute_confirm",
-                          question: "计划已生成，是否立即执行完整清单？",
-                          options: [
-                            { label: "确认执行", description: "按计划顺序开始执行并持续回写进度" },
-                            { label: "继续调整", description: "保持计划模式，继续补充或修改计划" },
-                          ],
-                        },
-                      ];
-                    }
-                  } else if (interaction.type === "plan_approval") {
-                    next.planModeApproval = interaction.payload;
-                    if (planPreview) {
-                      next.planPreview = planPreview;
-                    }
-                  }
-                  return next;
-                });
-              }
-
-              if (parsedPayload) {
-                const parsed = parsedPayload as {
-                  requiresPermissionApproval?: boolean;
-                  permission?: PermissionApprovalPayload;
-                };
-                const permission = parsed.permission;
-                if (
-                  parsed.requiresPermissionApproval === true &&
-                  permission &&
-                  typeof permission === "object" &&
-                  typeof permission.toolName === "string"
-                ) {
-                  updateAssistantMetadata((current) => ({
-                    ...current,
-                    permissionApproval: {
-                      toolName: permission.toolName,
-                      reason:
-                        typeof permission.reason === "string"
-                          ? permission.reason
-                          : undefined,
-                    },
-                  }));
-                }
-              }
-
-              if (
-                streamPayload.toolName &&
-                ["TaskCreate", "TaskGet", "TaskUpdate", "TaskStop", "TaskList"].includes(streamPayload.toolName) &&
-                responseForDisplay
-              ) {
-                try {
-                  const parsed = JSON.parse(responseForDisplay) as {
-                    task?: SessionTaskSnapshot;
-                    tasks?: SessionTaskSnapshot[];
-                  };
-                  if (Array.isArray(parsed.tasks)) {
-                    upsertSessionTasks(parsed.tasks);
-                    updateAssistantMetadata((current) => ({
-                      ...current,
-                      sessionTasks: parsed.tasks,
                     }));
-                  } else if (parsed.task && typeof parsed.task === "object" && parsed.task.id) {
-                    const task = parsed.task;
-                    upsertSessionTasks(task);
-                    updateAssistantMetadata((current) => {
-                      const existing = Array.isArray(current.sessionTasks)
-                        ? (current.sessionTasks as SessionTaskSnapshot[])
-                        : [];
-                      const index = existing.findIndex((item) => item.id === task.id);
-                      const next = [...existing];
-                      if (index >= 0) next[index] = { ...next[index], ...task };
-                      else next.push(task);
-                      return {
-                        ...current,
-                        sessionTasks: next,
-                      };
-                    });
                   }
-                } catch {
-                  // ignore parser failures
-                }
-              }
-
-              if (responseForFileUpdates && onFilesUpdated) {
-                try {
-                  const parsed = JSON.parse(responseForFileUpdates);
-                  const filesCandidate =
-                    (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
-                    (parsed as { files?: Record<string, { code: string }> }).files ||
-                    (parsed as { agent?: { uiFiles?: Record<string, { code: string }> } }).agent?.uiFiles ||
-                    (parsed as { agents?: Array<{ uiFiles?: Record<string, { code: string }> }> }).agents?.reduce<
-                      Record<string, { code: string }>
-                    >((acc, item) => ({ ...acc, ...(item?.uiFiles || {}) }), {}) ||
-                    (parsed as {
-                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
-                    }).data?.uiFiles ||
-                    (parsed as {
-                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
-                    }).data?.files;
-                  const files = toUpdatedFilesMap(filesCandidate);
-                  if (files && typeof files === "object") {
-                    onFilesUpdated(files);
-                  }
-                } catch {
-                  return;
                 }
               }
               return;
             }
-            if (event === SseResponseEventEnum.toolInteraction) {
-              const streamPayload = item as ToolStreamPayload;
-              const interaction = isPlanInteractionEnvelope(streamPayload.interaction)
-                ? streamPayload.interaction
+
+            if (event === SdkStreamEventEnum.control) {
+              const payload = item as { interaction?: unknown };
+              const interaction = isPlanInteractionEnvelope(payload.interaction)
+                ? payload.interaction
                 : undefined;
               if (!interaction) return;
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  interaction,
-                });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  interaction,
-                });
-              }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolProgress) {
-              const streamPayload = item as ToolProgressPayload;
-              const progressStatus =
-                streamPayload.status === "pending" ||
-                streamPayload.status === "in_progress" ||
-                streamPayload.status === "completed" ||
-                streamPayload.status === "error"
-                  ? streamPayload.status
-                  : undefined;
-              if (streamPayload.id && progressStatus) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  progressStatus,
-                });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  progressStatus,
-                });
-              }
-              return;
-            }
-            if (event === SseResponseEventEnum.flowNodeResponse) {
-              const streamPayload = item as FlowNodeResponsePayload;
               updateAssistantMetadata((current) => {
-                const currentResponseData = Array.isArray(current.responseData)
-                  ? current.responseData
-                  : [];
-                return {
+                const controlEvents = Array.isArray(current.controlEvents)
+                  ? [...(current.controlEvents as unknown[]), interaction]
+                  : [interaction];
+                const currentInteractionState =
+                  current.planModeInteractionState &&
+                  typeof current.planModeInteractionState === "object" &&
+                  !Array.isArray(current.planModeInteractionState)
+                    ? (current.planModeInteractionState as Record<string, unknown>)
+                    : {};
+                const next: Record<string, unknown> = {
                   ...current,
-                  responseData: [...currentResponseData, streamPayload],
+                  controlEvents,
+                  planModeProtocolVersion: 2,
+                  planModeInteractionState: {
+                    ...currentInteractionState,
+                    [interaction.requestId]: {
+                      type: interaction.type,
+                      status: "pending",
+                    },
+                  },
                 };
+                if (interaction.type === "plan_progress") {
+                  const content = interaction.payload as PlanProgressInteractionPayload;
+                  next.planProgress = {
+                    explanation: content.explanation,
+                    plan: content.plan,
+                  };
+                }
+                if (interaction.type === "plan_question") next.planQuestions = [];
+                if (interaction.type === "plan_approval") {
+                  next.planModeApproval = interaction.payload;
+                }
+                return next;
               });
               return;
             }
-            if (event === SseResponseEventEnum.agentDuration) {
-              const streamPayload = item as AgentDurationPayload;
-              if (typeof streamPayload.durationSeconds !== "number") return;
+
+            if (event === SdkStreamEventEnum.status) {
+              const payload = item as { phase?: unknown; toolName?: unknown };
+              if (payload.phase === "tool_error") {
+                appendSdkBlock({
+                  type: "text",
+                  text: `\n[tool-error] ${typeof payload.toolName === "string" ? payload.toolName : "tool"}\n`,
+                });
+              }
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.message) {
+              const payload = item as { message?: unknown };
+              if (!isSdkLikeMessage(payload.message)) return;
+              const sdkMessage = payload.message;
+              if ((sdkMessage.message?.role || "assistant") !== "assistant") return;
+              const contentText = sdkContentToText(sdkMessage.message?.content);
+              if (contentText) {
+                shouldAutoScrollRef.current = true;
+                streamingTextRef.current = contentText;
+                flushAssistantText(assistantMessageId, contentText);
+              }
               updateAssistantMetadata((current) => ({
                 ...current,
-                durationSeconds: streamPayload.durationSeconds,
+                sdkMessage,
               }));
               return;
             }
-            if (event === SseResponseEventEnum.contextWindow) {
-              const streamPayload = item as Partial<ContextWindowUsage>;
-              if (
-                typeof streamPayload.usedTokens !== "number" ||
-                typeof streamPayload.maxContext !== "number" ||
-                typeof streamPayload.remainingTokens !== "number" ||
-                typeof streamPayload.usedPercent !== "number"
-              ) {
-                return;
-              }
-              const phase = streamPayload.phase;
-              const prevUsage = contextUsageRef.current;
-              // Prevent visual "drop then recover": keep previous number during start phase
-              // when backend sends a transient lower snapshot before final usage is emitted.
-              if (
-                phase === "start" &&
-                prevUsage &&
-                typeof prevUsage.usedPercent === "number" &&
-                streamPayload.usedPercent < prevUsage.usedPercent
-              ) {
-                return;
-              }
-              setContextUsageSnapshot({
-                model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                phase: phase === "start" || phase === "final" ? phase : undefined,
-                usedTokens: streamPayload.usedTokens,
-                maxContext: streamPayload.maxContext,
-                remainingTokens: streamPayload.remainingTokens,
-                usedPercent: streamPayload.usedPercent,
-              }, conversationId || null, typeof streamPayload.model === "string" ? streamPayload.model : model);
-              updateAssistantMetadata((current) => ({
-                ...current,
-                contextWindow: {
-                  model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                  usedTokens: streamPayload.usedTokens,
-                  maxContext: streamPayload.maxContext,
-                  remainingTokens: streamPayload.remainingTokens,
-                  usedPercent: streamPayload.usedPercent,
-                },
-              }));
-            }
+
+            if (event === SdkStreamEventEnum.done) return;
+            if (event === SdkStreamEventEnum.error) return;
           };
           const enqueueSseEvent = (item: unknown) => {
             streamEventQueue.push(item);
@@ -1409,7 +986,7 @@ const ChatPanel = ({
             url: completionsPath,
             data: {
               token,
-              messages: [requestMessage],
+              messages: requestMessagesForApi,
               stream: true,
               persistIncomingMessages,
               ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
@@ -1455,47 +1032,8 @@ const ChatPanel = ({
         if (streamingReasoningRef.current) {
           flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
         }
-        updateAssistantMetadata((current) => {
-          const details = Array.isArray(current.toolDetails)
-            ? (current.toolDetails as Array<{ response?: string }>)
-            : [];
-          const timeline = Array.isArray(current.timeline)
-            ? (current.timeline as Array<Record<string, unknown>>)
-            : [];
-          const pendingCount = details.filter(
-            (item) => !item?.response || String(item.response).trim().length === 0
-          ).length;
-          const pendingTimelineCount = timeline.filter(
-            (item) =>
-              item?.type === "tool" &&
-              (typeof item.response !== "string" || item.response.trim().length === 0)
-          ).length;
-          if (pendingCount === 0 && pendingTimelineCount === 0) return current;
-
-          const pendingMessage = abortCtrl.signal.aborted
-            ? "[已中断] 工具未返回结果"
-            : "[已结束] 工具未返回结果";
-          return {
-            ...current,
-            executionDelegationMode:
-              typeof current.executionDelegationMode === "string" && current.executionDelegationMode
-                ? current.executionDelegationMode
-                : "direct",
-            toolDetails: details.map((item) => ({
-              ...item,
-              response:
-                !item?.response || String(item.response).trim().length === 0
-                  ? pendingMessage
-                  : item.response,
-            })),
-            timeline: timeline.map((item) =>
-              item?.type === "tool" &&
-              (typeof item.response !== "string" || item.response.trim().length === 0)
-                ? { ...item, response: pendingMessage }
-                : item
-            ),
-          };
-        });
+        // Do not synthesize client-side fake tool results.
+        // Missing tool closures must be emitted by backend protocol events.
         if ((abortCtrl.signal.aborted || assistantFailureText) && conversationId) {
           const persistedMessages = (() => {
             const snapshot = messagesRef.current.map((item) => ({ ...item }));
@@ -1584,8 +1122,6 @@ const ChatPanel = ({
       updateConversationTitle,
       scheduleAssistantReasoningFlush,
       setContextUsageSnapshot,
-      upsertAgentTasks,
-      upsertSessionTasks,
     ]
   );
 
@@ -1649,36 +1185,6 @@ const ChatPanel = ({
     () => activeConversation?.title || defaultHeaderTitle,
     [activeConversation?.title, defaultHeaderTitle]
   );
-
-  const filteredAgentTaskList = useMemo(() => {
-    const list = Object.values(agentTasks).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    if (agentTaskFilter === "active") {
-      return list.filter((task) => task.status === "running");
-    }
-    if (agentTaskFilter === "done") {
-      return list.filter((task) => task.status === "completed" || task.status === "closed");
-    }
-    if (agentTaskFilter === "failed") {
-      return list.filter((task) => task.status === "failed");
-    }
-    return list;
-  }, [agentTaskFilter, agentTasks]);
-
-  const filteredSessionTaskList = useMemo(() => {
-    const list = Object.values(sessionTasks)
-      .filter((task) => task.status !== "deleted")
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    if (sessionTaskFilter === "active") {
-      return list.filter((task) => task.status === "pending" || task.status === "in_progress");
-    }
-    if (sessionTaskFilter === "done") {
-      return list.filter((task) => task.status === "completed" || task.status === "stopped");
-    }
-    if (sessionTaskFilter === "blocked") {
-      return list.filter((task) => task.status === "blocked");
-    }
-    return list;
-  }, [sessionTaskFilter, sessionTasks]);
 
   const handleUseSkill = useCallback((skillName: string) => {
     setSelectedSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]));
@@ -1776,19 +1282,6 @@ const ChatPanel = ({
         const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
         shouldAutoScrollRef.current = distanceToBottom < 80;
       },
-      agentTaskFilter,
-      sessionTaskFilter,
-      agentTasks,
-      sessionTasks,
-      filteredAgentTaskList,
-      filteredSessionTaskList,
-      onSetAgentTaskFilter: setAgentTaskFilter,
-      onSetSessionTaskFilter: setSessionTaskFilter,
-      onToggleShowAgentTasks: () => setShowAgentTasks((prev) => !prev),
-      onToggleShowSessionTasks: () => setShowSessionTasks((prev) => !prev),
-      onClearCompletedSessionTasks: clearCompletedSessionTasks,
-      showAgentTasks,
-      showSessionTasks,
       showInitialLoading,
       emptyStateTitle,
       emptyStateDescription,
@@ -1847,15 +1340,6 @@ const ChatPanel = ({
       loadConversation,
       activeConversationTitle,
       scrollRef,
-      agentTaskFilter,
-      sessionTaskFilter,
-      agentTasks,
-      sessionTasks,
-      filteredAgentTaskList,
-      filteredSessionTaskList,
-      clearCompletedSessionTasks,
-      showAgentTasks,
-      showSessionTasks,
       showInitialLoading,
       emptyStateTitle,
       emptyStateDescription,
