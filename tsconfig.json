@@ -20,6 +20,7 @@
       "@/*": ["./src/*"],
       "@aistudio/*": ["./src/*"],
       "@server/*": ["./src/server/*"],
+      "@claude-code-best/builtin-tools/*": ["./src/server/builtin-tools/*"],
       "@features/*": ["./src/features/*"],
       "@components/*": ["./src/components/*"],
       "@shared/*": ["./src/shared/*"],

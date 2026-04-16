@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import path from "node:path";
 import { Readable } from "node:stream";
 

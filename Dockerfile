@@ -28,8 +28,7 @@ ENV RIPGREP_PATH=/usr/bin/rg
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
-  && corepack enable \
-  && (corepack prepare yarn@4.5.1 --activate || npm install -g @yarnpkg/cli-dist@4.5.1) \
+  && npm install -g bun@1.3.10 \
   && if [ -n "${PIP_INDEX_URL}" ]; then python3 -m pip config set global.index-url "${PIP_INDEX_URL}"; fi \
   && if [ -n "${PIP_TRUSTED_HOST}" ]; then python3 -m pip config set global.trusted-host "${PIP_TRUSTED_HOST}"; fi \
   && python3 -m pip install --break-system-packages --no-cache-dir \
@@ -41,18 +40,16 @@ RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}";
 
 FROM base AS deps
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-COPY package.json yarn.lock ./
+COPY package.json bun.lock ./
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
-  && corepack enable \
-  && if [ -n "${NPM_REGISTRY}" ]; then yarn config set npmRegistryServer "${NPM_REGISTRY}"; fi \
-  && yarn config set nodeLinker node-modules \
-  && yarn install --immutable
+  && if [ -n "${NPM_REGISTRY}" ]; then bun config set registry "${NPM_REGISTRY}"; fi \
+  && bun install --frozen-lockfile
 
 FROM base AS builder
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN bun run build
 
 FROM base AS runner
 ENV NODE_ENV=production

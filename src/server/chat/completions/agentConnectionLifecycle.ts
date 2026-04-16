@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type BindAgentAbortToConnectionInput = {

@@ -16,14 +16,10 @@ import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnec
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { getRuntimeSkills } from "@server/agent/skills/registry";
 import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
-import { createSkillLoadTool, createSkillRunScriptTool } from "@server/agent/skills/tool";
-import { createProjectTools } from "@server/agent/tools";
-import { createBashTool } from "@server/agent/tools/bashTool";
-import { createPlanModeTools } from "@server/agent/tools/planModeTools";
 import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
-import type { AgentToolDefinition } from "@server/agent/tools/types";
-import { loadMcpTools } from "@server/agent/mcpClient";
+import type { AgentToolDefinition } from "@server/agent/agentToolTypes";
 import { runSessionRuntime } from "@server/agent/runtime/sessionRuntime";
+import { buildRuntimeTools } from "@server/agent/runtimeToolBuilder";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import {
@@ -179,14 +175,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     typeof req.body?.model === "string" && req.body.model.trim()
       ? req.body.model.trim()
       : getAgentRuntimeConfig().toolCallModel;
-  const thinking = (() => {
-    const raw = req.body?.thinking;
-    if (!raw || typeof raw !== "object") return undefined;
-    const type = (raw as { type?: unknown }).type;
-    if (type === "enabled") return { type: "enabled" as const };
-    if (type === "disabled") return { type: "disabled" as const };
-    return undefined;
-  })();
+  const selectedSkills = Array.isArray(req.body?.selectedSkills)
+    ? req.body.selectedSkills
+        .filter((item: unknown): item is string => typeof item === "string")
+        .map((item: string) => item.trim())
+        .filter(Boolean)
+    : typeof req.body?.selectedSkill === "string" && req.body.selectedSkill.trim()
+    ? [req.body.selectedSkill.trim()]
+    : [];
 
   if (!stream) {
     res.status(400).json({ error: "v2 chat requires stream=true" });
@@ -205,14 +201,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   const chatId = conversationId || `project-${token}`;
-  registerActiveConversationRun({
-    token,
-    chatId,
-    controller: abortController,
-  });
+  registerActiveConversationRun({ token, chatId, controller: abortController });
 
   try {
-    const tracker = { changed: false, paths: new Set<string>() };
     const runtimeSkills = await getRuntimeSkills();
     const projectSkillsParsed = collectProjectRuntimeSkills(project.files || {}, `project:${token}`);
     const mergedSkillByName = new Map<string, (typeof runtimeSkills)[number]>();
@@ -221,48 +212,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const allAvailableSkills = [...mergedSkillByName.values()].sort((a, b) =>
       a.name.localeCompare(b.name)
     );
+    const selectedSkillSet = new Set(selectedSkills);
+    const effectiveSkills =
+      selectedSkillSet.size > 0
+        ? allAvailableSkills.filter((skill) => selectedSkillSet.has(skill.name))
+        : allAvailableSkills;
 
     const workspaceManager = new ProjectWorkspaceManager({
       sessionId: chatId,
       fallbackProjectToken: token,
     });
-    const localTools = createProjectTools(token, tracker, {
+
+    const allTools: AgentToolDefinition[] = await buildRuntimeTools({
+      token,
       chatId,
       workspaceManager,
-      skillBaseDirs: allAvailableSkills.map((item) => item.baseDir),
-      historyMessages: sdkMessages.map((item) => ({
-        role: (item.message?.role || "user") as ConversationMessage["role"],
-        content: item.message?.content || "",
-        id: item.uuid,
-      })),
+      effectiveSkills,
+      historyMessages: req.body?.messages,
     });
-    const mcpTools = await loadMcpTools();
-    const skillLoadTool =
-      allAvailableSkills.length > 0 ? await createSkillLoadTool({ skills: allAvailableSkills }) : null;
-    const skillRunScriptTool =
-      allAvailableSkills.length > 0
-        ? await createSkillRunScriptTool({
-            skills: allAvailableSkills,
-            sessionId: chatId,
-            workspaceFiles: project.files || {},
-            workspaceManager,
-            projectToken: token,
-          })
-        : null;
-    const bashTool = createBashTool({
-      sessionId: chatId,
-      workspaceManager,
-      fallbackProjectToken: token,
-      allowedProjectToken: token,
-    });
-    const allTools: AgentToolDefinition[] = [
-      ...localTools,
-      ...mcpTools,
-      ...(skillLoadTool ? [skillLoadTool] : []),
-      ...(skillRunScriptTool ? [skillRunScriptTool] : []),
-      ...createPlanModeTools(),
-      bashTool,
-    ];
+
     const tools: ChatCompletionTool[] = allTools.map((tool) => ({
       type: "function",
       function: {
@@ -276,15 +244,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sessionId: chatId,
       selectedModel,
       stream: true,
-      recursionLimit: getAgentRuntimeConfig().recursionLimit,
-      temperature: getAgentRuntimeConfig().temperature,
-      thinking,
+      recursionLimit: getAgentRuntimeConfig().recursionLimit ?? 6,
+      temperature: getAgentRuntimeConfig().temperature ?? 0.2,
       toolChoice: "auto",
       messages: toAgentMessages(sdkMessages),
       allTools,
       tools,
       abortSignal: abortController.signal,
       onEvent: (event, data) => streamEvent(res, event, data),
+    });
+
+    if (selectedSkills.length > 0) {
+      streamEvent(res, SdkStreamEventEnum.status, {
+        phase: "skills_selected",
+        selectedSkills,
+      });
+    }
+
+    streamEvent(res, SdkStreamEventEnum.message, {
+      message: runResult.assistantMessage,
     });
 
     if (conversationId) {
@@ -298,17 +276,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ]);
     }
 
-    streamEvent(res, SdkStreamEventEnum.done, { reason: "completed" });
+    streamEvent(res, SdkStreamEventEnum.done, {
+      reason: "completed",
+    });
   } catch (error) {
     streamEvent(res, SdkStreamEventEnum.error, {
       message: error instanceof Error ? error.message : String(error ?? "未知错误"),
     });
   } finally {
-    unregisterActiveConversationRun({
-      token,
-      chatId,
-      controller: abortController,
-    });
+    unregisterActiveConversationRun({ token, chatId, controller: abortController });
     stopHeartbeat();
     res.end();
   }

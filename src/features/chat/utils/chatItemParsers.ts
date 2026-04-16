@@ -68,6 +68,53 @@ export const PLAN_MODE_TOOL_NAMES = new Set([
   "update_plan",
 ]);
 
+const getSdkContentBlocks = (message: ConversationMessage): unknown[] | null => {
+  const directContent =
+    message.message && typeof message.message === "object"
+      ? (message.message as { content?: unknown }).content
+      : message.content;
+  const directBlocks = Array.isArray(directContent) ? directContent : null;
+
+  const kwargs =
+    message.additional_kwargs && typeof message.additional_kwargs === "object"
+      ? (message.additional_kwargs as Record<string, unknown>)
+      : null;
+  const sdkMessage =
+    kwargs?.sdkMessage && typeof kwargs.sdkMessage === "object"
+      ? (kwargs.sdkMessage as Record<string, unknown>)
+      : null;
+  const sdkPayload =
+    sdkMessage?.message && typeof sdkMessage.message === "object"
+      ? (sdkMessage.message as Record<string, unknown>)
+      : null;
+  const kwargsBlocks = Array.isArray(sdkPayload?.content) ? (sdkPayload.content as unknown[]) : null;
+
+  if (!directBlocks && !kwargsBlocks) return null;
+  if (directBlocks && !kwargsBlocks) return directBlocks;
+  if (!directBlocks && kwargsBlocks) return kwargsBlocks;
+
+  const scoreBlocks = (blocks: unknown[]) =>
+    blocks.reduce((score, block) => {
+      if (!block || typeof block !== "object") return score;
+      const item = block as Record<string, unknown>;
+      const type = item.type;
+      if (type === "tool_use") {
+        const inputText = toStringValue(item.input).trim();
+        // Prefer streams that carry actual tool input payloads.
+        return score + 10 + Math.min(inputText.length, 200);
+      }
+      if (type === "tool_result") return score + 4;
+      if (type === "thinking") return score + 1;
+      if (type === "text") return score + 1;
+      return score;
+    }, 0);
+
+  const directScore = scoreBlocks(directBlocks as unknown[]);
+  const kwargsScore = scoreBlocks(kwargsBlocks as unknown[]);
+  if (kwargsScore > directScore) return kwargsBlocks;
+  return directBlocks;
+};
+
 const normalizeToolPayload = (value?: string) => {
   if (!value) return "";
   const trimmed = value.trim();
@@ -86,6 +133,29 @@ const toStringValue = (value: unknown) => {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
+  }
+};
+
+const mergeToolParams = (prev?: string, next?: string) => {
+  const left = (prev || "").trim();
+  const right = (next || "").trim();
+  if (!left) return right;
+  if (!right) return left;
+  if (right.startsWith(left)) return right;
+  if (left.startsWith(right)) return left;
+  return `${left}${right}`;
+};
+
+const tryExtractCommandFromResult = (value?: string) => {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const content = typeof parsed.content === "string" ? parsed.content : "";
+    if (!content) return "";
+    return content.length > 240 ? `${content.slice(0, 240)}...` : content;
+  } catch {
+    return "";
   }
 };
 
@@ -112,10 +182,7 @@ export const isImageFile = (file: MessageFile) => {
 };
 
 export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
-  const sdkContent =
-    message.message && typeof message.message === "object"
-      ? (message.message as { content?: unknown }).content
-      : message.content;
+  const sdkContent = getSdkContentBlocks(message);
   if (Array.isArray(sdkContent)) {
     const details: ToolDetail[] = [];
     const byId = new Map<string, ToolDetail>();
@@ -125,19 +192,25 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
       if (item.type === "tool_use" && typeof item.id === "string") {
         const id = item.id;
         const toolName = typeof item.name === "string" ? item.name : "tool";
-        const params =
-          item.input && typeof item.input === "object"
-            ? JSON.stringify(item.input, null, 2)
-            : "";
-        const next: ToolDetail = {
-          id,
-          toolName,
-          params,
-          response: "",
-          progressStatus: "in_progress",
-        };
-        byId.set(id, next);
-        details.push(next);
+        const params = item.input ? toStringValue(item.input) : "";
+        const existing = byId.get(id);
+        if (existing) {
+          if (!existing.toolName && toolName) existing.toolName = toolName;
+          if (params) {
+            existing.params = mergeToolParams(existing.params, params);
+          }
+          if (!existing.progressStatus) existing.progressStatus = "in_progress";
+        } else {
+          const next: ToolDetail = {
+            id,
+            toolName,
+            params,
+            response: "",
+            progressStatus: "in_progress",
+          };
+          byId.set(id, next);
+          details.push(next);
+        }
         continue;
       }
       if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
@@ -148,10 +221,15 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         if (target) {
           target.response = response;
           target.progressStatus = status;
+          if (!target.params) {
+            const fallback = tryExtractCommandFromResult(response);
+            if (fallback) target.params = fallback;
+          }
         } else {
           details.push({
             id,
             toolName: "tool",
+            params: tryExtractCommandFromResult(response) || "",
             response,
             progressStatus: status,
           });
@@ -164,10 +242,7 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
 };
 
 export const getReasoningText = (message: ConversationMessage): string => {
-  const sdkContent =
-    message.message && typeof message.message === "object"
-      ? (message.message as { content?: unknown }).content
-      : message.content;
+  const sdkContent = getSdkContentBlocks(message);
   if (Array.isArray(sdkContent)) {
     const text = sdkContent
       .map((block) => {
@@ -189,10 +264,7 @@ export const getReasoningText = (message: ConversationMessage): string => {
 };
 
 export const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
-  const sdkContent =
-    message.message && typeof message.message === "object"
-      ? (message.message as { content?: unknown }).content
-      : message.content;
+  const sdkContent = getSdkContentBlocks(message);
   if (Array.isArray(sdkContent)) {
     const timeline: TimelineItem[] = [];
     const toolIndexById = new Map<string, number>();
@@ -208,18 +280,32 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
         continue;
       }
       if (item.type === "tool_use" && typeof item.id === "string") {
-        const params =
-          item.input && typeof item.input === "object"
-            ? JSON.stringify(item.input, null, 2)
-            : undefined;
-        const index = timeline.push({
-          type: "tool",
-          id: item.id,
-          toolName: typeof item.name === "string" ? item.name : "tool",
-          params,
-          progressStatus: "in_progress",
-        }) - 1;
-        toolIndexById.set(item.id, index);
+        const params = item.input ? toStringValue(item.input) : undefined;
+        const existingIndex = toolIndexById.get(item.id);
+        if (typeof existingIndex === "number" && timeline[existingIndex]) {
+          const existing = timeline[existingIndex];
+          timeline[existingIndex] = {
+            ...existing,
+            toolName:
+              existing.toolName && existing.toolName !== "tool"
+                ? existing.toolName
+                : typeof item.name === "string"
+                ? item.name
+                : existing.toolName,
+            params: mergeToolParams(existing.params, params),
+            progressStatus: existing.progressStatus || "in_progress",
+          };
+        } else {
+          const index =
+            timeline.push({
+              type: "tool",
+              id: item.id,
+              toolName: typeof item.name === "string" ? item.name : "tool",
+              params,
+              progressStatus: "in_progress",
+            }) - 1;
+          toolIndexById.set(item.id, index);
+        }
         continue;
       }
       if (item.type === "tool_result" && typeof item.tool_use_id === "string") {

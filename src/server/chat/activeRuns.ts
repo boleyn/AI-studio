@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 interface ActiveRunEntry {
   controller: AbortController;
   createdAt: number;

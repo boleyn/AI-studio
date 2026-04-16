@@ -36,17 +36,17 @@ const PlanModeTimelineCard = ({
   const runtimePlanProgress =
     runtimeInteraction?.type === "plan_progress"
       ? ({
-          explanation: (runtimeInteraction.payload as PlanProgressInteractionPayload).explanation,
-          plan: (runtimeInteraction.payload as PlanProgressInteractionPayload).plan,
-        } as { explanation?: string; plan: PlanProgressItem[] })
+        explanation: (runtimeInteraction.payload as PlanProgressInteractionPayload).explanation,
+        plan: (runtimeInteraction.payload as PlanProgressInteractionPayload).plan,
+      } as { explanation?: string; plan: PlanProgressItem[] })
       : null;
 
   const runtimeApproval =
     runtimeInteraction?.type === "plan_approval"
       ? {
-          requestId: runtimeInteraction.requestId,
-          payload: runtimeInteraction.payload as PlanApprovalInteractionPayload,
-        }
+        requestId: runtimeInteraction.requestId,
+        payload: runtimeInteraction.payload as PlanApprovalInteractionPayload,
+      }
       : null;
 
   const runtimeQuestions =

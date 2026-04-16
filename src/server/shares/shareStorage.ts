@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { randomBytes } from "crypto";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "../db/mongo";

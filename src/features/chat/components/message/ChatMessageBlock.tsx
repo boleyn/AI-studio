@@ -53,7 +53,7 @@ const ChatMessageBlock = ({
 
   return (
     <Flex
-      align="flex-start"
+      align={isUser ? "flex-end" : "flex-start"}
       direction="column"
       position="relative"
       w="full"
@@ -76,7 +76,8 @@ const ChatMessageBlock = ({
         <Box
           className="message-action-anchor"
           position="absolute"
-          left={0}
+          left={isUser ? "auto" : 0}
+          right={isUser ? 0 : "auto"}
           top={0}
           transform="translateY(calc(-100% - 6px))"
           zIndex={60}

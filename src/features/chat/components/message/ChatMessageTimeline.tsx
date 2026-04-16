@@ -14,12 +14,20 @@ type ChatRow = {
   key: string;
   message: ConversationMessage;
   messageId: string;
+  role: "user" | "assistant" | "system";
   requestMessage?: ConversationMessage;
   requestContent?: string;
   summary: MessageExecutionSummary | null;
   isStreaming: boolean;
   canRegenerate: boolean;
   rating?: MessageRating;
+};
+
+const getMessageRole = (message: ConversationMessage): "user" | "assistant" | "system" => {
+  const role = (message.role || message.type || "assistant").toString();
+  if (role === "user") return "user";
+  if (role === "system") return "system";
+  return "assistant";
 };
 
 const buildChatRows = ({
@@ -40,69 +48,51 @@ const buildChatRows = ({
         : null;
     return kwargs?.hiddenFromTimeline !== true;
   });
-  const rows: ChatRow[] = [];
 
-  for (let index = 0; index < visibleMessages.length; index += 1) {
-    const message = visibleMessages[index];
-    const nextMessage = visibleMessages[index + 1];
-    if (message.role === "user" && nextMessage?.role === "assistant") {
-      const userMessageId = message.id ?? `user-${index}`;
-      const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
-      rows.push({
-        key: `${userMessageId}__${assistantMessageId}`,
-        message: nextMessage,
-        messageId: assistantMessageId,
-        requestMessage: message,
-        requestContent: extractText(message.content),
-        summary: getExecutionSummary(nextMessage),
-        isStreaming: nextMessage.id === streamingMessageId,
-        canRegenerate: true,
-        rating: messageRatings[assistantMessageId],
-      });
-      index += 1;
-      continue;
-    }
+  const rows: ChatRow[] = visibleMessages.map((message, index) => {
+    const role = getMessageRole(message);
+    const messageId = message.id ?? `${role}-${index}`;
 
-    if (message.role === "user" && !nextMessage && !isSending) {
-      const userMessageId = message.id ?? `user-${index}`;
-      const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
-      const virtualMessage: ConversationMessage = {
-        type: "assistant",
-        subtype: "result",
-        role: "assistant",
-        id: virtualAssistantId,
-        time: message.time,
-        content: "请求失败（历史记录未保存回复），可点击重新生成。",
-        status: "error",
-      };
-      rows.push({
-        key: `${userMessageId}__${virtualAssistantId}`,
-        message: virtualMessage,
-        messageId: virtualAssistantId,
-        requestMessage: message,
-        requestContent: extractText(message.content),
-        summary: getExecutionSummary(virtualMessage),
-        isStreaming: false,
-        canRegenerate: true,
-      });
-      continue;
-    }
-
-    const messageId = message.id ?? `${message.role}-${index}`;
-    let canRegenerate = false;
-    if (message.role === "assistant") {
-      canRegenerate = messages.slice(0, index).some((item) => item.role === "user");
-    }
-    rows.push({
+    return {
       key: messageId,
       message,
       messageId,
-      summary: getExecutionSummary(message),
+      role,
+      requestMessage: undefined,
+      requestContent: undefined,
+      summary: role === "assistant" ? getExecutionSummary(message) : null,
       isStreaming: message.id === streamingMessageId,
-      canRegenerate,
+      canRegenerate: role === "assistant" && messages.slice(0, index).some((item) => getMessageRole(item) === "user"),
       rating: messageRatings[messageId],
+    };
+  });
+
+  const last = visibleMessages[visibleMessages.length - 1];
+  if (last && getMessageRole(last) === "user" && !isSending) {
+    const userMessageId = last.id ?? `user-${visibleMessages.length - 1}`;
+    const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
+    const virtualMessage: ConversationMessage = {
+      type: "assistant",
+      subtype: "result",
+      role: "assistant",
+      id: virtualAssistantId,
+      time: last.time,
+      content: "请求失败（历史记录未保存回复），可点击重新生成。",
+      status: "error",
+    };
+    rows.push({
+      key: `${userMessageId}__${virtualAssistantId}`,
+      message: virtualMessage,
+      messageId: virtualAssistantId,
+      role: "assistant",
+      requestMessage: last,
+      requestContent: extractText(last.content),
+      summary: getExecutionSummary(virtualMessage),
+      isStreaming: false,
+      canRegenerate: true,
     });
   }
+
   return rows;
 };
 
@@ -137,26 +127,28 @@ const ChatMessageTimeline = ({
   });
 
   return (
-    <Flex direction="column" gap={3} pt={14}>
+    <Flex direction="column" gap={3} pt={8}>
       <ChatInteractionProvider value={chatInteractionContextValue}>
         {rows.map((row, rowIndex) => {
           const isLastRow = rowIndex === rows.length - 1;
-          const rowStatusColor = row.isStreaming
-            ? "green.500"
-            : row.message.status === "error"
-            ? "red.500"
-            : "blue.500";
+          const isUser = row.role === "user";
+          const isAssistant = row.role === "assistant";
+          const maxWidth = isUser ? { base: "85%", md: "64%" } : isAssistant ? { base: "100%", md: "92%" } : { base: "100%", md: "88%" };
+
           return (
-            <Flex key={row.key} align="stretch" gap={3} w="full">
-              <Flex align="center" direction="column" w="16px">
-                {row.isStreaming ? (
-                  <Spinner color="green.500" mt="8px" size="xs" speed="0.7s" thickness="2.5px" />
-                ) : (
-                  <Box bg={rowStatusColor} borderRadius="full" h="9px" mt="10px" w="9px" />
-                )}
-                {!isLastRow ? <Box bg="myGray.200" flex="1" mt={1} w="2px" /> : null}
-              </Flex>
-              <Box flex="1" minW={0}>
+            <Flex
+              key={row.key}
+              justify={isUser ? "flex-end" : "flex-start"}
+              w="full"
+              sx={{
+                animation: "chatRowReveal 0.24s ease-out",
+                "@keyframes chatRowReveal": {
+                  from: { opacity: 0, transform: "translateY(8px)" },
+                  to: { opacity: 1, transform: "translateY(0)" },
+                },
+              }}
+            >
+              <Box maxW={maxWidth} minW={0} w={isUser || isAssistant ? "fit-content" : "full"}>
                 <ChatMessageBlock
                   canRegenerate={row.canRegenerate}
                   isLatestRun={isLastRow}

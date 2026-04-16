@@ -112,8 +112,8 @@ const sdkContentToText = (content: unknown): string => {
       if (!item || typeof item !== "object") return "";
       const block = item as Record<string, unknown>;
       if (block.type === "text" && typeof block.text === "string") return block.text;
-      if (block.type === "thinking" && typeof block.thinking === "string") return block.thinking;
-      if (block.type === "tool_result" && typeof block.content === "string") return block.content;
+      // Only assistant "text" blocks should become the final visible answer body.
+      // thinking/tool_result are intermediate protocol artifacts and must stay in timeline metadata.
       return "";
     })
     .join("");
@@ -847,9 +847,7 @@ const ChatPanel = ({
                   type: "tool_use",
                   id: payload.id,
                   name: typeof payload.name === "string" ? payload.name : "tool",
-                  ...(payload.input && typeof payload.input === "object"
-                    ? { input: payload.input as Record<string, unknown> }
-                    : {}),
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
                 });
                 return;
               }
@@ -1034,7 +1032,7 @@ const ChatPanel = ({
         }
         // Do not synthesize client-side fake tool results.
         // Missing tool closures must be emitted by backend protocol events.
-        if ((abortCtrl.signal.aborted || assistantFailureText) && conversationId) {
+        if (conversationId) {
           const persistedMessages = (() => {
             const snapshot = messagesRef.current.map((item) => ({ ...item }));
             if (!snapshot.some((item) => item.id === userMessage.id)) {

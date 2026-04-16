@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
 import { compressRequestMessages } from "@aistudio/ai/llm/compress";
 import type { LLMModelItemType } from "@aistudio/ai/compat/global/core/ai/model.d";

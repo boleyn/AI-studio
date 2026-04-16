@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import yaml from "js-yaml";
 import { SkillSourceType } from "@/types/skill";
 

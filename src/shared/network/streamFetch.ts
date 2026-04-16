@@ -48,19 +48,27 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
     let finished = false;
 
     const finish = () => resolve({ responseText });
+    const flushQueuedItems = () => {
+      if (responseQueue.length === 0) return;
+      const queue = responseQueue;
+      responseQueue = [];
+      queue.forEach((item) => {
+        onMessage(item);
+        if (item.event === SdkStreamEventEnum.streamEvent && typeof item.text === "string") {
+          responseText += item.text;
+        }
+      });
+    };
     const failedFinish = (err?: any) => {
+      if (finished) return;
       finished = true;
+      flushQueuedItems();
       reject(err);
     };
 
     const animateResponseText = () => {
       if (abortCtrl.signal.aborted) {
-        responseQueue.forEach((item) => {
-          onMessage(item);
-          if (item.event === SdkStreamEventEnum.streamEvent && typeof item.text === "string") {
-            responseText += item.text;
-          }
-        });
+        flushQueuedItems();
         return finish();
       }
 

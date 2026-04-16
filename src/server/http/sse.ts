@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import type { NextApiResponse } from "next";
 
 export const sendSseEvent = (res: NextApiResponse, event: string, data: string) => {

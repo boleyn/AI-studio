@@ -396,7 +396,13 @@ export const createSkillWorkspaceTools = ({
         if (!parsed.ok) throw new Error(parsed.error);
         const path = ensureAbsoluteFilePath(parsed.data.file_path, "file_path");
         const result = await run({ action: "read", path });
-        if (!result?.ok || result.action !== "read") return result;
+        if (
+          !result?.ok ||
+          !("action" in result) ||
+          (result as { action?: string }).action !== "read"
+        ) {
+          return result;
+        }
         const content = String((result as any).data?.content || "");
         const ranged = sliceContentByLineRange(content, parsed.data.offset, parsed.data.limit);
         const resolvedPath = (result as any).data?.path || path;

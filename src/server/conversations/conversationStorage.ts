@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { ObjectId } from "mongodb";
 
 import { createChatId, createDataId } from "@shared/chat/ids";

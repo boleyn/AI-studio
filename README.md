@@ -51,7 +51,7 @@ data/           # 本地开发数据目录
 ## 环境要求
 
 - Node.js 20+
-- Yarn 4.5.1（仓库使用 Yarn Berry）
+- Bun 1.3.10+
 - MongoDB（必需）
 - S3 兼容对象存储（必需，推荐 MinIO）
 
@@ -137,8 +137,8 @@ SKILL_HUB_PROXY_SECRET=
 ## 本地开发
 
 ```bash
-yarn
-yarn dev
+bun install
+bun run dev
 ```
 
 访问：
@@ -149,8 +149,8 @@ yarn dev
 ## 生产构建
 
 ```bash
-yarn build
-yarn start
+bun run build
+bun run start
 ```
 
 ## Docker 部署

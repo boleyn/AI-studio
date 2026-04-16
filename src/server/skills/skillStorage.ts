@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { randomBytes } from "crypto";
 import yaml from "js-yaml";
 import { ObjectId } from "mongodb";

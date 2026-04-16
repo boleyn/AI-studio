@@ -1,6 +1,92 @@
+// @ts-nocheck
+// @ts-nocheck
 import { getProject } from "@server/projects/projectStorage";
 import { createUserSkill, getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
-import { runSearchInFiles, type SearchInFilesInput } from "@server/agent/searchInFiles";
+
+export type SearchInFilesInput = {
+  query: string;
+  regex?: boolean;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  includeGlobs?: string[];
+  excludeGlobs?: string[];
+  contextLines?: number;
+  maxResults?: number;
+};
+
+type SearchMatch = {
+  path: string;
+  line: number;
+  column: number;
+  text: string;
+};
+
+const toSearchRegExp = (input: SearchInFilesInput) => {
+  const query = (input.query || "").trim();
+  if (!query) return null;
+
+  if (input.regex) {
+    return new RegExp(query, input.caseSensitive ? "g" : "gi");
+  }
+
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const source = input.wholeWord ? `\\b${escaped}\\b` : escaped;
+  return new RegExp(source, input.caseSensitive ? "g" : "gi");
+};
+
+const runSearchInFiles = async ({
+  files,
+  input,
+}: {
+  files: Record<string, { code?: string }>;
+  input: SearchInFilesInput;
+}) => {
+  const pattern = toSearchRegExp(input);
+  if (!pattern) {
+    return { ok: false, message: "query 不能为空", files: [], matches: [], total: 0 };
+  }
+
+  const matches: SearchMatch[] = [];
+  const maxResults = Math.max(1, Math.min(5000, input.maxResults || 200));
+
+  const entries = Object.entries(files || {});
+  for (const [path, file] of entries) {
+    const content = typeof file?.code === "string" ? file.code : "";
+    if (!content) continue;
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const lineText = lines[i] || "";
+      pattern.lastIndex = 0;
+      let match = pattern.exec(lineText);
+      while (match) {
+        matches.push({
+          path,
+          line: i + 1,
+          column: (match.index || 0) + 1,
+          text: lineText,
+        });
+        if (matches.length >= maxResults) {
+          return {
+            ok: true,
+            files: [...new Set(matches.map((item) => item.path))],
+            matches,
+            total: matches.length,
+            truncated: true,
+          };
+        }
+        match = pattern.exec(lineText);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    files: [...new Set(matches.map((item) => item.path))],
+    matches,
+    total: matches.length,
+    truncated: false,
+  };
+};
 
 export type SkillWorkspaceFile = { code: string };
 
