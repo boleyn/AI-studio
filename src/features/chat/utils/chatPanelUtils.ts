@@ -316,17 +316,13 @@ export const stripTagMarkersFromUserContent = (content: string): string => {
     /\[[^\]]+\]\(FILETAG:[^)]+\)/g,
     ""
   );
-  return noFileTags
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return noFileTags;
 };
 
 export const stripInlineImageMarkdown = (content: string): string => {
   if (!content) return "";
   return content
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "");
 };
 
 export const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");

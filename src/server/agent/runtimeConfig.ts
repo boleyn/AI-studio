@@ -19,7 +19,9 @@ const DEFAULT_RECURSION_LIMIT = 20;
 export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
   const provider = "openai";
   const aiproxyEndpoint = process.env.AIPROXY_API_ENDPOINT;
-  const baseUrl = aiproxyEndpoint ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1` : process.env.OPENAI_BASE_URL;
+  const baseUrl = aiproxyEndpoint
+    ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1`
+    : process.env.OPENAI_BASE_URL;
   const apiKey = process.env.AIPROXY_API_TOKEN || process.env.CHAT_API_KEY;
 
   const toolCallModel = process.env.TOOL_CALL_MODEL || DEFAULT_TOOL_CALL_MODEL;

@@ -273,9 +273,7 @@ export const useChatItemViewModel = ({
         .replace(/(?:FILETAG|SKILLTAG):[^\s)\]]+/g, " ")
         .replace(/(?:^|\s)(?:FILETAG|SKILLTAG):\S+/g, " ")
         .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-        .replace(/[`*_>#\[\]\(\)\-!]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
+        .replace(/[`*_>#\[\]\(\)\-!]/g, " "),
     [requestContent]
   );
   const requestImageCount = useMemo(

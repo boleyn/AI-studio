@@ -727,6 +727,7 @@ const ChatPanel = ({
             body: JSON.stringify({
               token,
               messages: historyMessages,
+              permissionMode: effectiveMode,
               persistIncomingMessages,
               ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
@@ -952,15 +953,82 @@ const ChatPanel = ({
               const sdkMessage = payload.message;
               if ((sdkMessage.message?.role || "assistant") !== "assistant") return;
               const contentText = sdkContentToText(sdkMessage.message?.content);
-              if (contentText) {
+              // In streaming mode, delta text is the source of truth for visible content.
+              // Some backends may serialize final content with escaped newlines in `event: message`,
+              // which can collapse formatting if we overwrite the already-streamed body.
+              if (contentText && !streamingTextRef.current) {
                 shouldAutoScrollRef.current = true;
                 streamingTextRef.current = contentText;
                 flushAssistantText(assistantMessageId, contentText);
               }
-              updateAssistantMetadata((current) => ({
-                ...current,
-                sdkMessage,
-              }));
+              updateAssistantMetadata((current) => {
+                const currentSdkMessage =
+                  current.sdkMessage && typeof current.sdkMessage === "object"
+                    ? (current.sdkMessage as Record<string, unknown>)
+                    : null;
+                const currentPayload =
+                  currentSdkMessage?.message && typeof currentSdkMessage.message === "object"
+                    ? (currentSdkMessage.message as Record<string, unknown>)
+                    : null;
+                const currentContent = Array.isArray(currentPayload?.content)
+                  ? (currentPayload.content as unknown[])
+                  : [];
+
+                const incomingPayload =
+                  sdkMessage.message && typeof sdkMessage.message === "object"
+                    ? (sdkMessage.message as Record<string, unknown>)
+                    : null;
+                const incomingContent = Array.isArray(incomingPayload?.content)
+                  ? (incomingPayload.content as unknown[])
+                  : [];
+
+                if (incomingContent.length === 0) {
+                  return {
+                    ...current,
+                    sdkMessage,
+                  };
+                }
+
+                const toolInputById = new Map<string, unknown>();
+                for (const block of currentContent) {
+                  if (!block || typeof block !== "object") continue;
+                  const record = block as Record<string, unknown>;
+                  if (record.type !== "tool_use" || typeof record.id !== "string") continue;
+                  if (record.input !== undefined) {
+                    toolInputById.set(record.id, record.input);
+                  }
+                }
+
+                const mergeToolInput = (blocks: unknown[]) =>
+                  blocks.map((block) => {
+                    if (!block || typeof block !== "object") return block;
+                    const record = block as Record<string, unknown>;
+                    if (record.type !== "tool_use" || typeof record.id !== "string") return block;
+                    if (record.input !== undefined) return block;
+                    if (!toolInputById.has(record.id)) return block;
+                    return {
+                      ...record,
+                      input: toolInputById.get(record.id),
+                    };
+                  });
+
+                // Prefer the stream-assembled sdk blocks to avoid duplicated tool rows when
+                // both `stream_event` and final `message` include the same sequence.
+                const mergedContent =
+                  currentContent.length > 0 ? mergeToolInput(currentContent) : mergeToolInput(incomingContent);
+
+                return {
+                  ...current,
+                  sdkMessage: {
+                    ...sdkMessage,
+                    message: {
+                      ...(incomingPayload || {}),
+                      role: (incomingPayload?.role as string) || "assistant",
+                      content: mergedContent,
+                    },
+                  },
+                };
+              });
               return;
             }
 
@@ -986,6 +1054,7 @@ const ChatPanel = ({
               token,
               messages: requestMessagesForApi,
               stream: true,
+              permissionMode: effectiveMode,
               persistIncomingMessages,
               ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),

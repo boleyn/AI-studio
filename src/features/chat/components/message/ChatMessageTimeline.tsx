@@ -133,7 +133,7 @@ const ChatMessageTimeline = ({
           const isLastRow = rowIndex === rows.length - 1;
           const isUser = row.role === "user";
           const isAssistant = row.role === "assistant";
-          const maxWidth = isUser ? { base: "85%", md: "64%" } : isAssistant ? { base: "100%", md: "92%" } : { base: "100%", md: "88%" };
+          const maxWidth = { base: "calc(100% - 12px)", md: "calc(100% - 20px)" };
 
           return (
             <Flex

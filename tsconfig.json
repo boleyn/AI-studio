@@ -21,6 +21,7 @@
       "@aistudio/*": ["./src/*"],
       "@server/*": ["./src/server/*"],
       "@claude-code-best/builtin-tools/*": ["./src/server/builtin-tools/*"],
+      "src/*": ["./src/server/agent/*"],
       "@features/*": ["./src/features/*"],
       "@components/*": ["./src/components/*"],
       "@shared/*": ["./src/shared/*"],

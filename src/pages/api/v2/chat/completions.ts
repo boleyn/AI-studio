@@ -1,7 +1,7 @@
 import type {
   ChatCompletionMessageParam,
-  ChatCompletionTool,
 } from "@aistudio/ai/compat/global/core/ai/type";
+import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { requireAuth } from "@server/auth/session";
 import { getProject } from "@server/projects/projectStorage";
 import {
@@ -13,13 +13,8 @@ import {
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
 import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnectionLifecycle";
-import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
-import { getRuntimeSkills } from "@server/agent/skills/registry";
-import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
-import { ProjectWorkspaceManager } from "@server/agent/workspace/projectWorkspaceManager";
-import type { AgentToolDefinition } from "@server/agent/agentToolTypes";
-import { runSessionRuntime } from "@server/agent/runtime/sessionRuntime";
-import { buildRuntimeTools } from "@server/agent/runtimeToolBuilder";
+import { runClaudeQueryAdapter } from "@server/agent/runtime/claudeQueryAdapter";
+import { resolveRuntimeStrategy } from "@server/agent/runtime/runtimeStrategy";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import {
@@ -183,6 +178,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : typeof req.body?.selectedSkill === "string" && req.body.selectedSkill.trim()
     ? [req.body.selectedSkill.trim()]
     : [];
+  const runtimeStrategy = resolveRuntimeStrategy(req.body?.runtimeStrategy);
+  const permissionMode =
+    typeof req.body?.permissionMode === "string" && req.body.permissionMode.trim()
+      ? req.body.permissionMode.trim()
+      : typeof req.body?.mode === "string" && req.body.mode.trim()
+      ? req.body.mode.trim()
+      : undefined;
 
   if (!stream) {
     res.status(400).json({ error: "v2 chat requires stream=true" });
@@ -204,54 +206,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   registerActiveConversationRun({ token, chatId, controller: abortController });
 
   try {
-    const runtimeSkills = await getRuntimeSkills();
-    const projectSkillsParsed = collectProjectRuntimeSkills(project.files || {}, `project:${token}`);
-    const mergedSkillByName = new Map<string, (typeof runtimeSkills)[number]>();
-    for (const skill of runtimeSkills) mergedSkillByName.set(skill.name, skill);
-    for (const skill of projectSkillsParsed.skills) mergedSkillByName.set(skill.name, skill);
-    const allAvailableSkills = [...mergedSkillByName.values()].sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-    const selectedSkillSet = new Set(selectedSkills);
-    const effectiveSkills =
-      selectedSkillSet.size > 0
-        ? allAvailableSkills.filter((skill) => selectedSkillSet.has(skill.name))
-        : allAvailableSkills;
-
-    const workspaceManager = new ProjectWorkspaceManager({
-      sessionId: chatId,
-      fallbackProjectToken: token,
-    });
-
-    const allTools: AgentToolDefinition[] = await buildRuntimeTools({
+    const runResult = await runClaudeQueryAdapter({
       token,
       chatId,
-      workspaceManager,
-      effectiveSkills,
-      historyMessages: req.body?.messages,
-    });
-
-    const tools: ChatCompletionTool[] = allTools.map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
-    }));
-
-    const runResult = await runSessionRuntime({
-      sessionId: chatId,
       selectedModel,
-      stream: true,
-      recursionLimit: getAgentRuntimeConfig().recursionLimit ?? 6,
-      temperature: getAgentRuntimeConfig().temperature ?? 0.2,
-      toolChoice: "auto",
+      selectedSkills,
+      historyMessages: req.body?.messages,
+      projectFiles: project.files || {},
+      permissionMode,
       messages: toAgentMessages(sdkMessages),
-      allTools,
-      tools,
       abortSignal: abortController.signal,
       onEvent: (event, data) => streamEvent(res, event, data),
+      runtimeStrategy,
     });
 
     if (selectedSkills.length > 0) {

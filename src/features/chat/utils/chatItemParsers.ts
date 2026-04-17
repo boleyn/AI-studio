@@ -146,17 +146,77 @@ const mergeToolParams = (prev?: string, next?: string) => {
   return `${left}${right}`;
 };
 
-const tryExtractCommandFromResult = (value?: string) => {
+const parseResultRecord = (value?: string): Record<string, unknown> | null => {
   const raw = (value || "").trim();
-  if (!raw) return "";
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const content = typeof parsed.content === "string" ? parsed.content : "";
-    if (!content) return "";
-    return content.length > 240 ? `${content.slice(0, 240)}...` : content;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
   } catch {
-    return "";
+    return null;
   }
+};
+
+const stringifyCmdArgs = (record: Record<string, unknown>) => {
+  const cmd = typeof record.cmd === "string" ? record.cmd.trim() : "";
+  const args = Array.isArray(record.args)
+    ? (record.args as unknown[])
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+  return [cmd, ...args].filter(Boolean).join(" ").trim();
+};
+
+const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: string) => {
+  const record = parseResultRecord(rawResponse);
+  if (!record) {
+    return {
+      response: rawResponse,
+      paramsFallback: "",
+    };
+  }
+
+  const paramsFallback = stringifyCmdArgs(record);
+  const content = typeof record.content === "string" ? record.content : "";
+  if (content) {
+    return {
+      response: content,
+      paramsFallback,
+    };
+  }
+
+  const normalizedToolName = (toolName || "").trim().toLowerCase();
+  if (normalizedToolName === "read") {
+    const file = record.file && typeof record.file === "object" && !Array.isArray(record.file)
+      ? (record.file as Record<string, unknown>)
+      : null;
+    const fileContent = typeof file?.content === "string" ? file.content : "";
+    const filePath = typeof file?.filePath === "string" ? file.filePath : "";
+    if (fileContent) {
+      return {
+        response: fileContent,
+        paramsFallback: filePath || paramsFallback,
+      };
+    }
+  }
+
+  if (normalizedToolName === "bash") {
+    const stdout = typeof record.stdout === "string" ? record.stdout : "";
+    const stderr = typeof record.stderr === "string" ? record.stderr : "";
+    const error = typeof record.error === "string" ? record.error : "";
+    const response = stdout || stderr || error || rawResponse;
+    return {
+      response,
+      paramsFallback,
+    };
+  }
+
+  return {
+    response: rawResponse,
+    paramsFallback,
+  };
 };
 
 const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
@@ -216,21 +276,23 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
       if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
         const id = item.tool_use_id;
         const target = byId.get(id);
-        const response = typeof item.content === "string" ? item.content : toStringValue(item.content);
+        const responseRaw = typeof item.content === "string" ? item.content : toStringValue(item.content);
         const status = item.is_error === true ? "error" : "completed";
+        const toolName = target?.toolName;
+        const display = getToolResultDisplayPayload(toolName, responseRaw);
         if (target) {
-          target.response = response;
+          target.response = display.response;
           target.progressStatus = status;
           if (!target.params) {
-            const fallback = tryExtractCommandFromResult(response);
+            const fallback = display.paramsFallback;
             if (fallback) target.params = fallback;
           }
         } else {
           details.push({
             id,
             toolName: "tool",
-            params: tryExtractCommandFromResult(response) || "",
-            response,
+            params: display.paramsFallback || "",
+            response: display.response,
             progressStatus: status,
           });
         }
@@ -310,20 +372,25 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
       }
       if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
         const idx = toolIndexById.get(item.tool_use_id);
-        const response = typeof item.content === "string" ? item.content : toStringValue(item.content);
+        const responseRaw = typeof item.content === "string" ? item.content : toStringValue(item.content);
         const status = item.is_error === true ? "error" : "completed";
         if (typeof idx === "number" && timeline[idx]) {
+          const target = timeline[idx];
+          const display = getToolResultDisplayPayload(target.toolName, responseRaw);
           timeline[idx] = {
-            ...timeline[idx],
-            response,
+            ...target,
+            response: display.response,
+            params: target.params || display.paramsFallback || target.params,
             progressStatus: status,
           };
         } else {
+          const display = getToolResultDisplayPayload("tool", responseRaw);
           timeline.push({
             type: "tool",
             id: item.tool_use_id,
             toolName: "tool",
-            response,
+            params: display.paramsFallback || "",
+            response: display.response,
             progressStatus: status,
           });
         }
