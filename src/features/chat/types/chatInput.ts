@@ -12,6 +12,7 @@ export interface ChatInputSubmitPayload {
   permissionApprovalResponse?: {
     requestId?: string;
     toolName: string;
+    toolUseId?: string;
     decision: "approve" | "reject";
     note?: string;
   };

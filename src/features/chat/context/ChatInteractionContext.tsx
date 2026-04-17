@@ -26,6 +26,7 @@ type PlanModeApprovalInput = {
 type PermissionApprovalInput = {
   messageId: string;
   toolName: string;
+  toolUseId?: string;
   decision: "approve" | "reject";
 };
 

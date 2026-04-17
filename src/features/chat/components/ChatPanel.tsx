@@ -880,6 +880,9 @@ const ChatPanel = ({
                       ...current,
                       permissionApproval: {
                         toolName: permission.toolName,
+                        ...(typeof payload.id === "string" && payload.id.trim()
+                          ? { toolUseId: payload.id.trim() }
+                          : {}),
                         reason:
                           typeof permission.reason === "string"
                             ? permission.reason
@@ -929,7 +932,10 @@ const ChatPanel = ({
                 }
                 if (interaction.type === "plan_question") next.planQuestions = [];
                 if (interaction.type === "plan_approval") {
-                  next.planModeApproval = interaction.payload;
+                  next.planModeApproval = {
+                    requestId: interaction.requestId,
+                    ...(interaction.payload as Record<string, unknown>),
+                  };
                 }
                 return next;
               });

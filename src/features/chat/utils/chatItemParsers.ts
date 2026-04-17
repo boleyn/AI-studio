@@ -59,12 +59,21 @@ export interface PlanQuestionSubmission {
   submittedAt?: string;
 }
 
+export interface PermissionApprovalState {
+  toolName: string;
+  toolUseId?: string;
+  reason?: string;
+}
+
 export const MAX_TOOL_DETAIL_CHARS = 800;
 
 export const PLAN_MODE_TOOL_NAMES = new Set([
   "enter_plan_mode",
   "exit_plan_mode",
   "request_user_input",
+  "enterplanmode",
+  "exitplanmode",
+  "askuserquestion",
   "update_plan",
 ]);
 
@@ -113,6 +122,20 @@ const getSdkContentBlocks = (message: ConversationMessage): unknown[] | null => 
   const kwargsScore = scoreBlocks(kwargsBlocks as unknown[]);
   if (kwargsScore > directScore) return kwargsBlocks;
   return directBlocks;
+};
+
+const getInteractionByRequestId = (message: ConversationMessage): Map<string, PlanInteractionEnvelope> => {
+  const map = new Map<string, PlanInteractionEnvelope>();
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return map;
+  const controlEvents = (message.additional_kwargs as { controlEvents?: unknown }).controlEvents;
+  if (!Array.isArray(controlEvents)) return map;
+  for (const event of controlEvents) {
+    if (!isPlanInteractionEnvelope(event)) continue;
+    const requestId = event.requestId.trim();
+    if (!requestId) continue;
+    map.set(requestId, event);
+  }
+  return map;
 };
 
 const normalizeToolPayload = (value?: string) => {
@@ -243,6 +266,7 @@ export const isImageFile = (file: MessageFile) => {
 
 export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
   const sdkContent = getSdkContentBlocks(message);
+  const interactionByRequestId = getInteractionByRequestId(message);
   if (Array.isArray(sdkContent)) {
     const details: ToolDetail[] = [];
     const byId = new Map<string, ToolDetail>();
@@ -260,12 +284,14 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
             existing.params = mergeToolParams(existing.params, params);
           }
           if (!existing.progressStatus) existing.progressStatus = "in_progress";
+          if (!existing.interaction) existing.interaction = interactionByRequestId.get(id);
         } else {
           const next: ToolDetail = {
             id,
             toolName,
             params,
             response: "",
+            interaction: interactionByRequestId.get(id),
             progressStatus: "in_progress",
           };
           byId.set(id, next);
@@ -283,6 +309,7 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         if (target) {
           target.response = display.response;
           target.progressStatus = status;
+          if (!target.interaction) target.interaction = interactionByRequestId.get(id);
           if (!target.params) {
             const fallback = display.paramsFallback;
             if (fallback) target.params = fallback;
@@ -293,6 +320,7 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
             toolName: "tool",
             params: display.paramsFallback || "",
             response: display.response,
+            interaction: interactionByRequestId.get(id),
             progressStatus: status,
           });
         }
@@ -327,6 +355,7 @@ export const getReasoningText = (message: ConversationMessage): string => {
 
 export const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
   const sdkContent = getSdkContentBlocks(message);
+  const interactionByRequestId = getInteractionByRequestId(message);
   if (Array.isArray(sdkContent)) {
     const timeline: TimelineItem[] = [];
     const toolIndexById = new Map<string, number>();
@@ -356,6 +385,7 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
                 : existing.toolName,
             params: mergeToolParams(existing.params, params),
             progressStatus: existing.progressStatus || "in_progress",
+            interaction: existing.interaction || interactionByRequestId.get(item.id),
           };
         } else {
           const index =
@@ -364,6 +394,7 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
               id: item.id,
               toolName: typeof item.name === "string" ? item.name : "tool",
               params,
+              interaction: interactionByRequestId.get(item.id),
               progressStatus: "in_progress",
             }) - 1;
           toolIndexById.set(item.id, index);
@@ -381,6 +412,7 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
             ...target,
             response: display.response,
             params: target.params || display.paramsFallback || target.params,
+            interaction: target.interaction || interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
           };
         } else {
@@ -391,6 +423,7 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
             toolName: "tool",
             params: display.paramsFallback || "",
             response: display.response,
+            interaction: interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
           });
         }
@@ -505,6 +538,28 @@ export const getPlanPreview = (message: ConversationMessage): string => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
   const value = (message.additional_kwargs as { planPreview?: unknown }).planPreview;
   return typeof value === "string" ? value : "";
+};
+
+export const getPermissionApproval = (message: ConversationMessage): PermissionApprovalState | null => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
+  const raw = (message.additional_kwargs as { permissionApproval?: unknown }).permissionApproval;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
+  if (!toolName) return null;
+  const toolUseId = typeof record.toolUseId === "string" && record.toolUseId.trim() ? record.toolUseId.trim() : undefined;
+  const reason = typeof record.reason === "string" && record.reason.trim() ? record.reason.trim() : undefined;
+  return {
+    toolName,
+    ...(toolUseId ? { toolUseId } : {}),
+    ...(reason ? { reason } : {}),
+  };
+};
+
+export const getPermissionApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
+  const value = (message.additional_kwargs as { permissionApprovalDecision?: unknown }).permissionApprovalDecision;
+  return value === "approve" || value === "reject" ? value : "";
 };
 
 export const getRunStatus = (

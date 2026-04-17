@@ -241,7 +241,7 @@ export const useChatPlanInteractions = ({
   );
 
   const handlePermissionApprovalSelect = useCallback(
-    (input: { messageId: string; toolName: string; decision: "approve" | "reject"; note?: string }) => {
+    (input: { messageId: string; toolName: string; toolUseId?: string; decision: "approve" | "reject"; note?: string }) => {
       if (!input.messageId || !input.toolName || isSending) return;
 
       setMessages((prev) =>
@@ -275,6 +275,7 @@ export const useChatPlanInteractions = ({
         files: [],
         selectedSkills,
         permissionApprovalResponse: {
+          ...(input.toolUseId ? { requestId: input.toolUseId, toolUseId: input.toolUseId } : {}),
           toolName: input.toolName,
           decision: input.decision,
           ...(input.note ? { note: input.note } : {}),

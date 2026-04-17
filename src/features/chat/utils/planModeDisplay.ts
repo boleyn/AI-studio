@@ -8,6 +8,7 @@ export type PlanApprovalOption = {
 };
 
 export type PlanModeApprovalPayload = {
+  requestId?: string;
   action: "enter" | "exit";
   title?: string;
   description?: string;
@@ -78,6 +79,7 @@ export const getPlanModeApprovalFromMessage = (message: ConversationMessage): Pl
     : undefined;
 
   return {
+    ...(typeof raw.requestId === "string" && raw.requestId.trim() ? { requestId: raw.requestId.trim() } : {}),
     action,
     ...(typeof raw.title === "string" ? { title: raw.title } : {}),
     ...(typeof raw.description === "string" ? { description: raw.description } : {}),

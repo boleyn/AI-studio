@@ -11,6 +11,7 @@ import {
   isImageFile,
   truncateDetailText,
 } from "../utils/chatItemParsers";
+import PlanModeTimelineCard from "./message/PlanModeTimelineCard";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -63,6 +64,7 @@ const ChatItem = ({
   onPermissionApprovalSelect?: (input: {
     messageId: string;
     toolName: string;
+    toolUseId?: string;
     decision: "approve" | "reject";
   }) => void;
 }) => {
@@ -84,6 +86,8 @@ const ChatItem = ({
     planQuestionSubmission,
     planModeApprovalDecision,
     planModeApproval,
+    permissionApproval,
+    permissionApprovalDecision,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,
@@ -105,7 +109,10 @@ const ChatItem = ({
 
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
   const hasPendingPlanQuestions = planQuestions.length > 0 && !planQuestionSubmission;
-  const shouldHidePlanReasoning = Boolean(hasPendingPlanQuestions || (planModeApproval && !planModeApprovalDecision));
+  const shouldShowPermissionApproval = Boolean(permissionApproval && !permissionApprovalDecision);
+  const shouldHidePlanReasoning = Boolean(
+    hasPendingPlanQuestions || (planModeApproval && !planModeApprovalDecision) || shouldShowPermissionApproval
+  );
   const shouldSuppressPlanVerboseAnswer = Boolean(shouldHidePlanReasoning);
 
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
@@ -242,7 +249,21 @@ const ChatItem = ({
                       const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
                       const normalizedToolName = (item.toolName || "").trim().toLowerCase();
                       const isPlanModeTool = PLAN_MODE_TOOL_NAMES.has(normalizedToolName);
-                      if (isPlanModeTool) return null;
+                      if (isPlanModeTool) {
+                        return (
+                          <PlanModeTimelineCard
+                            isStreaming={isStreaming}
+                            key={toolKey}
+                            planModeApprovalDecision={planModeApprovalDecision}
+                            planPreview={planModeApproval?.description}
+                            toolItem={{
+                              toolName: item.toolName,
+                              interaction: item.interaction,
+                              progressStatus: item.progressStatus,
+                            }}
+                          />
+                        );
+                      }
 
                       const truncatedParams = truncateDetailText(item.params);
                       const truncatedResponse = truncateDetailText(item.response);
@@ -380,6 +401,172 @@ const ChatItem = ({
 
             {(!timelineHasAnswer || timelineItems.length === 0) && content && !shouldSuppressPlanVerboseAnswer ? (
               <Markdown showAnimation={showAssistantAnimation} source={content} />
+            ) : null}
+
+            {isAssistant && !hideInteractiveCards && hasPendingPlanQuestions ? (
+              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
+                <Text color="myGray.900" fontSize="12px" fontWeight="700">计划确认</Text>
+                <Flex direction="column" gap={2} mt={2}>
+                  {planQuestions.map((question, qIndex) => (
+                    <Box key={`${question.requestId || "rq"}-${question.id}-${qIndex}`} bg="white" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                      <Text color="myGray.800" fontSize="12px" fontWeight="600">
+                        {question.header || "确认"}: {question.question}
+                      </Text>
+                      <Flex gap={2} mt={2} wrap="wrap">
+                        {question.options.map((option, oIndex) => (
+                          <Button
+                            key={`${question.id}-option-${oIndex}`}
+                            h="28px"
+                            onClick={() =>
+                              onPlanQuestionSelect?.({
+                                messageId,
+                                requestId: question.requestId,
+                                questionId: question.id,
+                                header: question.header,
+                                question: question.question,
+                                optionLabel: option.label,
+                                optionDescription: option.description,
+                              })
+                            }
+                            size="sm"
+                            variant="outline"
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </Flex>
+                    </Box>
+                  ))}
+                </Flex>
+                {planQuestions[0]?.requestId ? (
+                  <Flex justify="flex-end" mt={3}>
+                    <Button
+                      colorScheme="primary"
+                      isDisabled={Boolean(planQuestionSubmitting || !onPlanQuestionsSubmit)}
+                      isLoading={Boolean(planQuestionSubmitting)}
+                      onClick={() => {
+                        const firstRequestId = planQuestions[0]?.requestId;
+                        if (!firstRequestId) return;
+                        const answers = planQuestions.reduce<Record<string, string>>((acc, item) => {
+                          const kwargs =
+                            message.additional_kwargs && typeof message.additional_kwargs === "object"
+                              ? (message.additional_kwargs as Record<string, unknown>)
+                              : {};
+                          const planAnswers =
+                            kwargs.planAnswers && typeof kwargs.planAnswers === "object" && !Array.isArray(kwargs.planAnswers)
+                              ? (kwargs.planAnswers as Record<string, unknown>)
+                              : {};
+                          const selected = typeof planAnswers[item.id] === "string" ? String(planAnswers[item.id]).trim() : "";
+                          if (selected) acc[item.id] = selected;
+                          return acc;
+                        }, {});
+                        onPlanQuestionsSubmit?.({
+                          messageId,
+                          requestId: firstRequestId,
+                          answers,
+                        });
+                      }}
+                      size="sm"
+                    >
+                      提交选择
+                    </Button>
+                  </Flex>
+                ) : null}
+              </Box>
+            ) : null}
+
+            {isAssistant && !hideInteractiveCards && planModeApproval && !planModeApprovalDecision ? (
+              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
+                <Text color="myGray.900" fontSize="12px" fontWeight="700">
+                  {planModeApproval.title || "计划模式审批"}
+                </Text>
+                {planModeApproval.description ? (
+                  <Text color="myGray.700" fontSize="12px" mt={1} whiteSpace="pre-wrap">
+                    {planModeApproval.description}
+                  </Text>
+                ) : null}
+                <Flex gap={2} mt={3}>
+                  <Button
+                    colorScheme="primary"
+                    isDisabled={Boolean(planModeApprovalSubmitting || !onPlanModeApprovalSelect)}
+                    isLoading={Boolean(planModeApprovalSubmitting)}
+                    onClick={() => {
+                      if (!planModeApproval.requestId) return;
+                      onPlanModeApprovalSelect?.({
+                        messageId,
+                        requestId: planModeApproval.requestId,
+                        action: planModeApproval.action,
+                        decision: "approve",
+                      });
+                    }}
+                    size="sm"
+                  >
+                    批准
+                  </Button>
+                  <Button
+                    isDisabled={Boolean(planModeApprovalSubmitting || !onPlanModeApprovalSelect)}
+                    onClick={() => {
+                      if (!planModeApproval.requestId) return;
+                      onPlanModeApprovalSelect?.({
+                        messageId,
+                        requestId: planModeApproval.requestId,
+                        action: planModeApproval.action,
+                        decision: "reject",
+                      });
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    拒绝
+                  </Button>
+                </Flex>
+              </Box>
+            ) : null}
+
+            {isAssistant && !hideInteractiveCards && permissionApproval && !permissionApprovalDecision ? (
+              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
+                <Text color="myGray.900" fontSize="12px" fontWeight="700">工具权限审批</Text>
+                <Text color="myGray.700" fontSize="12px" mt={1}>
+                  工具: {permissionApproval.toolName}
+                </Text>
+                {permissionApproval.reason ? (
+                  <Text color="myGray.600" fontSize="12px" mt={1}>
+                    {permissionApproval.reason}
+                  </Text>
+                ) : null}
+                <Flex gap={2} mt={3}>
+                  <Button
+                    colorScheme="primary"
+                    isDisabled={Boolean(planModeApprovalSubmitting || !onPermissionApprovalSelect)}
+                    onClick={() =>
+                      onPermissionApprovalSelect?.({
+                        messageId,
+                        toolName: permissionApproval.toolName,
+                        toolUseId: permissionApproval.toolUseId,
+                        decision: "approve",
+                      })
+                    }
+                    size="sm"
+                  >
+                    允许
+                  </Button>
+                  <Button
+                    isDisabled={Boolean(planModeApprovalSubmitting || !onPermissionApprovalSelect)}
+                    onClick={() =>
+                      onPermissionApprovalSelect?.({
+                        messageId,
+                        toolName: permissionApproval.toolName,
+                        toolUseId: permissionApproval.toolUseId,
+                        decision: "reject",
+                      })
+                    }
+                    size="sm"
+                    variant="outline"
+                  >
+                    拒绝
+                  </Button>
+                </Flex>
+              </Box>
             ) : null}
 
             {shouldShowExecutionMeta ? (

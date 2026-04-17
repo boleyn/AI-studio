@@ -131,6 +131,7 @@ const toInteractionToolResultMessages = (historyMessages: unknown): Array<Record
   if (rawMessages.length === 0) return [];
   const toolUseIdByName = buildToolUseIdIndex(historyMessages);
   const toolResultMessages: Array<Record<string, unknown>> = [];
+  const emittedInteractionKeys = new Set<string>();
 
   for (const message of rawMessages) {
     const kwargs =
@@ -160,6 +161,9 @@ const toInteractionToolResultMessages = (historyMessages: unknown): Array<Record
         .map(([key, value]) => `"${key}"="${String(value).trim()}"`)
         .join(", ");
       if (requestId && answerText) {
+        const dedupeKey = `plan_question:${requestId}:${answerText}`;
+        if (emittedInteractionKeys.has(dedupeKey)) continue;
+        emittedInteractionKeys.add(dedupeKey);
         toolResultMessages.push(
           buildToolResultMessage(
             requestId,
@@ -182,10 +186,21 @@ const toInteractionToolResultMessages = (historyMessages: unknown): Array<Record
       const decision = planModeApprovalResponse.decision === "reject" ? "reject" : "approve";
       const action = planModeApprovalResponse.action === "enter" ? "enter" : "exit";
       if (requestId) {
-        const content =
-          decision === "approve"
-            ? `User approved ${action} plan mode. Continue accordingly.`
-            : `User rejected ${action} plan mode. Revise plan and ask again.`;
+        const dedupeKey = `plan_mode_approval:${requestId}:${action}:${decision}`;
+        if (emittedInteractionKeys.has(dedupeKey)) continue;
+        emittedInteractionKeys.add(dedupeKey);
+        const content = (() => {
+          if (decision === "approve") {
+            if (action === "exit") {
+              return "User has approved your plan. You can now start coding.";
+            }
+            return "User approved entering plan mode. Continue accordingly.";
+          }
+          if (action === "exit") {
+            return "User rejected exiting plan mode. Refine your plan and ask again.";
+          }
+          return "User rejected entering plan mode. Continue without plan mode.";
+        })();
         toolResultMessages.push(buildToolResultMessage(requestId, content, timestamp, decision === "reject"));
       }
     }
@@ -197,17 +212,26 @@ const toInteractionToolResultMessages = (historyMessages: unknown): Array<Record
         ? (kwargs.permissionApprovalResponse as Record<string, unknown>)
         : null;
     if (permissionApprovalResponse) {
+      const explicitToolUseId =
+        typeof permissionApprovalResponse.toolUseId === "string" && permissionApprovalResponse.toolUseId.trim()
+          ? permissionApprovalResponse.toolUseId.trim()
+          : typeof permissionApprovalResponse.requestId === "string" && permissionApprovalResponse.requestId.trim()
+          ? permissionApprovalResponse.requestId.trim()
+          : "";
       const toolName =
         typeof permissionApprovalResponse.toolName === "string"
           ? permissionApprovalResponse.toolName.trim().toLowerCase()
           : "";
       const decision = permissionApprovalResponse.decision === "reject" ? "reject" : "approve";
-      const toolUseId = toolName ? toolUseIdByName.get(toolName) : undefined;
+      const toolUseId = explicitToolUseId || (toolName ? toolUseIdByName.get(toolName) : undefined);
       if (toolUseId) {
+        const dedupeKey = `permission:${toolUseId}:${decision}`;
+        if (emittedInteractionKeys.has(dedupeKey)) continue;
+        emittedInteractionKeys.add(dedupeKey);
         const content =
           decision === "approve"
-            ? `User approved tool permission for ${toolName}.`
-            : `User rejected tool permission for ${toolName}.`;
+            ? `User approved tool permission${toolName ? ` for ${toolName}` : ""}.`
+            : `User rejected tool permission${toolName ? ` for ${toolName}` : ""}.`;
         toolResultMessages.push(buildToolResultMessage(toolUseId, content, timestamp, decision === "reject"));
       }
     }

@@ -16,6 +16,8 @@ import {
   getPlanModeApprovalDecision,
   getPlanPreview,
   getPlanQuestions,
+  getPermissionApproval,
+  getPermissionApprovalDecision,
   getReasoningText,
   getRunStatus,
   getTimelineItems,
@@ -187,6 +189,8 @@ export const useChatItemViewModel = ({
   const planPreview = useMemo(() => getPlanPreview(message), [message]);
   const planProgress = useMemo(() => getPlanProgressFromMessage(message), [message]);
   const planModeApproval = useMemo(() => getPlanModeApprovalFromMessage(message), [message]);
+  const permissionApproval = useMemo(() => getPermissionApproval(message), [message]);
+  const permissionApprovalDecision = useMemo(() => getPermissionApprovalDecision(message), [message]);
 
   const toggleTimelineReasoningDetails = useCallback((key: string) => {
     setExpandedTimelineReasoningKeys((prev) => ({
@@ -348,6 +352,8 @@ export const useChatItemViewModel = ({
     planPreview,
     planProgress,
     planModeApproval,
+    permissionApproval,
+    permissionApprovalDecision,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,
