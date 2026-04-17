@@ -11,10 +11,8 @@ import {
   formatExecutionTimeForHeader,
   getMessageFiles,
   getPathTailLabel,
-  getPlanAnswers,
-  getPlanQuestionSubmission,
   getPlanModeApprovalDecision,
-  getPlanPreview,
+  getPlanModeApprovalPending,
   getPlanQuestions,
   getPermissionApproval,
   getPermissionApprovalDecision,
@@ -183,10 +181,8 @@ export const useChatItemViewModel = ({
   const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
-  const planAnswers = useMemo(() => getPlanAnswers(message), [message]);
-  const planQuestionSubmission = useMemo(() => getPlanQuestionSubmission(message), [message]);
   const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
-  const planPreview = useMemo(() => getPlanPreview(message), [message]);
+  const planModeApprovalPending = useMemo(() => getPlanModeApprovalPending(message), [message]);
   const planProgress = useMemo(() => getPlanProgressFromMessage(message), [message]);
   const planModeApproval = useMemo(() => getPlanModeApprovalFromMessage(message), [message]);
   const permissionApproval = useMemo(() => getPermissionApproval(message), [message]);
@@ -346,10 +342,8 @@ export const useChatItemViewModel = ({
     detailModalData,
     isDetailModalOpen,
     planQuestions,
-    planAnswers,
-    planQuestionSubmission,
     planModeApprovalDecision,
-    planPreview,
+    planModeApprovalPending,
     planProgress,
     planModeApproval,
     permissionApproval,

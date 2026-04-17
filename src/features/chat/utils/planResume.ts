@@ -25,10 +25,23 @@ const toRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
 const parsePendingQuestion = (kwargs: Record<string, unknown>): PlanResumeQuestion | undefined => {
+  const interactionState =
+    kwargs.planModeInteractionState &&
+    typeof kwargs.planModeInteractionState === "object" &&
+    !Array.isArray(kwargs.planModeInteractionState)
+      ? (kwargs.planModeInteractionState as Record<string, unknown>)
+      : {};
+  const isRequestPending = (requestId: string) => {
+    if (!requestId) return false;
+    const state = interactionState[requestId];
+    if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+    return (state as { status?: unknown }).status === "pending";
+  };
   const controlEvents = Array.isArray(kwargs.controlEvents) ? kwargs.controlEvents : [];
   for (let idx = controlEvents.length - 1; idx >= 0; idx -= 1) {
     const entry = controlEvents[idx];
     if (!isPlanInteractionEnvelope(entry) || entry.type !== "plan_question") continue;
+    if (!isRequestPending(entry.requestId)) continue;
     const payload =
       entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload)
         ? (entry.payload as Record<string, unknown>)
@@ -64,39 +77,7 @@ const parsePendingQuestion = (kwargs: Record<string, unknown>): PlanResumeQuesti
       options,
     };
   }
-
-  const list = Array.isArray(kwargs.planQuestions) ? kwargs.planQuestions : [];
-  if (list.length === 0) return undefined;
-
-  const first = toRecord(list[0]);
-  if (!first) return undefined;
-
-  const requestId = typeof first.requestId === "string" ? first.requestId : "";
-  const questionId = typeof first.id === "string" ? first.id : "";
-  const question = typeof first.question === "string" ? first.question : "";
-  const rawOptions = Array.isArray(first.options) ? first.options : [];
-  const options = rawOptions
-    .map((item) => {
-      const option = toRecord(item);
-      if (!option) return null;
-      const label = typeof option.label === "string" ? option.label : "";
-      if (!label.trim()) return null;
-      return {
-        label,
-        ...(typeof option.description === "string" && option.description.trim()
-          ? { description: option.description }
-          : {}),
-      };
-    })
-    .filter((item): item is { label: string; description?: string } => Boolean(item));
-
-  if (!requestId || !questionId || !question) return undefined;
-  return {
-    requestId,
-    questionId,
-    question,
-    options,
-  };
+  return undefined;
 };
 
 const summarizePlanProgress = (payload: PlanProgressPayload) => {

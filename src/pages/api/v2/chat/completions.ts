@@ -1,3 +1,4 @@
+import "module-alias/register";
 import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
@@ -206,6 +207,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   registerActiveConversationRun({ token, chatId, controller: abortController });
 
   try {
+    const runtimeStatusLog = (event: SdkStreamEventName, data: Record<string, unknown>) => {
+      if (
+        event === SdkStreamEventEnum.status &&
+        (data.phase === "runtime_selected" || data.phase === "query_engine_attempt")
+      ) {
+        console.info("[v2/chat runtime]", {
+          phase: data.phase,
+          strategy: data.strategy,
+          ok: data.ok,
+          error: data.error,
+          resultSubtype: data.resultSubtype,
+          stopReason: data.stopReason,
+        });
+      }
+    };
+
     const runResult = await runClaudeQueryAdapter({
       token,
       chatId,
@@ -216,7 +233,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       permissionMode,
       messages: toAgentMessages(sdkMessages),
       abortSignal: abortController.signal,
-      onEvent: (event, data) => streamEvent(res, event, data),
+      onEvent: (event, data) => {
+        runtimeStatusLog(event, data);
+        streamEvent(res, event, data);
+      },
       runtimeStrategy,
     });
 

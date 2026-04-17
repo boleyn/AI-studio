@@ -53,12 +53,6 @@ export interface PlanQuestion {
   options: PlanQuestionOption[];
 }
 
-export interface PlanQuestionSubmission {
-  requestId?: string;
-  answers: Record<string, string>;
-  submittedAt?: string;
-}
-
 export interface PermissionApprovalState {
   toolName: string;
   toolUseId?: string;
@@ -435,14 +429,40 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
 };
 
 export const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] => {
-  const controlEvents =
+  const kwargs =
     message.additional_kwargs && typeof message.additional_kwargs === "object"
-      ? (message.additional_kwargs as { controlEvents?: unknown }).controlEvents
-      : undefined;
+      ? (message.additional_kwargs as Record<string, unknown>)
+      : null;
+  const interactionState =
+    kwargs?.planModeInteractionState &&
+    typeof kwargs.planModeInteractionState === "object" &&
+    !Array.isArray(kwargs.planModeInteractionState)
+      ? (kwargs.planModeInteractionState as Record<string, unknown>)
+      : {};
+
+  const isRequestSubmitted = (requestId?: string) => {
+    if (!requestId) return false;
+    const state = interactionState[requestId];
+    if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+    const status = (state as { status?: unknown }).status;
+    return status === "submitted";
+  };
+  const isRequestSuperseded = (requestId?: string) => {
+    if (!requestId) return false;
+    const state = interactionState[requestId];
+    if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+    const status = (state as { status?: unknown }).status;
+    return status === "superseded";
+  };
+
+  const controlEvents =
+    kwargs && typeof kwargs === "object" ? (kwargs as { controlEvents?: unknown }).controlEvents : undefined;
   if (Array.isArray(controlEvents)) {
     const questions = controlEvents
       .filter((item): item is PlanInteractionEnvelope => isPlanInteractionEnvelope(item))
       .filter((item) => item.type === "plan_question")
+      .filter((item) => !isRequestSubmitted(item.requestId))
+      .filter((item) => !isRequestSuperseded(item.requestId))
       .flatMap((item) => {
         const payload =
           item.payload && typeof item.payload === "object" && !Array.isArray(item.payload)
@@ -468,87 +488,98 @@ export const getPlanQuestions = (message: ConversationMessage): PlanQuestion[] =
           }));
       })
       .filter((item) => item.id && item.question);
-    if (questions.length > 0) return questions;
+    if (questions.length > 0) {
+      const latestRequestId = questions[questions.length - 1]?.requestId;
+      if (latestRequestId) {
+        return questions.filter((item) => item.requestId === latestRequestId);
+      }
+      return questions;
+    }
   }
-
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return [];
-  const raw = (message.additional_kwargs as { planQuestions?: unknown }).planQuestions;
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      requestId: typeof item.requestId === "string" ? item.requestId : undefined,
-      header: typeof item.header === "string" ? item.header : "确认",
-      id: typeof item.id === "string" ? item.id : "",
-      question: typeof item.question === "string" ? item.question : "",
-      options: Array.isArray(item.options)
-        ? item.options
-            .filter((opt): opt is Record<string, unknown> => Boolean(opt && typeof opt === "object"))
-            .map((opt) => ({
-              label: typeof opt.label === "string" ? opt.label : "",
-              description: typeof opt.description === "string" ? opt.description : "",
-            }))
-            .filter((opt) => opt.label.trim().length > 0)
-        : [],
-    }))
-    .filter((item) => item.id && item.question);
-};
-
-export const getPlanAnswers = (message: ConversationMessage): Record<string, string> => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return {};
-  const raw = (message.additional_kwargs as { planAnswers?: unknown }).planAnswers;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
-    if (typeof value === "string" && value.trim()) {
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
-};
-
-export const getPlanQuestionSubmission = (message: ConversationMessage): PlanQuestionSubmission | null => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
-  const raw = (message.additional_kwargs as { planQuestionSubmission?: unknown }).planQuestionSubmission;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  const answersRaw =
-    record.answers && typeof record.answers === "object" && !Array.isArray(record.answers)
-      ? (record.answers as Record<string, unknown>)
-      : {};
-  const answers = Object.entries(answersRaw).reduce<Record<string, string>>((acc, [key, value]) => {
-    if (typeof value === "string" && value.trim()) {
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
-  return {
-    requestId: typeof record.requestId === "string" ? record.requestId : undefined,
-    answers,
-    submittedAt: typeof record.submittedAt === "string" ? record.submittedAt : undefined,
-  };
+  return [];
 };
 
 export const getPlanModeApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const value = (message.additional_kwargs as { planModeApprovalDecision?: unknown }).planModeApprovalDecision;
-  return value === "approve" || value === "reject" ? value : "";
+  const kwargs = message.additional_kwargs as Record<string, unknown>;
+  const interactionState =
+    kwargs.planModeInteractionState &&
+    typeof kwargs.planModeInteractionState === "object" &&
+    !Array.isArray(kwargs.planModeInteractionState)
+      ? (kwargs.planModeInteractionState as Record<string, unknown>)
+      : {};
+  const submittedEntry = Object.values(interactionState).find((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return record.type === "plan_approval" && record.status === "submitted";
+  });
+  if (!submittedEntry || typeof submittedEntry !== "object" || Array.isArray(submittedEntry)) return "";
+  const decision = (submittedEntry as { decision?: unknown }).decision;
+  return decision === "approve" || decision === "reject" ? decision : "";
+};
+
+export const getPlanModeApprovalPending = (message: ConversationMessage): boolean => {
+  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return false;
+  const kwargs = message.additional_kwargs as Record<string, unknown>;
+  const approval =
+    kwargs.planModeApproval && typeof kwargs.planModeApproval === "object" && !Array.isArray(kwargs.planModeApproval)
+      ? (kwargs.planModeApproval as Record<string, unknown>)
+      : null;
+  const requestId = typeof approval?.requestId === "string" ? approval.requestId.trim() : "";
+  if (!requestId) return false;
+  const interactionState =
+    kwargs.planModeInteractionState &&
+    typeof kwargs.planModeInteractionState === "object" &&
+    !Array.isArray(kwargs.planModeInteractionState)
+      ? (kwargs.planModeInteractionState as Record<string, unknown>)
+      : {};
+  const state = interactionState[requestId];
+  if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+  return (state as { status?: unknown }).status === "pending";
 };
 
 export const getPlanPreview = (message: ConversationMessage): string => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const value = (message.additional_kwargs as { planPreview?: unknown }).planPreview;
-  return typeof value === "string" ? value : "";
+  const kwargs = message.additional_kwargs as Record<string, unknown>;
+  const progress =
+    kwargs.planProgress && typeof kwargs.planProgress === "object" && !Array.isArray(kwargs.planProgress)
+      ? (kwargs.planProgress as Record<string, unknown>)
+      : null;
+  if (!progress) return "";
+  const plan = Array.isArray(progress.plan) ? progress.plan : [];
+  const lines = plan
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return "";
+      const step = typeof (item as { step?: unknown }).step === "string" ? (item as { step: string }).step.trim() : "";
+      if (!step) return "";
+      return `- ${step}`;
+    })
+    .filter(Boolean);
+  return lines.join("\n");
 };
 
 export const getPermissionApproval = (message: ConversationMessage): PermissionApprovalState | null => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return null;
-  const raw = (message.additional_kwargs as { permissionApproval?: unknown }).permissionApproval;
+  const kwargs = message.additional_kwargs as Record<string, unknown>;
+  const raw = (kwargs as { permissionApproval?: unknown }).permissionApproval;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
   if (!toolName) return null;
   const toolUseId = typeof record.toolUseId === "string" && record.toolUseId.trim() ? record.toolUseId.trim() : undefined;
   const reason = typeof record.reason === "string" && record.reason.trim() ? record.reason.trim() : undefined;
+  const stateRecord =
+    kwargs.permissionApprovalState &&
+    typeof kwargs.permissionApprovalState === "object" &&
+    !Array.isArray(kwargs.permissionApprovalState)
+      ? (kwargs.permissionApprovalState as Record<string, unknown>)
+      : {};
+  const stateKey = toolUseId || toolName.trim().toLowerCase();
+  const stateValue = stateKey ? stateRecord[stateKey] : undefined;
+  if (stateValue && typeof stateValue === "object" && !Array.isArray(stateValue)) {
+    const status = (stateValue as { status?: unknown }).status;
+    if (status && status !== "pending") return null;
+  }
   return {
     toolName,
     ...(toolUseId ? { toolUseId } : {}),
@@ -558,8 +589,22 @@ export const getPermissionApproval = (message: ConversationMessage): PermissionA
 
 export const getPermissionApprovalDecision = (message: ConversationMessage): "approve" | "reject" | "" => {
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return "";
-  const value = (message.additional_kwargs as { permissionApprovalDecision?: unknown }).permissionApprovalDecision;
-  return value === "approve" || value === "reject" ? value : "";
+  const kwargs = message.additional_kwargs as Record<string, unknown>;
+  const stateRecord =
+    kwargs.permissionApprovalState &&
+    typeof kwargs.permissionApprovalState === "object" &&
+    !Array.isArray(kwargs.permissionApprovalState)
+      ? (kwargs.permissionApprovalState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(stateRecord)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    if (record.status !== "submitted") continue;
+    if (record.decision === "approve" || record.decision === "reject") {
+      return record.decision;
+    }
+  }
+  return "";
 };
 
 export const getRunStatus = (

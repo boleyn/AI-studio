@@ -139,16 +139,7 @@ export const derivePlanModeFromMessages = (list: ConversationMessage[]): "defaul
     if (!kwargs) continue;
     if (typeof kwargs.planModeState === "boolean") {
       active = kwargs.planModeState;
-      continue;
     }
-    const approval =
-      kwargs.planModeApprovalResponse && typeof kwargs.planModeApprovalResponse === "object"
-        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
-        : null;
-    if (!approval) continue;
-    if (approval.decision !== "approve") continue;
-    if (approval.action === "enter") active = true;
-    if (approval.action === "exit") active = false;
   }
   return active ? "plan" : "default";
 };

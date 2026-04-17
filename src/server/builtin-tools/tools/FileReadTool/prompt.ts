@@ -29,11 +29,11 @@ export function renderPromptTemplate(
   maxSizeInstruction: string,
   offsetInstruction: string,
 ): string {
-  return `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+  return `Reads a file from the workspace filesystem.
+Prefer workspace-relative paths rooted at the current project directory. Absolute paths are supported only for compatibility and should not be preferred. It is okay to read a file that does not exist; an error will be returned.
 
 Usage:
-- The file_path parameter must be an absolute path, not a relative path
+- Prefer workspace-relative file_path values (for example: src/app.ts, package.json)
 - By default, it reads up to ${MAX_LINES_TO_READ} lines starting from the beginning of the file${maxSizeInstruction}
 ${offsetInstruction}
 ${lineFormat}

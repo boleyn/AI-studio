@@ -41,7 +41,65 @@ type ToolInputState = {
   lastInput?: unknown;
 };
 
-const dynamicImport = new Function("m", "return import(m)") as (modulePath: string) => Promise<any>;
+const pickNamedExport = <T = unknown>(mod: unknown, key: string): T | undefined => {
+  if (!mod || typeof mod !== "object") return undefined;
+  const record = mod as Record<string, unknown>;
+  if (key in record) return record[key] as T;
+  const wrapped =
+    (record.default && typeof record.default === "object" ? (record.default as Record<string, unknown>) : null) ??
+    (record["module.exports"] && typeof record["module.exports"] === "object"
+      ? (record["module.exports"] as Record<string, unknown>)
+      : null);
+  if (!wrapped) return undefined;
+  return wrapped[key] as T | undefined;
+};
+
+const ensureClaudeRuntimeGlobals = (): void => {
+  const g = globalThis as unknown as {
+    MACRO?: {
+      VERSION?: string;
+      BUILD_TIME?: string;
+      FEEDBACK_CHANNEL?: string;
+      ISSUES_EXPLAINER?: string;
+      NATIVE_PACKAGE_URL?: string;
+      PACKAGE_URL?: string;
+      VERSION_CHANGELOG?: string;
+    };
+  };
+  if (!g.MACRO) {
+    g.MACRO = {
+      VERSION: process.env.CLAUDE_CODE_VERSION || "2.1.888",
+      BUILD_TIME: new Date().toISOString(),
+      FEEDBACK_CHANNEL: "",
+      ISSUES_EXPLAINER: "",
+      NATIVE_PACKAGE_URL: "",
+      PACKAGE_URL: "",
+      VERSION_CHANGELOG: "",
+    };
+  }
+};
+
+const ensureClaudeProviderEnv = (input: RunClaudeQueryAdapterInput): void => {
+  const aiproxyEndpoint =
+    typeof process.env.AIPROXY_API_ENDPOINT === "string" ? process.env.AIPROXY_API_ENDPOINT.trim() : "";
+  const aiproxyToken =
+    (typeof process.env.AIPROXY_API_TOKEN === "string" && process.env.AIPROXY_API_TOKEN.trim()) ||
+    (typeof process.env.CHAT_API_KEY === "string" && process.env.CHAT_API_KEY.trim()) ||
+    "";
+  if (!aiproxyEndpoint || !aiproxyToken) return;
+
+  // In AIStudio we always prefer AIPROXY when available.
+  // Force Claude runtime into OpenAI-compatible provider to avoid drifting
+  // into first-party /login flow because of unrelated ANTHROPIC_* env residue.
+  process.env.CLAUDE_CODE_USE_OPENAI = "1";
+  process.env.OPENAI_BASE_URL = `${aiproxyEndpoint.replace(/\/$/, "")}/v1`;
+  process.env.OPENAI_API_KEY = aiproxyToken;
+
+  const selectedModel = (input.selectedModel || "").trim();
+  if (selectedModel && !process.env.OPENAI_MODEL) {
+    process.env.OPENAI_MODEL = selectedModel;
+  }
+};
 
 const extractPrompt = (messages: ChatCompletionMessageParam[]): string => {
   const userMessages = messages.filter((item) => item.role === "user");
@@ -289,8 +347,8 @@ const toQueryEngineHistoryWithClaudeMapper = async (
   messages: ChatCompletionMessageParam[]
 ): Promise<unknown[]> => {
   try {
-    const mapperMod = await dynamicImport("../utils/messages/mappers");
-    const toInternalMessages = mapperMod?.toInternalMessages as ((items: SdkMessage[]) => unknown[]) | undefined;
+    const mapperMod = await import("../utils/messages/mappers");
+    const toInternalMessages = pickNamedExport<((items: SdkMessage[]) => unknown[])>(mapperMod, "toInternalMessages");
     if (typeof toInternalMessages !== "function") {
       return toQueryEngineHistory(messages);
     }
@@ -453,20 +511,11 @@ const emitPlanControlEventFromTool = (
   }
 };
 
-const buildCompatReply = (input: RunClaudeQueryAdapterInput): string => {
-  const prompt = extractPrompt(input.messages).trim();
-  const skillHint = input.selectedSkills.length > 0 ? `\n[skills] ${input.selectedSkills.join(", ")}` : "";
-  const strategyHint =
-    input.runtimeStrategy === "compat"
-      ? ""
-      : `\n[runtime] ${input.runtimeStrategy} 已接入兼容层，当前先走 compat 响应路径。`;
-  if (!prompt) return `已接收请求。${skillHint}${strategyHint}`.trim();
-  return `${prompt}${skillHint}${strategyHint}`.trim();
-};
-
 const tryRunQueryEngine = async (
   input: RunClaudeQueryAdapterInput
 ): Promise<QueryEngineExecutionAttempt> => {
+  ensureClaudeRuntimeGlobals();
+  ensureClaudeProviderEnv(input);
   const probe = await runQueryEngineShadowProbe();
   if (!probe.ready) {
     return {
@@ -477,23 +526,54 @@ const tryRunQueryEngine = async (
   }
 
   try {
+    const configMod = await import("../utils/config");
+    const enableConfigs = pickNamedExport<() => void>(configMod, "enableConfigs");
+    if (enableConfigs) {
+      enableConfigs();
+    }
+
     const cwd = process.cwd();
-    const [
-      { getDefaultAppState },
-      { getCommands },
-      { getTools },
-      { getEmptyToolPermissionContext },
-      { permissionModeFromString },
-      { ask },
-    ] =
+    const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
       await Promise.all([
-        dynamicImport("../state/AppStateStore"),
-        dynamicImport("../commands"),
-        dynamicImport("../tools"),
-        dynamicImport("../Tool"),
-        dynamicImport("../utils/permissions/PermissionMode"),
-        dynamicImport("../QueryEngine"),
+        import("../state/AppStateStore"),
+        import("../commands"),
+        import("../tools"),
+        import("../Tool"),
+        import("../utils/permissions/PermissionMode"),
+        import("../QueryEngine"),
+        import("../utils/fileStateCache"),
       ]);
+
+    const getDefaultAppState = pickNamedExport<() => any>(appStateMod, "getDefaultAppState");
+    const getCommands = pickNamedExport<(cwd: string) => Promise<any[]>>(commandsMod, "getCommands");
+    const getTools = pickNamedExport<(ctx: unknown) => any>(toolsMod, "getTools");
+    const getEmptyToolPermissionContext = pickNamedExport<() => Record<string, unknown>>(
+      toolMod,
+      "getEmptyToolPermissionContext"
+    );
+    const permissionModeFromString = pickNamedExport<(mode: string) => string>(permissionMod, "permissionModeFromString");
+    const ask = pickNamedExport<(input: Record<string, unknown>) => AsyncIterable<unknown>>(queryEngineMod, "ask");
+    const createFileStateCacheWithSizeLimit = pickNamedExport<(maxEntries: number) => unknown>(
+      fileStateCacheMod,
+      "createFileStateCacheWithSizeLimit"
+    );
+    const READ_FILE_STATE_CACHE_SIZE = pickNamedExport<number>(fileStateCacheMod, "READ_FILE_STATE_CACHE_SIZE");
+
+    if (
+      !getDefaultAppState ||
+      !getCommands ||
+      !getTools ||
+      !getEmptyToolPermissionContext ||
+      !permissionModeFromString ||
+      !ask ||
+      !createFileStateCacheWithSizeLimit
+    ) {
+      return {
+        ok: false,
+        warnings: probe.warnings,
+        error: "query_engine_exports_unavailable",
+      };
+    }
 
     const resolvedPermissionMode =
       typeof input.permissionMode === "string" ? permissionModeFromString(input.permissionMode) : "default";
@@ -520,9 +600,11 @@ const tryRunQueryEngine = async (
     const setAppState = (updater: (prev: typeof appState) => typeof appState) => {
       appState = updater(appState);
     };
-    let readFileCache: Map<string, unknown> | undefined = undefined;
-    const getReadFileCache = () => readFileCache ?? new Map<string, { timestamp: number; content: string }>();
-    const setReadFileCache = (cache: Map<string, unknown>) => {
+    let readFileCache: unknown | undefined = undefined;
+    const getReadFileCache = () =>
+      readFileCache ??
+      createFileStateCacheWithSizeLimit(typeof READ_FILE_STATE_CACHE_SIZE === "number" ? READ_FILE_STATE_CACHE_SIZE : 100);
+    const setReadFileCache = (cache: unknown) => {
       readFileCache = cache;
     };
 
@@ -539,11 +621,14 @@ const tryRunQueryEngine = async (
     const toolStateById = new Map<string, ToolInputState>();
     const emittedControlKeys = new Set<string>();
 
-    const canUseTool = async (tool: { name: string }, toolInput: unknown) => ({
-      behavior: "allow",
-      updatedInput: toolInput,
-      toolUseID: `qe-${tool.name}-${Date.now()}`,
-    });
+    const canUseTool = async (tool: { name?: string } | undefined, toolInput: unknown) => {
+      const toolName = typeof tool?.name === "string" && tool.name.trim() ? tool.name.trim() : "unknown_tool";
+      return {
+        behavior: "allow",
+        updatedInput: toolInput,
+        toolUseID: `qe-${toolName}-${Date.now()}`,
+      };
+    };
 
     for await (const event of ask({
       commands,
@@ -571,7 +656,7 @@ const tryRunQueryEngine = async (
           })()
         : undefined,
       replayUserMessages: false,
-      includePartialMessages: false,
+      includePartialMessages: true,
     })) {
       if ((event as { type?: string }).type === "stream_event") {
         const stream = event as {
@@ -600,6 +685,7 @@ const tryRunQueryEngine = async (
             subtype: "tool_use_start",
             id,
             name,
+            ...(nextState.lastInput !== undefined ? { input: nextState.lastInput } : {}),
           });
           emitPlanControlEventFromTool(input, nextState, emittedControlKeys);
           continue;
@@ -690,6 +776,14 @@ const tryRunQueryEngine = async (
       error: "query_engine_finished_without_assistant_text",
     };
   } catch (error) {
+    if (error instanceof Error) {
+      console.error("[query_engine][exception]", {
+        message: error.message,
+        stack: error.stack,
+      });
+    } else {
+      console.error("[query_engine][exception]", { error: String(error) });
+    }
     return {
       ok: false,
       warnings: probe.warnings,
@@ -744,9 +838,21 @@ export const runClaudeQueryAdapter = async (
       });
       return { assistantMessage };
     }
+
+    // QueryEngine-first policy: do not silently fall back to compat in query_engine mode.
+    // Surface concrete runtime failure so callers can fix migration gaps directly.
+    const failureText = `query_engine_failed: ${attempt.error || "unknown_error"}`;
+    const assistantMessage = createSdkMessage({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: failureText,
+      },
+    });
+    return { assistantMessage };
   }
 
-  const text = buildCompatReply(input);
+  const text = `query_engine_failed: runtime_strategy_${input.runtimeStrategy}_unsupported`;
   const assistantMessage = createSdkMessage({
     type: "assistant",
     message: {

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -14,19 +18,54 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@aistudio/*": ["./src/*"],
-      "@server/*": ["./src/server/*"],
-      "@claude-code-best/builtin-tools/*": ["./src/server/builtin-tools/*"],
-      "src/*": ["./src/server/agent/*"],
-      "@features/*": ["./src/features/*"],
-      "@components/*": ["./src/components/*"],
-      "@shared/*": ["./src/shared/*"],
-      "@fastgpt/global/*": ["./src/global/*", "./src/ai/compat/global/*"],
-      "@fastgpt/web/styles/theme": ["./src/styles/theme.ts"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@aistudio/*": [
+        "./src/*"
+      ],
+      "@server/*": [
+        "./src/server/*"
+      ],
+      "@claude-code-best/builtin-tools/*": [
+        "./src/server/builtin-tools/*"
+      ],
+      "src/*": [
+        "./src/server/agent/*"
+      ],
+      "@features/*": [
+        "./src/features/*"
+      ],
+      "@components/*": [
+        "./src/components/*"
+      ],
+      "@shared/*": [
+        "./src/shared/*"
+      ],
+      "@fastgpt/global/*": [
+        "./src/global/*",
+        "./src/ai/compat/global/*"
+      ],
+      "@fastgpt/web/styles/theme": [
+        "./src/styles/theme.ts"
+      ],
+      "bun:bundle": [
+        "./src/server/agent/shims/bun-bundle.ts"
+      ],
+      "bun:ffi": [
+        "./src/server/agent/shims/bun-ffi.ts"
+      ],
+      "@anthropic/ink": [
+        "./src/server/agent/shims/anthropic-ink.ts"
+      ],
+      "@alcalzone/ansi-tokenize": [
+        "./vendor/claude-packages/@alcalzone/ansi-tokenize/index.d.ts"
+      ]
     }
   },
   "include": [
@@ -48,5 +87,7 @@
     "src/global/**/*.ts",
     "src/global/**/*.tsx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

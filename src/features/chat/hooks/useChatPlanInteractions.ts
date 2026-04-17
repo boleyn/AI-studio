@@ -41,29 +41,42 @@ export const useChatPlanInteractions = ({
             message.additional_kwargs && typeof message.additional_kwargs === "object"
               ? message.additional_kwargs
               : {};
-          const existingAnswers =
-            kwargs.planAnswers && typeof kwargs.planAnswers === "object" && !Array.isArray(kwargs.planAnswers)
-              ? (kwargs.planAnswers as Record<string, unknown>)
+          const requestId = input.requestId?.trim();
+          const existingSelectionsByRequest =
+            kwargs.planQuestionSelections &&
+            typeof kwargs.planQuestionSelections === "object" &&
+            !Array.isArray(kwargs.planQuestionSelections)
+              ? (kwargs.planQuestionSelections as Record<string, unknown>)
+              : {};
+          const existingSelectionsForRequest =
+            requestId &&
+            existingSelectionsByRequest[requestId] &&
+            typeof existingSelectionsByRequest[requestId] === "object" &&
+            !Array.isArray(existingSelectionsByRequest[requestId])
+              ? (existingSelectionsByRequest[requestId] as Record<string, unknown>)
               : {};
           return {
             ...message,
             additional_kwargs: {
               ...kwargs,
-              planAnswers: {
-                ...existingAnswers,
-                [input.questionId]: input.optionLabel,
-              },
-              ...(input.requestId
+              ...(requestId
                 ? {
+                    planQuestionSelections: {
+                      ...existingSelectionsByRequest,
+                      [requestId]: {
+                        ...existingSelectionsForRequest,
+                        [input.questionId]: input.optionLabel,
+                      },
+                    },
                     planModeInteractionState: {
                       ...(kwargs.planModeInteractionState &&
                       typeof kwargs.planModeInteractionState === "object" &&
                       !Array.isArray(kwargs.planModeInteractionState)
                         ? (kwargs.planModeInteractionState as Record<string, unknown>)
                         : {}),
-                      [input.requestId]: {
+                      [requestId]: {
                         type: "plan_question",
-                        status: "submitted",
+                        status: "pending",
                       },
                     },
                   }
@@ -103,11 +116,13 @@ export const useChatPlanInteractions = ({
             ...message,
             additional_kwargs: {
               ...kwargs,
-              planQuestions: [],
-              planQuestionSubmission: {
-                requestId: input.requestId,
-                answers: answerMap,
-                submittedAt: new Date().toISOString(),
+              planQuestionSelections: {
+                ...(kwargs.planQuestionSelections &&
+                typeof kwargs.planQuestionSelections === "object" &&
+                !Array.isArray(kwargs.planQuestionSelections)
+                  ? (kwargs.planQuestionSelections as Record<string, unknown>)
+                  : {}),
+                [input.requestId]: answerMap,
               },
               planModeInteractionState: {
                 ...(kwargs.planModeInteractionState &&
@@ -120,7 +135,6 @@ export const useChatPlanInteractions = ({
                   status: "submitted",
                 },
               },
-              ...(shouldExecuteNow ? { planModeApprovalDecision: "approve" } : {}),
             },
           };
         })
@@ -186,8 +200,6 @@ export const useChatPlanInteractions = ({
             ...message,
             additional_kwargs: {
               ...kwargs,
-              planModeApprovalDecision: input.decision,
-              ...(input.note ? { planModeApprovalNote: input.note } : {}),
               planModeApproval: null,
               planModeInteractionState: {
                 ...(kwargs.planModeInteractionState &&
@@ -255,8 +267,20 @@ export const useChatPlanInteractions = ({
             ...message,
             additional_kwargs: {
               ...kwargs,
-              permissionApprovalDecision: input.decision,
-              ...(input.note ? { permissionApprovalNote: input.note } : {}),
+              permissionApproval: null,
+              permissionApprovalState: {
+                ...(kwargs.permissionApprovalState &&
+                typeof kwargs.permissionApprovalState === "object" &&
+                !Array.isArray(kwargs.permissionApprovalState)
+                  ? (kwargs.permissionApprovalState as Record<string, unknown>)
+                  : {}),
+                [(input.toolUseId && input.toolUseId.trim()) || input.toolName.trim().toLowerCase()]: {
+                  toolName: input.toolName,
+                  ...(input.toolUseId ? { toolUseId: input.toolUseId } : {}),
+                  status: "submitted",
+                  decision: input.decision,
+                },
+              },
             },
           };
         })

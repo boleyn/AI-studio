@@ -1,12 +1,39 @@
-import {
-  ColorDiff,
-  ColorFile,
-  getSyntaxTheme as nativeGetSyntaxTheme,
-  type SyntaxTheme,
-} from 'color-diff-napi'
+import type { SyntaxTheme } from 'color-diff-napi'
 import { isEnvDefinedFalsy } from '../../utils/envUtils.js'
 
 export type ColorModuleUnavailableReason = 'env'
+
+type ColorDiffCtor = new (...args: any[]) => { render: (...args: any[]) => string[] | null }
+type ColorFileCtor = new (...args: any[]) => { render: (...args: any[]) => string[] | null }
+type ColorDiffModule = {
+  ColorDiff: ColorDiffCtor
+  ColorFile: ColorFileCtor
+  getSyntaxTheme: (themeName: string) => SyntaxTheme
+}
+
+let cachedModule: ColorDiffModule | null | undefined
+
+const loadColorDiffModule = (): ColorDiffModule | null => {
+  if (cachedModule !== undefined) return cachedModule
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('color-diff-napi') as Partial<ColorDiffModule>
+    if (
+      mod &&
+      typeof mod === 'object' &&
+      typeof mod.ColorDiff === 'function' &&
+      typeof mod.ColorFile === 'function' &&
+      typeof mod.getSyntaxTheme === 'function'
+    ) {
+      cachedModule = mod as ColorDiffModule
+      return cachedModule
+    }
+  } catch {
+    // noop: fallback to null
+  }
+  cachedModule = null
+  return null
+}
 
 /**
  * Returns a static reason why the color-diff module is unavailable, or null if available.
@@ -22,16 +49,20 @@ export function getColorModuleUnavailableReason(): ColorModuleUnavailableReason 
   return null
 }
 
-export function expectColorDiff(): typeof ColorDiff | null {
-  return getColorModuleUnavailableReason() === null ? ColorDiff : null
+export function expectColorDiff(): ColorDiffCtor | null {
+  if (getColorModuleUnavailableReason() !== null) return null
+  const mod = loadColorDiffModule()
+  return mod ? mod.ColorDiff : null
 }
 
-export function expectColorFile(): typeof ColorFile | null {
-  return getColorModuleUnavailableReason() === null ? ColorFile : null
+export function expectColorFile(): ColorFileCtor | null {
+  if (getColorModuleUnavailableReason() !== null) return null
+  const mod = loadColorDiffModule()
+  return mod ? mod.ColorFile : null
 }
 
 export function getSyntaxTheme(themeName: string): SyntaxTheme | null {
-  return getColorModuleUnavailableReason() === null
-    ? nativeGetSyntaxTheme(themeName)
-    : null
+  if (getColorModuleUnavailableReason() !== null) return null
+  const mod = loadColorDiffModule()
+  return mod ? mod.getSyntaxTheme(themeName) : null
 }

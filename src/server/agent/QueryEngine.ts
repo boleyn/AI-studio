@@ -90,6 +90,47 @@ const messageSelector =
   (): typeof import('src/components/MessageSelector.js') =>
     require('src/components/MessageSelector.js')
 
+const fallbackSelectableUserMessagesFilter = (
+  message: Message,
+): message is SDKUserMessageReplay => {
+  if (!message || message.type !== 'user') return false
+  if ((message as { isMeta?: boolean }).isMeta) return false
+  if ((message as { toolUseResult?: unknown }).toolUseResult) return false
+  if ((message as { isCompactSummary?: boolean }).isCompactSummary) return false
+  if (
+    (message as { isVisibleInTranscriptOnly?: boolean })
+      .isVisibleInTranscriptOnly
+  ) {
+    return false
+  }
+  return true
+}
+
+const getSelectableUserMessagesFilter = (): ((
+  message: Message,
+) => message is SDKUserMessageReplay) => {
+  try {
+    const mod = messageSelector() as unknown as Record<string, unknown>
+    const direct = mod?.selectableUserMessagesFilter
+    if (typeof direct === 'function') {
+      return direct as (message: Message) => message is SDKUserMessageReplay
+    }
+    const defaultExport =
+      mod?.default && typeof mod.default === 'object'
+        ? (mod.default as Record<string, unknown>)
+        : undefined
+    const fromDefault = defaultExport?.selectableUserMessagesFilter
+    if (typeof fromDefault === 'function') {
+      return fromDefault as (
+        message: Message,
+      ) => message is SDKUserMessageReplay
+    }
+  } catch {
+    // ignore and fall back
+  }
+  return fallbackSelectableUserMessagesFilter
+}
+
 import {
   localCommandOutputToSDKAssistantMessage,
   toSDKCompactMetadata,
@@ -466,12 +507,13 @@ export class QueryEngine {
     }
 
     // Filter messages that should be acknowledged after transcript
+    const selectableUserMessagesFilter = getSelectableUserMessagesFilter()
     const replayableMessages = messagesFromUserInput.filter(
       msg =>
         (msg.type === 'user' &&
           !msg.isMeta && // Skip synthetic caveat messages
           !msg.toolUseResult && // Skip tool results (they'll be acked from query)
-          messageSelector().selectableUserMessagesFilter(msg)) || // Skip non-user-authored messages (task notifications, etc.)
+          selectableUserMessagesFilter(msg)) || // Skip non-user-authored messages (task notifications, etc.)
         (msg.type === 'system' && msg.subtype === 'compact_boundary'), // Always ack compact boundaries
     )
     const messagesToAck = replayUserMessages ? replayableMessages : []
@@ -643,8 +685,9 @@ export class QueryEngine {
     }
 
     if (fileHistoryEnabled() && persistSession) {
+      const selectableUserMessagesFilter = getSelectableUserMessagesFilter()
       messagesFromUserInput
-        .filter(messageSelector().selectableUserMessagesFilter)
+        .filter(selectableUserMessagesFilter)
         .forEach(message => {
           void fileHistoryMakeSnapshot(
             (updater: (prev: FileHistoryState) => FileHistoryState) => {

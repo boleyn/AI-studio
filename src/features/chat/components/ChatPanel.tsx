@@ -840,6 +840,7 @@ const ChatPanel = ({
                   type: "tool_use",
                   id: payload.id,
                   name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
                 });
                 return;
               }
@@ -876,19 +877,50 @@ const ChatPanel = ({
                     typeof permission === "object" &&
                     typeof permission.toolName === "string"
                   ) {
-                    updateAssistantMetadata((current) => ({
-                      ...current,
-                      permissionApproval: {
-                        toolName: permission.toolName,
-                        ...(typeof payload.id === "string" && payload.id.trim()
-                          ? { toolUseId: payload.id.trim() }
-                          : {}),
-                        reason:
-                          typeof permission.reason === "string"
-                            ? permission.reason
-                            : undefined,
-                      },
-                    }));
+                    updateAssistantMetadata((current) => {
+                      const toolUseId = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : "";
+                      const interactionKey = toolUseId || permission.toolName.trim().toLowerCase();
+                      const currentPermissionState =
+                        current.permissionApprovalState &&
+                        typeof current.permissionApprovalState === "object" &&
+                        !Array.isArray(current.permissionApprovalState)
+                          ? (current.permissionApprovalState as Record<string, unknown>)
+                          : {};
+
+                      const nextPermissionState: Record<string, unknown> = {};
+                      for (const [key, value] of Object.entries(currentPermissionState)) {
+                        if (!value || typeof value !== "object" || Array.isArray(value)) {
+                          nextPermissionState[key] = value;
+                          continue;
+                        }
+                        const record = value as Record<string, unknown>;
+                        if (record.status === "pending") {
+                          nextPermissionState[key] = { ...record, status: "superseded" };
+                        } else {
+                          nextPermissionState[key] = record;
+                        }
+                      }
+                      if (interactionKey) {
+                        nextPermissionState[interactionKey] = {
+                          toolName: permission.toolName,
+                          status: "pending",
+                          ...(toolUseId ? { toolUseId } : {}),
+                        };
+                      }
+
+                      return {
+                        ...current,
+                        permissionApproval: {
+                          toolName: permission.toolName,
+                          ...(toolUseId ? { toolUseId } : {}),
+                          reason:
+                            typeof permission.reason === "string"
+                              ? permission.reason
+                              : undefined,
+                        },
+                        permissionApprovalState: nextPermissionState,
+                      };
+                    });
                   }
                 }
               }
@@ -902,21 +934,41 @@ const ChatPanel = ({
                 : undefined;
               if (!interaction) return;
               updateAssistantMetadata((current) => {
-                const controlEvents = Array.isArray(current.controlEvents)
-                  ? [...(current.controlEvents as unknown[]), interaction]
-                  : [interaction];
+                const controlEventsBase = Array.isArray(current.controlEvents)
+                  ? (current.controlEvents as unknown[])
+                  : [];
+                const controlEvents = [
+                  ...controlEventsBase.filter((entry) => {
+                    if (!isPlanInteractionEnvelope(entry)) return true;
+                    return !(entry.type === interaction.type && entry.requestId === interaction.requestId);
+                  }),
+                  interaction,
+                ];
                 const currentInteractionState =
                   current.planModeInteractionState &&
                   typeof current.planModeInteractionState === "object" &&
                   !Array.isArray(current.planModeInteractionState)
                     ? (current.planModeInteractionState as Record<string, unknown>)
                     : {};
+                const nextInteractionState: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(currentInteractionState)) {
+                  if (!value || typeof value !== "object" || Array.isArray(value)) {
+                    nextInteractionState[key] = value;
+                    continue;
+                  }
+                  const record = value as Record<string, unknown>;
+                  if (record.type === interaction.type && record.status === "pending") {
+                    nextInteractionState[key] = { ...record, status: "superseded" };
+                  } else {
+                    nextInteractionState[key] = record;
+                  }
+                }
                 const next: Record<string, unknown> = {
                   ...current,
                   controlEvents,
                   planModeProtocolVersion: 2,
                   planModeInteractionState: {
-                    ...currentInteractionState,
+                    ...nextInteractionState,
                     [interaction.requestId]: {
                       type: interaction.type,
                       status: "pending",
@@ -930,7 +982,6 @@ const ChatPanel = ({
                     plan: content.plan,
                   };
                 }
-                if (interaction.type === "plan_question") next.planQuestions = [];
                 if (interaction.type === "plan_approval") {
                   next.planModeApproval = {
                     requestId: interaction.requestId,
@@ -988,12 +1039,22 @@ const ChatPanel = ({
                   ? (incomingPayload.content as unknown[])
                   : [];
 
-                if (incomingContent.length === 0) {
-                  return {
-                    ...current,
-                    sdkMessage,
-                  };
-                }
+              if (incomingContent.length === 0) {
+                return {
+                  ...current,
+                  sdkMessage:
+                    currentContent.length > 0
+                      ? {
+                          ...sdkMessage,
+                          message: {
+                            ...(incomingPayload || {}),
+                            role: (incomingPayload?.role as string) || "assistant",
+                            content: currentContent,
+                          },
+                        }
+                      : sdkMessage,
+                };
+              }
 
                 const toolInputById = new Map<string, unknown>();
                 for (const block of currentContent) {

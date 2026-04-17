@@ -62,13 +62,24 @@ test("normalizeHistoryMessagesForTimeline backfills planProgress only when missi
   assert.equal(planProgress.plan?.[0]?.step, "B");
 });
 
-test("normalizeHistoryMessagesForTimeline replays hidden question response by matching controlEvents", () => {
+test("normalizeHistoryMessagesForTimeline keeps interaction-state based payload unchanged", () => {
   const input = [
     {
       role: "assistant" as const,
       id: "a-3",
       content: "请确认",
       additional_kwargs: {
+        planQuestionSelections: {
+          "req-1": {
+            q1: "确认执行",
+          },
+        },
+        planModeInteractionState: {
+          "req-1": {
+            type: "plan_question",
+            status: "submitted",
+          },
+        },
         controlEvents: [
           {
             type: "plan_question",
@@ -105,8 +116,8 @@ test("normalizeHistoryMessagesForTimeline replays hidden question response by ma
 
   const normalized = normalizeHistoryMessagesForTimeline(input as any);
   const kwargs = normalized[0].additional_kwargs as Record<string, unknown>;
-  const planAnswers = kwargs.planAnswers as Record<string, string>;
-  assert.equal(planAnswers.q1, "确认执行");
-  const submission = kwargs.planQuestionSubmission as { requestId?: string };
-  assert.equal(submission.requestId, "req-1");
+  const selections = kwargs.planQuestionSelections as Record<string, Record<string, string>>;
+  assert.equal(selections["req-1"]?.q1, "确认执行");
+  const interactionState = kwargs.planModeInteractionState as Record<string, { status?: string }>;
+  assert.equal(interactionState["req-1"]?.status, "submitted");
 });

@@ -83,8 +83,8 @@ const ChatItem = ({
     detailModalData,
     isDetailModalOpen,
     planQuestions,
-    planQuestionSubmission,
     planModeApprovalDecision,
+    planModeApprovalPending,
     planModeApproval,
     permissionApproval,
     permissionApprovalDecision,
@@ -108,10 +108,37 @@ const ChatItem = ({
   });
 
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
-  const hasPendingPlanQuestions = planQuestions.length > 0 && !planQuestionSubmission;
+  const hasPendingPlanQuestions = planQuestions.length > 0;
+  const currentPlanRequestId = planQuestions[0]?.requestId;
+  const currentPlanSelectionsByRequest =
+    message.additional_kwargs &&
+    typeof message.additional_kwargs === "object" &&
+    (message.additional_kwargs as Record<string, unknown>).planQuestionSelections &&
+    typeof (message.additional_kwargs as Record<string, unknown>).planQuestionSelections === "object" &&
+    !Array.isArray((message.additional_kwargs as Record<string, unknown>).planQuestionSelections)
+      ? ((message.additional_kwargs as Record<string, unknown>).planQuestionSelections as Record<string, unknown>)
+      : {};
+  const currentPlanSelections =
+    currentPlanRequestId &&
+    currentPlanSelectionsByRequest[currentPlanRequestId] &&
+    typeof currentPlanSelectionsByRequest[currentPlanRequestId] === "object" &&
+    !Array.isArray(currentPlanSelectionsByRequest[currentPlanRequestId])
+      ? (currentPlanSelectionsByRequest[currentPlanRequestId] as Record<string, unknown>)
+      : {};
+  const selectedPlanAnswerCount = planQuestions.reduce((count, item) => {
+    const selected =
+      typeof currentPlanSelections[item.id] === "string"
+        ? String(currentPlanSelections[item.id]).trim()
+        : "";
+    return selected ? count + 1 : count;
+  }, 0);
+  const canSubmitPlanQuestions =
+    Boolean(currentPlanRequestId) && planQuestions.length > 0 && selectedPlanAnswerCount >= planQuestions.length;
   const shouldShowPermissionApproval = Boolean(permissionApproval && !permissionApprovalDecision);
   const shouldHidePlanReasoning = Boolean(
-    hasPendingPlanQuestions || (planModeApproval && !planModeApprovalDecision) || shouldShowPermissionApproval
+    hasPendingPlanQuestions ||
+      (planModeApproval && planModeApprovalPending && !planModeApprovalDecision) ||
+      shouldShowPermissionApproval
   );
   const shouldSuppressPlanVerboseAnswer = Boolean(shouldHidePlanReasoning);
 
@@ -255,7 +282,7 @@ const ChatItem = ({
                             isStreaming={isStreaming}
                             key={toolKey}
                             planModeApprovalDecision={planModeApprovalDecision}
-                            planPreview={planModeApproval?.description}
+                            planPreview={undefined}
                             toolItem={{
                               toolName: item.toolName,
                               interaction: item.interaction,
@@ -442,21 +469,16 @@ const ChatItem = ({
                   <Flex justify="flex-end" mt={3}>
                     <Button
                       colorScheme="primary"
-                      isDisabled={Boolean(planQuestionSubmitting || !onPlanQuestionsSubmit)}
+                      isDisabled={Boolean(planQuestionSubmitting || !onPlanQuestionsSubmit || !canSubmitPlanQuestions)}
                       isLoading={Boolean(planQuestionSubmitting)}
                       onClick={() => {
                         const firstRequestId = planQuestions[0]?.requestId;
                         if (!firstRequestId) return;
                         const answers = planQuestions.reduce<Record<string, string>>((acc, item) => {
-                          const kwargs =
-                            message.additional_kwargs && typeof message.additional_kwargs === "object"
-                              ? (message.additional_kwargs as Record<string, unknown>)
-                              : {};
-                          const planAnswers =
-                            kwargs.planAnswers && typeof kwargs.planAnswers === "object" && !Array.isArray(kwargs.planAnswers)
-                              ? (kwargs.planAnswers as Record<string, unknown>)
-                              : {};
-                          const selected = typeof planAnswers[item.id] === "string" ? String(planAnswers[item.id]).trim() : "";
+                          const selected =
+                            typeof currentPlanSelections[item.id] === "string"
+                              ? String(currentPlanSelections[item.id]).trim()
+                              : "";
                           if (selected) acc[item.id] = selected;
                           return acc;
                         }, {});
@@ -472,10 +494,19 @@ const ChatItem = ({
                     </Button>
                   </Flex>
                 ) : null}
+                {planQuestions.length > 0 ? (
+                  <Text color="myGray.500" fontSize="11px" mt={2}>
+                    已选择 {selectedPlanAnswerCount}/{planQuestions.length}，全部选择后可提交。
+                  </Text>
+                ) : null}
               </Box>
             ) : null}
 
-            {isAssistant && !hideInteractiveCards && planModeApproval && !planModeApprovalDecision ? (
+            {isAssistant &&
+            !hideInteractiveCards &&
+            planModeApproval &&
+            planModeApprovalPending &&
+            !planModeApprovalDecision ? (
               <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
                 <Text color="myGray.900" fontSize="12px" fontWeight="700">
                   {planModeApproval.title || "计划模式审批"}

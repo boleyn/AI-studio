@@ -8,9 +8,10 @@ function getPreReadInstruction(): string {
 }
 
 export function getWriteToolDescription(): string {
-  return `Writes a file to the local filesystem.
+  return `Writes a file to the workspace filesystem.
 
 Usage:
+- Prefer workspace-relative file_path values (for example: src/app.ts, package.json). Absolute paths are accepted only for compatibility.
 - This tool will overwrite the existing file if there is one at the provided path.${getPreReadInstruction()}
 - Prefer the Edit tool for modifying existing files \u2014 it only sends the diff. Only use this tool to create new files or for complete rewrites.
 - NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
