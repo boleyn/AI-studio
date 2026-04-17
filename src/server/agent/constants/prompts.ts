@@ -3,6 +3,7 @@ import { type as osType, version as osVersion, release as osRelease } from 'os'
 import { env } from '../utils/env.js'
 import { getIsGit } from '../utils/git.js'
 import { getCwd } from '../utils/cwd.js'
+import { getVirtualProjectRoot } from '../utils/fsOperations.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { getCurrentWorktreeSession } from '../utils/worktree.js'
 import { getSessionStartDate } from './common.js'
@@ -114,6 +115,19 @@ export const CLAUDE_CODE_DOCS_MAP_URL =
  */
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
   '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
+
+function getPromptDisplayCwd(): string {
+  const cwd = getCwd()
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return cwd
+  const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
+  const normalizedRoot = normalize(virtualRoot)
+  const normalizedCwd = normalize(cwd)
+  if (normalizedCwd === normalizedRoot) return '<virtual-project-root>'
+  if (!normalizedCwd.startsWith(`${normalizedRoot}/`)) return '<virtual-project-root>'
+  const rel = normalizedCwd.slice(normalizedRoot.length + 1)
+  return rel ? `<virtual-project-root>/${rel}` : '<virtual-project-root>'
+}
 
 // @[MODEL LAUNCH]: Update the latest frontier model.
 const FRONTIER_MODEL_NAME = 'Claude Opus 4.6'
@@ -450,7 +464,7 @@ export async function getSystemPrompt(
 ): Promise<string[]> {
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
     return [
-      `You are Claude Code, Anthropic's official CLI for Claude.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
+      `You are Claude Code, Anthropic's official CLI for Claude.\n\nCWD: ${getPromptDisplayCwd()}\nDate: ${getSessionStartDate()}`,
     ]
   }
 
@@ -640,7 +654,7 @@ export async function computeEnvInfo(
 
   return `Here is useful information about the environment you are running in:
 <env>
-Working directory: ${getCwd()}
+Working directory: ${getPromptDisplayCwd()}
 Is directory a git repo: ${isGit ? 'Yes' : 'No'}
 ${additionalDirsInfo}Platform: ${env.platform}
 ${getShellInfoLine()}
@@ -672,7 +686,7 @@ export async function computeSimpleEnvInfo(
     ? `Assistant knowledge cutoff is ${cutoff}.`
     : null
 
-  const cwd = getCwd()
+  const cwd = getPromptDisplayCwd()
   const isWorktree = getCurrentWorktreeSession() !== null
 
   const envItems = [
