@@ -1,4 +1,4 @@
-import { dirname, sep } from 'path'
+import { dirname, resolve, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -27,6 +27,7 @@ import {
 import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
@@ -91,6 +92,17 @@ type OutputSchema = ReturnType<typeof outputSchema>
 export type Output = z.infer<OutputSchema>
 export type FileWriteToolInput = InputSchema
 
+function isUnderVirtualProjectRoot(filePath: string): boolean {
+  const root = (getVirtualProjectRoot() || '').trim()
+  if (!root) return true
+  const normalizedRoot = resolve(root)
+  const normalizedPath = resolve(filePath)
+  return (
+    normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}${sep}`)
+  )
+}
+
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
   searchHint: 'create or overwrite files',
@@ -152,6 +164,15 @@ export const FileWriteTool = buildTool({
   },
   async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
     const fullFilePath = expandPath(file_path)
+
+    if (!isUnderVirtualProjectRoot(fullFilePath)) {
+      return {
+        result: false,
+        message:
+          'This session is bound to a virtual project filesystem. Access outside the virtual project root is not allowed.',
+        errorCode: 10,
+      }
+    }
 
     // Reject writes to team memory files that contain secrets
     const secretError = checkTeamMemSecrets(fullFilePath, content)

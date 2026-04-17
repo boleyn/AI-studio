@@ -158,6 +158,10 @@ const mergeToolParams = (prev?: string, next?: string) => {
   const right = (next || "").trim();
   if (!left) return right;
   if (!right) return left;
+  // Streaming tool_use input often starts with "{}" and then sends actual JSON.
+  // Keep the richer payload instead of concatenating "{}" + "{...}".
+  if (left === "{}") return right;
+  if (right === "{}") return left;
   if (right.startsWith(left)) return right;
   if (left.startsWith(right)) return left;
   return `${left}${right}`;

@@ -5,9 +5,11 @@ import { getCwd } from 'src/utils/cwd.js'
 import { isENOENT } from 'src/utils/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
+  getCwdForErrorNote,
   suggestPathUnderCwd,
 } from 'src/utils/file.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { expandPath, toRelativePath } from 'src/utils/path.js'
 import {
@@ -214,7 +216,7 @@ export const GrepTool = buildTool({
       } catch (e: unknown) {
         if (isENOENT(e)) {
           const cwdSuggestion = await suggestPathUnderCwd(absolutePath)
-          let message = `Path does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+          let message = `Path does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
           if (cwdSuggestion) {
             message += ` Did you mean ${cwdSuggestion}?`
           }
@@ -327,6 +329,20 @@ export const GrepTool = buildTool({
     { abortController, getAppState },
   ) {
     const absolutePath = path ? expandPath(path) : getCwd()
+    const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+    if (virtualProjectRoot) {
+      return {
+        data: {
+          mode: 'content' as const,
+          numFiles: 0,
+          filenames: [],
+          content:
+            'Search (ripgrep) is temporarily unavailable in virtual filesystem sessions. Please use Glob + Read for now.',
+          numLines: 1,
+        },
+      }
+    }
+
     const args = ['--hidden']
 
     // Exclude VCS directories to avoid noise from version control metadata

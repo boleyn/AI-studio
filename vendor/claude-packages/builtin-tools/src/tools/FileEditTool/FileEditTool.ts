@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, sep } from 'path'
+import { dirname, isAbsolute, resolve, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
@@ -21,6 +21,7 @@ import { isENOENT } from 'src/utils/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
+  getCwdForErrorNote,
   getFileModificationTime,
   suggestPathUnderCwd,
   writeTextContent,
@@ -36,6 +37,7 @@ import {
 } from 'src/utils/fileRead.js'
 import { formatFileSize } from 'src/utils/format.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
@@ -82,6 +84,17 @@ import {
 // can be larger on disk per character, but 1 GiB is a safe byte-level guard
 // that prevents OOM without being unnecessarily restrictive.
 const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB (stat bytes)
+
+function isUnderVirtualProjectRoot(filePath: string): boolean {
+  const root = (getVirtualProjectRoot() || '').trim()
+  if (!root) return true
+  const normalizedRoot = resolve(root)
+  const normalizedPath = resolve(filePath)
+  return (
+    normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}${sep}`)
+  )
+}
 
 export const FileEditTool = buildTool({
   name: FILE_EDIT_TOOL_NAME,
@@ -139,6 +152,16 @@ export const FileEditTool = buildTool({
     // Use expandPath for consistent path normalization (especially on Windows
     // where "/" vs "\" can cause readFileState lookup mismatches)
     const fullFilePath = expandPath(file_path)
+
+    if (!isUnderVirtualProjectRoot(fullFilePath)) {
+      return {
+        result: false,
+        behavior: 'ask',
+        message:
+          'This session is bound to a virtual project filesystem. Access outside the virtual project root is not allowed.',
+        errorCode: 11,
+      }
+    }
 
     // Reject edits to team memory files that introduce secrets
     const secretError = checkTeamMemSecrets(fullFilePath, new_string)
@@ -229,7 +252,7 @@ export const FileEditTool = buildTool({
       // Try to find a similar file with a different extension
       const similarFilename = findSimilarFile(fullFilePath)
       const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-      let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+      let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
 
       if (cwdSuggestion) {
         message += ` Did you mean ${cwdSuggestion}?`

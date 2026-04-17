@@ -23,7 +23,11 @@ import {
   type LineEndingType,
 } from './fileRead.js'
 import { fileReadCache } from './fileReadCache.js'
-import { getFsImplementation, safeResolvePath } from './fsOperations.js'
+import {
+  getFsImplementation,
+  getVirtualProjectRoot,
+  safeResolvePath,
+} from './fsOperations.js'
 import { logError } from './log.js'
 import { expandPath } from './path.js'
 import { getPlatform } from './platform.js'
@@ -211,6 +215,28 @@ export function findSimilarFile(filePath: string): string | undefined {
  * UI renderers check for this to show a short "File not found" message.
  */
 export const FILE_NOT_FOUND_CWD_NOTE = 'Note: your current working directory is'
+
+export function getCwdForErrorNote(): string {
+  const cwd = getCwd()
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return cwd
+  if (cwd === virtualRoot) return '<virtual-project-root>'
+  const rel = relative(virtualRoot, cwd)
+  if (!rel || rel === '.') return '<virtual-project-root>'
+  if (rel.startsWith('..')) return '<virtual-project-root>'
+  return `<virtual-project-root>/${rel.replaceAll('\\', '/')}`
+}
+
+export function maskVirtualPathForDisplay(inputPath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return inputPath
+  const normalizedRoot = resolve(virtualRoot)
+  const normalizedInput = resolve(inputPath)
+  if (normalizedInput === normalizedRoot) return '<virtual-project-root>'
+  if (!normalizedInput.startsWith(`${normalizedRoot}${sep}`)) return inputPath
+  const rel = relative(normalizedRoot, normalizedInput).replaceAll('\\', '/')
+  return rel ? `<virtual-project-root>/${rel}` : '<virtual-project-root>'
+}
 
 /**
  * Suggests a corrected path under the current working directory when a file/directory

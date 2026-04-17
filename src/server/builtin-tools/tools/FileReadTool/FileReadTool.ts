@@ -34,12 +34,15 @@ import {
   addLineNumbers,
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
+  getCwdForErrorNote,
+  maskVirtualPathForDisplay,
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
 } from 'src/utils/file.js'
 import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { formatFileSize } from 'src/utils/format.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import {
   compressImageBufferWithTokenLimit,
   createImageMetadataText,
@@ -125,6 +128,28 @@ function isBlockedDevicePath(filePath: string): boolean {
   )
     return true
   return false
+}
+
+function isUnderVirtualProjectRoot(filePath: string): boolean {
+  const root = (getVirtualProjectRoot() || '').trim()
+  if (!root) return true
+  const normalizedRoot = path.resolve(root)
+  const normalizedPath = path.resolve(filePath)
+  return (
+    normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}${path.sep}`)
+  )
+}
+
+function resolveReadPath(filePath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualRoot && filePath.startsWith('/')) {
+    return expandPath(filePath.slice(1), virtualRoot)
+  }
+  if (virtualRoot && !path.isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
+    return expandPath(filePath, virtualRoot)
+  }
+  return expandPath(filePath)
 }
 
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames
@@ -393,7 +418,7 @@ export const FileReadTool = buildTool({
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
     if (typeof input.file_path === 'string') {
-      input.file_path = expandPath(input.file_path)
+      input.file_path = resolveReadPath(input.file_path)
     }
   },
   async preparePermissionMatcher({ file_path }) {
@@ -444,7 +469,16 @@ export const FileReadTool = buildTool({
     }
 
     // Path expansion + deny rule check (no I/O)
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveReadPath(file_path)
+
+    if (!isUnderVirtualProjectRoot(fullFilePath)) {
+      return {
+        result: false,
+        message:
+          'This session is bound to a virtual project filesystem. Access outside the virtual project root is not allowed.',
+        errorCode: 10,
+      }
+    }
 
     const appState = toolUseContext.getAppState()
     const denyRule = matchingRuleForInput(
@@ -522,7 +556,7 @@ export const FileReadTool = buildTool({
     const ext = path.extname(file_path).toLowerCase().slice(1)
     // Use expandPath for consistent path normalization with FileEditTool/FileWriteTool
     // (especially handles whitespace trimming and Windows path separators)
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveReadPath(file_path)
 
     // Dedup: if we've already read this exact range and the file hasn't
     // changed on disk, return a stub instead of re-sending the full content.
@@ -642,9 +676,9 @@ export const FileReadTool = buildTool({
 
         const similarFilename = findSimilarFile(fullFilePath)
         const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
         if (cwdSuggestion) {
-          message += ` Did you mean ${cwdSuggestion}?`
+          message += ` Did you mean ${maskVirtualPathForDisplay(cwdSuggestion)}?`
         } else if (similarFilename) {
           message += ` Did you mean ${similarFilename}?`
         }

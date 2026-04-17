@@ -5,6 +5,7 @@ import { getCwd } from 'src/utils/cwd.js'
 import { isENOENT } from 'src/utils/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
+  getCwdForErrorNote,
   suggestPathUnderCwd,
 } from 'src/utils/file.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
@@ -108,7 +109,7 @@ export const GlobTool = buildTool({
       } catch (e: unknown) {
         if (isENOENT(e)) {
           const cwdSuggestion = await suggestPathUnderCwd(absolutePath)
-          let message = `Directory does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+          let message = `Directory does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
           if (cwdSuggestion) {
             message += ` Did you mean ${cwdSuggestion}?`
           }

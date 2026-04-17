@@ -3,6 +3,10 @@ import type { SdkMessage } from "@shared/chat/sdkMessages";
 import { createSdkMessage, sdkContentToText } from "@shared/chat/sdkMessages";
 import type { SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { Volume, createFsFromVolume } from "memfs";
+import type { FsOperations } from "../utils/fsOperations";
+import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsOperations";
 import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 
@@ -39,6 +43,211 @@ type ToolInputState = {
   name: string;
   inputBuffer: string;
   lastInput?: unknown;
+};
+
+type ProjectFilesInput = Record<string, { code?: string }>;
+
+const isPathInsideRoot = (targetPath: string, rootPath: string): boolean => {
+  const normalizedTarget = path.resolve(targetPath);
+  const normalizedRoot = path.resolve(rootPath);
+  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`);
+};
+
+const toVirtualAbsoluteFilePath = (projectRoot: string, filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/").trim();
+  if (!normalized) return projectRoot;
+  const relative = normalized.startsWith("/") ? normalized.slice(1) : normalized;
+  return path.resolve(projectRoot, relative);
+};
+
+export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: ProjectFilesInput): FsOperations => {
+  const volume = new Volume();
+  const memfs = createFsFromVolume(volume) as unknown as {
+    promises: Record<string, (...args: any[]) => Promise<any>>;
+    existsSync: (p: string) => boolean;
+    statSync: (p: string) => any;
+    lstatSync: (p: string) => any;
+    readFileSync: (p: string, opts?: any) => any;
+    readdirSync: (p: string, opts?: any) => any;
+    unlinkSync: (p: string) => void;
+    renameSync: (oldPath: string, newPath: string) => void;
+    linkSync: (target: string, p: string) => void;
+    symlinkSync: (target: string, p: string, type?: "dir" | "file" | "junction") => void;
+    readlinkSync: (p: string) => string;
+    realpathSync: (p: string) => string;
+    writeFileSync: (p: string, data: string | Buffer) => void;
+    mkdirSync: (p: string, opts?: any) => void;
+    rmdirSync: (p: string) => void;
+    rmSync: (p: string, opts?: any) => void;
+    appendFileSync: (p: string, data: string) => void;
+    copyFileSync: (src: string, dest: string) => void;
+    createWriteStream: (p: string) => any;
+    openSync: (p: string, flags: string) => number;
+    readSync: (
+      fd: number,
+      buffer: Buffer,
+      offset: number,
+      length: number,
+      position: number | null
+    ) => number;
+    closeSync: (fd: number) => void;
+  };
+
+  const projectEntries = Object.entries(projectFiles || {});
+  for (const [filePath, file] of projectEntries) {
+    const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
+    const dirPath = path.dirname(absolutePath);
+    memfs.mkdirSync(dirPath, { recursive: true });
+    memfs.writeFileSync(absolutePath, typeof file?.code === "string" ? file.code : "");
+  }
+  memfs.mkdirSync(projectRoot, { recursive: true });
+
+  const resolveForRouting = (targetPath: string): string =>
+    path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(projectRoot, targetPath);
+
+  const createENOENTError = (resolvedPath: string): Error & { code: string } => {
+    const error = new Error(`ENOENT: no such file or directory, path '${resolvedPath}'`) as Error & { code: string };
+    error.code = "ENOENT";
+    return error;
+  };
+
+  const routePath = (targetPath: string): string => {
+    const resolvedPath = resolveForRouting(targetPath);
+    if (!isPathInsideRoot(resolvedPath, projectRoot)) {
+      throw new Error(
+        `Access denied: path "${resolvedPath}" is outside virtual project root "${projectRoot}".`,
+      );
+    }
+    return resolvedPath;
+  };
+
+  const routePathForRead = (targetPath: string): string => {
+    const resolvedPath = resolveForRouting(targetPath);
+    if (!isPathInsideRoot(resolvedPath, projectRoot)) {
+      throw createENOENTError(resolvedPath);
+    }
+    return resolvedPath;
+  };
+
+  const readSyncFrom = (
+    impl: typeof memfs,
+    fsPath: string,
+    options: { length: number }
+  ): { buffer: Buffer; bytesRead: number } => {
+    const fd = (impl as any).openSync(fsPath, "r");
+    try {
+      const buffer = Buffer.alloc(options.length);
+      const bytesRead = (impl as any).readSync(fd, buffer, 0, options.length, 0);
+      return { buffer, bytesRead };
+    } finally {
+      (impl as any).closeSync(fd);
+    }
+  };
+
+  return {
+    cwd() {
+      return projectRoot;
+    },
+    existsSync(fsPath) {
+      try {
+        return memfs.existsSync(routePathForRead(fsPath));
+      } catch {
+        return false;
+      }
+    },
+    async stat(fsPath) {
+      return (await memfs.promises.stat(routePathForRead(fsPath))) as any;
+    },
+    async readdir(fsPath) {
+      return (await memfs.promises.readdir(routePathForRead(fsPath), { withFileTypes: true })) as any;
+    },
+    async unlink(fsPath) {
+      await memfs.promises.unlink(routePath(fsPath));
+    },
+    async rmdir(fsPath) {
+      await memfs.promises.rmdir(routePath(fsPath));
+    },
+    async rm(fsPath, options) {
+      await memfs.promises.rm(routePath(fsPath), options);
+    },
+    async mkdir(fsPath, options) {
+      await memfs.promises.mkdir(routePath(fsPath), { recursive: true, ...options });
+    },
+    async readFile(fsPath, options) {
+      return (await memfs.promises.readFile(routePathForRead(fsPath), { encoding: options.encoding })) as string;
+    },
+    async rename(oldPath, newPath) {
+      await memfs.promises.rename(routePath(oldPath), routePath(newPath));
+    },
+    statSync(fsPath) {
+      return memfs.statSync(routePathForRead(fsPath)) as any;
+    },
+    lstatSync(fsPath) {
+      return memfs.lstatSync(routePathForRead(fsPath)) as any;
+    },
+    readFileSync(fsPath, options) {
+      return memfs.readFileSync(routePathForRead(fsPath), { encoding: options.encoding }) as string;
+    },
+    readFileBytesSync(fsPath) {
+      return memfs.readFileSync(routePathForRead(fsPath)) as Buffer;
+    },
+    readSync(fsPath, options) {
+      return readSyncFrom(memfs, routePathForRead(fsPath), options);
+    },
+    appendFileSync(fsPath, data, _options) {
+      const routed = routePath(fsPath);
+      memfs.appendFileSync(routed, data);
+    },
+    copyFileSync(src, dest) {
+      memfs.copyFileSync(routePath(src), routePath(dest));
+    },
+    unlinkSync(fsPath) {
+      memfs.unlinkSync(routePath(fsPath));
+    },
+    renameSync(oldPath, newPath) {
+      memfs.renameSync(routePath(oldPath), routePath(newPath));
+    },
+    linkSync(target, fsPath) {
+      memfs.linkSync(routePath(target), routePath(fsPath));
+    },
+    symlinkSync(target, fsPath, type) {
+      memfs.symlinkSync(target, routePath(fsPath), type);
+    },
+    readlinkSync(fsPath) {
+      return memfs.readlinkSync(routePathForRead(fsPath));
+    },
+    realpathSync(fsPath) {
+      return memfs.realpathSync(routePathForRead(fsPath));
+    },
+    mkdirSync(fsPath, options) {
+      memfs.mkdirSync(routePath(fsPath), { recursive: true, ...options });
+    },
+    readdirSync(fsPath) {
+      return memfs.readdirSync(routePathForRead(fsPath), { withFileTypes: true }) as any;
+    },
+    readdirStringSync(fsPath) {
+      return memfs.readdirSync(routePathForRead(fsPath)) as string[];
+    },
+    isDirEmptySync(fsPath) {
+      const files = memfs.readdirSync(routePathForRead(fsPath), { withFileTypes: true }) as unknown[];
+      return files.length === 0;
+    },
+    rmdirSync(fsPath) {
+      memfs.rmdirSync(routePath(fsPath));
+    },
+    rmSync(fsPath, options) {
+      memfs.rmSync(routePath(fsPath), options);
+    },
+    createWriteStream(fsPath) {
+      return memfs.createWriteStream(routePath(fsPath)) as any;
+    },
+    async readFileBytes(fsPath, maxBytes) {
+      const buffer = (await memfs.promises.readFile(routePathForRead(fsPath))) as Buffer;
+      if (maxBytes === undefined) return buffer;
+      const readSize = Math.min(buffer.length, maxBytes);
+      return readSize < buffer.length ? buffer.subarray(0, readSize) : buffer;
+    },
+  };
 };
 
 const pickNamedExport = <T = unknown>(mod: unknown, key: string): T | undefined => {
@@ -525,14 +734,23 @@ const tryRunQueryEngine = async (
     };
   }
 
-  try {
-    const configMod = await import("../utils/config");
-    const enableConfigs = pickNamedExport<() => void>(configMod, "enableConfigs");
-    if (enableConfigs) {
-      enableConfigs();
-    }
+  const baseCwd = process.cwd();
+  const hasVirtualProjectFiles = Boolean(input.projectFiles && Object.keys(input.projectFiles).length > 0);
+  const virtualProjectRoot = path.resolve(baseCwd, ".aistudio-virtual", input.token || "project");
+  const scopedFs =
+    hasVirtualProjectFiles && input.projectFiles
+      ? buildProjectMemfsOverlay(virtualProjectRoot, input.projectFiles)
+      : undefined;
 
-    const cwd = process.cwd();
+  const runCore = async (): Promise<QueryEngineExecutionAttempt> => {
+    try {
+      const configMod = await import("../utils/config");
+      const enableConfigs = pickNamedExport<() => void>(configMod, "enableConfigs");
+      if (enableConfigs) {
+        enableConfigs();
+      }
+
+    const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
     const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
       await Promise.all([
         import("../state/AppStateStore"),
@@ -759,37 +977,46 @@ const tryRunQueryEngine = async (
       }
     }
 
-    if (assistantText.trim()) {
+      if (assistantText.trim()) {
+        return {
+          ok: true,
+          assistantText,
+          stopReason,
+          resultSubtype,
+          warnings: probe.warnings,
+        };
+      }
       return {
-        ok: true,
-        assistantText,
+        ok: false,
+        warnings: probe.warnings,
         stopReason,
         resultSubtype,
+        error: "query_engine_finished_without_assistant_text",
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error("[query_engine][exception]", {
+          message: error.message,
+          stack: error.stack,
+        });
+      } else {
+        console.error("[query_engine][exception]", { error: String(error) });
+      }
+      return {
+        ok: false,
         warnings: probe.warnings,
+        error: error instanceof Error ? error.message : String(error ?? "query_engine_import_failed"),
       };
     }
-    return {
-      ok: false,
-      warnings: probe.warnings,
-      stopReason,
-      resultSubtype,
-      error: "query_engine_finished_without_assistant_text",
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error("[query_engine][exception]", {
-        message: error.message,
-        stack: error.stack,
-      });
-    } else {
-      console.error("[query_engine][exception]", { error: String(error) });
-    }
-    return {
-      ok: false,
-      warnings: probe.warnings,
-      error: error instanceof Error ? error.message : String(error ?? "query_engine_import_failed"),
-    };
+  };
+
+  if (!scopedFs) {
+    return runCore();
   }
+  return await runWithVirtualProjectRoot(
+    virtualProjectRoot,
+    () => runWithFsImplementation(scopedFs, runCore),
+  );
 };
 
 export const runClaudeQueryAdapter = async (

@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'child_process'
 import { constants as fsConstants, readFileSync, unlinkSync } from 'fs'
 import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { isAbsolute, resolve } from 'path'
+import { isAbsolute, resolve, sep } from 'path'
 import { join as posixJoin } from 'path/posix'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
@@ -14,7 +14,7 @@ import { generateTaskId } from '../Task.js'
 import { pwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, isENOENT } from './errors.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation, getVirtualProjectRoot } from './fsOperations.js'
 import { logError } from './log.js'
 import {
   createAbortedCommand,
@@ -45,6 +45,15 @@ const DEFAULT_TIMEOUT = 30 * 60 * 1000 // 30 minutes
 
 export type ShellConfig = {
   provider: ShellProvider
+}
+
+function isPathInsideRoot(candidatePath: string, root: string): boolean {
+  const normalizedRoot = resolve(root)
+  const normalizedCandidate = resolve(candidatePath)
+  return (
+    normalizedCandidate === normalizedRoot ||
+    normalizedCandidate.startsWith(`${normalizedRoot}${sep}`)
+  )
 }
 
 function isExecutable(shellPath: string): boolean {
@@ -240,6 +249,18 @@ export async function exec(
   // If already aborted, don't spawn the process at all
   if (abortSignal.aborted) {
     return createAbortedCommand()
+  }
+
+  const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualProjectRoot) {
+    if (!isPathInsideRoot(cwd, virtualProjectRoot)) {
+      return createFailedCommand(
+        `Working directory "${cwd}" is outside virtual project root "${virtualProjectRoot}".`,
+      )
+    }
+    return createFailedCommand(
+      `This session is bound to a virtual project filesystem (${virtualProjectRoot}). Shell command execution is disabled because the current shell runtime does not run against the virtual filesystem yet.`,
+    )
   }
 
   const binShell = provider.shellPath
@@ -448,6 +469,12 @@ export function setCwd(path: string, relativeTo?: string): void {
   const resolved = isAbsolute(path)
     ? path
     : resolve(relativeTo || getFsImplementation().cwd(), path)
+  const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualProjectRoot && !isPathInsideRoot(resolved, virtualProjectRoot)) {
+    throw new Error(
+      `Path "${resolved}" is outside virtual project root "${virtualProjectRoot}"`,
+    )
+  }
   // Resolve symlinks to match the behavior of pwd -P.
   // realpathSync throws ENOENT if the path doesn't exist - convert to a
   // friendlier error message instead of a separate existsSync pre-check (TOCTOU).
@@ -459,6 +486,14 @@ export function setCwd(path: string, relativeTo?: string): void {
       throw new Error(`Path "${resolved}" does not exist`)
     }
     throw e
+  }
+  if (
+    virtualProjectRoot &&
+    !isPathInsideRoot(physicalPath, virtualProjectRoot)
+  ) {
+    throw new Error(
+      `Path "${physicalPath}" is outside virtual project root "${virtualProjectRoot}"`,
+    )
   }
 
   setCwdState(physicalPath)

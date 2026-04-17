@@ -2,14 +2,21 @@ import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import {
   copyFile,
+  mkdtemp as fsMkdtemp,
+  mkdir as fsMkdir,
+  readFile as fsReadFile,
+  rm as fsRm,
   stat as fsStat,
   truncate as fsTruncate,
+  writeFile as fsWriteFile,
   link,
 } from 'fs/promises'
+import * as nodeFs from 'fs'
 import * as React from 'react'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { AppState } from 'src/state/AppState.js'
 import { z } from 'zod/v4'
+import path from 'node:path'
 import { getKairosActive } from 'src/bootstrap/state.js'
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js'
 import {
@@ -53,7 +60,7 @@ import {
   fileHistoryTrackEdit,
 } from 'src/utils/fileHistory.js'
 import { truncate } from 'src/utils/format.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getFsImplementation, getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { expandPath } from 'src/utils/path.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
@@ -182,6 +189,398 @@ const BASH_SILENT_COMMANDS = new Set([
   'unset',
   'wait',
 ])
+
+const VIRTUAL_BASH_ALLOWED_COMMANDS = new Set(['ls', 'pwd', 'cat', 'echo'])
+const VIRTUAL_WASI_FILE_LIMIT = 5000
+const VIRTUAL_WASI_BYTE_LIMIT = 20 * 1024 * 1024
+
+function tokenizeShellLike(command: string): string[] {
+  const matches = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || []
+  return matches.map(part => {
+    if (
+      (part.startsWith('"') && part.endsWith('"')) ||
+      (part.startsWith("'") && part.endsWith("'"))
+    ) {
+      return part.slice(1, -1)
+    }
+    return part
+  })
+}
+
+function hasUnsupportedShellSyntax(command: string): boolean {
+  return /[|;&><`$]/.test(command)
+}
+
+function formatMode(mode: number, isDirectory: boolean): string {
+  const type = isDirectory ? 'd' : '-'
+  const perms = [
+    0o400, 0o200, 0o100, // user
+    0o040, 0o020, 0o010, // group
+    0o004, 0o002, 0o001, // other
+  ]
+  const chars = ['r', 'w', 'x', 'r', 'w', 'x', 'r', 'w', 'x']
+  let out = type
+  for (let i = 0; i < perms.length; i++) {
+    out += (mode & perms[i]!) !== 0 ? chars[i] : '-'
+  }
+  return out
+}
+
+function formatLsTime(value: Date): string {
+  const month = value.toLocaleString('en-US', { month: 'short' })
+  const day = String(value.getDate()).padStart(2, ' ')
+  const hour = String(value.getHours()).padStart(2, '0')
+  const minute = String(value.getMinutes()).padStart(2, '0')
+  return `${month} ${day} ${hour}:${minute}`
+}
+
+function isInsideVirtualRoot(candidatePath: string, rootPath: string): boolean {
+  const resolvedRoot = path.resolve(rootPath)
+  const resolvedCandidate = path.resolve(candidatePath)
+  return (
+    resolvedCandidate === resolvedRoot ||
+    resolvedCandidate.startsWith(`${resolvedRoot}${path.sep}`)
+  )
+}
+
+function getVirtualWasiMap(): Record<string, string> {
+  const raw = process.env.CLAUDE_CODE_VIRTUAL_WASI_COMMAND_MAP
+  if (!raw?.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const map: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string' && value.trim()) {
+        map[key.trim()] = value.trim()
+      }
+    }
+    return map
+  } catch {
+    return {}
+  }
+}
+
+async function materializeVirtualTreeToHost(
+  virtualFs: ReturnType<typeof getFsImplementation>,
+  virtualDir: string,
+  hostDir: string,
+): Promise<void> {
+  let fileCount = 0
+  let byteCount = 0
+
+  const walk = async (currentVirtual: string, currentHost: string) => {
+    await fsMkdir(currentHost, { recursive: true })
+    const entries = virtualFs.readdirSync(currentVirtual)
+    for (const entry of entries) {
+      const source = path.join(currentVirtual, entry)
+      const target = path.join(currentHost, entry)
+      const stat = virtualFs.statSync(source)
+      if (stat.isDirectory()) {
+        await walk(source, target)
+        continue
+      }
+      if (!stat.isFile()) continue
+      fileCount += 1
+      byteCount += stat.size
+      if (fileCount > VIRTUAL_WASI_FILE_LIMIT || byteCount > VIRTUAL_WASI_BYTE_LIMIT) {
+        throw new Error(
+          `Virtual WASI staging exceeded limits (files>${VIRTUAL_WASI_FILE_LIMIT} or bytes>${VIRTUAL_WASI_BYTE_LIMIT}).`,
+        )
+      }
+      const bytes = virtualFs.readFileBytesSync(source)
+      await fsWriteFile(target, bytes)
+    }
+  }
+
+  await walk(virtualDir, hostDir)
+}
+
+async function runVirtualWasiCommand(
+  command: string,
+  tokens: string[],
+  virtualProjectRoot: string,
+  cwd: string,
+  fs: ReturnType<typeof getFsImplementation>,
+): Promise<{ code: number; stdout: string; stderr: string } | null> {
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_BASH || '')) {
+    return null
+  }
+
+  const wasiMap = getVirtualWasiMap()
+  const base = tokens[0] || ''
+  const wasmPath = wasiMap[base]
+  if (!wasmPath) return null
+
+  const strict = isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_STRICT || 'false')
+
+  let WASIClass: any
+  try {
+    const wasiModule = await import('node:wasi')
+    WASIClass = wasiModule.WASI
+  } catch (error) {
+    if (!strict) return null
+    return {
+      code: 127,
+      stdout: '',
+      stderr:
+        error instanceof Error
+          ? `Virtual WASI runtime unavailable: ${error.message}`
+          : 'Virtual WASI runtime unavailable.',
+    }
+  }
+
+  const relativeCwd = path.relative(virtualProjectRoot, cwd)
+  if (relativeCwd.startsWith('..')) {
+    return {
+      code: 1,
+      stdout: '',
+      stderr: `Working directory "${cwd}" is outside virtual project root "${virtualProjectRoot}".`,
+    }
+  }
+
+  const os = await import('node:os')
+  const stagingRoot = await fsMkdtemp(path.join(os.tmpdir(), 'claude-virtual-wasi-'))
+  const workspaceDir = path.join(stagingRoot, 'workspace')
+  const stdoutPath = path.join(stagingRoot, 'stdout.log')
+  const stderrPath = path.join(stagingRoot, 'stderr.log')
+
+  try {
+    await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
+    const moduleBuffer = await fsReadFile(wasmPath)
+    const stdoutFd = nodeFs.openSync(stdoutPath, 'w+')
+    const stderrFd = nodeFs.openSync(stderrPath, 'w+')
+
+    let exitCode = 0
+    try {
+      const wasi = new WASIClass({
+        version: 'preview1',
+        args: tokens,
+        env: {
+          PWD: path.posix.join('/workspace', relativeCwd.replace(/\\/g, '/')),
+        },
+        preopens: {
+          '/workspace': workspaceDir,
+        },
+        stdout: stdoutFd,
+        stderr: stderrFd,
+        returnOnExit: true,
+      })
+      const module = await WebAssembly.compile(moduleBuffer)
+      const instance = await WebAssembly.instantiate(module, {
+        wasi_snapshot_preview1: wasi.wasiImport,
+        wasi_unstable: wasi.wasiImport,
+      } as Record<string, unknown>)
+      const result = wasi.start(instance as WebAssembly.Instance)
+      if (typeof result === 'number') exitCode = result
+    } catch (error) {
+      if (!strict) return null
+      return {
+        code: 126,
+        stdout: '',
+        stderr:
+          error instanceof Error
+            ? `Virtual WASI execution failed: ${error.message}`
+            : 'Virtual WASI execution failed.',
+      }
+    } finally {
+      nodeFs.closeSync(stdoutFd)
+      nodeFs.closeSync(stderrFd)
+    }
+
+    const [stdout, stderr] = await Promise.all([
+      fsReadFile(stdoutPath, 'utf8').catch(() => ''),
+      fsReadFile(stderrPath, 'utf8').catch(() => ''),
+    ])
+
+    return { code: exitCode, stdout, stderr }
+  } finally {
+    await fsRm(stagingRoot, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+async function runVirtualBashCommand(
+  command: string,
+  virtualProjectRoot: string,
+  workingPath?: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  if (hasUnsupportedShellSyntax(command)) {
+    return {
+      code: 2,
+      stdout: '',
+      stderr:
+        'Virtual Bash currently supports single read-only commands without pipes/redirection/operators.',
+    }
+  }
+
+  const tokens = tokenizeShellLike(command.trim())
+  if (tokens.length === 0) {
+    return { code: 0, stdout: '', stderr: '' }
+  }
+  const base = tokens[0] || ''
+  const fs = getFsImplementation()
+  let cwd = fs.cwd()
+  if (workingPath && workingPath.trim()) {
+    const requested = workingPath.trim()
+    const resolved = path.isAbsolute(requested)
+      ? path.resolve(requested)
+      : path.resolve(cwd, requested)
+    if (!isInsideVirtualRoot(resolved, virtualProjectRoot)) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: `Path "${resolved}" is outside virtual project root "${virtualProjectRoot}".`,
+      }
+    }
+    try {
+      const stat = fs.statSync(resolved)
+      if (!stat.isDirectory()) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr: `Path "${requested}" is not a directory.`,
+        }
+      }
+      cwd = resolved
+    } catch (error) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr:
+          error instanceof Error
+            ? error.message
+            : `Path "${requested}" does not exist.`,
+      }
+    }
+  }
+  const resolvePath = (input: string) =>
+    path.isAbsolute(input) ? input : path.resolve(cwd, input)
+
+  const wasiResult = await runVirtualWasiCommand(
+    command,
+    tokens,
+    virtualProjectRoot,
+    cwd,
+    fs,
+  )
+  if (wasiResult) return wasiResult
+
+  if (!VIRTUAL_BASH_ALLOWED_COMMANDS.has(base)) {
+    const hasWasi = isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_BASH || '')
+    return {
+      code: 2,
+      stdout: '',
+      stderr: hasWasi
+        ? `Virtual Bash does not support "${base}" yet. Configure CLAUDE_CODE_VIRTUAL_WASI_COMMAND_MAP or use supported built-ins: ls, pwd, cat, echo.`
+        : `Virtual Bash does not support "${base}" yet. Supported commands: ls, pwd, cat, echo.`,
+    }
+  }
+
+  if (base === 'pwd') {
+    return { code: 0, stdout: `${cwd}\n`, stderr: '' }
+  }
+
+  if (base === 'echo') {
+    return { code: 0, stdout: `${tokens.slice(1).join(' ')}\n`, stderr: '' }
+  }
+
+  if (base === 'ls') {
+    const args = tokens.slice(1)
+    const options = args.filter(arg => arg.startsWith('-'))
+    const showAll = options.some(opt => opt.includes('a'))
+    const longFormat = options.some(opt => opt.includes('l'))
+    const targets = args.filter(arg => !arg.startsWith('-'))
+    const paths = targets.length > 0 ? targets : ['.']
+    const chunks: string[] = []
+
+    const formatLongLine = (absPath: string, displayName: string): string => {
+      const stat = fs.statSync(absPath)
+      const mode = formatMode(stat.mode, stat.isDirectory())
+      const nlink = String(stat.nlink ?? 1).padStart(2, ' ')
+      const uid = String((stat as unknown as { uid?: number }).uid ?? 0).padStart(4, ' ')
+      const gid = String((stat as unknown as { gid?: number }).gid ?? 0).padStart(4, ' ')
+      const size = String(stat.size).padStart(8, ' ')
+      const mtime = formatLsTime(stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime))
+      return `${mode} ${nlink} ${uid} ${gid} ${size} ${mtime} ${displayName}`
+    }
+
+    for (const target of paths) {
+      const abs = resolvePath(target)
+      try {
+        const stat = fs.statSync(abs)
+        if (stat.isDirectory()) {
+          const names = fs
+            .readdirStringSync(abs)
+            .filter(name => showAll || !name.startsWith('.'))
+            .sort((a, b) => a.localeCompare(b))
+
+          if (showAll) {
+            names.unshift('..')
+            names.unshift('.')
+          }
+
+          if (longFormat) {
+            const rows = names.map(name => {
+              if (name === '.') return formatLongLine(abs, '.')
+              if (name === '..') return formatLongLine(path.resolve(abs, '..'), '..')
+              return formatLongLine(path.join(abs, name), name)
+            })
+            chunks.push(rows.join('\n'))
+          } else {
+            chunks.push(names.join('\n'))
+          }
+        } else {
+          if (longFormat) {
+            chunks.push(formatLongLine(abs, path.basename(abs)))
+          } else {
+            chunks.push(path.basename(abs))
+          }
+        }
+      } catch (error) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr:
+            error instanceof Error
+              ? error.message
+              : `ls: cannot access '${target}'`,
+        }
+      }
+    }
+    const stdout = chunks.filter(Boolean).join('\n') + '\n'
+    return { code: 0, stdout, stderr: '' }
+  }
+
+  if (base === 'cat') {
+    const files = tokens.slice(1).filter(arg => !arg.startsWith('-'))
+    if (files.length === 0) {
+      return { code: 1, stdout: '', stderr: 'cat: missing file operand' }
+    }
+    const parts: string[] = []
+    for (const file of files) {
+      const abs = resolvePath(file)
+      try {
+        const text = fs.readFileSync(abs, { encoding: 'utf8' })
+        parts.push(text)
+      } catch (error) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr:
+            error instanceof Error
+              ? error.message
+              : `cat: ${file}: unable to read`,
+        }
+      }
+    }
+    return { code: 0, stdout: parts.join(''), stderr: '' }
+  }
+
+  return {
+    code: 2,
+    stdout: '',
+    stderr: `Virtual Bash command "${base}" is not implemented.`,
+  }
+}
 
 /**
  * Checks if a bash command is a search or read operation.
@@ -337,6 +736,12 @@ const isBackgroundTasksDisabled =
 const fullInputSchema = lazySchema(() =>
   z.strictObject({
     command: z.string().describe('The command to execute'),
+    path: z
+      .string()
+      .optional()
+      .describe(
+        'Optional working directory for this command. In virtual sessions, this must stay inside the virtual project root.',
+      ),
     timeout: semanticNumber(z.number().optional()).describe(
       `Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`,
     ),
@@ -850,6 +1255,39 @@ export const BashTool = buildTool({
     parentMessage?: AssistantMessage,
     onProgress?: ToolCallProgress<BashProgress>,
   ) {
+    const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+    if (virtualProjectRoot) {
+      const virtualResult = await runVirtualBashCommand(
+        input.command,
+        virtualProjectRoot,
+        input.path,
+      )
+      const interpretation = interpretCommandResult(
+        input.command,
+        virtualResult.code,
+        virtualResult.stdout,
+        virtualResult.stderr,
+      )
+      return {
+        data: {
+          stdout: virtualResult.stdout,
+          stderr: virtualResult.stderr,
+          interrupted: false,
+          isImage: false,
+          returnCodeInterpretation:
+            interpretation.message,
+          noOutputExpected: false,
+          backgroundTaskId: undefined,
+          backgroundedByUser: undefined,
+          assistantAutoBackgrounded: undefined,
+          dangerouslyDisableSandbox:
+            'dangerouslyDisableSandbox' in input
+              ? (input.dangerouslyDisableSandbox as boolean | undefined)
+              : undefined,
+        },
+      }
+    }
+
     // Handle simulated sed edit - apply directly instead of running sed
     // This ensures what the user previewed is exactly what gets written
     if (input._simulatedSedEdit) {

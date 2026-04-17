@@ -1,4 +1,5 @@
 import * as fs from 'fs'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   mkdir as mkdirPromise,
   open,
@@ -604,6 +605,37 @@ export const NodeFsOperations: FsOperations = {
 
 // The currently active filesystem implementation
 let activeFs: FsOperations = NodeFsOperations
+const fsOverrideStorage = new AsyncLocalStorage<FsOperations>()
+const virtualProjectRootStorage = new AsyncLocalStorage<string | null>()
+
+/**
+ * Run a function with a scoped filesystem implementation for the current async context.
+ * Nested async calls will resolve getFsImplementation() to this implementation.
+ */
+export function runWithFsImplementation<T>(
+  implementation: FsOperations,
+  fn: () => T,
+): T {
+  return fsOverrideStorage.run(implementation, fn)
+}
+
+/**
+ * Run a function with a scoped virtual project root for the current async context.
+ * Useful for constraining file tools to a per-request virtual filesystem boundary.
+ */
+export function runWithVirtualProjectRoot<T>(
+  virtualProjectRoot: string | null | undefined,
+  fn: () => T,
+): T {
+  return virtualProjectRootStorage.run(virtualProjectRoot ?? null, fn)
+}
+
+/**
+ * Get the scoped virtual project root for the current async context.
+ */
+export function getVirtualProjectRoot(): string | null {
+  return virtualProjectRootStorage.getStore() ?? null
+}
 
 /**
  * Overrides the filesystem implementation. Note: This function does not
@@ -619,7 +651,7 @@ export function setFsImplementation(implementation: FsOperations): void {
  * @returns The currently active filesystem implementation
  */
 export function getFsImplementation(): FsOperations {
-  return activeFs
+  return fsOverrideStorage.getStore() ?? activeFs
 }
 
 /**
