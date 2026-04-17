@@ -1,4 +1,4 @@
-import { dirname, sep } from 'path'
+import { dirname, isAbsolute, resolve, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -27,6 +27,7 @@ import {
 import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
+import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
@@ -58,7 +59,7 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'The absolute path to the file to write (must be absolute, not relative)',
+        'Workspace-relative path to the file to write (absolute paths are accepted for compatibility)',
       ),
     content: z.string().describe('The content to write to the file'),
   }),
@@ -90,6 +91,41 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 export type FileWriteToolInput = InputSchema
+
+function isUnderVirtualProjectRoot(filePath: string): boolean {
+  const root = (getVirtualProjectRoot() || '').trim()
+  if (!root) return true
+  const normalizedRoot = resolve(root)
+  const normalizedPath = resolve(filePath)
+  return (
+    normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}${sep}`)
+  )
+}
+
+function resolveWritePath(filePath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualRoot && filePath.startsWith('/')) {
+    return expandPath(filePath.slice(1), virtualRoot)
+  }
+  if (virtualRoot && !isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
+    return expandPath(filePath, virtualRoot)
+  }
+  return expandPath(filePath)
+}
+
+function toVirtualDisplayPath(resolvedPath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return resolvedPath
+  const normalizedRoot = resolve(virtualRoot)
+  const normalizedResolved = resolve(resolvedPath)
+  if (normalizedResolved === normalizedRoot) return '/'
+  if (!normalizedResolved.startsWith(`${normalizedRoot}${sep}`)) {
+    return resolvedPath
+  }
+  const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
+  return rel ? `/${rel}` : '/'
+}
 
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
@@ -126,7 +162,7 @@ export const FileWriteTool = buildTool({
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
     if (typeof input.file_path === 'string') {
-      input.file_path = expandPath(input.file_path)
+      input.file_path = toVirtualDisplayPath(resolveWritePath(input.file_path))
     }
   },
   async preparePermissionMatcher({ file_path }) {
@@ -151,7 +187,16 @@ export const FileWriteTool = buildTool({
     return ''
   },
   async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveWritePath(file_path)
+
+    if (!isUnderVirtualProjectRoot(fullFilePath)) {
+      return {
+        result: false,
+        message:
+          'This session is bound to a virtual project filesystem. Access outside the virtual project root is not allowed.',
+        errorCode: 10,
+      }
+    }
 
     // Reject writes to team memory files that contain secrets
     const secretError = checkTeamMemSecrets(fullFilePath, content)
@@ -226,7 +271,7 @@ export const FileWriteTool = buildTool({
     _,
     parentMessage,
   ) {
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveWritePath(file_path)
     const dir = dirname(fullFilePath)
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)

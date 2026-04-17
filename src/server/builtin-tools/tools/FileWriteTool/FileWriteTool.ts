@@ -1,4 +1,4 @@
-import { dirname, resolve, sep } from 'path'
+import { dirname, isAbsolute, resolve, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -103,6 +103,30 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
   )
 }
 
+function resolveWritePath(filePath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualRoot && filePath.startsWith('/')) {
+    return expandPath(filePath.slice(1), virtualRoot)
+  }
+  if (virtualRoot && !isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
+    return expandPath(filePath, virtualRoot)
+  }
+  return expandPath(filePath)
+}
+
+function toVirtualDisplayPath(resolvedPath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return resolvedPath
+  const normalizedRoot = resolve(virtualRoot)
+  const normalizedResolved = resolve(resolvedPath)
+  if (normalizedResolved === normalizedRoot) return '/'
+  if (!normalizedResolved.startsWith(`${normalizedRoot}${sep}`)) {
+    return resolvedPath
+  }
+  const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
+  return rel ? `/${rel}` : '/'
+}
+
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
   searchHint: 'create or overwrite files',
@@ -138,7 +162,7 @@ export const FileWriteTool = buildTool({
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
     if (typeof input.file_path === 'string') {
-      input.file_path = expandPath(input.file_path)
+      input.file_path = toVirtualDisplayPath(resolveWritePath(input.file_path))
     }
   },
   async preparePermissionMatcher({ file_path }) {
@@ -163,7 +187,7 @@ export const FileWriteTool = buildTool({
     return ''
   },
   async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveWritePath(file_path)
 
     if (!isUnderVirtualProjectRoot(fullFilePath)) {
       return {
@@ -247,7 +271,7 @@ export const FileWriteTool = buildTool({
     _,
     parentMessage,
   ) {
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveWritePath(file_path)
     const dir = dirname(fullFilePath)
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)

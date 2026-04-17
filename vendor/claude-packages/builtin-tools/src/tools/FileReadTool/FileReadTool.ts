@@ -35,6 +35,7 @@ import {
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getCwdForErrorNote,
+  maskVirtualPathForDisplay,
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
 } from 'src/utils/file.js'
@@ -72,7 +73,7 @@ import {
 } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
-import { readFileInRange } from 'src/utils/readFileInRange.js'
+import { FileTooLargeError, readFileInRange } from 'src/utils/readFileInRange.js'
 import { semanticNumber } from 'src/utils/semanticNumber.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
@@ -142,15 +143,26 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
 
 function resolveReadPath(filePath: string): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
-  if (
-    virtualRoot &&
-    !path.isAbsolute(filePath) &&
-    filePath !== '~' &&
-    !filePath.startsWith('~/')
-  ) {
+  if (virtualRoot && filePath.startsWith('/')) {
+    return expandPath(filePath.slice(1), virtualRoot)
+  }
+  if (virtualRoot && !path.isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
     return expandPath(filePath, virtualRoot)
   }
   return expandPath(filePath)
+}
+
+function toVirtualDisplayPath(resolvedPath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return resolvedPath
+  const normalizedRoot = path.resolve(virtualRoot)
+  const normalizedResolved = path.resolve(resolvedPath)
+  if (normalizedResolved === normalizedRoot) return '/'
+  if (!normalizedResolved.startsWith(`${normalizedRoot}${path.sep}`)) {
+    return resolvedPath
+  }
+  const rel = path.relative(normalizedRoot, normalizedResolved).replaceAll('\\', '/')
+  return rel ? `/${rel}` : '/'
 }
 
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames
@@ -419,7 +431,7 @@ export const FileReadTool = buildTool({
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
     if (typeof input.file_path === 'string') {
-      input.file_path = resolveReadPath(input.file_path)
+      input.file_path = toVirtualDisplayPath(resolveReadPath(input.file_path))
     }
   },
   async preparePermissionMatcher({ file_path }) {
@@ -679,7 +691,7 @@ export const FileReadTool = buildTool({
         const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
         let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
         if (cwdSuggestion) {
-          message += ` Did you mean ${cwdSuggestion}?`
+          message += ` Did you mean ${maskVirtualPathForDisplay(cwdSuggestion)}?`
         } else if (similarFilename) {
           message += ` Did you mean ${similarFilename}?`
         }
@@ -1055,16 +1067,42 @@ async function callInner(
     }
   }
 
-  // --- Text file (single async read via readFileInRange) ---
+  // --- Text file ---
   const lineOffset = offset === 0 ? 0 : offset - 1
+  const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+  const textRange = virtualProjectRoot
+    ? await (async () => {
+        const fs = getFsImplementation()
+        const stats = await fs.stat(resolvedFilePath)
+        if (limit === undefined && stats.size > maxSizeBytes) {
+          throw new FileTooLargeError(stats.size, maxSizeBytes)
+        }
+        const raw = await fs.readFile(resolvedFilePath, { encoding: 'utf8' })
+        const text =
+          raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+        const normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n')
+        const lines = normalized.split('\n')
+        const endLine = limit !== undefined ? lineOffset + limit : undefined
+        const selectedLines = lines.slice(lineOffset, endLine)
+        const content = selectedLines.join('\n')
+        return {
+          content,
+          lineCount: selectedLines.length,
+          totalLines: lines.length,
+          totalBytes: Buffer.byteLength(normalized, 'utf8'),
+          readBytes: Buffer.byteLength(content, 'utf8'),
+          mtimeMs: stats.mtimeMs,
+        }
+      })()
+    : await readFileInRange(
+        resolvedFilePath,
+        lineOffset,
+        limit,
+        limit === undefined ? maxSizeBytes : undefined,
+        context.abortController.signal,
+      )
   const { content, lineCount, totalLines, totalBytes, readBytes, mtimeMs } =
-    await readFileInRange(
-      resolvedFilePath,
-      lineOffset,
-      limit,
-      limit === undefined ? maxSizeBytes : undefined,
-      context.abortController.signal,
-    )
+    textRange
 
   await validateContentTokens(content, ext, maxTokens)
 

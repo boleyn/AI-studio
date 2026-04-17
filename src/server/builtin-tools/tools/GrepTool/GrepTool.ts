@@ -6,6 +6,7 @@ import { isENOENT } from 'src/utils/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
   getCwdForErrorNote,
+  maskVirtualPathForDisplay,
   suggestPathUnderCwd,
 } from 'src/utils/file.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
@@ -218,7 +219,7 @@ export const GrepTool = buildTool({
           const cwdSuggestion = await suggestPathUnderCwd(absolutePath)
           let message = `Path does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
           if (cwdSuggestion) {
-            message += ` Did you mean ${cwdSuggestion}?`
+            message += ` Did you mean ${maskVirtualPathForDisplay(cwdSuggestion)}?`
           }
           return {
             result: false,

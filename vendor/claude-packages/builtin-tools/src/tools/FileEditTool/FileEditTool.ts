@@ -22,6 +22,7 @@ import {
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getCwdForErrorNote,
+  maskVirtualPathForDisplay,
   getFileModificationTime,
   suggestPathUnderCwd,
   writeTextContent,
@@ -96,6 +97,30 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
   )
 }
 
+function resolveEditPath(filePath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualRoot && filePath.startsWith('/')) {
+    return expandPath(filePath.slice(1), virtualRoot)
+  }
+  if (virtualRoot && !isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
+    return expandPath(filePath, virtualRoot)
+  }
+  return expandPath(filePath)
+}
+
+function toVirtualDisplayPath(resolvedPath: string): string {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return resolvedPath
+  const normalizedRoot = resolve(virtualRoot)
+  const normalizedResolved = resolve(resolvedPath)
+  if (normalizedResolved === normalizedRoot) return '/'
+  if (!normalizedResolved.startsWith(`${normalizedRoot}${sep}`)) {
+    return resolvedPath
+  }
+  const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
+  return rel ? `/${rel}` : '/'
+}
+
 export const FileEditTool = buildTool({
   name: FILE_EDIT_TOOL_NAME,
   searchHint: 'modify file contents in place',
@@ -129,7 +154,7 @@ export const FileEditTool = buildTool({
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
     if (typeof input.file_path === 'string') {
-      input.file_path = expandPath(input.file_path)
+      input.file_path = toVirtualDisplayPath(resolveEditPath(input.file_path))
     }
   },
   async preparePermissionMatcher({ file_path }) {
@@ -151,7 +176,7 @@ export const FileEditTool = buildTool({
     const { file_path, old_string, new_string, replace_all = false } = input
     // Use expandPath for consistent path normalization (especially on Windows
     // where "/" vs "\" can cause readFileState lookup mismatches)
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = resolveEditPath(file_path)
 
     if (!isUnderVirtualProjectRoot(fullFilePath)) {
       return {
@@ -255,7 +280,7 @@ export const FileEditTool = buildTool({
       let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
 
       if (cwdSuggestion) {
-        message += ` Did you mean ${cwdSuggestion}?`
+        message += ` Did you mean ${maskVirtualPathForDisplay(cwdSuggestion)}?`
       } else if (similarFilename) {
         message += ` Did you mean ${similarFilename}?`
       }
