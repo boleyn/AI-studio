@@ -43,10 +43,9 @@
     "src/server/agent/workspace/workspaceFiles.ts",
     "src/shared/chat/**/*.ts",
     "src/shared/network/**/*.ts",
-    "src/ai/llm/agentCall/index.ts",
     "src/ai/llm/request.ts",
     "src/ai/llm/compress/index.ts",
     "src/ai/model.ts"
   ],
-  "exclude": ["node_modules", "src/ai/llm/agentCall/**/*.test.ts"]
+  "exclude": ["node_modules"]
 }

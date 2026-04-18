@@ -387,7 +387,7 @@ export const parseLLMStreamResponse = () => {
   };
 };
 
-// Re-export to match aichat agentCall import shape
+// Re-export to match legacy aichat import shape.
 export { filterGPTMessageByMaxContext } from './llm/utils';
 
 // Re-export for backward compatibility

@@ -1,0 +1,38 @@
+--- /Users/santian/claude-code/src/query.ts	2026-04-14 23:06:45
++++ src/server/agent/query.ts	2026-04-18 20:11:37
+@@ -113,6 +113,7 @@
+ import { count } from './utils/array.js'
+ import { createTrace, endTrace, isLangfuseEnabled } from './services/langfuse/index.js'
+ import { getAPIProvider } from './utils/model/providers.js'
++import { getVirtualProjectRoot } from './utils/fsOperations.js'
+ 
+ /* eslint-disable @typescript-eslint/no-require-imports */
+ const snipModule = feature('HISTORY_SNIP')
+@@ -181,6 +182,19 @@
+   return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
+ }
+ 
++function sanitizeToolUseInputForDisplay(input: Record<string, unknown>): void {
++  const rawPath = input.file_path
++  if (typeof rawPath !== 'string') return
++  const virtualRoot = (getVirtualProjectRoot() || '').trim()
++  if (!virtualRoot) return
++  const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
++  const normalizedRoot = normalize(virtualRoot)
++  const normalizedPath = rawPath.replace(/\\/g, '/')
++  if (!normalizedPath.startsWith(`${normalizedRoot}/`)) return
++  const rel = normalizedPath.slice(normalizedRoot.length)
++  input.file_path = rel.startsWith('/') ? rel : `/${rel}`
++}
++
+ export type QueryParams = {
+   messages: Message[]
+   systemPrompt: SystemPrompt
+@@ -805,6 +819,7 @@
+                     const originalInput = block.input as Record<string, unknown>
+                     const inputCopy = { ...originalInput }
+                     tool.backfillObservableInput(inputCopy)
++                    sanitizeToolUseInputForDisplay(inputCopy)
+                     // Only yield a clone when backfill ADDED fields; skip if
+                     // it only OVERWROTE existing ones (e.g. file tools
+                     // expanding file_path). Overwrites change the serialized

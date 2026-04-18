@@ -38,6 +38,14 @@ interface ChatHeaderProps {
   contextStatus?: "idle" | "pending" | "ready";
 }
 
+const formatTokenCompact = (value?: number): string => {
+  if (!Number.isFinite(value)) return "--";
+  const normalized = Math.max(0, Number(value));
+  if (normalized >= 1_000_000) return `${(normalized / 1_000_000).toFixed(2)}M`;
+  if (normalized >= 1_000) return `${(normalized / 1_000).toFixed(1)}k`;
+  return `${Math.round(normalized)}`;
+};
+
 const ChatHeader = ({
   title,
   messageCount = 0,
@@ -61,11 +69,14 @@ const ChatHeader = ({
   const usedPercent = Math.min(100, Math.max(0, hasUsage ? contextUsage?.usedPercent || 0 : 0));
   const usedPercentText = usedPercent.toFixed(1);
   const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
+  const usedTokenText = formatTokenCompact(contextUsage?.usedTokens);
+  const maxTokenText = formatTokenCompact(contextUsage?.maxContext);
+  const tokenWindowText = hasUsage ? `${usedTokenText}/${maxTokenText}` : "--/--";
   const tooltipWithInput = isReady
-    ? `剩余 ${remainingPercentText}%`
+    ? `已用 ${usedTokenText}/${maxTokenText} tokens，剩余 ${remainingPercentText}%`
     : isPending
     ? hasUsage
-      ? `计算中...（当前显示上次快照：剩余 ${remainingPercentText}%）`
+      ? `计算中...（当前显示上次快照：已用 ${usedTokenText}/${maxTokenText} tokens，剩余 ${remainingPercentText}%）`
       : "计算中..."
     : "继续提问后会自动更新";
   const ringColor = usedPercent < 60 ? "#72C284" : "#E58888";
@@ -199,25 +210,30 @@ const ChatHeader = ({
         </Flex>
 
         <MyTooltip label={tooltipWithInput}>
-          <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
-            <CircularProgress
-              color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
-              isIndeterminate={isPending && !hasUsage}
-              size="32px"
-              thickness="12px"
-              trackColor={ringTrackColor}
-              value={usedPercent}
-            >
-              <CircularProgressLabel
-                color="#1F2937"
-                fontSize="7.5px"
-                fontWeight="700"
-                lineHeight="1"
+          <Flex align="center" direction="column" gap={0.5} minW="56px">
+            <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
+              <CircularProgress
+                color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
+                isIndeterminate={isPending && !hasUsage}
+                size="32px"
+                thickness="12px"
+                trackColor={ringTrackColor}
+                value={usedPercent}
               >
-                {hasUsage ? usedPercentText : "--"}
-              </CircularProgressLabel>
-            </CircularProgress>
-          </Box>
+                <CircularProgressLabel
+                  color="#1F2937"
+                  fontSize="7.5px"
+                  fontWeight="700"
+                  lineHeight="1"
+                >
+                  {hasUsage ? usedPercentText : "--"}
+                </CircularProgressLabel>
+              </CircularProgress>
+            </Box>
+            <Text color="myGray.500" fontSize="9px" fontWeight="700" lineHeight="1">
+              {tokenWindowText}
+            </Text>
+          </Flex>
         </MyTooltip>
       </Flex>
       </Flex>
