@@ -47,9 +47,13 @@ export const collectProjectRuntimeSkills = (
   const skills: RuntimeSkill[] = [];
   const duplicateNames: Record<string, string[]> = {};
 
-  const skillFiles = Object.entries(files || {}).filter(([filePath]) =>
-    /^\/?\.?claude\/skills\/[^/]+\/SKILL\.md$/i.test(filePath)
-  );
+  const skillFiles = Object.entries(files || {}).filter(([filePath]) => {
+    const normalized = toPosix(filePath || "").replace(/^\/+/, "");
+    return (
+      /^skills\/[^/]+\/SKILL\.md$/i.test(normalized) ||
+      /^\.?claude\/skills\/[^/]+\/SKILL\.md$/i.test(normalized)
+    );
+  });
 
   for (const [filePath, file] of skillFiles) {
     const markdown = typeof file?.code === "string" ? file.code : "";

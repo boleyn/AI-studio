@@ -75,4 +75,35 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
 
     expect(fs.existsSync("/Users/santain/.claude/.config.json")).toBe(false);
   });
+
+  test("maps /skills files into /.claude/skills for runtime skill discovery", () => {
+    const fs = buildProjectMemfsOverlay(projectRoot, {
+      "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# demo\n" },
+      "/skills/demo/scripts/run.sh": { code: "echo demo\n" },
+    });
+
+    const skill = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/SKILL.md"), {
+      encoding: "utf8",
+    });
+    const script = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/scripts/run.sh"), {
+      encoding: "utf8",
+    });
+    expect(skill).toContain("name: demo");
+    expect(script).toContain("echo demo");
+  });
+
+  test("keeps explicit /.claude/skills file when both paths exist", () => {
+    const fs = buildProjectMemfsOverlay(projectRoot, {
+      "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# from skills\n" },
+      "/.claude/skills/demo/SKILL.md": {
+        code: "---\nname: demo\n---\n# from claude skills\n",
+      },
+    });
+
+    const content = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/SKILL.md"), {
+      encoding: "utf8",
+    });
+    expect(content).toContain("from claude skills");
+    expect(content).not.toContain("from skills");
+  });
 });

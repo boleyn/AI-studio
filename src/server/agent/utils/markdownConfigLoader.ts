@@ -24,6 +24,7 @@ import {
 } from './settings/constants.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
+import { getFsImplementation } from './fsOperations.js'
 
 // Claude configuration directory names
 export const CLAUDE_CONFIG_DIRECTORIES = [
@@ -235,6 +236,7 @@ export function getProjectDirsUpToHome(
   subdir: ClaudeConfigDirectory,
   cwd: string,
 ): string[] {
+  const fs = getFsImplementation()
   const home = resolve(homedir()).normalize('NFC')
   const gitRoot = resolveStopBoundary(cwd)
   let current = resolve(cwd)
@@ -258,7 +260,7 @@ export function getProjectDirsUpToHome(
     // than silently swallowing them. Downstream loadMarkdownFiles handles
     // the TOCTOU window (dir disappearing before read) gracefully.
     try {
-      statSync(claudeSubdir)
+      fs.statSync(claudeSubdir)
       dirs.push(claudeSubdir)
     } catch (e: unknown) {
       if (!isFsInaccessible(e)) throw e

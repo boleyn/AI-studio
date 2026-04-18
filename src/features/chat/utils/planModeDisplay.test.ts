@@ -10,8 +10,8 @@ test("derivePlanModeFromMessages follows explicit planModeState when present", (
   assert.equal(mode, "default");
 });
 
-test("derivePlanModeFromMessages follows approved enter/exit responses", () => {
-  const plan = derivePlanModeFromMessages([
+test("derivePlanModeFromMessages ignores legacy approval-only payload without planModeState", () => {
+  const mode = derivePlanModeFromMessages([
     {
       role: "user",
       content: "",
@@ -20,23 +20,5 @@ test("derivePlanModeFromMessages follows approved enter/exit responses", () => {
       },
     } as any,
   ]);
-  assert.equal(plan, "plan");
-
-  const backToDefault = derivePlanModeFromMessages([
-    {
-      role: "user",
-      content: "",
-      additional_kwargs: {
-        planModeApprovalResponse: { action: "enter", decision: "approve" },
-      },
-    } as any,
-    {
-      role: "user",
-      content: "",
-      additional_kwargs: {
-        planModeApprovalResponse: { action: "exit", decision: "approve" },
-      },
-    } as any,
-  ]);
-  assert.equal(backToDefault, "default");
+  assert.equal(mode, "default");
 });

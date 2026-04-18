@@ -3,9 +3,6 @@ import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
-import { clearDeliveredDiagnosticsForFile } from 'src/services/lsp/LSPDiagnosticRegistry.js'
-import { getLspServerManager } from 'src/services/lsp/manager.js'
-import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js'
 import { checkTeamMemSecrets } from 'src/services/teamMemorySync/teamMemSecretGuard.js'
 import {
   activateConditionalSkillsForPaths,
@@ -15,11 +12,14 @@ import {
 import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from 'src/utils/diff.js'
 import { isEnvTruthy } from 'src/utils/envUtils.js'
 import { isENOENT } from 'src/utils/errors.js'
-import { getFileModificationTime, writeTextContent } from 'src/utils/file.js'
+import {
+  getFileModificationTime,
+  maskVirtualPathForDisplay,
+  writeTextContent,
+} from 'src/utils/file.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
@@ -28,12 +28,12 @@ import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
 import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
+import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
 } from 'src/utils/gitDiff.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
-import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import {
   checkWritePermissionForTool,
@@ -41,6 +41,7 @@ import {
 } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
+import { maskAbsolutePathsInText } from 'src/utils/virtualPathMasking.js'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
 import { FILE_WRITE_TOOL_NAME, getWriteToolDescription } from './prompt.js'
@@ -125,6 +126,13 @@ function toVirtualDisplayPath(resolvedPath: string): string {
   }
   const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
   return rel ? `/${rel}` : '/'
+}
+
+function sanitizeErrorForDisplay(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    return new Error(String(error))
+  }
+  return new Error(maskAbsolutePathsInText(error.message, maskVirtualPathForDisplay))
 }
 
 export const FileWriteTool = buildTool({
@@ -237,7 +245,7 @@ export const FileWriteTool = buildTool({
       if (isENOENT(e)) {
         return { result: true }
       }
-      throw e
+      throw sanitizeErrorForDisplay(e)
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
@@ -317,7 +325,7 @@ export const FileWriteTool = buildTool({
       if (isENOENT(e)) {
         meta = null
       } else {
-        throw e
+        throw sanitizeErrorForDisplay(e)
       }
     }
 
@@ -349,29 +357,11 @@ export const FileWriteTool = buildTool({
     // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
     writeTextContent(fullFilePath, content, enc, 'LF')
 
-    // Notify LSP servers about file modification (didChange) and save (didSave)
-    const lspManager = getLspServerManager()
-    if (lspManager) {
-      // Clear previously delivered diagnostics so new ones will be shown
-      clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`)
-      // didChange: Content has been modified
-      lspManager.changeFile(fullFilePath, content).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file change for ${fullFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-      // didSave: File has been saved to disk (triggers diagnostics in TypeScript server)
-      lspManager.saveFile(fullFilePath).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file save for ${fullFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-    }
-
-    // Notify VSCode about the file change for diff view
-    notifyVscodeFileUpdated(fullFilePath, oldContent, content)
+    // Notify IDEs about the file change for editor + tree refresh
+    notifyFileUpdated(fullFilePath, oldContent, content, {
+      syncLsp: true,
+      clearLspDiagnostics: true,
+    })
 
     // Update read timestamp, to invalidate stale writes
     readFileState.set(fullFilePath, {

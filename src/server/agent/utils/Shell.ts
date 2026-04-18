@@ -14,8 +14,10 @@ import { generateTaskId } from '../Task.js'
 import { pwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, isENOENT } from './errors.js'
+import { maskVirtualPathForDisplay } from './file.js'
 import { getFsImplementation, getVirtualProjectRoot } from './fsOperations.js'
 import { logError } from './log.js'
+import { maskAbsolutePathsInText } from './virtualPathMasking.js'
 import {
   createAbortedCommand,
   createFailedCommand,
@@ -54,6 +56,10 @@ function isPathInsideRoot(candidatePath: string, root: string): boolean {
     normalizedCandidate === normalizedRoot ||
     normalizedCandidate.startsWith(`${normalizedRoot}${sep}`)
   )
+}
+
+function maskVirtualPathsInText(input: string): string {
+  return maskAbsolutePathsInText(input, maskVirtualPathForDisplay)
 }
 
 function isExecutable(shellPath: string): boolean {
@@ -255,11 +261,11 @@ export async function exec(
   if (virtualProjectRoot) {
     if (!isPathInsideRoot(cwd, virtualProjectRoot)) {
       return createFailedCommand(
-        `Working directory "${cwd}" is outside virtual project root "${virtualProjectRoot}".`,
+        `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside virtual project root "<virtual-project-root>".`,
       )
     }
     return createFailedCommand(
-      `This session is bound to a virtual project filesystem (${virtualProjectRoot}). Shell command execution is disabled because the current shell runtime does not run against the virtual filesystem yet.`,
+      'This session is bound to a virtual project filesystem (<virtual-project-root>). Shell command execution is disabled because the current shell runtime does not run against the virtual filesystem yet.',
     )
   }
 
@@ -472,7 +478,7 @@ export function setCwd(path: string, relativeTo?: string): void {
   const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
   if (virtualProjectRoot && !isPathInsideRoot(resolved, virtualProjectRoot)) {
     throw new Error(
-      `Path "${resolved}" is outside virtual project root "${virtualProjectRoot}"`,
+      `Path "${maskVirtualPathForDisplay(resolved)}" is outside virtual project root "<virtual-project-root>"`,
     )
   }
   // Resolve symlinks to match the behavior of pwd -P.
@@ -483,7 +489,7 @@ export function setCwd(path: string, relativeTo?: string): void {
     physicalPath = getFsImplementation().realpathSync(resolved)
   } catch (e) {
     if (isENOENT(e)) {
-      throw new Error(`Path "${resolved}" does not exist`)
+      throw new Error(`Path "${maskVirtualPathForDisplay(resolved)}" does not exist`)
     }
     throw e
   }
@@ -492,7 +498,7 @@ export function setCwd(path: string, relativeTo?: string): void {
     !isPathInsideRoot(physicalPath, virtualProjectRoot)
   ) {
     throw new Error(
-      `Path "${physicalPath}" is outside virtual project root "${virtualProjectRoot}"`,
+      `Path "${maskVirtualPathForDisplay(physicalPath)}" is outside virtual project root "<virtual-project-root>"`,
     )
   }
 

@@ -2,9 +2,6 @@ import { dirname, isAbsolute, resolve, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
-import { clearDeliveredDiagnosticsForFile } from 'src/services/lsp/LSPDiagnosticRegistry.js'
-import { getLspServerManager } from 'src/services/lsp/manager.js'
-import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js'
 import { checkTeamMemSecrets } from 'src/services/teamMemorySync/teamMemSecretGuard.js'
 import {
   activateConditionalSkillsForPaths,
@@ -31,6 +28,7 @@ import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
 } from 'src/utils/fileHistory.js'
+import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import {
   type LineEndingType,
@@ -52,6 +50,7 @@ import {
 import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
 import { validateInputForSettingsFileEdit } from 'src/utils/settings/validateEditTool.js'
+import { maskAbsolutePathsInText } from 'src/utils/virtualPathMasking.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
 import {
   FILE_EDIT_TOOL_NAME,
@@ -119,6 +118,13 @@ function toVirtualDisplayPath(resolvedPath: string): string {
   }
   const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
   return rel ? `/${rel}` : '/'
+}
+
+function sanitizeErrorForDisplay(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    return new Error(String(error))
+  }
+  return new Error(maskAbsolutePathsInText(error.message, maskVirtualPathForDisplay))
 }
 
 export const FileEditTool = buildTool({
@@ -243,7 +249,7 @@ export const FileEditTool = buildTool({
       }
     } catch (e) {
       if (!isENOENT(e)) {
-        throw e
+        throw sanitizeErrorForDisplay(e)
       }
     }
 
@@ -264,7 +270,7 @@ export const FileEditTool = buildTool({
       if (isENOENT(e)) {
         fileContent = null
       } else {
-        throw e
+        throw sanitizeErrorForDisplay(e)
       }
     }
 
@@ -538,31 +544,11 @@ export const FileEditTool = buildTool({
     // 5. Write to disk
     writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
 
-    // Notify LSP servers about file modification (didChange) and save (didSave)
-    const lspManager = getLspServerManager()
-    if (lspManager) {
-      // Clear previously delivered diagnostics so new ones will be shown
-      clearDeliveredDiagnosticsForFile(`file://${absoluteFilePath}`)
-      // didChange: Content has been modified
-      lspManager
-        .changeFile(absoluteFilePath, updatedFile)
-        .catch((err: Error) => {
-          logForDebugging(
-            `LSP: Failed to notify server of file change for ${absoluteFilePath}: ${err.message}`,
-          )
-          logError(err)
-        })
-      // didSave: File has been saved to disk (triggers diagnostics in TypeScript server)
-      lspManager.saveFile(absoluteFilePath).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file save for ${absoluteFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-    }
-
-    // Notify VSCode about the file change for diff view
-    notifyVscodeFileUpdated(absoluteFilePath, originalFileContents, updatedFile)
+    // Notify IDEs about the file change for editor + tree refresh
+    notifyFileUpdated(absoluteFilePath, originalFileContents, updatedFile, {
+      syncLsp: true,
+      clearLspDiagnostics: true,
+    })
 
     // 6. Update read timestamp, to invalidate stale writes
     readFileState.set(absoluteFilePath, {
@@ -668,6 +654,6 @@ function readFileForEdit(absoluteFilePath: string): {
         lineEndings: 'LF',
       }
     }
-    throw e
+    throw sanitizeErrorForDisplay(e)
   }
 }

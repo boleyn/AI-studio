@@ -1,5 +1,7 @@
-import { promises as fs } from "fs";
 import path from "path";
+import { getCwd } from "../utils/cwd.js";
+import { maskVirtualPathForDisplay } from "../utils/file.js";
+import { getFsImplementation } from "../utils/fsOperations.js";
 
 export type SkillIssue = {
   code: string;
@@ -17,6 +19,7 @@ export type RuntimeSkill = {
   location: string;
   relativeLocation: string;
   baseDir: string;
+  baseDirFsPath?: string;
   body: string;
 };
 
@@ -37,10 +40,22 @@ export type SkillSnapshot = {
   duplicateNames: Record<string, string[]>;
 };
 
-const PROJECT_SKILLS_ROOT = path.join(process.cwd(), ".claude", "skills");
 let snapshotCache: SkillSnapshot | null = null;
 
 const toPosix = (input: string) => input.split(path.sep).join("/");
+const virtualizePath = (input: string) => toPosix(maskVirtualPathForDisplay(path.resolve(input)));
+const getProjectSkillsRoot = () => path.join(getCwd(), ".claude", "skills");
+const toRootRelativeSkillPath = (input: string, projectSkillsRoot: string) => {
+  const relativePath = toPosix(path.relative(projectSkillsRoot, path.resolve(input)));
+  if (!relativePath || relativePath === ".") return "/";
+  if (relativePath.startsWith("..")) return `/${toPosix(path.basename(input))}`;
+  return `/${relativePath}`;
+};
+const toSkillDisplayPath = (input: string, projectSkillsRoot: string) => {
+  const virtualized = virtualizePath(input);
+  if (virtualized.includes("<virtual-project-root>")) return virtualized;
+  return toRootRelativeSkillPath(input, projectSkillsRoot);
+};
 
 const sanitizeSkillName = (input: string) =>
   input
@@ -76,7 +91,11 @@ const pickDescription = (markdown: string, frontmatter: Record<string, string>):
   return firstParagraph || "No description";
 };
 
-const buildRuntimeSkill = (skillFile: string, markdown: string): RuntimeSkill => {
+const buildRuntimeSkill = (
+  skillFile: string,
+  markdown: string,
+  projectSkillsRoot: string,
+): RuntimeSkill => {
   const frontmatter = parseFrontmatter(markdown);
   const skillDir = path.dirname(skillFile);
   const folderName = path.basename(skillDir);
@@ -93,22 +112,25 @@ const buildRuntimeSkill = (skillFile: string, markdown: string): RuntimeSkill =>
     license: frontmatter.license || undefined,
     compatibility: frontmatter.compatibility || undefined,
     metadata: Object.keys(metadata).length ? metadata : undefined,
-    location: toPosix(skillFile),
-    relativeLocation: toPosix(path.relative(process.cwd(), skillFile)),
-    baseDir: toPosix(skillDir),
+    location: toSkillDisplayPath(skillFile, projectSkillsRoot),
+    relativeLocation: toRootRelativeSkillPath(skillFile, projectSkillsRoot),
+    baseDir: toSkillDisplayPath(skillDir, projectSkillsRoot),
+    baseDirFsPath: toPosix(skillDir),
     body: markdown,
   };
 };
 
 const safeReadFile = async (target: string): Promise<string | null> => {
   try {
-    return await fs.readFile(target, "utf8");
+    return await getFsImplementation().readFile(target, { encoding: "utf8" });
   } catch {
     return null;
   }
 };
 
 const scanProjectSkills = async (): Promise<SkillSnapshot> => {
+  const fs = getFsImplementation();
+  const projectSkillsRoot = getProjectSkillsRoot();
   const scannedAt = Date.now();
   const entries: SkillEntry[] = [];
   const skills: RuntimeSkill[] = [];
@@ -116,11 +138,14 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
 
   let dirEntries: string[] = [];
   try {
-    dirEntries = await fs.readdir(PROJECT_SKILLS_ROOT);
+    const listed = await fs.readdir(projectSkillsRoot);
+    dirEntries = listed
+      .filter(item => item.isDirectory() || item.isSymbolicLink())
+      .map(item => item.name);
   } catch {
     return {
       scannedAt,
-      rootDir: toPosix(PROJECT_SKILLS_ROOT),
+      rootDir: toSkillDisplayPath(projectSkillsRoot, projectSkillsRoot),
       entries,
       skills,
       duplicateNames,
@@ -128,21 +153,21 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
   }
 
   for (const item of dirEntries) {
-    const skillDir = path.join(PROJECT_SKILLS_ROOT, item);
+    const skillDir = path.join(projectSkillsRoot, item);
     const skillFile = path.join(skillDir, "SKILL.md");
     const markdown = await safeReadFile(skillFile);
     if (markdown == null) {
       entries.push({
         name: item,
         description: "",
-        location: toPosix(skillFile),
-        relativeLocation: toPosix(path.relative(process.cwd(), skillFile)),
+        location: toSkillDisplayPath(skillFile, projectSkillsRoot),
+        relativeLocation: toRootRelativeSkillPath(skillFile, projectSkillsRoot),
         isLoadable: false,
         issues: [
           {
             code: "missing_skill_file",
             message: "SKILL.md 不存在",
-            location: toPosix(skillFile),
+            location: toSkillDisplayPath(skillFile, projectSkillsRoot),
             name: item,
           },
         ],
@@ -150,7 +175,7 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
       continue;
     }
 
-    const skill = buildRuntimeSkill(skillFile, markdown);
+    const skill = buildRuntimeSkill(skillFile, markdown, projectSkillsRoot);
     const issues: SkillIssue[] = [];
     if (!skill.name.trim()) {
       issues.push({
@@ -185,7 +210,7 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
 
   return {
     scannedAt,
-    rootDir: toPosix(PROJECT_SKILLS_ROOT),
+    rootDir: toSkillDisplayPath(projectSkillsRoot, projectSkillsRoot),
     entries: entries.sort((a, b) => a.location.localeCompare(b.location)),
     skills: skills.sort((a, b) => a.name.localeCompare(b.name)),
     duplicateNames,
@@ -212,12 +237,17 @@ export const getRuntimeSkillByName = async (name: string) => {
 };
 
 export const sampleSkillFiles = async (skill: RuntimeSkill, limit = 10): Promise<string[]> => {
+  const fs = getFsImplementation();
+  const projectSkillsRoot = getProjectSkillsRoot();
+  const listBaseDir = skill.baseDirFsPath || skill.baseDir;
   const boundedLimit = Math.max(1, Math.min(limit, 30));
   const files: string[] = [];
   try {
-    const entries = await fs.readdir(skill.baseDir, { withFileTypes: true });
+    const entries = await fs.readdir(listBaseDir);
     for (const entry of entries) {
-      if (entry.isFile()) files.push(toPosix(path.join(skill.baseDir, entry.name)));
+      if (entry.isFile()) {
+        files.push(toSkillDisplayPath(path.join(listBaseDir, entry.name), projectSkillsRoot));
+      }
       if (files.length >= boundedLimit) break;
     }
   } catch {
@@ -234,8 +264,10 @@ export const createProjectSkill = async (input: {
   compatibility?: string;
   license?: string;
 }) => {
+  const fs = getFsImplementation();
+  const projectSkillsRoot = getProjectSkillsRoot();
   const skillName = sanitizeSkillName(input.name || "skill");
-  const skillDir = path.join(PROJECT_SKILLS_ROOT, skillName);
+  const skillDir = path.join(projectSkillsRoot, skillName);
   const skillFile = path.join(skillDir, "SKILL.md");
   await fs.mkdir(skillDir, { recursive: true });
 
@@ -257,22 +289,24 @@ export const createProjectSkill = async (input: {
 
   return {
     name: skillName,
-    skillDir: toPosix(skillDir),
-    skillFile: toPosix(skillFile),
+    skillDir: toSkillDisplayPath(skillDir, projectSkillsRoot),
+    skillFile: toSkillDisplayPath(skillFile, projectSkillsRoot),
   };
 };
 
 export const installBuiltinSkillCreator = async () => {
-  const targetDir = path.join(PROJECT_SKILLS_ROOT, "skill-creator");
+  const fs = getFsImplementation();
+  const projectSkillsRoot = getProjectSkillsRoot();
+  const targetDir = path.join(projectSkillsRoot, "skill-creator");
   const targetFile = path.join(targetDir, "SKILL.md");
 
   try {
-    await fs.access(targetFile);
+    await fs.stat(targetFile);
     return {
       installed: false,
       alreadyExists: true,
-      skillDir: toPosix(targetDir),
-      skillFile: toPosix(targetFile),
+      skillDir: toSkillDisplayPath(targetDir, projectSkillsRoot),
+      skillFile: toSkillDisplayPath(targetFile, projectSkillsRoot),
     };
   } catch {
     // continue
@@ -301,8 +335,8 @@ export const installBuiltinSkillCreator = async () => {
   return {
     installed: true,
     alreadyExists: false,
-    skillDir: toPosix(targetDir),
-    skillFile: toPosix(targetFile),
+    skillDir: toSkillDisplayPath(targetDir, projectSkillsRoot),
+    skillFile: toSkillDisplayPath(targetFile, projectSkillsRoot),
     sourceFile: "builtin:skill-creator",
   };
 };

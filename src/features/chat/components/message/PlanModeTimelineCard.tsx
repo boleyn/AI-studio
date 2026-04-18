@@ -54,7 +54,7 @@ const PlanModeTimelineCard = ({
       ? (runtimeInteraction.payload as PlanQuestionInteractionPayload)
       : null;
 
-  if (normalizedToolName === "request_user_input") {
+  if (normalizedToolName === "request_user_input" || normalizedToolName === "askuserquestion") {
     return (
       <Flex align="stretch" gap={2}>
         <Flex align="center" direction="column" w="12px">
@@ -105,7 +105,12 @@ const PlanModeTimelineCard = ({
     );
   }
 
-  if (normalizedToolName === "enter_plan_mode" || normalizedToolName === "exit_plan_mode") {
+  if (
+    normalizedToolName === "enter_plan_mode" ||
+    normalizedToolName === "exit_plan_mode" ||
+    normalizedToolName === "enterplanmode" ||
+    normalizedToolName === "exitplanmode"
+  ) {
     const approval = runtimeApproval;
     if (!approval) return null;
     return (

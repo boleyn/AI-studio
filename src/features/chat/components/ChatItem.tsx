@@ -316,6 +316,24 @@ const ChatItem = ({
                             <Text color="myGray.700" fontSize="12px" fontWeight="600" noOfLines={1}>
                               {item.toolName || `工具 ${index + 1}`}
                             </Text>
+                            {item.skillTag ? (
+                              <Box
+                                as="span"
+                                display="inline-flex"
+                                alignItems="center"
+                                px={2}
+                                py="1px"
+                                borderRadius="8px"
+                                border="1px solid"
+                                borderColor="adora.300"
+                                bg="adora.50"
+                                color="adora.800"
+                                fontSize="10px"
+                                fontWeight={700}
+                              >
+                                skill: {item.skillTag}
+                              </Box>
+                            ) : null}
                             {isRunning ? (
                               <Text
                                 bg="green.50"

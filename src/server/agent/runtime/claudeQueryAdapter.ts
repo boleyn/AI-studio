@@ -60,6 +60,37 @@ const toVirtualAbsoluteFilePath = (projectRoot: string, filePath: string): strin
   return path.resolve(projectRoot, relative);
 };
 
+const normalizeProjectFilePath = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/").trim();
+  if (!normalized) return "/";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+};
+
+const toLegacyClaudeSkillPath = (filePath: string): string | null => {
+  const normalized = normalizeProjectFilePath(filePath);
+  const matched = normalized.match(/^\/skills\/([^/]+)\/(.+)$/i);
+  if (!matched) return null;
+  const skillName = matched[1];
+  const rest = matched[2];
+  if (!skillName || !rest) return null;
+  return `/.claude/skills/${skillName}/${rest}`;
+};
+
+const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectFilesInput => {
+  const expanded: ProjectFilesInput = {};
+  for (const [rawPath, file] of Object.entries(projectFiles || {})) {
+    const normalizedPath = normalizeProjectFilePath(rawPath);
+    expanded[normalizedPath] = file;
+  }
+  for (const [normalizedPath, file] of Object.entries(expanded)) {
+    const mapped = toLegacyClaudeSkillPath(normalizedPath);
+    if (!mapped) continue;
+    if (mapped in expanded) continue;
+    expanded[mapped] = file;
+  }
+  return expanded;
+};
+
 export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: ProjectFilesInput): FsOperations => {
   const volume = new Volume();
   const memfs = createFsFromVolume(volume) as unknown as {
@@ -93,7 +124,7 @@ export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: Proj
     closeSync: (fd: number) => void;
   };
 
-  const projectEntries = Object.entries(projectFiles || {});
+  const projectEntries = Object.entries(expandProjectFilesForRuntime(projectFiles || {}));
   for (const [filePath, file] of projectEntries) {
     const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
     const dirPath = path.dirname(absolutePath);

@@ -34,6 +34,7 @@ export interface TimelineItem {
   text?: string;
   id?: string;
   toolName?: string;
+  skillTag?: string;
   params?: string;
   response?: string;
   interaction?: PlanInteractionEnvelope;
@@ -240,6 +241,44 @@ const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: 
   };
 };
 
+const extractSkillTag = ({
+  toolName,
+  params,
+  response,
+}: {
+  toolName?: string;
+  params?: string;
+  response?: string;
+}): string => {
+  const normalizedToolName = (toolName || "").trim().toLowerCase();
+  if (normalizedToolName !== "skill") return "";
+
+  const parseRecord = (value?: string): Record<string, unknown> | null => {
+    const raw = (value || "").trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      return parsed as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
+  const fromParams = parseRecord(params);
+  if (typeof fromParams?.skill === "string" && fromParams.skill.trim()) {
+    const normalized = fromParams.skill.trim().replace(/^\//, "");
+    if (normalized) return normalized;
+  }
+
+  const fromResult = parseRecord(response);
+  if (typeof fromResult?.commandName === "string" && fromResult.commandName.trim()) {
+    const normalized = fromResult.commandName.trim().replace(/^\//, "");
+    if (normalized) return normalized;
+  }
+  return "";
+};
+
 const getToolFingerprint = (toolName?: string, params?: string, response?: string) => {
   const normalizedName = (toolName || "").trim().toLowerCase();
   const normalizedParams = normalizeToolPayload(params);
@@ -406,21 +445,33 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
         if (typeof idx === "number" && timeline[idx]) {
           const target = timeline[idx];
           const display = getToolResultDisplayPayload(target.toolName, responseRaw);
+          const skillTag = extractSkillTag({
+            toolName: target.toolName,
+            params: target.params,
+            response: display.response,
+          });
           timeline[idx] = {
             ...target,
             response: display.response,
             params: target.params || display.paramsFallback || target.params,
+            ...(skillTag ? { skillTag } : {}),
             interaction: target.interaction || interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
           };
         } else {
           const display = getToolResultDisplayPayload("tool", responseRaw);
+          const skillTag = extractSkillTag({
+            toolName: "tool",
+            params: display.paramsFallback || "",
+            response: display.response,
+          });
           timeline.push({
             type: "tool",
             id: item.tool_use_id,
             toolName: "tool",
             params: display.paramsFallback || "",
             response: display.response,
+            ...(skillTag ? { skillTag } : {}),
             interaction: interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
           });
@@ -727,19 +778,44 @@ export const composeTimelineItems = ({
     const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
     if (targetIndexByFingerprint !== undefined) {
       const target = next[targetIndexByFingerprint];
-      next[targetIndexByFingerprint] = {
-        ...target,
-        toolName: target.toolName || tool.toolName,
-        params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-        response:
-          (target.response?.length || 0) >= (tool.response?.length || 0)
-            ? target.response
-            : tool.response,
-        interaction: target.interaction || tool.interaction,
-        progressStatus: target.progressStatus || tool.progressStatus,
-      };
-      return;
-    }
+        next[targetIndexByFingerprint] = {
+          ...target,
+          toolName: target.toolName || tool.toolName,
+          params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+          response:
+            (target.response?.length || 0) >= (tool.response?.length || 0)
+              ? target.response
+              : tool.response,
+          ...(extractSkillTag({
+            toolName: target.toolName || tool.toolName,
+            params:
+              target.params && target.params.length >= (tool.params?.length || 0)
+                ? target.params
+                : tool.params,
+            response:
+              (target.response?.length || 0) >= (tool.response?.length || 0)
+                ? target.response
+                : tool.response,
+          })
+            ? {
+                skillTag: extractSkillTag({
+                  toolName: target.toolName || tool.toolName,
+                  params:
+                    target.params && target.params.length >= (tool.params?.length || 0)
+                      ? target.params
+                      : tool.params,
+                  response:
+                    (target.response?.length || 0) >= (tool.response?.length || 0)
+                      ? target.response
+                      : tool.response,
+                }),
+              }
+            : {}),
+          interaction: target.interaction || tool.interaction,
+          progressStatus: target.progressStatus || tool.progressStatus,
+        };
+        return;
+      }
 
     if (toolId) {
       const targetIndex = timelineToolIndexById.get(toolId);
@@ -753,6 +829,31 @@ export const composeTimelineItems = ({
             (target.response?.length || 0) >= (tool.response?.length || 0)
               ? target.response
               : tool.response,
+          ...(extractSkillTag({
+            toolName: target.toolName || tool.toolName,
+            params:
+              target.params && target.params.length >= (tool.params?.length || 0)
+                ? target.params
+                : tool.params,
+            response:
+              (target.response?.length || 0) >= (tool.response?.length || 0)
+                ? target.response
+                : tool.response,
+          })
+            ? {
+                skillTag: extractSkillTag({
+                  toolName: target.toolName || tool.toolName,
+                  params:
+                    target.params && target.params.length >= (tool.params?.length || 0)
+                      ? target.params
+                      : tool.params,
+                  response:
+                    (target.response?.length || 0) >= (tool.response?.length || 0)
+                      ? target.response
+                      : tool.response,
+                }),
+              }
+            : {}),
           interaction: target.interaction || tool.interaction,
           progressStatus: target.progressStatus || tool.progressStatus,
         };
@@ -767,6 +868,19 @@ export const composeTimelineItems = ({
         toolName: tool.toolName || "",
         params: tool.params || "",
         response: tool.response || "",
+        ...(extractSkillTag({
+          toolName: tool.toolName || "",
+          params: tool.params || "",
+          response: tool.response || "",
+        })
+          ? {
+              skillTag: extractSkillTag({
+                toolName: tool.toolName || "",
+                params: tool.params || "",
+                response: tool.response || "",
+              }),
+            }
+          : {}),
         interaction: tool.interaction,
         progressStatus: tool.progressStatus,
       }) - 1;

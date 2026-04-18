@@ -53,7 +53,63 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
     if (!id) return true;
     return latestIndexById.get(id) === index;
   });
-  return deduped;
+
+  const findLatestPlanProgressPayload = (
+    controlEvents: unknown
+  ): { explanation?: string; plan: Array<{ step: string; status: "pending" | "in_progress" | "completed" }> } | null => {
+    const events = Array.isArray(controlEvents) ? controlEvents : [];
+    for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+      const entry = events[idx];
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const record = entry as Record<string, unknown>;
+      if (record.type !== "plan_progress") continue;
+      const payload =
+        record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
+          ? (record.payload as Record<string, unknown>)
+          : null;
+      if (!payload) continue;
+      const rawPlan = Array.isArray(payload.plan) ? payload.plan : [];
+      const plan = rawPlan
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+        .map((item) => ({
+          step: typeof item.step === "string" ? item.step.trim() : "",
+          status:
+            item.status === "completed"
+              ? "completed"
+              : item.status === "in_progress"
+              ? "in_progress"
+              : "pending",
+        }))
+        .filter((item) => item.step.length > 0);
+      if (plan.length === 0) continue;
+      return {
+        ...(typeof payload.explanation === "string" && payload.explanation.trim()
+          ? { explanation: payload.explanation.trim() }
+          : {}),
+        plan,
+      };
+    }
+    return null;
+  };
+
+  return deduped.map((message) => {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object" && !Array.isArray(message.additional_kwargs)
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs || kwargs.planProgress) return message;
+
+    const planProgress = findLatestPlanProgressPayload(kwargs.controlEvents);
+    if (!planProgress) return message;
+
+    return {
+      ...message,
+      additional_kwargs: {
+        ...kwargs,
+        planProgress,
+      },
+    };
+  });
 };
 
 export const buildConversationTitle = (value: string): string | null => {

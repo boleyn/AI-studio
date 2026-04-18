@@ -34,7 +34,7 @@ const parsePendingQuestion = (kwargs: Record<string, unknown>): PlanResumeQuesti
   const isRequestPending = (requestId: string) => {
     if (!requestId) return false;
     const state = interactionState[requestId];
-    if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return true;
     return (state as { status?: unknown }).status === "pending";
   };
   const controlEvents = Array.isArray(kwargs.controlEvents) ? kwargs.controlEvents : [];

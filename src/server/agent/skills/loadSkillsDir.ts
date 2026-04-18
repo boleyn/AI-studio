@@ -1,4 +1,3 @@
-import { realpath } from 'fs/promises'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import {
@@ -62,6 +61,7 @@ import { getManagedFilePath } from '../utils/settings/managedPath.js'
 import { isRestrictedToPluginOnly } from '../utils/settings/pluginOnlyPolicy.js'
 import { HooksSchema, type HooksSettings } from '../utils/settings/types.js'
 import { createSignal } from '../utils/signal.js'
+import { maskVirtualPathForDisplay } from '../utils/file.js'
 import { registerMCPSkillBuilders } from './mcpSkillBuilders.js'
 
 export type LoadedFrom =
@@ -117,7 +117,7 @@ export function estimateSkillFrontmatterTokens(skill: Command): number {
  */
 async function getFileIdentity(filePath: string): Promise<string | null> {
   try {
-    return await realpath(filePath)
+    return getFsImplementation().realpathSync(filePath)
   } catch {
     return null
   }
@@ -343,7 +343,7 @@ export function createSkillCommand({
     skillRoot: baseDir,
     async getPromptForCommand(args, toolUseContext) {
       let finalContent = baseDir
-        ? `Base directory for this skill: ${baseDir}\n\n${markdownContent}`
+        ? `Base directory for this skill: ${maskVirtualPathForDisplay(baseDir)}\n\n${markdownContent}`
         : markdownContent
 
       finalContent = substituteArguments(

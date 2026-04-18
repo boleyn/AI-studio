@@ -1,5 +1,4 @@
 import type { Base64ImageSource } from '@anthropic-ai/sdk/resources/index.mjs'
-import { readdir, readFile as readFileAsync } from 'fs/promises'
 import * as path from 'path'
 import { posix, win32 } from 'path'
 import { z } from 'zod/v4'
@@ -964,12 +963,15 @@ async function callInner(
         filePath: fullFilePath,
         content: `PDF pages ${pages}`,
       })
-      const entries = await readdir(extractResult.data.file.outputDir)
-      const imageFiles = entries.filter(f => f.endsWith('.jpg')).sort()
+      const entries = await getFsImplementation().readdir(extractResult.data.file.outputDir)
+      const imageFiles = entries
+        .filter(entry => entry.isFile() && entry.name.endsWith('.jpg'))
+        .map(entry => entry.name)
+        .sort()
       const imageBlocks = await Promise.all(
         imageFiles.map(async f => {
           const imgPath = path.join(extractResult.data.file.outputDir, f)
-          const imgBuffer = await readFileAsync(imgPath)
+          const imgBuffer = await getFsImplementation().readFileBytes(imgPath)
           const resized = await maybeResizeAndDownsampleImageBuffer(
             imgBuffer,
             imgBuffer.length,

@@ -17,13 +17,12 @@ import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { AppState } from 'src/state/AppState.js'
 import { z } from 'zod/v4'
 import path from 'node:path'
-import { getKairosActive } from 'src/bootstrap/state.js'
+import { getKairosActive, getOriginalCwd } from 'src/bootstrap/state.js'
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js'
 import type {
   SetToolJSXFn,
   ToolCallProgress,
@@ -53,12 +52,14 @@ import {
   detectFileEncoding,
   detectLineEndings,
   getFileModificationTime,
+  maskVirtualPathForDisplay,
   writeTextContent,
 } from 'src/utils/file.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
 } from 'src/utils/fileHistory.js'
+import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import { truncate } from 'src/utils/format.js'
 import { getFsImplementation, getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
@@ -81,6 +82,7 @@ import {
   getToolResultPath,
   PREVIEW_SIZE_BYTES,
 } from 'src/utils/toolResultStorage.js'
+import { maskAbsolutePathsInText } from 'src/utils/virtualPathMasking.js'
 import { userFacingName as fileEditUserFacingName } from '../FileEditTool/UI.js'
 import { trackGitOperations } from '../shared/gitOperationTracking.js'
 import {
@@ -115,6 +117,10 @@ import {
   stdErrAppendShellResetMessage,
   stripEmptyLines,
 } from './utils.js'
+import {
+  notifyBashFilesystemUpdates,
+  snapshotFilesystemMtimeByPath,
+} from './fileChangeNotifications.js'
 
 const EOL = '\n'
 
@@ -243,6 +249,10 @@ function isInsideVirtualRoot(candidatePath: string, rootPath: string): boolean {
   )
 }
 
+function maskVirtualPathsInText(input: string): string {
+  return maskAbsolutePathsInText(input, maskVirtualPathForDisplay)
+}
+
 function getVirtualWasiMap(): Record<string, string> {
   const raw = process.env.CLAUDE_CODE_VIRTUAL_WASI_COMMAND_MAP
   if (!raw?.trim()) return {}
@@ -258,6 +268,24 @@ function getVirtualWasiMap(): Record<string, string> {
   } catch {
     return {}
   }
+}
+
+function collectBashFilesystemRoots(context: Pick<ToolUseContext, 'getAppState'>): string[] {
+  const roots = new Set<string>()
+  const fs = getFsImplementation()
+  const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
+  if (virtualProjectRoot) {
+    roots.add(path.resolve(virtualProjectRoot))
+    return Array.from(roots)
+  }
+
+  roots.add(path.resolve(getOriginalCwd()))
+  roots.add(path.resolve(fs.cwd()))
+  const appState = context.getAppState()
+  for (const dir of appState.toolPermissionContext.additionalWorkingDirectories.keys()) {
+    roots.add(path.resolve(dir))
+  }
+  return Array.from(roots)
 }
 
 async function materializeVirtualTreeToHost(
@@ -324,7 +352,7 @@ async function runVirtualWasiCommand(
       stdout: '',
       stderr:
         error instanceof Error
-          ? `Virtual WASI runtime unavailable: ${error.message}`
+          ? `Virtual WASI runtime unavailable: ${maskVirtualPathsInText(error.message)}`
           : 'Virtual WASI runtime unavailable.',
     }
   }
@@ -334,7 +362,7 @@ async function runVirtualWasiCommand(
     return {
       code: 1,
       stdout: '',
-      stderr: `Working directory "${cwd}" is outside virtual project root "${virtualProjectRoot}".`,
+      stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside virtual project root "<virtual-project-root>".`,
     }
   }
 
@@ -379,7 +407,7 @@ async function runVirtualWasiCommand(
         stdout: '',
         stderr:
           error instanceof Error
-            ? `Virtual WASI execution failed: ${error.message}`
+            ? `Virtual WASI execution failed: ${maskVirtualPathsInText(error.message)}`
             : 'Virtual WASI execution failed.',
       }
     } finally {
@@ -428,7 +456,7 @@ async function runVirtualBashCommand(
       return {
         code: 1,
         stdout: '',
-        stderr: `Path "${resolved}" is outside virtual project root "${virtualProjectRoot}".`,
+        stderr: `Path "${maskVirtualPathForDisplay(resolved)}" is outside virtual project root "<virtual-project-root>".`,
       }
     }
     try {
@@ -447,7 +475,7 @@ async function runVirtualBashCommand(
         stdout: '',
         stderr:
           error instanceof Error
-            ? error.message
+            ? maskVirtualPathsInText(error.message)
             : `Path "${requested}" does not exist.`,
       }
     }
@@ -476,7 +504,7 @@ async function runVirtualBashCommand(
   }
 
   if (base === 'pwd') {
-    return { code: 0, stdout: `${cwd}\n`, stderr: '' }
+    return { code: 0, stdout: `${maskVirtualPathForDisplay(cwd)}\n`, stderr: '' }
   }
 
   if (base === 'echo') {
@@ -541,7 +569,7 @@ async function runVirtualBashCommand(
           stdout: '',
           stderr:
             error instanceof Error
-              ? error.message
+              ? maskVirtualPathsInText(error.message)
               : `ls: cannot access '${target}'`,
         }
       }
@@ -567,7 +595,7 @@ async function runVirtualBashCommand(
           stdout: '',
           stderr:
             error instanceof Error
-              ? error.message
+              ? maskVirtualPathsInText(error.message)
               : `cat: ${file}: unable to read`,
         }
       }
@@ -1022,7 +1050,10 @@ async function applySedEdit(
   writeTextContent(absoluteFilePath, newContent, encoding, endings)
 
   // Notify VS Code about the file change
-  notifyVscodeFileUpdated(absoluteFilePath, originalContent, newContent)
+  notifyFileUpdated(absoluteFilePath, originalContent, newContent, {
+    syncLsp: true,
+    clearLspDiagnostics: true,
+  })
 
   // Update read timestamp to invalidate stale writes
   toolUseContext.readFileState.set(absoluteFilePath, {
@@ -1300,6 +1331,13 @@ export const BashTool = buildTool({
 
     const { abortController, getAppState, setAppState, setToolJSX } =
       toolUseContext
+    const shouldTrackFilesystemWrites = !this.isReadOnly(input)
+    const fsRootsForDiff = shouldTrackFilesystemWrites
+      ? collectBashFilesystemRoots(toolUseContext)
+      : []
+    const fsSnapshotBefore = shouldTrackFilesystemWrites
+      ? snapshotFilesystemMtimeByPath(fsRootsForDiff)
+      : null
 
     const stdoutAccumulator = new EndTruncatingAccumulator()
     let stderrForShellReset = ''
@@ -1310,6 +1348,7 @@ export const BashTool = buildTool({
     let progressCounter = 0
     let wasInterrupted = false
     let result: ExecResult
+    let completedResult: ExecResult | undefined
 
     const isMainThread = !toolUseContext.agentId
     const preventCwdChanges = !isMainThread
@@ -1353,6 +1392,7 @@ export const BashTool = buildTool({
 
       // Get the final result from the generator's return value
       result = generatorResult.value
+      completedResult = result
 
       trackGitOperations(input.command, result.code, result.stdout)
 
@@ -1415,6 +1455,25 @@ export const BashTool = buildTool({
       }
       wasInterrupted = result.interrupted
     } finally {
+      if (
+        fsSnapshotBefore &&
+        completedResult &&
+        completedResult.backgroundTaskId === undefined
+      ) {
+        notifyBashFilesystemUpdates(
+          fsSnapshotBefore,
+          fsRootsForDiff,
+          toolUseContext.readFileState,
+          undefined,
+          {
+            commandType: getCommandTypeForLogging(input.command),
+            toolName:
+              'Bash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            permissionMode: toolUseContext.getAppState().toolPermissionContext
+              .mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          },
+        )
+      }
       if (setToolJSX) setToolJSX(null)
     }
 

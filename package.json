@@ -13,7 +13,8 @@
     "start": "NEXT_DIST_DIR=.next next start",
     "lint": "next lint --dir src/pages --dir src/features --dir src/server --dir src/shared --dir src/contexts --dir src/hooks",
     "test:workspace": "tsx --test src/server/agent/workspace/projectWorkspaceManager.test.ts",
-    "test:agent": "tsx --test src/server/agent/runtime/sessionRuntimeProtocol.test.ts"
+    "test:agent": "tsx --test src/server/agent/runtime/sessionRuntimeProtocol.test.ts",
+    "test:regression:saas-runtime": "bun test src/server/agent/runtime/claudeQueryAdapter.virtualFs.test.ts src/server/agent/skills/projectRuntimeSkills.test.ts src/server/agent/skills/registry.test.ts src/server/agent/utils/maskVirtualPath.test.ts src/server/builtin-tools/tools/BashTool/__tests__/virtualPathMasking.test.ts src/server/builtin-tools/tools/BashTool/__tests__/fileChangeNotifications.test.ts src/features/chat/utils/chatPanelUtils.test.ts src/features/chat/utils/planResume.test.ts src/shared/chat/planInteraction.test.ts"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "file:vendor/claude-packages/@alcalzone/ansi-tokenize",
