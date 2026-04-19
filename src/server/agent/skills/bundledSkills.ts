@@ -7,6 +7,7 @@ import type { Command } from '../types/command.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getBundledSkillsRoot } from '../utils/permissions/filesystem.js'
 import type { HooksSettings } from '../utils/settings/types.js'
+import { withSkillBaseDirForModel } from '../utils/skillPathDisplay.js'
 
 /**
  * Definition for a bundled skill that ships with the CLI.
@@ -209,12 +210,11 @@ function prependBaseDir(
   blocks: ContentBlockParam[],
   baseDir: string,
 ): ContentBlockParam[] {
-  const prefix = `Base directory for this skill: ${baseDir}\n\n`
   if (blocks.length > 0 && blocks[0]!.type === 'text') {
     return [
-      { type: 'text', text: prefix + blocks[0]!.text },
+      { type: 'text', text: withSkillBaseDirForModel(blocks[0]!.text, baseDir) },
       ...blocks.slice(1),
     ]
   }
-  return [{ type: 'text', text: prefix }, ...blocks]
+  return [{ type: 'text', text: withSkillBaseDirForModel('', baseDir) }, ...blocks]
 }

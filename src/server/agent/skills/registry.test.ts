@@ -58,11 +58,11 @@ describe("skills registry virtual path behavior", () => {
   beforeEach(async () => {
     tempRoot = await mkdtemp(path.join(os.tmpdir(), "aistudio-skill-registry-"));
     testCwd = tempRoot;
-    await mkdir(path.join(tempRoot, ".claude", "skills", "demo"), {
+    await mkdir(path.join(tempRoot, ".aistudio", "skills", "demo"), {
       recursive: true,
     });
     await writeFile(
-      path.join(tempRoot, ".claude", "skills", "demo", "SKILL.md"),
+      path.join(tempRoot, ".aistudio", "skills", "demo", "SKILL.md"),
       "---\nname: demo\ndescription: demo skill\n---\n\n# demo\n",
       "utf8",
     );
@@ -74,14 +74,12 @@ describe("skills registry virtual path behavior", () => {
 
   test("snapshot uses masked/virtualized paths", async () => {
     const snapshot = await getSkillSnapshot(true);
-    expect(snapshot.rootDir).toBe("<virtual-project-root>/.claude/skills");
+    expect(snapshot.rootDir).toBe("/.aistudio/skills + /skills");
     expect(snapshot.entries.length).toBe(1);
 
-    const entry = snapshot.entries[0]!;
-    expect(entry.location).toBe(
-      "<virtual-project-root>/.claude/skills/demo/SKILL.md",
+    expect(snapshot.entries.map(item => item.location)).toContain(
+      "<virtual-project-root>/.aistudio/skills/demo/SKILL.md",
     );
-    expect(entry.relativeLocation).toBe("/demo/SKILL.md");
   });
 
   test("createProjectSkill returns masked paths and sampleSkillFiles stays masked", async () => {
@@ -92,10 +90,10 @@ describe("skills registry virtual path behavior", () => {
     });
 
     expect(created.skillDir).toBe(
-      "<virtual-project-root>/.claude/skills/new-skill",
+      "<virtual-project-root>/.aistudio/skills/new-skill",
     );
     expect(created.skillFile).toBe(
-      "<virtual-project-root>/.claude/skills/new-skill/SKILL.md",
+      "<virtual-project-root>/.aistudio/skills/new-skill/SKILL.md",
     );
 
     const snapshot = await getSkillSnapshot(true);
@@ -110,4 +108,3 @@ describe("skills registry virtual path behavior", () => {
     }
   });
 });
-

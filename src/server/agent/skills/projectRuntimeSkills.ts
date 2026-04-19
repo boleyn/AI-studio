@@ -51,7 +51,7 @@ export const collectProjectRuntimeSkills = (
     const normalized = toPosix(filePath || "").replace(/^\/+/, "");
     return (
       /^skills\/[^/]+\/SKILL\.md$/i.test(normalized) ||
-      /^\.?claude\/skills\/[^/]+\/SKILL\.md$/i.test(normalized)
+      /^\.?aistudio\/skills\/[^/]+\/SKILL\.md$/i.test(normalized)
     );
   });
 

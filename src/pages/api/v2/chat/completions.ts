@@ -207,6 +207,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   registerActiveConversationRun({ token, chatId, controller: abortController });
 
   try {
+    console.log("[skill-debug][v2-chat-request]", {
+      token,
+      conversationId,
+      selectedModel,
+      selectedSkills,
+      sdkMessageCount: sdkMessages.length,
+      agentMessageCount: toAgentMessages(sdkMessages).length,
+    });
+
     const runtimeStatusLog = (event: SdkStreamEventName, data: Record<string, unknown>) => {
       if (
         event === SdkStreamEventEnum.status &&

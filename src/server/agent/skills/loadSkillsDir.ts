@@ -1,15 +1,9 @@
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  sep as pathSep,
-  relative,
-} from 'path'
+import { basename, dirname, isAbsolute, join, sep as pathSep } from 'path'
 import {
   getAdditionalDirectoriesForClaudeMd,
+  getProjectRoot,
   getSessionId,
 } from '../bootstrap/state.js'
 import {
@@ -61,7 +55,10 @@ import { getManagedFilePath } from '../utils/settings/managedPath.js'
 import { isRestrictedToPluginOnly } from '../utils/settings/pluginOnlyPolicy.js'
 import { HooksSchema, type HooksSettings } from '../utils/settings/types.js'
 import { createSignal } from '../utils/signal.js'
-import { maskVirtualPathForDisplay } from '../utils/file.js'
+import {
+  toModelVisibleSkillPath,
+  withSkillBaseDirForModel,
+} from '../utils/skillPathDisplay.js'
 import { registerMCPSkillBuilders } from './mcpSkillBuilders.js'
 
 export type LoadedFrom =
@@ -79,13 +76,15 @@ export function getSkillsPath(
   source: SettingSource | 'plugin',
   dir: 'skills' | 'commands',
 ): string {
+  const projectConfigDir = dir === 'skills' ? '.aistudio' : '.claude'
+  const managedConfigDir = dir === 'skills' ? '.aistudio' : '.claude'
   switch (source) {
     case 'policySettings':
-      return join(getManagedFilePath(), '.claude', dir)
+      return join(getManagedFilePath(), managedConfigDir, dir)
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `.claude/${dir}`
+      return `${projectConfigDir}/${dir}`
     case 'plugin':
       return 'plugin'
     default:
@@ -342,9 +341,13 @@ export function createSkillCommand({
     hooks,
     skillRoot: baseDir,
     async getPromptForCommand(args, toolUseContext) {
-      let finalContent = baseDir
-        ? `Base directory for this skill: ${maskVirtualPathForDisplay(baseDir)}\n\n${markdownContent}`
-        : markdownContent
+      const runtimeSkillDir =
+        baseDir == null
+          ? undefined
+          : process.platform === 'win32'
+            ? baseDir.replace(/\\/g, '/')
+            : baseDir
+      let finalContent = markdownContent
 
       finalContent = substituteArguments(
         finalContent,
@@ -353,17 +356,23 @@ export function createSkillCommand({
         argumentNames,
       )
 
+      // For internal execution we still substitute ${CLAUDE_SKILL_DIR} to the
+      // runtime skill directory. Before returning content to the model we remap
+      // to model-visible virtual paths to avoid leaking host absolute paths.
+      let contentForExecution = finalContent
+
       // Replace ${CLAUDE_SKILL_DIR} with the skill's own directory so bash
       // injection (!`...`) can reference bundled scripts. Normalize backslashes
       // to forward slashes on Windows so shell commands don't treat them as escapes.
-      if (baseDir) {
-        const skillDir =
-          process.platform === 'win32' ? baseDir.replace(/\\/g, '/') : baseDir
-        finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillDir)
+      if (runtimeSkillDir) {
+        contentForExecution = contentForExecution.replace(
+          /\$\{CLAUDE_SKILL_DIR\}/g,
+          runtimeSkillDir,
+        )
       }
 
       // Replace ${CLAUDE_SESSION_ID} with the current session ID
-      finalContent = finalContent.replace(
+      contentForExecution = contentForExecution.replace(
         /\$\{CLAUDE_SESSION_ID\}/g,
         getSessionId(),
       )
@@ -372,8 +381,8 @@ export function createSkillCommand({
       // shell commands (!`…` / ```! … ```) from their markdown body.
       // ${CLAUDE_SKILL_DIR} is meaningless for MCP skills anyway.
       if (loadedFrom !== 'mcp') {
-        finalContent = await executeShellCommandsInPrompt(
-          finalContent,
+        contentForExecution = await executeShellCommandsInPrompt(
+          contentForExecution,
           {
             ...toolUseContext,
             getAppState() {
@@ -395,7 +404,34 @@ export function createSkillCommand({
         )
       }
 
-      return [{ type: 'text', text: finalContent }]
+      const contentForModel = runtimeSkillDir
+        ? withSkillBaseDirForModel(contentForExecution, runtimeSkillDir)
+        : contentForExecution
+
+      logForDebugging(
+        `[skill-debug] getPromptForCommand name=${skillName} loadedFrom=${loadedFrom} runtimeSkillDir=${runtimeSkillDir ?? 'none'} visibleSkillDir=${runtimeSkillDir ? toModelVisibleSkillPath(runtimeSkillDir) : 'none'} hasUsersPath=${contentForModel.includes('/Users/')}`,
+      )
+      console.log('[skill-debug][getPromptForCommand]', {
+        skillName,
+        loadedFrom,
+        runtimeSkillDir: runtimeSkillDir ?? 'none',
+        visibleSkillDir: runtimeSkillDir
+          ? toModelVisibleSkillPath(runtimeSkillDir)
+          : 'none',
+        hasUsersPath: contentForModel.includes('/Users/'),
+        preview: contentForModel.slice(0, 1200),
+      })
+      if (
+        (process.env.AISTUDIO_DEBUG_SKILL_PROMPTS === '1' ||
+          process.env.NEXT_PUBLIC_AISTUDIO_DEBUG_SKILL_PROMPTS === '1') &&
+        contentForModel
+      ) {
+        logForDebugging(
+          `[skill-debug] getPrompt-preview name=${skillName}\n${contentForModel.slice(0, 4000)}`,
+        )
+      }
+
+      return [{ type: 'text', text: contentForModel }]
     },
   } satisfies Command
 }
@@ -638,7 +674,7 @@ async function loadSkillsFromCommandsDir(
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
     const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
-    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const managedSkillsDir = join(getManagedFilePath(), '.aistudio', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
     logForDebugging(
@@ -665,7 +701,7 @@ export const getSkillDirCommands = memoize(
       const additionalSkillsNested = await Promise.all(
         additionalDirs.map(dir =>
           loadSkillsFromSkillsDir(
-            join(dir, '.claude', 'skills'),
+            join(dir, '.aistudio', 'skills'),
             'projectSettings',
           ),
         ),
@@ -700,7 +736,7 @@ export const getSkillDirCommands = memoize(
         ? Promise.all(
             additionalDirs.map(dir =>
               loadSkillsFromSkillsDir(
-                join(dir, '.claude', 'skills'),
+                join(dir, '.aistudio', 'skills'),
                 'projectSettings',
               ),
             ),
@@ -874,7 +910,7 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.claude', 'skills')
+      const skillDir = join(currentDir, '.aistudio', 'skills')
 
       // Skip if we've already checked this path (hit or miss) — avoids
       // repeating the same failed stat on every Read/Write/Edit call when
@@ -884,7 +920,7 @@ export async function discoverSkillDirsForPaths(
         try {
           await fs.stat(skillDir)
           // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
+          // is gitignored — blocks e.g. node_modules/pkg/.aistudio/skills from
           // loading silently. `git check-ignore` handles nested .gitignore,
           // .git/info/exclude, and global gitignore. Fails open outside a
           // git repo (exit 128 → false); the invocation-time trust dialog

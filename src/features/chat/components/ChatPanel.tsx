@@ -352,11 +352,7 @@ const ChatPanel = ({
       return;
     }
     const recoveredUsage = getLatestContextUsageFromMessages(messagesRef.current, model);
-    const matchedRecoveredUsage =
-      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
-        ? recoveredUsage
-        : null;
-    setContextUsageSnapshot(matchedRecoveredUsage || null, activeId, model);
+    setContextUsageSnapshot(recoveredUsage || null, activeId, model);
   }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot]);
 
 
@@ -595,6 +591,23 @@ const ChatPanel = ({
           })),
         requestMessage,
       ];
+      console.log("[skill-debug][chatpanel-send]", {
+        selectedSkillsState: selectedSkills,
+        payloadSelectedSkill: payload.selectedSkill || null,
+        payloadSelectedSkills: payload.selectedSkills || [],
+        requestMessageSelectedSkill:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkill" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkill
+            : null,
+        requestMessageSelectedSkills:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkills" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkills
+            : [],
+      });
       if (continuedAssistantMessage && isInteractionContinuation) {
         setMessages((prev) =>
           prev.map((msg) => {
@@ -1184,6 +1197,8 @@ const ChatPanel = ({
                 assistant.additional_kwargs && typeof assistant.additional_kwargs === "object"
                   ? assistant.additional_kwargs
                   : {};
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
               snapshot[assistantIndex] = {
                 ...assistant,
                 content:
@@ -1195,18 +1210,25 @@ const ChatPanel = ({
                 additional_kwargs: {
                   ...kwargs,
                   ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                  ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
                 },
               };
             } else if (finalAssistantText || finalReasoningText || assistantFailureText) {
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
               snapshot.push({
                 role: "assistant",
                 id: assistantMessageId,
                 time: assistantCreatedAt,
                 content: finalAssistantText || assistantFailureText || "[已中断]",
                 ...(assistantFailureText ? { status: "error" as const } : {}),
-                additional_kwargs: finalReasoningText
-                  ? { reasoning_text: finalReasoningText }
-                  : undefined,
+                additional_kwargs:
+                  finalReasoningText || recoveredContextUsage
+                    ? {
+                        ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                        ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
+                      }
+                    : undefined,
               });
             }
 
@@ -1395,7 +1417,7 @@ const ChatPanel = ({
       conversations,
       contextUsage,
       contextStatus,
-      messageCount: conversations.length,
+      messageCount: messages.length,
       model,
       modelLoading,
       modelOptions,

@@ -3,10 +3,13 @@ import type { SdkMessage } from "@shared/chat/sdkMessages";
 import { createSdkMessage, sdkContentToText } from "@shared/chat/sdkMessages";
 import type { SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { Volume, createFsFromVolume } from "memfs";
 import type { FsOperations } from "../utils/fsOperations";
 import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsOperations";
+import { runWithClaudeConfigHomeDir } from "../utils/envUtils";
 import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 
@@ -34,6 +37,12 @@ type QueryEngineExecutionAttempt = {
   stopReason?: string | null;
   warnings?: string[];
   resultSubtype?: string | null;
+  usage?: {
+    input_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+    output_tokens?: number;
+  } | null;
   error?: string;
 };
 
@@ -46,11 +55,32 @@ type ToolInputState = {
 };
 
 type ProjectFilesInput = Record<string, { code?: string }>;
+type BuildProjectMemfsOverlayOptions = {
+  systemSkillsRoot?: string;
+  includeSystemSkills?: boolean;
+};
 
 const isPathInsideRoot = (targetPath: string, rootPath: string): boolean => {
   const normalizedTarget = path.resolve(targetPath);
   const normalizedRoot = path.resolve(rootPath);
   return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`);
+};
+
+const toVirtualPathFromHostProjectPath = (
+  targetPath: string,
+  hostProjectRoot: string,
+  virtualProjectRoot: string
+): string | null => {
+  const normalizedTarget = path.resolve(targetPath);
+  const normalizedHostRoot = path.resolve(hostProjectRoot);
+  if (!isPathInsideRoot(normalizedTarget, normalizedHostRoot)) {
+    return null;
+  }
+  const relative =
+    normalizedTarget === normalizedHostRoot
+      ? ""
+      : path.relative(normalizedHostRoot, normalizedTarget);
+  return relative ? path.resolve(virtualProjectRoot, relative) : path.resolve(virtualProjectRoot);
 };
 
 const toVirtualAbsoluteFilePath = (projectRoot: string, filePath: string): string => {
@@ -66,14 +96,74 @@ const normalizeProjectFilePath = (filePath: string): string => {
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 };
 
-const toLegacyClaudeSkillPath = (filePath: string): string | null => {
+const HOST_ABSOLUTE_PREFIXES = [
+  "/Users/",
+  "/home/",
+  "/private/",
+  "/var/",
+  "/tmp/",
+  "/etc/",
+  "/opt/",
+  "/Applications/",
+  "/Library/",
+  "/System/",
+  "/Volumes/",
+  "/bin/",
+  "/sbin/",
+  "/usr/",
+  "/dev/",
+];
+
+const toAistudioSkillPath = (filePath: string): string | null => {
   const normalized = normalizeProjectFilePath(filePath);
   const matched = normalized.match(/^\/skills\/([^/]+)\/(.+)$/i);
   if (!matched) return null;
   const skillName = matched[1];
   const rest = matched[2];
   if (!skillName || !rest) return null;
-  return `/.claude/skills/${skillName}/${rest}`;
+  return `/.aistudio/skills/${skillName}/${rest}`;
+};
+
+const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput => {
+  const normalizedRoot = path.resolve(systemSkillsRoot);
+  if (!existsSync(normalizedRoot)) return {};
+  let rootStats;
+  try {
+    rootStats = statSync(normalizedRoot);
+  } catch {
+    return {};
+  }
+  if (!rootStats.isDirectory()) return {};
+
+  const files: ProjectFilesInput = {};
+  const walk = (currentDir: string) => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const relative = path.relative(normalizedRoot, fullPath).replace(/\\/g, "/");
+      if (!relative || relative.startsWith("..")) continue;
+      let code = "";
+      try {
+        code = readFileSync(fullPath, "utf8");
+      } catch {
+        continue;
+      }
+      files[`/skills/${relative}`] = { code };
+    }
+  };
+
+  walk(normalizedRoot);
+  return files;
 };
 
 const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectFilesInput => {
@@ -83,15 +173,19 @@ const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectF
     expanded[normalizedPath] = file;
   }
   for (const [normalizedPath, file] of Object.entries(expanded)) {
-    const mapped = toLegacyClaudeSkillPath(normalizedPath);
-    if (!mapped) continue;
-    if (mapped in expanded) continue;
-    expanded[mapped] = file;
+    const mappedAistudio = toAistudioSkillPath(normalizedPath);
+    if (mappedAistudio && !(mappedAistudio in expanded)) {
+      expanded[mappedAistudio] = file;
+    }
   }
   return expanded;
 };
 
-export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: ProjectFilesInput): FsOperations => {
+export const buildProjectMemfsOverlay = (
+  projectRoot: string,
+  projectFiles: ProjectFilesInput,
+  options?: BuildProjectMemfsOverlayOptions
+): FsOperations => {
   const volume = new Volume();
   const memfs = createFsFromVolume(volume) as unknown as {
     promises: Record<string, (...args: any[]) => Promise<any>>;
@@ -124,7 +218,17 @@ export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: Proj
     closeSync: (fd: number) => void;
   };
 
-  const projectEntries = Object.entries(expandProjectFilesForRuntime(projectFiles || {}));
+  const includeSystemSkills = options?.includeSystemSkills !== false;
+  const systemSkillsRoot = options?.systemSkillsRoot
+    ? path.resolve(options.systemSkillsRoot)
+    : path.resolve(process.cwd(), "skills");
+  const mergedProjectFiles = includeSystemSkills
+    ? {
+        ...collectSystemSkillFiles(systemSkillsRoot),
+        ...(projectFiles || {}),
+      }
+    : (projectFiles || {});
+  const projectEntries = Object.entries(expandProjectFilesForRuntime(mergedProjectFiles));
   for (const [filePath, file] of projectEntries) {
     const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
     const dirPath = path.dirname(absolutePath);
@@ -132,9 +236,43 @@ export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: Proj
     memfs.writeFileSync(absolutePath, typeof file?.code === "string" ? file.code : "");
   }
   memfs.mkdirSync(projectRoot, { recursive: true });
+  const hostProjectRoot = path.resolve(process.cwd());
+  const hostHomeRoot = path.resolve(homedir());
+  const virtualHomeRoot = path.resolve(projectRoot, ".aistudio-home");
+  memfs.mkdirSync(virtualHomeRoot, { recursive: true });
 
-  const resolveForRouting = (targetPath: string): string =>
-    path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(projectRoot, targetPath);
+  const resolveForRouting = (targetPath: string): string => {
+    const normalizedTarget = targetPath.replace(/\\/g, "/").trim();
+    if (!normalizedTarget) return projectRoot;
+    if (!path.isAbsolute(normalizedTarget)) {
+      return path.resolve(projectRoot, normalizedTarget);
+    }
+    const absolute = path.normalize(normalizedTarget);
+    if (isPathInsideRoot(absolute, projectRoot)) {
+      return absolute;
+    }
+    const remappedHostProjectPath = toVirtualPathFromHostProjectPath(
+      absolute,
+      hostProjectRoot,
+      projectRoot
+    );
+    if (remappedHostProjectPath) {
+      return remappedHostProjectPath;
+    }
+    const remappedHostHomePath = toVirtualPathFromHostProjectPath(
+      absolute,
+      hostHomeRoot,
+      virtualHomeRoot
+    );
+    if (remappedHostHomePath) {
+      return remappedHostHomePath;
+    }
+    if (HOST_ABSOLUTE_PREFIXES.some((prefix) => absolute.startsWith(prefix))) {
+      return absolute;
+    }
+    // Treat absolute virtual paths (e.g. "/styles.css") as project-root relative.
+    return path.resolve(projectRoot, `.${absolute}`);
+  };
 
   const createENOENTError = (resolvedPath: string): Error & { code: string } => {
     const error = new Error(`ENOENT: no such file or directory, path '${resolvedPath}'`) as Error & { code: string };
@@ -145,8 +283,14 @@ export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: Proj
   const routePath = (targetPath: string): string => {
     const resolvedPath = resolveForRouting(targetPath);
     if (!isPathInsideRoot(resolvedPath, projectRoot)) {
+      console.log("[skill-debug][routePath-denied]", {
+        targetPath,
+        resolvedPath,
+        hostProjectRoot,
+        projectRoot,
+      });
       throw new Error(
-        `Access denied: path "${resolvedPath}" is outside virtual project root "${projectRoot}".`,
+        `Access denied: path "<masked-outside-path>" is outside virtual project root "<virtual-project-root>".`,
       );
     }
     return resolvedPath;
@@ -782,6 +926,47 @@ const tryRunQueryEngine = async (
       }
 
     const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
+    const VIRTUAL_ROOT_LABEL = "<virtual-project-root>";
+
+    const sanitizeStringForUi = (value: string): string => {
+      if (!hasVirtualProjectFiles || !value) return value;
+      const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+      const replaceRoot = (text: string, rawRoot: string): string => {
+        const root = normalize(rawRoot);
+        if (!root) return text;
+        const withSlash = `${root}/`;
+        let out = text.split(withSlash).join(`${VIRTUAL_ROOT_LABEL}/`);
+        if (out.includes(root)) out = out.split(root).join(VIRTUAL_ROOT_LABEL);
+        return out;
+      };
+
+      let sanitized = value;
+      sanitized = replaceRoot(sanitized, baseCwd);
+      sanitized = replaceRoot(sanitized, virtualProjectRoot);
+      return sanitized;
+    };
+
+    const sanitizeForUi = (inputValue: unknown): unknown => {
+      if (!hasVirtualProjectFiles) return inputValue;
+      const visited = new WeakSet<object>();
+      const walk = (node: unknown): unknown => {
+        if (typeof node === "string") return sanitizeStringForUi(node);
+        if (!node || typeof node !== "object") return node;
+        if (visited.has(node as object)) return node;
+        visited.add(node as object);
+        if (Array.isArray(node)) return node.map((item) => walk(item));
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+          out[k] = walk(v);
+        }
+        return out;
+      };
+      return walk(inputValue);
+    };
+
+    const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
+      input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
+    };
     const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
       await Promise.all([
         import("../state/AppStateStore"),
@@ -866,6 +1051,7 @@ const tryRunQueryEngine = async (
     let assistantText = "";
     let stopReason: string | null = null;
     let resultSubtype: string | null = null;
+    let resultUsage: QueryEngineExecutionAttempt["usage"] = null;
     const toolStateByIndex = new Map<number, ToolInputState>();
     const toolStateById = new Map<string, ToolInputState>();
     const emittedControlKeys = new Set<string>();
@@ -930,7 +1116,7 @@ const tryRunQueryEngine = async (
           };
           if (index >= 0) toolStateByIndex.set(index, nextState);
           if (id) toolStateById.set(id, nextState);
-          input.onEvent("stream_event", {
+          emitEvent("stream_event", {
             subtype: "tool_use_start",
             id,
             name,
@@ -942,14 +1128,14 @@ const tryRunQueryEngine = async (
         if (streamType === "content_block_delta") {
           const deltaType = stream.event?.delta?.type;
           if (deltaType === "text_delta" && typeof stream.event?.delta?.text === "string") {
-            input.onEvent("stream_event", {
+            emitEvent("stream_event", {
               subtype: "text_delta",
               text: stream.event.delta.text,
             });
             continue;
           }
           if (deltaType === "thinking_delta" && typeof stream.event?.delta?.thinking === "string") {
-            input.onEvent("stream_event", {
+            emitEvent("stream_event", {
               subtype: "thinking_delta",
               text: stream.event.delta.thinking,
             });
@@ -962,7 +1148,7 @@ const tryRunQueryEngine = async (
               state.inputBuffer += stream.event.delta.partial_json;
               const parsed = parseJsonLoose(state.inputBuffer);
               if (parsed !== undefined) state.lastInput = parsed;
-              input.onEvent("stream_event", {
+              emitEvent("stream_event", {
                 subtype: "tool_use_delta",
                 id: state.id,
                 name: state.name,
@@ -984,7 +1170,7 @@ const tryRunQueryEngine = async (
           const contentText =
             typeof record.content === "string" ? record.content : JSON.stringify(record.content ?? "", null, 2);
           const toolState = toolStateById.get(record.tool_use_id);
-          input.onEvent("stream_event", {
+          emitEvent("stream_event", {
             subtype: "tool_result",
             id: record.tool_use_id,
             ...(toolState?.name ? { name: toolState.name } : {}),
@@ -999,9 +1185,39 @@ const tryRunQueryEngine = async (
         if (text.trim()) assistantText = text;
       }
       if ((event as { type?: string }).type === "result") {
-        const result = event as { subtype?: string; result?: string; stop_reason?: string | null };
+        const result = event as {
+          subtype?: string;
+          result?: string;
+          stop_reason?: string | null;
+          usage?: unknown;
+        };
         resultSubtype = result.subtype ?? null;
         stopReason = result.stop_reason ?? null;
+        if (result.usage && typeof result.usage === "object" && !Array.isArray(result.usage)) {
+          const usage = result.usage as Record<string, unknown>;
+          if (
+            typeof usage.input_tokens === "number" &&
+            Number.isFinite(usage.input_tokens)
+          ) {
+            resultUsage = {
+              input_tokens: usage.input_tokens,
+              cache_creation_input_tokens:
+                typeof usage.cache_creation_input_tokens === "number" &&
+                Number.isFinite(usage.cache_creation_input_tokens)
+                  ? usage.cache_creation_input_tokens
+                  : 0,
+              cache_read_input_tokens:
+                typeof usage.cache_read_input_tokens === "number" &&
+                Number.isFinite(usage.cache_read_input_tokens)
+                  ? usage.cache_read_input_tokens
+                  : 0,
+              output_tokens:
+                typeof usage.output_tokens === "number" && Number.isFinite(usage.output_tokens)
+                  ? usage.output_tokens
+                  : 0,
+            };
+          }
+        }
         if (!assistantText.trim() && typeof result.result === "string" && result.result.trim()) {
           assistantText = result.result;
         }
@@ -1014,6 +1230,7 @@ const tryRunQueryEngine = async (
           assistantText,
           stopReason,
           resultSubtype,
+          usage: resultUsage,
           warnings: probe.warnings,
         };
       }
@@ -1022,6 +1239,7 @@ const tryRunQueryEngine = async (
         warnings: probe.warnings,
         stopReason,
         resultSubtype,
+        usage: resultUsage,
         error: "query_engine_finished_without_assistant_text",
       };
     } catch (error) {
@@ -1046,7 +1264,10 @@ const tryRunQueryEngine = async (
   }
   return await runWithVirtualProjectRoot(
     virtualProjectRoot,
-    () => runWithFsImplementation(scopedFs, runCore),
+    () =>
+      runWithClaudeConfigHomeDir(path.join(virtualProjectRoot, ".aistudio"), () =>
+        runWithFsImplementation(scopedFs, runCore),
+      ),
   );
 };
 
@@ -1092,6 +1313,8 @@ export const runClaudeQueryAdapter = async (
         message: {
           role: "assistant",
           content: attempt.assistantText,
+          ...(attempt.usage ? { usage: attempt.usage } : {}),
+          ...(input.selectedModel ? { model: input.selectedModel } : {}),
         },
       });
       return { assistantMessage };

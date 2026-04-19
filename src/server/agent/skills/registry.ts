@@ -44,17 +44,25 @@ let snapshotCache: SkillSnapshot | null = null;
 
 const toPosix = (input: string) => input.split(path.sep).join("/");
 const virtualizePath = (input: string) => toPosix(maskVirtualPathForDisplay(path.resolve(input)));
-const getProjectSkillsRoot = () => path.join(getCwd(), ".claude", "skills");
-const toRootRelativeSkillPath = (input: string, projectSkillsRoot: string) => {
-  const relativePath = toPosix(path.relative(projectSkillsRoot, path.resolve(input)));
+const getProjectSkillsRoot = () => path.join(getCwd(), ".aistudio", "skills");
+const getBuiltinSkillsRoot = () => path.join(getCwd(), "skills");
+type SkillSourcePrefix = "/.aistudio/skills" | "/skills";
+const toRootRelativeSkillPath = (input: string, skillsRoot: string) => {
+  const relativePath = toPosix(path.relative(skillsRoot, path.resolve(input)));
   if (!relativePath || relativePath === ".") return "/";
   if (relativePath.startsWith("..")) return `/${toPosix(path.basename(input))}`;
   return `/${relativePath}`;
 };
-const toSkillDisplayPath = (input: string, projectSkillsRoot: string) => {
+const toSkillDisplayPath = (
+  input: string,
+  skillsRoot: string,
+  sourcePrefix: SkillSourcePrefix = "/.aistudio/skills"
+) => {
   const virtualized = virtualizePath(input);
   if (virtualized.includes("<virtual-project-root>")) return virtualized;
-  return toRootRelativeSkillPath(input, projectSkillsRoot);
+  const relative = toRootRelativeSkillPath(input, skillsRoot);
+  if (relative === "/") return sourcePrefix;
+  return `${sourcePrefix}${relative}`.replace(/\/{2,}/g, "/");
 };
 
 const sanitizeSkillName = (input: string) =>
@@ -94,7 +102,8 @@ const pickDescription = (markdown: string, frontmatter: Record<string, string>):
 const buildRuntimeSkill = (
   skillFile: string,
   markdown: string,
-  projectSkillsRoot: string,
+  skillsRoot: string,
+  sourcePrefix: SkillSourcePrefix
 ): RuntimeSkill => {
   const frontmatter = parseFrontmatter(markdown);
   const skillDir = path.dirname(skillFile);
@@ -112,9 +121,9 @@ const buildRuntimeSkill = (
     license: frontmatter.license || undefined,
     compatibility: frontmatter.compatibility || undefined,
     metadata: Object.keys(metadata).length ? metadata : undefined,
-    location: toSkillDisplayPath(skillFile, projectSkillsRoot),
-    relativeLocation: toRootRelativeSkillPath(skillFile, projectSkillsRoot),
-    baseDir: toSkillDisplayPath(skillDir, projectSkillsRoot),
+    location: toSkillDisplayPath(skillFile, skillsRoot, sourcePrefix),
+    relativeLocation: toRootRelativeSkillPath(skillFile, skillsRoot),
+    baseDir: toSkillDisplayPath(skillDir, skillsRoot, sourcePrefix),
     baseDirFsPath: toPosix(skillDir),
     body: markdown,
   };
@@ -131,70 +140,71 @@ const safeReadFile = async (target: string): Promise<string | null> => {
 const scanProjectSkills = async (): Promise<SkillSnapshot> => {
   const fs = getFsImplementation();
   const projectSkillsRoot = getProjectSkillsRoot();
+  const builtinSkillsRoot = getBuiltinSkillsRoot();
   const scannedAt = Date.now();
   const entries: SkillEntry[] = [];
   const skills: RuntimeSkill[] = [];
   const duplicateNames: Record<string, string[]> = {};
+  const roots: Array<{ root: string; prefix: SkillSourcePrefix }> = [
+    { root: projectSkillsRoot, prefix: "/.aistudio/skills" },
+    { root: builtinSkillsRoot, prefix: "/skills" },
+  ];
 
-  let dirEntries: string[] = [];
-  try {
-    const listed = await fs.readdir(projectSkillsRoot);
-    dirEntries = listed
-      .filter(item => item.isDirectory() || item.isSymbolicLink())
-      .map(item => item.name);
-  } catch {
-    return {
-      scannedAt,
-      rootDir: toSkillDisplayPath(projectSkillsRoot, projectSkillsRoot),
-      entries,
-      skills,
-      duplicateNames,
-    };
-  }
-
-  for (const item of dirEntries) {
-    const skillDir = path.join(projectSkillsRoot, item);
-    const skillFile = path.join(skillDir, "SKILL.md");
-    const markdown = await safeReadFile(skillFile);
-    if (markdown == null) {
-      entries.push({
-        name: item,
-        description: "",
-        location: toSkillDisplayPath(skillFile, projectSkillsRoot),
-        relativeLocation: toRootRelativeSkillPath(skillFile, projectSkillsRoot),
-        isLoadable: false,
-        issues: [
-          {
-            code: "missing_skill_file",
-            message: "SKILL.md 不存在",
-            location: toSkillDisplayPath(skillFile, projectSkillsRoot),
-            name: item,
-          },
-        ],
-      });
+  for (const { root, prefix } of roots) {
+    let dirEntries: string[] = [];
+    try {
+      const listed = await fs.readdir(root);
+      dirEntries = listed
+        .filter(item => item.isDirectory() || item.isSymbolicLink())
+        .map(item => item.name);
+    } catch {
       continue;
     }
 
-    const skill = buildRuntimeSkill(skillFile, markdown, projectSkillsRoot);
-    const issues: SkillIssue[] = [];
-    if (!skill.name.trim()) {
-      issues.push({
-        code: "invalid_name",
-        message: "skill 名称不能为空",
+    for (const item of dirEntries) {
+      const skillDir = path.join(root, item);
+      const skillFile = path.join(skillDir, "SKILL.md");
+      const markdown = await safeReadFile(skillFile);
+      if (markdown == null) {
+        entries.push({
+          name: item,
+          description: "",
+          location: toSkillDisplayPath(skillFile, root, prefix),
+          relativeLocation: toRootRelativeSkillPath(skillFile, root),
+          isLoadable: false,
+          issues: [
+            {
+              code: "missing_skill_file",
+              message: "SKILL.md 不存在",
+              location: toSkillDisplayPath(skillFile, root, prefix),
+              name: item,
+            },
+          ],
+        });
+        continue;
+      }
+
+      const skill = buildRuntimeSkill(skillFile, markdown, root, prefix);
+      const issues: SkillIssue[] = [];
+      if (!skill.name.trim()) {
+        issues.push({
+          code: "invalid_name",
+          message: "skill 名称不能为空",
+          location: skill.location,
+        });
+      }
+
+      entries.push({
+        name: skill.name,
+        description: skill.description,
         location: skill.location,
+        relativeLocation: skill.relativeLocation,
+        isLoadable: issues.length === 0,
+        issues,
       });
+
+      if (issues.length === 0) skills.push(skill);
     }
-
-    entries.push({
-      name: skill.name,
-      description: skill.description,
-      location: skill.location,
-      relativeLocation: skill.relativeLocation,
-      isLoadable: issues.length === 0,
-      issues,
-    });
-
-    if (issues.length === 0) skills.push(skill);
   }
 
   const nameToLocations = new Map<string, string[]>();
@@ -210,7 +220,7 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
 
   return {
     scannedAt,
-    rootDir: toSkillDisplayPath(projectSkillsRoot, projectSkillsRoot),
+    rootDir: "/.aistudio/skills + /skills",
     entries: entries.sort((a, b) => a.location.localeCompare(b.location)),
     skills: skills.sort((a, b) => a.name.localeCompare(b.name)),
     duplicateNames,
@@ -239,6 +249,7 @@ export const getRuntimeSkillByName = async (name: string) => {
 export const sampleSkillFiles = async (skill: RuntimeSkill, limit = 10): Promise<string[]> => {
   const fs = getFsImplementation();
   const projectSkillsRoot = getProjectSkillsRoot();
+  const builtinSkillsRoot = getBuiltinSkillsRoot();
   const listBaseDir = skill.baseDirFsPath || skill.baseDir;
   const boundedLimit = Math.max(1, Math.min(limit, 30));
   const files: string[] = [];
@@ -246,7 +257,16 @@ export const sampleSkillFiles = async (skill: RuntimeSkill, limit = 10): Promise
     const entries = await fs.readdir(listBaseDir);
     for (const entry of entries) {
       if (entry.isFile()) {
-        files.push(toSkillDisplayPath(path.join(listBaseDir, entry.name), projectSkillsRoot));
+        const normalizedBase = toPosix(path.resolve(listBaseDir));
+        const builtinRoot = toPosix(path.resolve(builtinSkillsRoot));
+        const sourcePrefix: SkillSourcePrefix = normalizedBase.startsWith(builtinRoot)
+          ? "/skills"
+          : "/.aistudio/skills";
+        const rootForDisplay =
+          sourcePrefix === "/skills"
+            ? builtinSkillsRoot
+            : projectSkillsRoot;
+        files.push(toSkillDisplayPath(path.join(listBaseDir, entry.name), rootForDisplay, sourcePrefix));
       }
       if (files.length >= boundedLimit) break;
     }
@@ -323,7 +343,7 @@ export const installBuiltinSkillCreator = async () => {
     "",
     "# skill-creator",
     "",
-    "Create or update a skill in `.claude/skills/<name>/SKILL.md` with:",
+    "Create or update a skill in `.aistudio/skills/<name>/SKILL.md` with:",
     "",
     "- concise description",
     "- when_to_use",

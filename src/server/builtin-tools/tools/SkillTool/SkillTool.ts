@@ -58,6 +58,10 @@ import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'
 import type { ModelAlias } from 'src/utils/model/aliases.js'
 import { resolveSkillModelOverride } from 'src/utils/model/model.js'
 import { recordSkillUsage } from 'src/utils/suggestions/skillUsageTracking.js'
+import {
+  toModelVisibleSkillPath,
+  withSkillBaseDirForModel,
+} from 'src/utils/skillPathDisplay.js'
 import { createAgentId } from 'src/utils/uuid.js'
 import { runAgent } from '../AgentTool/runAgent.js'
 import {
@@ -79,17 +83,39 @@ import {
  * SkillTool needs this because getCommands() only returns local/bundled skills.
  */
 async function getAllCommands(context: ToolUseContext): Promise<Command[]> {
-  // Only include MCP skills (loadedFrom === 'mcp'), not plain MCP prompts.
-  // Before this filter, the model could invoke MCP prompts via SkillTool
-  // if it guessed the mcp__server__prompt name — they weren't discoverable
-  // but were technically reachable.
+  // Keep SkillTool command resolution in lockstep with the command table that
+  // the current query turn already loaded (same source as slash command routing).
+  // This avoids drift where SkillTool re-loads with a different cwd and fails
+  // to find a skill that is visible in UI/autocomplete.
+  const appCommands = context.getAppState().mcp.commands
+  if (Array.isArray(appCommands) && appCommands.length > 0) {
+    // Keep behavior aligned with getSkillToolCommands: prompt-only, non-builtin,
+    // model-invocable, and either real skill sources or explicitly described.
+    return appCommands.filter(
+      cmd =>
+        cmd.type === 'prompt' &&
+        cmd.source !== 'builtin' &&
+        !cmd.disableModelInvocation &&
+        (cmd.loadedFrom === 'bundled' ||
+          cmd.loadedFrom === 'skills' ||
+          cmd.loadedFrom === 'commands_DEPRECATED' ||
+          cmd.hasUserSpecifiedDescription ||
+          Boolean(cmd.whenToUse)),
+    )
+  }
+
+  // Fallback for contexts that don't preload commands.
   const mcpSkills = context
     .getAppState()
     .mcp.commands.filter(
       cmd => cmd.type === 'prompt' && cmd.loadedFrom === 'mcp',
     )
-  if (mcpSkills.length === 0) return getCommands(getProjectRoot())
-  const localCommands = await getCommands(getProjectRoot())
+  const appCwd =
+    context.getAppState().toolPermissionContext?.cwd ||
+    context.getAppState().cwd ||
+    getProjectRoot()
+  if (mcpSkills.length === 0) return getCommands(appCwd)
+  const localCommands = await getCommands(appCwd)
   return uniqBy([...localCommands, ...mcpSkills], 'name')
 }
 
@@ -643,6 +669,44 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
       context,
     )
 
+    const inlineSkillContent = processedCommand.messages
+      .filter(
+        (m): m is UserMessage | AttachmentMessage | SystemMessage =>
+          m.type === 'user' || m.type === 'system',
+      )
+      .map((m) => {
+        if (m.type !== 'user' || !('message' in m)) return ''
+        const content = m.message.content
+        if (typeof content === 'string') return content
+        if (!Array.isArray(content)) return ''
+        return content
+          .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n')
+      })
+      .join('\n')
+
+    logForDebugging(
+      `[skill-debug] inline-skill name=${commandName} source=${command?.source ?? 'unknown'} loadedFrom=${command?.loadedFrom ?? 'unknown'} skillRoot=${command?.type === 'prompt' ? command.skillRoot ?? 'none' : 'none'} hasUsersPath=${inlineSkillContent.includes('/Users/')}`,
+    )
+    console.log('[skill-debug][inline-skill]', {
+      commandName,
+      source: command?.source ?? 'unknown',
+      loadedFrom: command?.loadedFrom ?? 'unknown',
+      skillRoot: command?.type === 'prompt' ? command.skillRoot ?? 'none' : 'none',
+      hasUsersPath: inlineSkillContent.includes('/Users/'),
+      preview: inlineSkillContent.slice(0, 1200),
+    })
+    if (
+      (process.env.AISTUDIO_DEBUG_SKILL_PROMPTS === '1' ||
+        process.env.NEXT_PUBLIC_AISTUDIO_DEBUG_SKILL_PROMPTS === '1') &&
+      inlineSkillContent
+    ) {
+      logForDebugging(
+        `[skill-debug] inline-prompt-preview name=${commandName}\n${inlineSkillContent.slice(0, 4000)}`,
+      )
+    }
+
     if (!processedCommand.shouldQuery) {
       throw new Error('Command processing failed')
     }
@@ -1074,12 +1138,13 @@ async function executeRemoteSkill(
   const skillDir = dirname(skillPath)
   const normalizedDir =
     process.platform === 'win32' ? skillDir.replace(/\\/g, '/') : skillDir
-  let finalContent = `Base directory for this skill: ${normalizedDir}\n\n${bodyContent}`
+  let finalContent = bodyContent
   finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, normalizedDir)
   finalContent = finalContent.replace(
     /\$\{CLAUDE_SESSION_ID\}/g,
     getSessionId(),
   )
+  finalContent = withSkillBaseDirForModel(finalContent, normalizedDir)
 
   // Register with compaction-preservation state. Use the cached file path so
   // post-compact restoration knows where the content came from. Must use

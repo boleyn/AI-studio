@@ -199,6 +199,26 @@ export async function prepareForkedCommandContext(
     .map(block => (block.type === 'text' ? block.text : ''))
     .join('\n')
 
+  logForDebugging(
+    `[skill-debug] prepareForkedCommandContext name=${command.name} source=${command.source} loadedFrom=${command.loadedFrom ?? 'unknown'} skillRoot=${command.skillRoot ?? 'none'} hasUsersPath=${skillContent.includes('/Users/')}`,
+  )
+  console.log('[skill-debug][prepareForkedCommandContext]', {
+    name: command.name,
+    source: command.source,
+    loadedFrom: command.loadedFrom ?? 'unknown',
+    skillRoot: command.skillRoot ?? 'none',
+    hasUsersPath: skillContent.includes('/Users/'),
+    preview: skillContent.slice(0, 1200),
+  })
+  if (
+    process.env.AISTUDIO_DEBUG_SKILL_PROMPTS === '1' ||
+    process.env.NEXT_PUBLIC_AISTUDIO_DEBUG_SKILL_PROMPTS === '1'
+  ) {
+    logForDebugging(
+      `[skill-debug] prompt-preview name=${command.name}\n${skillContent.slice(0, 4000)}`,
+    )
+  }
+
   // Parse and prepare allowed tools
   const allowedTools = parseToolListFromCLI(command.allowedTools ?? [])
 

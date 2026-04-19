@@ -149,9 +149,16 @@ const ChatInput = ({
   const filteredSkillOptions = useMemo(() => {
     const keyword = skillQuery.trim();
     const selectedSet = new Set(selectedSkillList);
-    const available = skillOptions.filter((item) => Boolean(item.name && !selectedSet.has(item.name)));
-    if (!keyword) return available.slice(0, 8);
-    return available
+    const all = skillOptions.filter((item) => Boolean(item.name));
+    const ranked = all.sort((a, b) => {
+      const aSelected = selectedSet.has(a.name) ? 1 : 0;
+      const bSelected = selectedSet.has(b.name) ? 1 : 0;
+      // Unselected first, selected later (still visible).
+      if (aSelected !== bSelected) return aSelected - bSelected;
+      return a.name.localeCompare(b.name);
+    });
+    if (!keyword) return ranked.slice(0, 8);
+    return ranked
       .filter((item) => {
         const name = item.name.toLowerCase();
         const description = (item.description || "").toLowerCase();
@@ -161,7 +168,6 @@ const ChatInput = ({
   }, [selectedSkillList, skillOptions, skillQuery]);
   const showSkillPicker =
     Boolean(mentionRange) &&
-    filteredSkillOptions.length > 0 &&
     !isSending &&
     !isSubmitting;
   const filteredFileOptions = useMemo(() => {
@@ -267,7 +273,14 @@ const ChatInput = ({
         : [...selectedSkillList, skillName];
       commitSelectedSkills(next);
       if (!mentionRange) return;
-      const nextText = `${text.slice(0, mentionRange.start)}${text.slice(mentionRange.end)}`.replace(
+      const beforeMention = text.slice(0, mentionRange.start);
+      const afterMention = text.slice(mentionRange.end);
+      const shouldInsertSpacer =
+        beforeMention.length > 0 &&
+        !/\s$/.test(beforeMention) &&
+        afterMention.length > 0 &&
+        !/^\s/.test(afterMention);
+      const nextText = `${beforeMention}${shouldInsertSpacer ? " " : ""}${afterMention}`.replace(
         /\s{2,}/g,
         " "
       );
@@ -277,7 +290,7 @@ const ChatInput = ({
       window.requestAnimationFrame(() => {
         const textarea = textAreaRef.current;
         if (!textarea) return;
-        const cursor = Math.max(0, mentionRange.start);
+        const cursor = Math.max(0, beforeMention.length + (shouldInsertSpacer ? 1 : 0));
         textarea.focus();
         textarea.setSelectionRange(cursor, cursor);
         resetTextareaHeight();

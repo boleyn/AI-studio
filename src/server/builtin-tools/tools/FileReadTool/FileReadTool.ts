@@ -27,6 +27,7 @@ import {
 import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
+import { getProjectRoot } from 'src/bootstrap/state.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from 'src/utils/envUtils.js'
 import { getErrnoCode, isENOENT } from 'src/utils/errors.js'
 import {
@@ -142,7 +143,31 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
 
 function resolveReadPath(filePath: string): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  const projectRoot = getProjectRoot()
+  const normalizedProjectRoot = path.resolve(projectRoot)
   if (virtualRoot && filePath.startsWith('/')) {
+    // If the model passes a host absolute path under the real project root,
+    // remap it to the virtual root equivalent.
+    const hostAbsolute = path.resolve(filePath)
+    const normalizedHostAbsolute = hostAbsolute.replace(/\\/g, '/')
+    const inferredVirtualSkillPath =
+      normalizedHostAbsolute.match(/\/(\.aistudio\/skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/(skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/\.aistudio-virtual\/[^/]+\/(.+)$/)?.[1]
+    if (inferredVirtualSkillPath) {
+      return expandPath(inferredVirtualSkillPath, virtualRoot)
+    }
+    if (
+      normalizedProjectRoot &&
+      (hostAbsolute === normalizedProjectRoot ||
+        hostAbsolute.startsWith(`${normalizedProjectRoot}${path.sep}`))
+    ) {
+      const rel =
+        hostAbsolute === normalizedProjectRoot
+          ? ''
+          : hostAbsolute.slice(normalizedProjectRoot.length + 1)
+      return rel ? expandPath(rel, virtualRoot) : path.resolve(virtualRoot)
+    }
     return expandPath(filePath.slice(1), virtualRoot)
   }
   if (virtualRoot && !path.isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
@@ -266,7 +291,7 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'Workspace-relative path to the file to read (absolute paths are accepted for compatibility)',
+        'Path to the file to read. Use workspace-relative paths by default. In virtual sessions, absolute paths like "/src/app.ts" are interpreted as virtual-root paths.',
       ),
     offset: semanticNumber(z.number().int().nonnegative().optional()).describe(
       'The line number to start reading from. Only provide if the file is too large to read at once',
@@ -299,7 +324,7 @@ const outputSchema = lazySchema(() => {
     z.object({
       type: z.literal('text'),
       file: z.object({
-        filePath: z.string().describe('The path to the file that was read'),
+        filePath: z.string().describe('The read file path, normalized to workspace/virtual-root form'),
         content: z.string().describe('The content of the file'),
         numLines: z
           .number()
@@ -340,14 +365,14 @@ const outputSchema = lazySchema(() => {
     z.object({
       type: z.literal('notebook'),
       file: z.object({
-        filePath: z.string().describe('The path to the notebook file'),
+        filePath: z.string().describe('The notebook file path, normalized to workspace/virtual-root form'),
         cells: z.array(z.any()).describe('Array of notebook cells'),
       }),
     }),
     z.object({
       type: z.literal('pdf'),
       file: z.object({
-        filePath: z.string().describe('The path to the PDF file'),
+        filePath: z.string().describe('The PDF file path, normalized to workspace/virtual-root form'),
         base64: z.string().describe('Base64-encoded PDF data'),
         originalSize: z.number().describe('Original file size in bytes'),
       }),
@@ -355,7 +380,7 @@ const outputSchema = lazySchema(() => {
     z.object({
       type: z.literal('parts'),
       file: z.object({
-        filePath: z.string().describe('The path to the PDF file'),
+        filePath: z.string().describe('The PDF file path, normalized to workspace/virtual-root form'),
         originalSize: z.number().describe('Original file size in bytes'),
         count: z.number().describe('Number of pages extracted'),
         outputDir: z
@@ -366,7 +391,7 @@ const outputSchema = lazySchema(() => {
     z.object({
       type: z.literal('file_unchanged'),
       file: z.object({
-        filePath: z.string().describe('The path to the file'),
+        filePath: z.string().describe('The file path, normalized to workspace/virtual-root form'),
       }),
     }),
   ])
@@ -905,7 +930,7 @@ async function callInner(
     logFileOperation({
       operation: 'read',
       tool: 'FileReadTool',
-      filePath: fullFilePath,
+          filePath: toVirtualDisplayPath(fullFilePath),
       content: cellsJson,
     })
 
@@ -922,7 +947,7 @@ async function callInner(
     logFileOperation({
       operation: 'read',
       tool: 'FileReadTool',
-      filePath: fullFilePath,
+          filePath: toVirtualDisplayPath(fullFilePath),
       content: data.file.base64,
     })
 
@@ -960,7 +985,7 @@ async function callInner(
       logFileOperation({
         operation: 'read',
         tool: 'FileReadTool',
-        filePath: fullFilePath,
+            filePath: toVirtualDisplayPath(fullFilePath),
         content: `PDF pages ${pages}`,
       })
       const entries = await getFsImplementation().readdir(extractResult.data.file.outputDir)
@@ -1045,7 +1070,7 @@ async function callInner(
     logFileOperation({
       operation: 'read',
       tool: 'FileReadTool',
-      filePath: fullFilePath,
+          filePath: toVirtualDisplayPath(fullFilePath),
       content: pdfData.file.base64,
     })
 
@@ -1125,7 +1150,7 @@ async function callInner(
   const data = {
     type: 'text' as const,
     file: {
-      filePath: file_path,
+      filePath: toVirtualDisplayPath(fullFilePath),
       content,
       numLines: lineCount,
       startLine: offset,
@@ -1139,7 +1164,7 @@ async function callInner(
   logFileOperation({
     operation: 'read',
     tool: 'FileReadTool',
-    filePath: fullFilePath,
+    filePath: toVirtualDisplayPath(fullFilePath),
     content,
   })
 

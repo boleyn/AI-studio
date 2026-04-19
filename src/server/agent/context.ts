@@ -5,6 +5,7 @@ import {
   setCachedClaudeMdContent,
 } from './bootstrap/state.js'
 import { getLocalISODate } from './constants/common.js'
+import { getVirtualProjectRoot } from './utils/fsOperations.js'
 import {
   filterInjectedMemoryFiles,
   getClaudeMds,
@@ -34,6 +35,11 @@ export function setSystemPromptInjection(value: string | null): void {
 }
 
 export const getGitStatus = memoize(async (): Promise<string | null> => {
+  // In virtualized runtime (WASI+memfs), do not leak host git context.
+  if (getVirtualProjectRoot()) {
+    return null
+  }
+
   if (process.env.NODE_ENV === 'test') {
     // Avoid cycles in tests
     return null

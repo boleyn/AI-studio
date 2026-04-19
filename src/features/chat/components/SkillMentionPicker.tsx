@@ -25,6 +25,20 @@ const SkillMentionPicker = ({ options, activeIndex, pickerRef, onPick }: SkillMe
       zIndex={30}
     >
       <Flex direction="column" gap={1} p={1.5}>
+        {options.length === 0 ? (
+          <Flex
+            align="center"
+            border="1px dashed"
+            borderColor="myGray.250"
+            borderRadius="12px"
+            px={2}
+            py={2}
+          >
+            <Text color="myGray.500" fontSize="12px">
+              暂无可用技能
+            </Text>
+          </Flex>
+        ) : null}
         {options.map((item, index) => {
           const isActive = index === activeIndex;
           return (

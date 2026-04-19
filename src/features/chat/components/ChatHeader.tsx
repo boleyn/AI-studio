@@ -121,7 +121,7 @@ const ChatHeader = ({
           {title || "代码助手"}
         </Text>
         <Text color="myGray.500" fontSize="xs" mt={0.5}>
-          对话数 {messageCount}
+          消息数 {messageCount}
         </Text>
       </Box>
 

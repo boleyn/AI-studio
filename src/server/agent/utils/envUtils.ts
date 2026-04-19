@@ -1,17 +1,31 @@
 import memoize from 'lodash-es/memoize.js'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { homedir } from 'os'
 import { join } from 'path'
+
+const claudeConfigHomeOverrideStorage = new AsyncLocalStorage<string | null>()
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
 export const getClaudeConfigHomeDir = memoize(
   (): string => {
+    const contextOverride = claudeConfigHomeOverrideStorage.getStore()
+    if (contextOverride) {
+      return contextOverride.normalize('NFC')
+    }
     return (
       process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
     ).normalize('NFC')
   },
-  () => process.env.CLAUDE_CONFIG_DIR,
+  () => claudeConfigHomeOverrideStorage.getStore() ?? process.env.CLAUDE_CONFIG_DIR,
 )
+
+export function runWithClaudeConfigHomeDir<T>(
+  configHomeDir: string | null | undefined,
+  fn: () => T,
+): T {
+  return claudeConfigHomeOverrideStorage.run(configHomeDir ?? null, fn)
+}
 
 export function getTeamsDir(): string {
   return join(getClaudeConfigHomeDir(), 'teams')

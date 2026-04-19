@@ -8,7 +8,7 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'Workspace-relative path to the file to modify (absolute paths are accepted for compatibility)',
+        'Path to the file to modify. Use workspace-relative paths by default. In virtual sessions, absolute paths like "/src/app.ts" are interpreted as virtual-root paths.',
       ),
     old_string: z.string().describe('The text to replace'),
     new_string: z
@@ -66,7 +66,7 @@ export const gitDiffSchema = lazySchema(() =>
 // Output schema for FileEditTool
 const outputSchema = lazySchema(() =>
   z.object({
-    filePath: z.string().describe('The file path that was edited'),
+    filePath: z.string().describe('The edited file path, normalized to workspace/virtual-root form'),
     oldString: z.string().describe('The original string that was replaced'),
     newString: z.string().describe('The new string that replaced it'),
     originalFile: z

@@ -51,7 +51,7 @@ Detect:
 - Project structure (monorepo with workspaces, multi-module, or single project)
 - Code style rules that differ from language defaults
 - Non-obvious gotchas, required env vars, or workflow quirks
-- Existing .claude/skills/ and .claude/rules/ directories
+- Existing .aistudio/skills/ and .aistudio/rules/ directories
 - Formatter configuration (prettier, biome, ruff, black, gofmt, rustfmt, or a unified format script like \`npm run format\` / \`make fmt\`)
 - Git worktree usage: run \`git worktree list\` to check if this repo has multiple worktrees (only relevant if the user wants a personal CLAUDE.local.md)
 
@@ -166,9 +166,9 @@ Skills add capabilities Claude can use on demand without bloating every session.
 
 For each suggested skill, provide: name, one-line purpose, and why it fits this repo.
 
-If \`.claude/skills/\` already exists with skills, review them first. Do not overwrite existing skills — only propose new ones that complement what is already there.
+If \`.aistudio/skills/\` already exists with skills, review them first. Do not overwrite existing skills — only propose new ones that complement what is already there.
 
-Create each skill at \`.claude/skills/<skill-name>/SKILL.md\`:
+Create each skill at \`.aistudio/skills/<skill-name>/SKILL.md\`:
 
 \`\`\`yaml
 ---

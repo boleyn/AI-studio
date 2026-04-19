@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, resolve, sep } from 'path'
+import { getProjectRoot } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
@@ -98,7 +99,28 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
 
 function resolveEditPath(filePath: string): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  const projectRoot = getProjectRoot()
+  const normalizedProjectRoot = projectRoot ? resolve(projectRoot) : ''
   if (virtualRoot && filePath.startsWith('/')) {
+    // If the model passes a host absolute path under the real project root,
+    // remap it to the virtual root equivalent.
+    const hostAbsolute = resolve(filePath)
+    const normalizedHostAbsolute = hostAbsolute.replace(/\\/g, '/')
+    const inferredVirtualSkillPath =
+      normalizedHostAbsolute.match(/\/(\.aistudio\/skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/(skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/\.aistudio-virtual\/[^/]+\/(.+)$/)?.[1]
+    if (inferredVirtualSkillPath) {
+      return expandPath(inferredVirtualSkillPath, virtualRoot)
+    }
+    if (
+      normalizedProjectRoot &&
+      (hostAbsolute === normalizedProjectRoot ||
+        hostAbsolute.startsWith(`${normalizedProjectRoot}${sep}`))
+    ) {
+      const rel = hostAbsolute === normalizedProjectRoot ? '' : hostAbsolute.slice(normalizedProjectRoot.length + 1)
+      return rel ? expandPath(rel, virtualRoot) : resolve(virtualRoot)
+    }
     return expandPath(filePath.slice(1), virtualRoot)
   }
   if (virtualRoot && !isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
@@ -453,7 +475,8 @@ export const FileEditTool = buildTool({
 
     // 1. Get current state
     const fs = getFsImplementation()
-    const absoluteFilePath = expandPath(file_path)
+    const absoluteFilePath = resolveEditPath(file_path)
+    const displayFilePath = toVirtualDisplayPath(absoluteFilePath)
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
@@ -593,7 +616,7 @@ export const FileEditTool = buildTool({
 
     // 8. Yield result
     const data = {
-      filePath: file_path,
+      filePath: displayFilePath,
       oldString: actualOldString,
       newString: new_string,
       originalFile: originalFileContents,

@@ -1168,6 +1168,18 @@ async function getMessagesForPromptSlashCommand(
   }
 
   const result = await command.getPromptForCommand(args, context)
+  const resultTextPreview = result
+    .filter((block): block is TextBlockParam => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
+  console.log('[skill-debug][processPromptSlashCommand]', {
+    commandName: command.name,
+    source: command.source,
+    loadedFrom: command.loadedFrom ?? 'unknown',
+    skillRoot: command.type === 'prompt' ? command.skillRoot ?? 'none' : 'none',
+    hasUsersPath: resultTextPreview.includes('/Users/'),
+    preview: resultTextPreview.slice(0, 1200),
+  })
 
   // Register skill hooks if defined. Under ["hooks"]-only (skills not locked),
   // user skills still load and reach this point — block hook REGISTRATION here

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { buildProjectMemfsOverlay } from "./claudeQueryAdapter";
+import { getClaudeConfigHomeDir, runWithClaudeConfigHomeDir } from "../utils/envUtils";
 
 describe("buildProjectMemfsOverlay virtual root boundary", () => {
   const projectRoot = "/virtual/project";
@@ -65,7 +68,19 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
 
     await expect(
       fs.mkdir("/Users/real/should-not-create", { mode: 0o755 }),
-    ).rejects.toThrow(/outside virtual project root/i);
+    ).rejects.toThrow(
+      /Access denied: path "<masked-outside-path>" is outside virtual project root "<virtual-project-root>"/i
+    );
+  });
+
+  test("treats absolute virtual paths as project-root relative for write operations", async () => {
+    const fs = buildProjectMemfsOverlay(projectRoot, {});
+    await fs.mkdir("/nested", { mode: 0o755 });
+    fs.appendFileSync("/nested/styles.css", ".app { color: red; }\n");
+    const content = fs.readFileSync(path.join(projectRoot, "nested/styles.css"), {
+      encoding: "utf8",
+    });
+    expect(content).toContain("color: red");
   });
 
   test("returns false for existsSync outside root (non-fatal probe behavior)", () => {
@@ -76,34 +91,144 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
     expect(fs.existsSync("/Users/santain/.claude/.config.json")).toBe(false);
   });
 
-  test("maps /skills files into /.claude/skills for runtime skill discovery", () => {
+  test("maps /skills files into /.aistudio/skills for runtime skill discovery", () => {
     const fs = buildProjectMemfsOverlay(projectRoot, {
       "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# demo\n" },
       "/skills/demo/scripts/run.sh": { code: "echo demo\n" },
     });
 
-    const skill = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/SKILL.md"), {
+    const skill = fs.readFileSync(path.join(projectRoot, ".aistudio/skills/demo/SKILL.md"), {
       encoding: "utf8",
     });
-    const script = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/scripts/run.sh"), {
+    const script = fs.readFileSync(path.join(projectRoot, ".aistudio/skills/demo/scripts/run.sh"), {
       encoding: "utf8",
     });
     expect(skill).toContain("name: demo");
     expect(script).toContain("echo demo");
   });
 
-  test("keeps explicit /.claude/skills file when both paths exist", () => {
+  test("keeps explicit /.aistudio/skills file when both paths exist", () => {
     const fs = buildProjectMemfsOverlay(projectRoot, {
       "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# from skills\n" },
-      "/.claude/skills/demo/SKILL.md": {
-        code: "---\nname: demo\n---\n# from claude skills\n",
+      "/.aistudio/skills/demo/SKILL.md": {
+        code: "---\nname: demo\n---\n# from aistudio skills\n",
       },
     });
 
-    const content = fs.readFileSync(path.join(projectRoot, ".claude/skills/demo/SKILL.md"), {
+    const content = fs.readFileSync(path.join(projectRoot, ".aistudio/skills/demo/SKILL.md"), {
       encoding: "utf8",
     });
-    expect(content).toContain("from claude skills");
+    expect(content).toContain("from aistudio skills");
     expect(content).not.toContain("from skills");
+  });
+
+  test("loads built-in skills from system skills root into /skills and /.aistudio/skills", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aistudio-system-skills-"));
+    const systemSkillsRoot = path.join(tempDir, "skills");
+    fs.mkdirSync(path.join(systemSkillsRoot, "builtin-one"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "builtin-one", "SKILL.md"),
+      "---\nname: builtin-one\n---\n# builtin one\n",
+      "utf8"
+    );
+    fs.mkdirSync(path.join(systemSkillsRoot, "builtin-one", "scripts"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "builtin-one", "scripts", "run.sh"),
+      "echo builtin\n",
+      "utf8"
+    );
+
+    const overlay = buildProjectMemfsOverlay(
+      projectRoot,
+      {},
+      {
+        systemSkillsRoot,
+      }
+    );
+
+    const inSkillsRoot = overlay.readFileSync(path.join(projectRoot, "skills/builtin-one/SKILL.md"), {
+      encoding: "utf8",
+    });
+    const inAistudioSkills = overlay.readFileSync(path.join(projectRoot, ".aistudio/skills/builtin-one/SKILL.md"), {
+      encoding: "utf8",
+    });
+    const scriptViaAbsoluteVirtualPath = overlay.readFileSync("/skills/builtin-one/scripts/run.sh", {
+      encoding: "utf8",
+    });
+    expect(inSkillsRoot).toContain("builtin-one");
+    expect(inAistudioSkills).toContain("builtin-one");
+    expect(scriptViaAbsoluteVirtualPath).toContain("builtin");
+  });
+
+  test("project-provided /skills files override system built-in skill files", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aistudio-system-skills-override-"));
+    const systemSkillsRoot = path.join(tempDir, "skills");
+    fs.mkdirSync(path.join(systemSkillsRoot, "demo"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "demo", "SKILL.md"),
+      "---\nname: demo\n---\n# from system\n",
+      "utf8"
+    );
+
+    const overlay = buildProjectMemfsOverlay(
+      projectRoot,
+      {
+        "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# from project\n" },
+      },
+      {
+        systemSkillsRoot,
+      }
+    );
+
+    const content = overlay.readFileSync(path.join(projectRoot, ".aistudio/skills/demo/SKILL.md"), {
+      encoding: "utf8",
+    });
+    expect(content).toContain("from project");
+    expect(content).not.toContain("from system");
+  });
+
+  test("remaps host project absolute paths back into the virtual project root", () => {
+    const hostProjectRoot = process.cwd();
+    const overlay = buildProjectMemfsOverlay(projectRoot, {
+      "/.aistudio/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# demo\n" },
+      "/src/app.ts": { code: "export const app = true;\n" },
+    });
+
+    const hostAbsoluteSkillPath = path.join(
+      hostProjectRoot,
+      ".aistudio",
+      "skills",
+      "demo",
+      "SKILL.md"
+    );
+    const hostAbsoluteSourcePath = path.join(hostProjectRoot, "src", "app.ts");
+
+    const skillContent = overlay.readFileSync(hostAbsoluteSkillPath, {
+      encoding: "utf8",
+    });
+    const sourceContent = overlay.readFileSync(hostAbsoluteSourcePath, {
+      encoding: "utf8",
+    });
+
+    expect(skillContent).toContain("name: demo");
+    expect(sourceContent).toContain("app = true");
+  });
+
+  test("remaps host home probes into the virtual project home", () => {
+    const overlay = buildProjectMemfsOverlay(projectRoot, {});
+    const hostHome = os.homedir();
+
+    expect(overlay.existsSync(hostHome)).toBe(true);
+    expect(() => overlay.readdirSync(hostHome)).not.toThrow();
+  });
+
+  test("uses a virtual .aistudio config home while running inside a virtual project", () => {
+    const virtualRoot = path.join(projectRoot, ".aistudio-virtual", "demo-token");
+    const configHome = path.join(virtualRoot, ".aistudio");
+
+    const result = runWithClaudeConfigHomeDir(configHome, () => getClaudeConfigHomeDir());
+
+    expect(result).toBe(configHome);
+    expect(result).not.toContain(`${path.sep}.claude`);
   });
 });

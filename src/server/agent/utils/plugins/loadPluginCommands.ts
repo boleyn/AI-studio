@@ -25,6 +25,7 @@ import {
 } from '../markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../model/model.js'
 import { executeShellCommandsInPrompt } from '../promptShellExecution.js'
+import { withSkillBaseDirForModel } from '../skillPathDisplay.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import {
   loadPluginOptions,
@@ -325,9 +326,7 @@ function createPluginCommand(
       },
       async getPromptForCommand(args, context) {
         // For skills from skills/ directory, include base directory
-        let finalContent = config.isSkillMode
-          ? `Base directory for this skill: ${dirname(file.filePath)}\n\n${content}`
-          : content
+        let finalContent = content
 
         finalContent = substituteArguments(
           finalContent,
@@ -396,6 +395,13 @@ function createPluginCommand(
           `/${commandName}`,
           shell,
         )
+
+        if (config.isSkillMode) {
+          finalContent = withSkillBaseDirForModel(
+            finalContent,
+            dirname(file.filePath),
+          )
+        }
 
         return [{ type: 'text', text: finalContent }]
       },

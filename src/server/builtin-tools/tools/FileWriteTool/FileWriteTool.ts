@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, resolve, sep } from 'path'
+import { getProjectRoot } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -60,7 +61,7 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'Workspace-relative path to the file to write (absolute paths are accepted for compatibility)',
+        'Path to the file to write. Use workspace-relative paths by default. In virtual sessions, absolute paths like "/src/app.ts" are interpreted as virtual-root paths.',
       ),
     content: z.string().describe('The content to write to the file'),
   }),
@@ -74,7 +75,7 @@ const outputSchema = lazySchema(() =>
       .describe(
         'Whether a new file was created or an existing file was updated',
       ),
-    filePath: z.string().describe('The path to the file that was written'),
+    filePath: z.string().describe('The written file path, normalized to workspace/virtual-root form'),
     content: z.string().describe('The content that was written to the file'),
     structuredPatch: z
       .array(hunkSchema())
@@ -106,7 +107,28 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
 
 function resolveWritePath(filePath: string): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  const projectRoot = getProjectRoot()
+  const normalizedProjectRoot = projectRoot ? resolve(projectRoot) : ''
   if (virtualRoot && filePath.startsWith('/')) {
+    // If the model passes a host absolute path under the real project root,
+    // remap it to the virtual root equivalent.
+    const hostAbsolute = resolve(filePath)
+    const normalizedHostAbsolute = hostAbsolute.replace(/\\/g, '/')
+    const inferredVirtualSkillPath =
+      normalizedHostAbsolute.match(/\/(\.aistudio\/skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/(skills\/.+)$/)?.[1] ||
+      normalizedHostAbsolute.match(/\/\.aistudio-virtual\/[^/]+\/(.+)$/)?.[1]
+    if (inferredVirtualSkillPath) {
+      return expandPath(inferredVirtualSkillPath, virtualRoot)
+    }
+    if (
+      normalizedProjectRoot &&
+      (hostAbsolute === normalizedProjectRoot ||
+        hostAbsolute.startsWith(`${normalizedProjectRoot}${sep}`))
+    ) {
+      const rel = hostAbsolute === normalizedProjectRoot ? '' : hostAbsolute.slice(normalizedProjectRoot.length + 1)
+      return rel ? expandPath(rel, virtualRoot) : resolve(virtualRoot)
+    }
     return expandPath(filePath.slice(1), virtualRoot)
   }
   if (virtualRoot && !isAbsolute(filePath) && filePath !== '~' && !filePath.startsWith('~/')) {
@@ -196,6 +218,7 @@ export const FileWriteTool = buildTool({
   },
   async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
     const fullFilePath = resolveWritePath(file_path)
+    const displayFilePath = toVirtualDisplayPath(fullFilePath)
 
     if (!isUnderVirtualProjectRoot(fullFilePath)) {
       return {
@@ -393,7 +416,7 @@ export const FileWriteTool = buildTool({
 
     if (oldContent) {
       const patch = getPatchForDisplay({
-        filePath: file_path,
+        filePath: displayFilePath,
         fileContents: oldContent,
         edits: [
           {
@@ -406,7 +429,7 @@ export const FileWriteTool = buildTool({
 
       const data = {
         type: 'update' as const,
-        filePath: file_path,
+        filePath: displayFilePath,
         content,
         structuredPatch: patch,
         originalFile: oldContent,
@@ -429,7 +452,7 @@ export const FileWriteTool = buildTool({
 
     const data = {
       type: 'create' as const,
-      filePath: file_path,
+      filePath: displayFilePath,
       content,
       structuredPatch: [],
       originalFile: null,

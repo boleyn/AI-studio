@@ -6,8 +6,7 @@ import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import type { ToolCall } from "../../types/conversation";
 import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
-import { countGptMessagesTokens } from "@aistudio/ai/compat/common/string/tiktoken/index";
-import { getLLMModel } from "@aistudio/ai/model";
+import { calculateContextPercentages, getContextWindowForModel } from "@server/agent/utils/context";
 
 import { getMongoDb } from "../db/mongo";
 
@@ -139,42 +138,114 @@ const getLatestStoredContextWindow = (messages: ConversationMessage[]): ContextW
   return null;
 };
 
-const toTokenCountMessages = (messages: ConversationMessage[]): ChatCompletionMessageParam[] =>
-  messages.flatMap((message) => {
-    const content = extractText(message.content);
-    if (message.role === "user") {
-      return [{ role: "user", content } as ChatCompletionMessageParam];
-    }
-    if (message.role === "assistant") {
-      return [{ role: "assistant", content } as ChatCompletionMessageParam];
-    }
-    if (message.role === "system") {
-      return [{ role: "system", content } as ChatCompletionMessageParam];
-    }
-    if (message.role === "tool") {
-      return [{ role: "tool", content, tool_call_id: message.tool_call_id || "" } as ChatCompletionMessageParam];
-    }
-    return [];
-  });
+const extractUsageFromConversationMessage = (entry: ConversationMessage): Record<string, unknown> | null => {
+  const directUsage =
+    entry.message && typeof entry.message === "object" && !Array.isArray(entry.message)
+      ? ((entry.message as Record<string, unknown>).usage as unknown)
+      : undefined;
+  if (directUsage && typeof directUsage === "object" && !Array.isArray(directUsage)) {
+    return directUsage as Record<string, unknown>;
+  }
 
-const estimateContextWindow = async ({
-  messages,
-  model,
-}: {
-  messages: ConversationMessage[];
-  model?: string;
-}): Promise<ContextWindowUsage> => {
-  const resolvedModel = model?.trim() || "agent";
-  const modelInfo = getLLMModel(resolvedModel);
-  const maxContext = Math.max(1, modelInfo.maxContext || 16000);
-  const usedTokens = await countGptMessagesTokens(toTokenCountMessages(messages)).catch(() => 0);
-  return {
-    model: resolvedModel,
-    usedTokens,
-    maxContext,
-    remainingTokens: Math.max(0, maxContext - usedTokens),
-    usedPercent: Number(Math.min(100, Math.max(0, (usedTokens / maxContext) * 100)).toFixed(2)),
-  };
+  const kwargs =
+    entry.additional_kwargs && typeof entry.additional_kwargs === "object" && !Array.isArray(entry.additional_kwargs)
+      ? (entry.additional_kwargs as Record<string, unknown>)
+      : null;
+  if (!kwargs) return null;
+
+  const sdkMessage =
+    kwargs.sdkMessage && typeof kwargs.sdkMessage === "object" && !Array.isArray(kwargs.sdkMessage)
+      ? (kwargs.sdkMessage as Record<string, unknown>)
+      : null;
+  if (!sdkMessage) return null;
+
+  const sdkPayload =
+    sdkMessage.message && typeof sdkMessage.message === "object" && !Array.isArray(sdkMessage.message)
+      ? (sdkMessage.message as Record<string, unknown>)
+      : null;
+  const sdkUsage = sdkPayload?.usage;
+  if (sdkUsage && typeof sdkUsage === "object" && !Array.isArray(sdkUsage)) {
+    return sdkUsage as Record<string, unknown>;
+  }
+  return null;
+};
+
+const extractModelFromConversationMessage = (entry: ConversationMessage): string | null => {
+  const directModel =
+    entry.message && typeof entry.message === "object" && !Array.isArray(entry.message)
+      ? (entry.message as Record<string, unknown>).model
+      : undefined;
+  if (typeof directModel === "string" && directModel.trim()) {
+    return directModel.trim();
+  }
+
+  const kwargs =
+    entry.additional_kwargs && typeof entry.additional_kwargs === "object" && !Array.isArray(entry.additional_kwargs)
+      ? (entry.additional_kwargs as Record<string, unknown>)
+      : null;
+  if (!kwargs) return null;
+
+  const sdkMessage =
+    kwargs.sdkMessage && typeof kwargs.sdkMessage === "object" && !Array.isArray(kwargs.sdkMessage)
+      ? (kwargs.sdkMessage as Record<string, unknown>)
+      : null;
+  if (!sdkMessage) return null;
+
+  const sdkPayload =
+    sdkMessage.message && typeof sdkMessage.message === "object" && !Array.isArray(sdkMessage.message)
+      ? (sdkMessage.message as Record<string, unknown>)
+      : null;
+  const sdkModel = sdkPayload?.model;
+  if (typeof sdkModel === "string" && sdkModel.trim()) {
+    return sdkModel.trim();
+  }
+  return null;
+};
+
+const getLatestUsageContextWindow = (
+  messages: ConversationMessage[],
+  model?: string
+): ContextWindowUsage | null => {
+  const fallbackModel = model?.trim() || "agent";
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const entry = messages[i];
+    if (entry.role !== "assistant") continue;
+    const usageRecord = extractUsageFromConversationMessage(entry);
+    if (!usageRecord) continue;
+    const resolvedModel = extractModelFromConversationMessage(entry) || fallbackModel;
+    const maxContext = Math.max(1, getContextWindowForModel(resolvedModel));
+    const inputTokens = usageRecord.input_tokens;
+    if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens)) continue;
+
+    const cacheCreationInputTokens =
+      typeof usageRecord.cache_creation_input_tokens === "number" &&
+      Number.isFinite(usageRecord.cache_creation_input_tokens)
+        ? usageRecord.cache_creation_input_tokens
+        : 0;
+    const cacheReadInputTokens =
+      typeof usageRecord.cache_read_input_tokens === "number" &&
+      Number.isFinite(usageRecord.cache_read_input_tokens)
+        ? usageRecord.cache_read_input_tokens
+        : 0;
+    const usedTokens = Math.max(0, inputTokens + cacheCreationInputTokens + cacheReadInputTokens);
+    const percentages = calculateContextPercentages(
+      {
+        input_tokens: inputTokens,
+        cache_creation_input_tokens: cacheCreationInputTokens,
+        cache_read_input_tokens: cacheReadInputTokens,
+      },
+      maxContext
+    );
+    const usedPercent = typeof percentages.used === "number" ? percentages.used : 0;
+    return {
+      model: resolvedModel,
+      usedTokens,
+      maxContext,
+      remainingTokens: Math.max(0, maxContext - usedTokens),
+      usedPercent,
+    };
+  }
+  return null;
 };
 
 const getMetaCollection = async () => {
@@ -727,12 +798,7 @@ export async function getConversationRecordsV2({
     total,
     hasMorePrev,
     hasMoreNext,
-    contextWindow:
-      getLatestStoredContextWindow(allMessages) ||
-      (await estimateContextWindow({
-        messages: allMessages,
-        model,
-      })),
+    contextWindow: getLatestStoredContextWindow(allMessages) || getLatestUsageContextWindow(allMessages, model),
   };
 }
 

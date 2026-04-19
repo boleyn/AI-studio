@@ -30,7 +30,7 @@ export function renderPromptTemplate(
   offsetInstruction: string,
 ): string {
   return `Reads a file from the workspace filesystem.
-Prefer workspace-relative paths rooted at the current project directory. Absolute paths are supported only for compatibility and should not be preferred. It is okay to read a file that does not exist; an error will be returned.
+Prefer workspace-relative paths rooted at the current project directory. In virtual sessions, paths that start with "/" are treated as virtual project-root paths (for example: "/src/app.ts"), while host absolute paths are disallowed. It is okay to read a file that does not exist; an error will be returned.
 
 Usage:
 - Prefer workspace-relative file_path values (for example: src/app.ts, package.json)

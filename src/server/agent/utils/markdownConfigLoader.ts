@@ -46,6 +46,9 @@ export type MarkdownFile = {
   source: SettingSource
 }
 
+const getProjectConfigDirName = (subdir: ClaudeConfigDirectory): '.aistudio' | '.claude' =>
+  subdir === 'skills' ? '.aistudio' : '.claude'
+
 /**
  * Extracts a description from markdown content
  * Uses the first non-empty line as the description, or falls back to a default
@@ -236,6 +239,7 @@ export function getProjectDirsUpToHome(
   subdir: ClaudeConfigDirectory,
   cwd: string,
 ): string[] {
+  const configDirName = getProjectConfigDirName(subdir)
   const fs = getFsImplementation()
   const home = resolve(homedir()).normalize('NFC')
   const gitRoot = resolveStopBoundary(cwd)
@@ -252,18 +256,25 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.claude', subdir)
-    // Filter to existing dirs. This is a perf filter (avoids spawning
-    // ripgrep on non-existent dirs downstream) and the worktree fallback
-    // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
-    // handling instead of existsSync — re-throws unexpected errors rather
-    // than silently swallowing them. Downstream loadMarkdownFiles handles
-    // the TOCTOU window (dir disappearing before read) gracefully.
-    try {
-      fs.statSync(claudeSubdir)
-      dirs.push(claudeSubdir)
-    } catch (e: unknown) {
-      if (!isFsInaccessible(e)) throw e
+    const candidateDirs =
+      subdir === 'skills'
+        ? [join(current, configDirName, subdir), join(current, subdir)]
+        : [join(current, configDirName, subdir)]
+    for (const candidateDir of candidateDirs) {
+      // Filter to existing dirs. This is a perf filter (avoids spawning
+      // ripgrep on non-existent dirs downstream) and the worktree fallback
+      // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
+      // handling instead of existsSync — re-throws unexpected errors rather
+      // than silently swallowing them. Downstream loadMarkdownFiles handles
+      // the TOCTOU window (dir disappearing before read) gracefully.
+      try {
+        fs.statSync(candidateDir)
+        if (!dirs.includes(candidateDir)) {
+          dirs.push(candidateDir)
+        }
+      } catch (e: unknown) {
+        if (!isFsInaccessible(e)) throw e
+      }
     }
 
     // Stop after processing the git root directory - this prevents commands from parent
@@ -303,7 +314,8 @@ export const loadMarkdownFilesForSubdir = memoize(
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
     const userDir = join(getClaudeConfigHomeDir(), subdir)
-    const managedDir = join(getManagedFilePath(), '.claude', subdir)
+    const configDirName = getProjectConfigDirName(subdir)
+    const managedDir = join(getManagedFilePath(), configDirName, subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
     // For git worktrees where the worktree does NOT have .claude/<subdir> checked
@@ -323,13 +335,13 @@ export const loadMarkdownFilesForSubdir = memoize(
     const canonicalRoot = findCanonicalGitRoot(cwd)
     if (gitRoot && canonicalRoot && canonicalRoot !== gitRoot) {
       const worktreeSubdir = normalizePathForComparison(
-        join(gitRoot, '.claude', subdir),
+        join(gitRoot, configDirName, subdir),
       )
       const worktreeHasSubdir = projectDirs.some(
         dir => normalizePathForComparison(dir) === worktreeSubdir,
       )
       if (!worktreeHasSubdir) {
-        const mainClaudeSubdir = join(canonicalRoot, '.claude', subdir)
+        const mainClaudeSubdir = join(canonicalRoot, configDirName, subdir)
         if (!projectDirs.includes(mainClaudeSubdir)) {
           projectDirs.push(mainClaudeSubdir)
         }
