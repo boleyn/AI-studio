@@ -3,6 +3,7 @@ import type { SdkMessage } from "@shared/chat/sdkMessages";
 import { createSdkMessage, sdkContentToText } from "@shared/chat/sdkMessages";
 import type { SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { Volume, createFsFromVolume } from "memfs";
 import type { FsOperations } from "../utils/fsOperations";
@@ -46,6 +47,10 @@ type ToolInputState = {
 };
 
 type ProjectFilesInput = Record<string, { code?: string }>;
+type BuildProjectMemfsOverlayOptions = {
+  systemSkillsRoot?: string;
+  includeSystemSkills?: boolean;
+};
 
 const isPathInsideRoot = (targetPath: string, rootPath: string): boolean => {
   const normalizedTarget = path.resolve(targetPath);
@@ -76,6 +81,48 @@ const toLegacyClaudeSkillPath = (filePath: string): string | null => {
   return `/.claude/skills/${skillName}/${rest}`;
 };
 
+const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput => {
+  const normalizedRoot = path.resolve(systemSkillsRoot);
+  if (!existsSync(normalizedRoot)) return {};
+  let rootStats;
+  try {
+    rootStats = statSync(normalizedRoot);
+  } catch {
+    return {};
+  }
+  if (!rootStats.isDirectory()) return {};
+
+  const files: ProjectFilesInput = {};
+  const walk = (currentDir: string) => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const relative = path.relative(normalizedRoot, fullPath).replace(/\\/g, "/");
+      if (!relative || relative.startsWith("..")) continue;
+      let code = "";
+      try {
+        code = readFileSync(fullPath, "utf8");
+      } catch {
+        continue;
+      }
+      files[`/skills/${relative}`] = { code };
+    }
+  };
+
+  walk(normalizedRoot);
+  return files;
+};
+
 const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectFilesInput => {
   const expanded: ProjectFilesInput = {};
   for (const [rawPath, file] of Object.entries(projectFiles || {})) {
@@ -91,7 +138,11 @@ const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectF
   return expanded;
 };
 
-export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: ProjectFilesInput): FsOperations => {
+export const buildProjectMemfsOverlay = (
+  projectRoot: string,
+  projectFiles: ProjectFilesInput,
+  options?: BuildProjectMemfsOverlayOptions
+): FsOperations => {
   const volume = new Volume();
   const memfs = createFsFromVolume(volume) as unknown as {
     promises: Record<string, (...args: any[]) => Promise<any>>;
@@ -124,7 +175,17 @@ export const buildProjectMemfsOverlay = (projectRoot: string, projectFiles: Proj
     closeSync: (fd: number) => void;
   };
 
-  const projectEntries = Object.entries(expandProjectFilesForRuntime(projectFiles || {}));
+  const includeSystemSkills = options?.includeSystemSkills !== false;
+  const systemSkillsRoot = options?.systemSkillsRoot
+    ? path.resolve(options.systemSkillsRoot)
+    : path.resolve(process.cwd(), "skills");
+  const mergedProjectFiles = includeSystemSkills
+    ? {
+        ...collectSystemSkillFiles(systemSkillsRoot),
+        ...(projectFiles || {}),
+      }
+    : (projectFiles || {});
+  const projectEntries = Object.entries(expandProjectFilesForRuntime(mergedProjectFiles));
   for (const [filePath, file] of projectEntries) {
     const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
     const dirPath = path.dirname(absolutePath);
@@ -782,6 +843,47 @@ const tryRunQueryEngine = async (
       }
 
     const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
+    const VIRTUAL_ROOT_LABEL = "<virtual-project-root>";
+
+    const sanitizeStringForUi = (value: string): string => {
+      if (!hasVirtualProjectFiles || !value) return value;
+      const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+      const replaceRoot = (text: string, rawRoot: string): string => {
+        const root = normalize(rawRoot);
+        if (!root) return text;
+        const withSlash = `${root}/`;
+        let out = text.split(withSlash).join(`${VIRTUAL_ROOT_LABEL}/`);
+        if (out.includes(root)) out = out.split(root).join(VIRTUAL_ROOT_LABEL);
+        return out;
+      };
+
+      let sanitized = value;
+      sanitized = replaceRoot(sanitized, baseCwd);
+      sanitized = replaceRoot(sanitized, virtualProjectRoot);
+      return sanitized;
+    };
+
+    const sanitizeForUi = (inputValue: unknown): unknown => {
+      if (!hasVirtualProjectFiles) return inputValue;
+      const visited = new WeakSet<object>();
+      const walk = (node: unknown): unknown => {
+        if (typeof node === "string") return sanitizeStringForUi(node);
+        if (!node || typeof node !== "object") return node;
+        if (visited.has(node as object)) return node;
+        visited.add(node as object);
+        if (Array.isArray(node)) return node.map((item) => walk(item));
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+          out[k] = walk(v);
+        }
+        return out;
+      };
+      return walk(inputValue);
+    };
+
+    const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
+      input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
+    };
     const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
       await Promise.all([
         import("../state/AppStateStore"),
@@ -930,7 +1032,7 @@ const tryRunQueryEngine = async (
           };
           if (index >= 0) toolStateByIndex.set(index, nextState);
           if (id) toolStateById.set(id, nextState);
-          input.onEvent("stream_event", {
+          emitEvent("stream_event", {
             subtype: "tool_use_start",
             id,
             name,
@@ -942,14 +1044,14 @@ const tryRunQueryEngine = async (
         if (streamType === "content_block_delta") {
           const deltaType = stream.event?.delta?.type;
           if (deltaType === "text_delta" && typeof stream.event?.delta?.text === "string") {
-            input.onEvent("stream_event", {
+            emitEvent("stream_event", {
               subtype: "text_delta",
               text: stream.event.delta.text,
             });
             continue;
           }
           if (deltaType === "thinking_delta" && typeof stream.event?.delta?.thinking === "string") {
-            input.onEvent("stream_event", {
+            emitEvent("stream_event", {
               subtype: "thinking_delta",
               text: stream.event.delta.thinking,
             });
@@ -962,7 +1064,7 @@ const tryRunQueryEngine = async (
               state.inputBuffer += stream.event.delta.partial_json;
               const parsed = parseJsonLoose(state.inputBuffer);
               if (parsed !== undefined) state.lastInput = parsed;
-              input.onEvent("stream_event", {
+              emitEvent("stream_event", {
                 subtype: "tool_use_delta",
                 id: state.id,
                 name: state.name,
@@ -984,7 +1086,7 @@ const tryRunQueryEngine = async (
           const contentText =
             typeof record.content === "string" ? record.content : JSON.stringify(record.content ?? "", null, 2);
           const toolState = toolStateById.get(record.tool_use_id);
-          input.onEvent("stream_event", {
+          emitEvent("stream_event", {
             subtype: "tool_result",
             id: record.tool_use_id,
             ...(toolState?.name ? { name: toolState.name } : {}),

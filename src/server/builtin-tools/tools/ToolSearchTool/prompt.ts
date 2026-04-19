@@ -45,6 +45,11 @@ const PROMPT_TAIL = ` Until fetched, only the name is known — there is no para
 
 Result format: each matched tool appears as one <function>{"description": "...", "name": "...", "parameters": {...}}</function> line inside the <functions> block — the same encoding as the tool list at the top of this prompt.
 
+Important scope boundary:
+- This tool only discovers deferred tools.
+- It does NOT load or search skill files.
+- Skills are loaded through the commands/skills loader pipeline and invoked via the Skill tool.
+
 Query forms:
 - "select:Read,Edit,Grep" — fetch these exact tools by name
 - "notebook jupyter" — keyword search, up to max_results best matches

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { buildProjectMemfsOverlay } from "./claudeQueryAdapter";
 
@@ -105,5 +107,66 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
     });
     expect(content).toContain("from claude skills");
     expect(content).not.toContain("from skills");
+  });
+
+  test("loads built-in skills from system skills root into /skills and /.claude/skills", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aistudio-system-skills-"));
+    const systemSkillsRoot = path.join(tempDir, "skills");
+    fs.mkdirSync(path.join(systemSkillsRoot, "builtin-one"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "builtin-one", "SKILL.md"),
+      "---\nname: builtin-one\n---\n# builtin one\n",
+      "utf8"
+    );
+    fs.mkdirSync(path.join(systemSkillsRoot, "builtin-one", "scripts"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "builtin-one", "scripts", "run.sh"),
+      "echo builtin\n",
+      "utf8"
+    );
+
+    const overlay = buildProjectMemfsOverlay(
+      projectRoot,
+      {},
+      {
+        systemSkillsRoot,
+      }
+    );
+
+    const inSkillsRoot = overlay.readFileSync(path.join(projectRoot, "skills/builtin-one/SKILL.md"), {
+      encoding: "utf8",
+    });
+    const inClaudeSkills = overlay.readFileSync(path.join(projectRoot, ".claude/skills/builtin-one/SKILL.md"), {
+      encoding: "utf8",
+    });
+    expect(inSkillsRoot).toContain("builtin-one");
+    expect(inClaudeSkills).toContain("builtin-one");
+  });
+
+  test("project-provided /skills files override system built-in skill files", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aistudio-system-skills-override-"));
+    const systemSkillsRoot = path.join(tempDir, "skills");
+    fs.mkdirSync(path.join(systemSkillsRoot, "demo"), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemSkillsRoot, "demo", "SKILL.md"),
+      "---\nname: demo\n---\n# from system\n",
+      "utf8"
+    );
+
+    const overlay = buildProjectMemfsOverlay(
+      projectRoot,
+      {
+        "/skills/demo/SKILL.md": { code: "---\nname: demo\n---\n# from project\n" },
+      },
+      {
+        systemSkillsRoot,
+      }
+    );
+
+    const content = overlay.readFileSync(path.join(projectRoot, ".claude/skills/demo/SKILL.md"), {
+      encoding: "utf8",
+    });
+    expect(content).toContain("from project");
+    expect(content).not.toContain("from system");
   });
 });
