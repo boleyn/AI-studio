@@ -1,9 +1,11 @@
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import { spawn } from 'child_process'
 import {
   copyFile,
   mkdtemp as fsMkdtemp,
   mkdir as fsMkdir,
+  readdir as fsReaddir,
   readFile as fsReadFile,
   rm as fsRm,
   stat as fsStat,
@@ -426,20 +428,261 @@ async function runVirtualWasiCommand(
   }
 }
 
+function normalizeRelativePathForSet(input: string): string {
+  return input.split(path.sep).join('/')
+}
+
+function commandReferencesDisallowedPath(command: string): string | null {
+  // Block explicit absolute/home/parent-traversal paths at shell-token level.
+  // This avoids false positives for relative paths containing '/'.
+  const tokens = tokenizeShellLike(command.trim())
+  for (const token of tokens) {
+    const t = token.trim()
+    if (!t) continue
+    if (t === '&&' || t === '||' || t === '|' || t === ';') continue
+
+    if (
+      t === '~' ||
+      t.startsWith('~/') ||
+      t.startsWith('~\\') ||
+      t.startsWith('file://~')
+    ) {
+      return 'home-path "~"'
+    }
+
+    if (t === '..' || t.startsWith('../') || t.startsWith('..\\')) {
+      return 'parent-traversal ".."'
+    }
+
+    if (t.startsWith('/') || t.startsWith('file:///')) {
+      return 'absolute path'
+    }
+  }
+  return null
+}
+
+function collectVirtualFileSet(
+  fs: ReturnType<typeof getFsImplementation>,
+  virtualRoot: string,
+): Set<string> {
+  const out = new Set<string>()
+  const walk = (dir: string) => {
+    const entries = fs.readdirSync(dir)
+    for (const entry of entries) {
+      const absPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(absPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const relPath = path.relative(virtualRoot, absPath)
+      out.add(normalizeRelativePathForSet(relPath))
+    }
+  }
+  walk(virtualRoot)
+  return out
+}
+
+async function executeInHostShellFromVirtualWorkspace(
+  command: string,
+  cwd: string,
+  workspaceRoot: string,
+  timeoutMs: number,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const shell =
+    process.platform === 'win32'
+      ? process.env.ComSpec || 'cmd.exe'
+      : process.env.SHELL || '/bin/bash'
+  const shellArgs =
+    process.platform === 'win32'
+      ? ['/d', '/s', '/c', command]
+      : ['-lc', command]
+
+  const tmpDir = path.join(workspaceRoot, '.tmp')
+  const cacheDir = path.join(workspaceRoot, '.cache')
+  const stateDir = path.join(workspaceRoot, '.state')
+  const configDir = path.join(workspaceRoot, '.config')
+  await fsMkdir(tmpDir, { recursive: true })
+  await fsMkdir(cacheDir, { recursive: true })
+  await fsMkdir(stateDir, { recursive: true })
+  await fsMkdir(configDir, { recursive: true })
+
+  return await new Promise(resolve => {
+    const child = spawn(shell, shellArgs, {
+      cwd,
+      env: {
+        ...process.env,
+        HOME: workspaceRoot,
+        USERPROFILE: workspaceRoot,
+        TMPDIR: tmpDir,
+        TMP: tmpDir,
+        TEMP: tmpDir,
+        XDG_CACHE_HOME: cacheDir,
+        XDG_STATE_HOME: stateDir,
+        XDG_CONFIG_HOME: configDir,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
+    let timeoutHandle: NodeJS.Timeout | undefined
+    let hardKillHandle: NodeJS.Timeout | undefined
+
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGTERM')
+        hardKillHandle = setTimeout(() => child.kill('SIGKILL'), 2_000)
+      }, timeoutMs)
+    }
+
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', error => {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (hardKillHandle) clearTimeout(hardKillHandle)
+      resolve({
+        code: 126,
+        stdout,
+        stderr:
+          stderr +
+          (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
+          `Virtual host shell failed: ${maskVirtualPathsInText(error.message)}`,
+      })
+    })
+
+    child.on('close', code => {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (hardKillHandle) clearTimeout(hardKillHandle)
+      if (timedOut) {
+        resolve({
+          code: 124,
+          stdout,
+          stderr:
+            stderr +
+            (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
+            `Command timed out after ${timeoutMs}ms in virtual host shell.`,
+        })
+        return
+      }
+      resolve({
+        code: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr,
+      })
+    })
+  })
+}
+
+async function syncHostWorkspaceBackToVirtualFs(
+  fs: ReturnType<typeof getFsImplementation>,
+  hostWorkspaceRoot: string,
+  virtualProjectRoot: string,
+  beforeFiles: Set<string>,
+): Promise<void> {
+  const afterFiles = new Set<string>()
+
+  const walkHost = async (dir: string) => {
+    const entries = await fsReaddir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const hostAbsPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await walkHost(hostAbsPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      const relPath = normalizeRelativePathForSet(
+        path.relative(hostWorkspaceRoot, hostAbsPath),
+      )
+      afterFiles.add(relPath)
+
+      const virtualAbsPath = path.join(virtualProjectRoot, relPath)
+      fs.mkdirSync(path.dirname(virtualAbsPath))
+      const bytes = await fsReadFile(hostAbsPath)
+      fs.writeFileSync(virtualAbsPath, bytes)
+    }
+  }
+
+  await walkHost(hostWorkspaceRoot)
+
+  for (const relPath of beforeFiles) {
+    if (afterFiles.has(relPath)) continue
+    const virtualAbsPath = path.join(virtualProjectRoot, relPath)
+    if (fs.existsSync(virtualAbsPath)) {
+      fs.rmSync(virtualAbsPath, { force: true })
+    }
+  }
+}
+
+async function runVirtualHostShellCommand(
+  command: string,
+  virtualProjectRoot: string,
+  cwd: string,
+  fs: ReturnType<typeof getFsImplementation>,
+  timeoutMs: number,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const disallowed = commandReferencesDisallowedPath(command)
+  if (disallowed) {
+    return {
+      code: 2,
+      stdout: '',
+      stderr: `Virtual host shell blocked: detected ${disallowed}. Use paths relative to the virtual workspace only.`,
+    }
+  }
+
+  const os = await import('node:os')
+  const stagingRoot = await fsMkdtemp(
+    path.join(os.tmpdir(), 'claude-virtual-shell-'),
+  )
+  const workspaceDir = path.join(stagingRoot, 'workspace')
+
+  try {
+    await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
+    const beforeFiles = collectVirtualFileSet(fs, virtualProjectRoot)
+
+    const relativeCwd = path.relative(virtualProjectRoot, cwd)
+    if (relativeCwd.startsWith('..')) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
+      }
+    }
+    const hostCwd = path.resolve(workspaceDir, relativeCwd || '.')
+
+    const result = await executeInHostShellFromVirtualWorkspace(
+      command,
+      hostCwd,
+      workspaceDir,
+      timeoutMs,
+    )
+
+    await syncHostWorkspaceBackToVirtualFs(
+      fs,
+      workspaceDir,
+      virtualProjectRoot,
+      beforeFiles,
+    )
+    return result
+  } finally {
+    await fsRm(stagingRoot, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 async function runVirtualBashCommand(
   command: string,
   virtualProjectRoot: string,
   workingPath?: string,
+  timeoutMs = getDefaultTimeoutMs(),
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  if (hasUnsupportedShellSyntax(command)) {
-    return {
-      code: 2,
-      stdout: '',
-      stderr:
-        'Virtual Bash currently supports single read-only commands without pipes/redirection/operators.',
-    }
-  }
-
   const tokens = tokenizeShellLike(command.trim())
   if (tokens.length === 0) {
     return { code: 0, stdout: '', stderr: '' }
@@ -492,15 +735,16 @@ async function runVirtualBashCommand(
   )
   if (wasiResult) return wasiResult
 
-  if (!VIRTUAL_BASH_ALLOWED_COMMANDS.has(base)) {
-    const hasWasi = isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_BASH || '')
-    return {
-      code: 2,
-      stdout: '',
-      stderr: hasWasi
-        ? `Virtual Bash does not support "${base}" yet. Configure CLAUDE_CODE_VIRTUAL_WASI_COMMAND_MAP or use supported built-ins: ls, pwd, cat, echo.`
-        : `Virtual Bash does not support "${base}" yet. Supported commands: ls, pwd, cat, echo.`,
-    }
+  const canUseBuiltinVirtual =
+    !hasUnsupportedShellSyntax(command) && VIRTUAL_BASH_ALLOWED_COMMANDS.has(base)
+  if (!canUseBuiltinVirtual) {
+    return await runVirtualHostShellCommand(
+      command,
+      virtualProjectRoot,
+      cwd,
+      fs,
+      timeoutMs,
+    )
   }
 
   if (base === 'pwd') {
@@ -1288,10 +1532,11 @@ export const BashTool = buildTool({
   ) {
     const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
     if (virtualProjectRoot) {
-      const virtualResult = await runVirtualBashCommand(
+    const virtualResult = await runVirtualBashCommand(
         input.command,
         virtualProjectRoot,
         input.path,
+        input.timeout || getDefaultTimeoutMs(),
       )
       const interpretation = interpretCommandResult(
         input.command,
