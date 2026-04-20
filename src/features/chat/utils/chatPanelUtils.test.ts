@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeHistoryMessagesForTimeline } from "./chatPanelUtils";
+import { normalizeHistoryMessagesForTimeline, toUpdatedFilesMap } from "./chatPanelUtils";
 
 test("normalizeHistoryMessagesForTimeline does not overwrite persisted planProgress", () => {
   const input = [
@@ -120,4 +120,15 @@ test("normalizeHistoryMessagesForTimeline keeps interaction-state based payload 
   assert.equal(selections["req-1"]?.q1, "确认执行");
   const interactionState = kwargs.planModeInteractionState as Record<string, { status?: string }>;
   assert.equal(interactionState["req-1"]?.status, "submitted");
+});
+
+test("toUpdatedFilesMap normalizes updated file paths to workspace-style absolute paths", () => {
+  const result = toUpdatedFilesMap({
+    "App.js": { code: "export default function App() { return null; }" },
+    "/src/index.ts": { code: "console.log('ok');" },
+  });
+
+  assert.ok(result);
+  assert.equal(result?.["/App.js"]?.code, "export default function App() { return null; }");
+  assert.equal(result?.["/src/index.ts"]?.code, "console.log('ok');");
 });

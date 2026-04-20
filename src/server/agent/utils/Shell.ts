@@ -261,11 +261,11 @@ export async function exec(
   if (virtualProjectRoot) {
     if (!isPathInsideRoot(cwd, virtualProjectRoot)) {
       return createFailedCommand(
-        `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside virtual project root "<virtual-project-root>".`,
+        `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
       )
     }
     return createFailedCommand(
-      'This session is bound to a virtual project filesystem (<virtual-project-root>). Shell command execution is disabled because the current shell runtime does not run against the virtual filesystem yet.',
+      'This session is bound to a virtual project filesystem. Shell command execution is disabled because the current shell runtime does not run against the virtual filesystem yet.',
     )
   }
 
@@ -478,7 +478,7 @@ export function setCwd(path: string, relativeTo?: string): void {
   const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
   if (virtualProjectRoot && !isPathInsideRoot(resolved, virtualProjectRoot)) {
     throw new Error(
-      `Path "${maskVirtualPathForDisplay(resolved)}" is outside virtual project root "<virtual-project-root>"`,
+      `Path "${maskVirtualPathForDisplay(resolved)}" is outside the project sandbox`,
     )
   }
   // Resolve symlinks to match the behavior of pwd -P.
@@ -498,7 +498,7 @@ export function setCwd(path: string, relativeTo?: string): void {
     !isPathInsideRoot(physicalPath, virtualProjectRoot)
   ) {
     throw new Error(
-      `Path "${maskVirtualPathForDisplay(physicalPath)}" is outside virtual project root "<virtual-project-root>"`,
+      `Path "${maskVirtualPathForDisplay(physicalPath)}" is outside the project sandbox`,
     )
   }
 

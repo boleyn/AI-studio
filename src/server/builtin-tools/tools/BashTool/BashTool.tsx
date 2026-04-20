@@ -362,7 +362,7 @@ async function runVirtualWasiCommand(
     return {
       code: 1,
       stdout: '',
-      stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside virtual project root "<virtual-project-root>".`,
+      stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
     }
   }
 
@@ -456,7 +456,7 @@ async function runVirtualBashCommand(
       return {
         code: 1,
         stdout: '',
-        stderr: `Path "${maskVirtualPathForDisplay(resolved)}" is outside virtual project root "<virtual-project-root>".`,
+        stderr: `Path "${maskVirtualPathForDisplay(resolved)}" is outside the project sandbox.`,
       }
     }
     try {

@@ -59,7 +59,7 @@ const toSkillDisplayPath = (
   sourcePrefix: SkillSourcePrefix = "/.aistudio/skills"
 ) => {
   const virtualized = virtualizePath(input);
-  if (virtualized.includes("<virtual-project-root>")) return virtualized;
+  if (!virtualized.startsWith("<outside-project-path>")) return virtualized;
   const relative = toRootRelativeSkillPath(input, skillsRoot);
   if (relative === "/") return sourcePrefix;
   return `${sourcePrefix}${relative}`.replace(/\/{2,}/g, "/");

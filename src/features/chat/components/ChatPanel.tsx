@@ -423,6 +423,7 @@ const ChatPanel = ({
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
         continueAssistantMessageId?: string;
+        baseMessagesOverride?: ConversationMessage[];
       }
     ) => {
       const text = payload.text.trim();
@@ -437,6 +438,9 @@ const ChatPanel = ({
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
       const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
+      const baseMessagesOverride = Array.isArray(options?.baseMessagesOverride)
+        ? options?.baseMessagesOverride
+        : null;
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
@@ -581,8 +585,9 @@ const ChatPanel = ({
           ? existingAssistantKwargs.reasoning_text
           : "";
 
+      const baseMessages = baseMessagesOverride || messagesRef.current;
       const requestMessagesForApi = [
-        ...messagesRef.current
+        ...baseMessages
           .filter((item) => !(item.role === "assistant" && item.id === assistantMessageId))
           .map((item) => ({
             ...item,
@@ -936,6 +941,11 @@ const ChatPanel = ({
                     });
                   }
                 }
+              }
+              if (subtype === "files_updated" && onFilesUpdated) {
+                const files = toUpdatedFilesMap(payload.files);
+                if (files) onFilesUpdated(files);
+                return;
               }
               return;
             }

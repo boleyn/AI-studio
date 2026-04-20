@@ -73,6 +73,12 @@ export type FsOperations = {
   }
   /** Appends string to file */
   appendFileSync(path: string, data: string, options?: { mode?: number }): void
+  /** Writes string or bytes to file */
+  writeFileSync(
+    path: string,
+    data: string | Buffer,
+    options?: { encoding?: BufferEncoding; mode?: number; flush?: boolean },
+  ): void
   /** Copies file from source to destination */
   copyFileSync(src: string, dest: string): void
   /** Deletes file */
@@ -485,6 +491,11 @@ export const NodeFsOperations: FsOperations = {
       }
     }
     fs.appendFileSync(path, data)
+  },
+
+  writeFileSync(path, data, options) {
+    using _ = slowLogging`fs.writeFileSync(${path}, ${typeof data === 'string' ? data.length : data.byteLength} bytes)`
+    fs.writeFileSync(path, data, options)
   },
 
   copyFileSync(src, dest) {

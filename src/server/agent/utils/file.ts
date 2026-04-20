@@ -1,4 +1,3 @@
-import { chmodSync, writeFileSync as fsWriteFileSync } from 'fs'
 import { realpath, stat } from 'fs/promises'
 import { homedir } from 'os'
 import {
@@ -216,26 +215,32 @@ export function findSimilarFile(filePath: string): string | undefined {
  */
 export const FILE_NOT_FOUND_CWD_NOTE = 'Note: your current working directory is'
 
+function toVirtualRelativePathForDisplay(inputPath: string): string | null {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return null
+  const normalizedRoot = resolve(virtualRoot)
+  const normalizedInput = resolve(inputPath)
+  if (normalizedInput === normalizedRoot) return '.'
+  if (!normalizedInput.startsWith(`${normalizedRoot}${sep}`)) return null
+  const rel = relative(normalizedRoot, normalizedInput).replaceAll('\\', '/')
+  return rel || '.'
+}
+
 export function getCwdForErrorNote(): string {
   const cwd = getCwd()
-  const virtualRoot = (getVirtualProjectRoot() || '').trim()
-  if (!virtualRoot) return cwd
-  if (cwd === virtualRoot) return '<virtual-project-root>'
-  const rel = relative(virtualRoot, cwd)
-  if (!rel || rel === '.') return '<virtual-project-root>'
-  if (rel.startsWith('..')) return '<virtual-project-root>'
-  return `<virtual-project-root>/${rel.replaceAll('\\', '/')}`
+  const virtualRel = toVirtualRelativePathForDisplay(cwd)
+  if (virtualRel !== null) return virtualRel
+  if ((getVirtualProjectRoot() || '').trim()) return '.'
+  return cwd
 }
 
 export function maskVirtualPathForDisplay(inputPath: string): string {
-  const virtualRoot = (getVirtualProjectRoot() || '').trim()
-  if (!virtualRoot) return inputPath
-  const normalizedRoot = resolve(virtualRoot)
-  const normalizedInput = resolve(inputPath)
-  if (normalizedInput === normalizedRoot) return '<virtual-project-root>'
-  if (!normalizedInput.startsWith(`${normalizedRoot}${sep}`)) return inputPath
-  const rel = relative(normalizedRoot, normalizedInput).replaceAll('\\', '/')
-  return rel ? `<virtual-project-root>/${rel}` : '<virtual-project-root>'
+  const virtualRel = toVirtualRelativePathForDisplay(inputPath)
+  if (virtualRel !== null) return virtualRel
+  if ((getVirtualProjectRoot() || '').trim() && isAbsolute(inputPath)) {
+    return '<outside-project-path>'
+  }
+  return inputPath
 }
 
 /**
@@ -446,7 +451,7 @@ export function writeFileSyncAndFlush_DEPRECATED(
       writeOptions.mode = options.mode
     }
 
-    fsWriteFileSync(tempPath, content, writeOptions)
+    fs.writeFileSync(tempPath, content, writeOptions)
     logForDebugging(
       `Temp file written successfully, size: ${content.length} bytes`,
     )
@@ -492,7 +497,7 @@ export function writeFileSyncAndFlush_DEPRECATED(
         fallbackOptions.mode = options.mode
       }
 
-      fsWriteFileSync(targetPath, content, fallbackOptions)
+      fs.writeFileSync(targetPath, content, fallbackOptions)
       logForDebugging(
         `File ${targetPath} written successfully with non-atomic fallback`,
       )

@@ -142,12 +142,12 @@ function toVirtualDisplayPath(resolvedPath: string): string {
   if (!virtualRoot) return resolvedPath
   const normalizedRoot = resolve(virtualRoot)
   const normalizedResolved = resolve(resolvedPath)
-  if (normalizedResolved === normalizedRoot) return '/'
+  if (normalizedResolved === normalizedRoot) return '.'
   if (!normalizedResolved.startsWith(`${normalizedRoot}${sep}`)) {
-    return resolvedPath
+    return '<outside-project-path>'
   }
   const rel = normalizedResolved.slice(normalizedRoot.length + 1).replaceAll('\\', '/')
-  return rel ? `/${rel}` : '/'
+  return rel || '.'
 }
 
 function sanitizeErrorForDisplay(error: unknown): Error {

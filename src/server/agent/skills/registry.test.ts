@@ -17,12 +17,12 @@ mock.module("../utils/file.js", () => ({
   maskVirtualPathForDisplay: (inputPath: string) => {
     const normalizedInput = path.resolve(inputPath);
     const normalizedRoot = path.resolve(testCwd);
-    if (normalizedInput === normalizedRoot) return "<virtual-project-root>";
+    if (normalizedInput === normalizedRoot) return ".";
     if (!normalizedInput.startsWith(`${normalizedRoot}${path.sep}`)) {
-      return normalizedInput;
+      return "<outside-project-path>";
     }
     const rel = toPosix(path.relative(normalizedRoot, normalizedInput));
-    return rel ? `<virtual-project-root>/${rel}` : "<virtual-project-root>";
+    return rel || ".";
   },
 }));
 
@@ -78,7 +78,7 @@ describe("skills registry virtual path behavior", () => {
     expect(snapshot.entries.length).toBe(1);
 
     expect(snapshot.entries.map(item => item.location)).toContain(
-      "<virtual-project-root>/.aistudio/skills/demo/SKILL.md",
+      ".aistudio/skills/demo/SKILL.md",
     );
   });
 
@@ -90,10 +90,10 @@ describe("skills registry virtual path behavior", () => {
     });
 
     expect(created.skillDir).toBe(
-      "<virtual-project-root>/.aistudio/skills/new-skill",
+      ".aistudio/skills/new-skill",
     );
     expect(created.skillFile).toBe(
-      "<virtual-project-root>/.aistudio/skills/new-skill/SKILL.md",
+      ".aistudio/skills/new-skill/SKILL.md",
     );
 
     const snapshot = await getSkillSnapshot(true);
@@ -103,7 +103,9 @@ describe("skills registry virtual path behavior", () => {
     const sampled = await sampleSkillFiles(runtime!, 10);
     expect(sampled.length).toBeGreaterThan(0);
     for (const p of sampled) {
-      expect(p.startsWith("<virtual-project-root>/")).toBe(true);
+      expect(
+        p === "." || p.startsWith(".aistudio/") || p.startsWith("skills/")
+      ).toBe(true);
       expect(p.includes(tempRoot)).toBe(false);
     }
   });

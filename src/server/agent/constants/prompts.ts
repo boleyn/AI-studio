@@ -118,15 +118,15 @@ export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
 
 function getPromptDisplayCwd(): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
-  if (!virtualRoot) return '<virtual-project-root>'
+  if (!virtualRoot) return getCwd()
   const cwd = getCwd()
   const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
   const normalizedRoot = normalize(virtualRoot)
   const normalizedCwd = normalize(cwd)
-  if (normalizedCwd === normalizedRoot) return '<virtual-project-root>'
-  if (!normalizedCwd.startsWith(`${normalizedRoot}/`)) return '<virtual-project-root>'
+  if (normalizedCwd === normalizedRoot) return '.'
+  if (!normalizedCwd.startsWith(`${normalizedRoot}/`)) return '.'
   const rel = normalizedCwd.slice(normalizedRoot.length + 1)
-  return rel ? `<virtual-project-root>/${rel}` : '<virtual-project-root>'
+  return rel || '.'
 }
 
 // @[MODEL LAUNCH]: Update the latest frontier model.
@@ -786,7 +786,7 @@ export async function enhanceSystemPromptWithEnvDetails(
   enabledToolNames?: ReadonlySet<string>,
 ): Promise<string[]> {
   const notes = `Notes:
-- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
+- Agent threads always have their cwd reset between bash calls, as a result bash commands should use absolute file paths. For search tools (for example Grep), path is optional and should be omitted for whole-workspace search.
 - In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
 - For clear communication with the user the assistant MUST avoid using emojis.
 - Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`

@@ -181,12 +181,12 @@ function toVirtualDisplayPath(resolvedPath: string): string {
   if (!virtualRoot) return resolvedPath
   const normalizedRoot = path.resolve(virtualRoot)
   const normalizedResolved = path.resolve(resolvedPath)
-  if (normalizedResolved === normalizedRoot) return '/'
+  if (normalizedResolved === normalizedRoot) return '.'
   if (!normalizedResolved.startsWith(`${normalizedRoot}${path.sep}`)) {
-    return resolvedPath
+    return '<outside-project-path>'
   }
   const rel = path.relative(normalizedRoot, normalizedResolved).replaceAll('\\', '/')
-  return rel ? `/${rel}` : '/'
+  return rel || '.'
 }
 
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames

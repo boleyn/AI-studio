@@ -13,7 +13,11 @@ import {
   Text,
   useToast,
 } from "@chakra-ui/react";
-import { SandpackProvider, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
+import {
+  SandpackProvider,
+  useSandpack,
+  type SandpackPredefinedTemplate,
+} from "@codesandbox/sandpack-react";
 import dynamic from "next/dynamic";
 import { githubLight } from "@codesandbox/sandpack-themes";
 import { useRouter } from "next/router";
@@ -29,6 +33,10 @@ import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 import { listConversations } from "@features/chat/services/conversations";
+import {
+  useAgentFileUpdates,
+  type AgentFilesSyncPayload,
+} from "./hooks/useAgentFileUpdates";
 
 type SandpackFile = { code: string; hidden?: boolean };
 export type SandpackFiles = Record<string, SandpackFile>;
@@ -136,6 +144,36 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
   Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
 
+const AgentFilesSandpackSync = ({ payload }: { payload: AgentFilesSyncPayload | null }) => {
+  const { sandpack } = useSandpack();
+  const lastAppliedVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!payload || payload.version <= lastAppliedVersionRef.current) return;
+    lastAppliedVersionRef.current = payload.version;
+
+    const changed: SandpackFiles = {};
+    for (const [filePath, file] of Object.entries(payload.files)) {
+      const current = sandpack.files[filePath];
+      const currentCode =
+        typeof current === "string"
+          ? current
+          : current && typeof current === "object" && "code" in current
+          ? String((current as { code?: unknown }).code ?? "")
+          : undefined;
+      if (currentCode !== file.code) {
+        changed[filePath] = file;
+      }
+    }
+
+    if (Object.keys(changed).length > 0) {
+      sandpack.updateFile(changed, undefined, true);
+    }
+  }, [payload, sandpack]);
+
+  return null;
+};
+
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
   const router = useRouter();
   const toast = useToast();
@@ -173,6 +211,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
     toSortedFilePaths(initialNormalizedFiles)
   );
+  const { agentFilesSyncPayload, queueAgentFileSync } = useAgentFileUpdates();
 
   const loadProject = useCallback(async (requestedToken: string) => {
     if (!requestedToken) {
@@ -493,14 +532,17 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   }, [files]);
 
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
+    const baseFiles = normalizeFiles(latestFilesRef.current || files || {}) || {};
+    const normalizedUpdated = normalizeFiles(updated) || {};
     const merged = {
-      ...(latestFilesRef.current || files || {}),
-      ...updated,
+      ...baseFiles,
+      ...normalizedUpdated,
     };
     latestFilesRef.current = merged;
     setChatFileOptions(toSortedFilePaths(merged));
     setFiles(merged);
-  }, [files]);
+    queueAgentFileSync(normalizedUpdated);
+  }, [files, queueAgentFileSync]);
 
   const handleProjectNameChange = useCallback(async (newName: string) => {
     if (!token || !newName.trim() || newName === projectName) {

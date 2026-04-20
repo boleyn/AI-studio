@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import * as nodePath from 'path'
 import type { ValidationResult } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
@@ -109,6 +110,88 @@ const VCS_DIRECTORIES_TO_EXCLUDE = [
 // 250 is generous enough for exploratory searches while preventing context bloat.
 // Pass head_limit=0 explicitly for unlimited.
 const DEFAULT_HEAD_LIMIT = 250
+
+async function grepVirtualFilesystem(
+  pattern: string,
+  absolutePath: string,
+  outputMode: 'content' | 'files_with_matches' | 'count',
+  caseInsensitive: boolean,
+  showLineNumbers: boolean,
+): Promise<string[]> {
+  const fs = getFsImplementation()
+  const roots: string[] = []
+  let rootStat
+  try {
+    rootStat = await fs.stat(absolutePath)
+  } catch {
+    return []
+  }
+  if (rootStat.isDirectory()) {
+    roots.push(absolutePath)
+  } else {
+    roots.push(absolutePath)
+  }
+
+  const regex = new RegExp(pattern, caseInsensitive ? 'gi' : 'g')
+  const fileMatches = new Map<string, { contentLines: string[]; count: number }>()
+
+  const walk = async (target: string): Promise<void> => {
+    let stats
+    try {
+      stats = await fs.stat(target)
+    } catch {
+      return
+    }
+    if (stats.isDirectory()) {
+      let entries
+      try {
+        entries = await fs.readdir(target)
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        if (entry.name === '.' || entry.name === '..') continue
+        await walk(nodePath.join(target, entry.name))
+      }
+      return
+    }
+    if (!stats.isFile()) return
+    let content = ''
+    try {
+      content = await fs.readFile(target, { encoding: 'utf8' })
+    } catch {
+      return
+    }
+    const lines = content.split(/\r?\n/)
+    let total = 0
+    const contentLines: string[] = []
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      const line = lines[idx] || ''
+      regex.lastIndex = 0
+      const hits = line.match(regex)
+      if (!hits || hits.length === 0) continue
+      total += hits.length
+      if (outputMode === 'content') {
+        const prefix = showLineNumbers ? `${target}:${idx + 1}:` : `${target}:`
+        contentLines.push(`${prefix}${line}`)
+      }
+    }
+    if (total === 0) return
+    fileMatches.set(target, { contentLines, count: total })
+  }
+
+  for (const root of roots) {
+    await walk(root)
+  }
+
+  if (outputMode === 'content') {
+    return Array.from(fileMatches.values()).flatMap((v) => v.contentLines)
+  }
+  if (outputMode === 'count') {
+    return Array.from(fileMatches.entries()).map(([filePath, v]) => `${filePath}:${v.count}`)
+  }
+  return Array.from(fileMatches.keys())
+}
 
 function applyHeadLimit<T>(
   items: T[],
@@ -331,18 +414,7 @@ export const GrepTool = buildTool({
   ) {
     const absolutePath = path ? expandPath(path) : getCwd()
     const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
-    if (virtualProjectRoot) {
-      return {
-        data: {
-          mode: 'content' as const,
-          numFiles: 0,
-          filenames: [],
-          content:
-            'Search (ripgrep) is temporarily unavailable in virtual filesystem sessions. Please use Glob + Read for now.',
-          numLines: 1,
-        },
-      }
-    }
+    const canUseVirtualFallback = Boolean(virtualProjectRoot)
 
     const args = ['--hidden']
 
@@ -455,7 +527,15 @@ export const GrepTool = buildTool({
     // We don't use AbortController for timeout to avoid interrupting the agent loop
     // If ripgrep times out, it throws RipgrepTimeoutError which propagates up
     // so Claude knows the search didn't complete (rather than thinking there were no matches)
-    const results = await ripGrep(args, absolutePath, abortController.signal)
+    const results = canUseVirtualFallback
+      ? await grepVirtualFilesystem(
+          pattern,
+          absolutePath,
+          output_mode,
+          case_insensitive,
+          show_line_numbers,
+        )
+      : await ripGrep(args, absolutePath, abortController.signal)
 
     if (output_mode === 'content') {
       // For content mode, results are the actual content lines

@@ -315,6 +315,12 @@ export const toUpdatedFilesMap = (value: unknown): Record<string, { code: string
     return null;
   }
 
+  const normalizeWorkspaceFilePath = (inputPath: string): string => {
+    const normalized = inputPath.replace(/\\/g, "/").trim();
+    if (!normalized) return "";
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  };
+
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length === 0) return null;
 
@@ -326,7 +332,9 @@ export const toUpdatedFilesMap = (value: unknown): Record<string, { code: string
     const code = (file as { code?: unknown }).code;
     if (typeof code !== "string") return null;
 
-    normalized[path] = { code };
+    const normalizedPath = normalizeWorkspaceFilePath(path);
+    if (!normalizedPath) return null;
+    normalized[normalizedPath] = { code };
   }
 
   return Object.keys(normalized).length > 0 ? normalized : null;

@@ -190,9 +190,17 @@ function sanitizeToolUseInputForDisplay(input: Record<string, unknown>): void {
   const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
   const normalizedRoot = normalize(virtualRoot)
   const normalizedPath = rawPath.replace(/\\/g, '/')
-  if (!normalizedPath.startsWith(`${normalizedRoot}/`)) return
+  if (!normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    if (normalizedPath === normalizedRoot) {
+      input.file_path = '.'
+      return
+    }
+    input.file_path = '<outside-project-path>'
+    return
+  }
   const rel = normalizedPath.slice(normalizedRoot.length)
-  input.file_path = rel.startsWith('/') ? rel : `/${rel}`
+  const displayPath = rel.startsWith('/') ? rel.slice(1) : rel
+  input.file_path = displayPath || '.'
 }
 
 export type QueryParams = {

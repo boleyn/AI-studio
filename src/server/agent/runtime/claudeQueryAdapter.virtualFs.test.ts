@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildProjectMemfsOverlay } from "./claudeQueryAdapter";
+import { buildProjectMemfsOverlay, exportProjectFilesFromFs } from "./claudeQueryAdapter";
+import { writeTextContent } from "../utils/file";
 import { getClaudeConfigHomeDir, runWithClaudeConfigHomeDir } from "../utils/envUtils";
+import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsOperations";
 
 describe("buildProjectMemfsOverlay virtual root boundary", () => {
   const projectRoot = "/virtual/project";
@@ -69,7 +71,7 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
     await expect(
       fs.mkdir("/Users/real/should-not-create", { mode: 0o755 }),
     ).rejects.toThrow(
-      /Access denied: path "<masked-outside-path>" is outside virtual project root "<virtual-project-root>"/i
+      /Access denied: path "<masked-outside-path>" is outside the project sandbox/i
     );
   });
 
@@ -230,5 +232,35 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
 
     expect(result).toBe(configHome);
     expect(result).not.toContain(`${path.sep}.claude`);
+  });
+
+  test("exports updated project files from virtual filesystem snapshot", () => {
+    const overlay = buildProjectMemfsOverlay(projectRoot, {
+      "/App.js": { code: "<h1>old</h1>\n" },
+    });
+
+    overlay.appendFileSync(path.join(projectRoot, "App.js"), "<p>new</p>\n");
+    overlay.mkdirSync(path.join(projectRoot, ".aistudio", "tmp"));
+    overlay.appendFileSync(path.join(projectRoot, ".aistudio", "tmp", "ignored.txt"), "ignore\n");
+
+    const exported = exportProjectFilesFromFs(overlay, projectRoot);
+
+    expect(exported["/App.js"]?.code).toBe("<h1>old</h1>\n<p>new</p>\n");
+    expect(exported["/.aistudio/tmp/ignored.txt"]).toBeUndefined();
+  });
+
+  test("writeTextContent writes through virtual filesystem implementation", () => {
+    const overlay = buildProjectMemfsOverlay(projectRoot, {
+      "/App.js": { code: "<h1>old</h1>\n" },
+    });
+
+    runWithVirtualProjectRoot(projectRoot, () =>
+      runWithFsImplementation(overlay, () => {
+        writeTextContent(path.join(projectRoot, "App.js"), "<h1>new</h1>\n", "utf8", "LF");
+      })
+    );
+
+    const exported = exportProjectFilesFromFs(overlay, projectRoot);
+    expect(exported["/App.js"]?.code).toBe("<h1>new</h1>\n");
   });
 });

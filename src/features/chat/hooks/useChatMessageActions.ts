@@ -38,6 +38,7 @@ export const useChatMessageActions = ({
       echoUserMessage?: boolean;
       persistIncomingMessages?: boolean;
       continueAssistantMessageId?: string;
+      baseMessagesOverride?: ConversationMessage[];
     }
   ) => Promise<void>;
 }) => {
@@ -227,6 +228,7 @@ export const useChatMessageActions = ({
         {
           echoUserMessage: false,
           persistIncomingMessages: false,
+          baseMessagesOverride: snapshot.slice(0, cutIndex),
         }
       );
     },

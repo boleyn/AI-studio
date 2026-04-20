@@ -29,11 +29,13 @@ type RunClaudeQueryAdapterInput = {
 
 type RunClaudeQueryAdapterResult = {
   assistantMessage: SdkMessage;
+  updatedFiles?: Record<string, { code: string }>;
 };
 
 type QueryEngineExecutionAttempt = {
   ok: boolean;
   assistantText?: string;
+  updatedFiles?: Record<string, { code: string }>;
   stopReason?: string | null;
   warnings?: string[];
   resultSubtype?: string | null;
@@ -58,6 +60,24 @@ type ProjectFilesInput = Record<string, { code?: string }>;
 type BuildProjectMemfsOverlayOptions = {
   systemSkillsRoot?: string;
   includeSystemSkills?: boolean;
+};
+
+const toVirtualDisplayFilePath = (virtualRoot: string, absolutePath: string): string => {
+  const normalizedRoot = path.resolve(virtualRoot);
+  const normalizedPath = path.resolve(absolutePath);
+  if (normalizedPath === normalizedRoot) return "/";
+  if (!normalizedPath.startsWith(`${normalizedRoot}${path.sep}`)) return absolutePath;
+  const rel = path.relative(normalizedRoot, normalizedPath).replace(/\\/g, "/");
+  return rel ? `/${rel}` : "/";
+};
+
+const resolveVirtualToolFilePath = (virtualRoot: string, filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/").trim();
+  if (!normalized) return virtualRoot;
+  if (path.isAbsolute(normalized)) {
+    return path.resolve(virtualRoot, `.${normalized}`);
+  }
+  return path.resolve(virtualRoot, normalized);
 };
 
 const isPathInsideRoot = (targetPath: string, rootPath: string): boolean => {
@@ -94,6 +114,41 @@ const normalizeProjectFilePath = (filePath: string): string => {
   const normalized = filePath.replace(/\\/g, "/").trim();
   if (!normalized) return "/";
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+};
+
+const isExportableRuntimeProjectPath = (filePath: string): boolean => {
+  const normalized = normalizeProjectFilePath(filePath);
+  if (normalized === "/.aistudio" || normalized.startsWith("/.aistudio/")) return false;
+  if (normalized === "/.aistudio-home" || normalized.startsWith("/.aistudio-home/")) return false;
+  return true;
+};
+
+const diffProjectFiles = (
+  before: ProjectFilesInput | undefined,
+  after: Record<string, { code: string }>,
+  ignoredBaseline?: ProjectFilesInput
+): Record<string, { code: string }> => {
+  const beforeMap = new Map<string, string>();
+  for (const [rawPath, file] of Object.entries(before || {})) {
+    const normalizedPath = normalizeProjectFilePath(rawPath);
+    beforeMap.set(normalizedPath, typeof file?.code === "string" ? file.code : "");
+  }
+  const ignoredMap = new Map<string, string>();
+  for (const [rawPath, file] of Object.entries(ignoredBaseline || {})) {
+    const normalizedPath = normalizeProjectFilePath(rawPath);
+    ignoredMap.set(normalizedPath, typeof file?.code === "string" ? file.code : "");
+  }
+
+  const changed: Record<string, { code: string }> = {};
+  for (const [rawPath, file] of Object.entries(after)) {
+    const normalizedPath = normalizeProjectFilePath(rawPath);
+    if (!isExportableRuntimeProjectPath(normalizedPath)) continue;
+    const nextCode = file.code;
+    if (beforeMap.get(normalizedPath) === nextCode) continue;
+    if (!beforeMap.has(normalizedPath) && ignoredMap.get(normalizedPath) === nextCode) continue;
+    changed[normalizedPath] = { code: nextCode };
+  }
+  return changed;
 };
 
 const HOST_ABSOLUTE_PREFIXES = [
@@ -290,7 +345,7 @@ export const buildProjectMemfsOverlay = (
         projectRoot,
       });
       throw new Error(
-        `Access denied: path "<masked-outside-path>" is outside virtual project root "<virtual-project-root>".`,
+        `Access denied: path "<masked-outside-path>" is outside the project sandbox.`,
       );
     }
     return resolvedPath;
@@ -373,6 +428,9 @@ export const buildProjectMemfsOverlay = (
       const routed = routePath(fsPath);
       memfs.appendFileSync(routed, data);
     },
+    writeFileSync(fsPath, data, options) {
+      memfs.writeFileSync(routePath(fsPath), data, options as any);
+    },
     copyFileSync(src, dest) {
       memfs.copyFileSync(routePath(src), routePath(dest));
     },
@@ -423,6 +481,43 @@ export const buildProjectMemfsOverlay = (
       return readSize < buffer.length ? buffer.subarray(0, readSize) : buffer;
     },
   };
+};
+
+export const exportProjectFilesFromFs = (
+  fs: FsOperations,
+  projectRoot: string
+): Record<string, { code: string }> => {
+  const files: Record<string, { code: string }> = {};
+  const root = path.resolve(projectRoot);
+
+  const walk = (absoluteDir: string) => {
+    let entries: ReturnType<FsOperations["readdirSync"]>;
+    try {
+      entries = fs.readdirSync(absoluteDir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const absolutePath = path.join(absoluteDir, entry.name);
+      const relativePath = `/${path.relative(root, absolutePath).replace(/\\/g, "/")}`;
+      if (!isExportableRuntimeProjectPath(relativePath)) continue;
+      if (entry.isDirectory()) {
+        walk(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        files[normalizeProjectFilePath(relativePath)] = {
+          code: fs.readFileSync(absolutePath, { encoding: "utf8" }),
+        };
+      } catch {
+        // Non-text files in this runtime are ignored; project binary assets are handled elsewhere.
+      }
+    }
+  };
+
+  walk(root);
+  return files;
 };
 
 const pickNamedExport = <T = unknown>(mod: unknown, key: string): T | undefined => {
@@ -912,6 +1007,7 @@ const tryRunQueryEngine = async (
   const baseCwd = process.cwd();
   const hasVirtualProjectFiles = Boolean(input.projectFiles && Object.keys(input.projectFiles).length > 0);
   const virtualProjectRoot = path.resolve(baseCwd, ".aistudio-virtual", input.token || "project");
+  const systemSkillFiles = collectSystemSkillFiles(path.resolve(process.cwd(), "skills"));
   const scopedFs =
     hasVirtualProjectFiles && input.projectFiles
       ? buildProjectMemfsOverlay(virtualProjectRoot, input.projectFiles)
@@ -926,24 +1022,24 @@ const tryRunQueryEngine = async (
       }
 
     const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
-    const VIRTUAL_ROOT_LABEL = "<virtual-project-root>";
+
+    const toVirtualDisplayPath = (candidate: string): string => {
+      const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+      const normalizedRoot = normalize(virtualProjectRoot);
+      const normalizedCandidate = normalize(candidate);
+      if (normalizedCandidate === normalizedRoot) return ".";
+      if (!normalizedCandidate.startsWith(`${normalizedRoot}/`)) return candidate;
+      const rel = normalizedCandidate.slice(normalizedRoot.length + 1);
+      return rel || ".";
+    };
 
     const sanitizeStringForUi = (value: string): string => {
       if (!hasVirtualProjectFiles || !value) return value;
-      const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
-      const replaceRoot = (text: string, rawRoot: string): string => {
-        const root = normalize(rawRoot);
-        if (!root) return text;
-        const withSlash = `${root}/`;
-        let out = text.split(withSlash).join(`${VIRTUAL_ROOT_LABEL}/`);
-        if (out.includes(root)) out = out.split(root).join(VIRTUAL_ROOT_LABEL);
-        return out;
-      };
-
-      let sanitized = value;
-      sanitized = replaceRoot(sanitized, baseCwd);
-      sanitized = replaceRoot(sanitized, virtualProjectRoot);
-      return sanitized;
+      return value.replace(/\/[^\s"'<>]+/g, (rawPath) => {
+        if (!rawPath.startsWith("/")) return rawPath;
+        const converted = toVirtualDisplayPath(rawPath);
+        return converted === rawPath ? rawPath : converted;
+      });
     };
 
     const sanitizeForUi = (inputValue: unknown): unknown => {
@@ -1177,6 +1273,38 @@ const tryRunQueryEngine = async (
             content: contentText,
             ...(record.is_error === true ? { is_error: true } : {}),
           });
+
+          // In virtual filesystem sessions, FileWrite/FileEdit mutate memfs only.
+          // Emit an explicit files_updated event so frontend can reflect latest code immediately.
+          if (
+            hasVirtualProjectFiles &&
+            virtualProjectRoot &&
+            toolState?.lastInput &&
+            (toolState.name === "Write" || toolState.name === "Edit")
+          ) {
+            const inputPayload = toolState.lastInput as Record<string, unknown>;
+            const rawToolPath =
+              typeof inputPayload.file_path === "string" ? inputPayload.file_path : "";
+            if (rawToolPath) {
+              const absoluteFilePath = resolveVirtualToolFilePath(virtualProjectRoot, rawToolPath);
+              try {
+                const latestCode = scopedFs?.readFileSync(absoluteFilePath, { encoding: "utf8" });
+                if (typeof latestCode === "string") {
+                  const displayPath = toVirtualDisplayFilePath(virtualProjectRoot, absoluteFilePath);
+                  emitEvent("stream_event", {
+                    subtype: "files_updated",
+                    files: {
+                      [displayPath]: {
+                        code: latestCode,
+                      },
+                    },
+                  });
+                }
+              } catch {
+                // Ignore sync read failures; normal tool_result still flows.
+              }
+            }
+          }
         }
       }
       if ((event as { type?: string }).type === "assistant") {
@@ -1259,16 +1387,32 @@ const tryRunQueryEngine = async (
     }
   };
 
+  const attachUpdatedFiles = (attempt: QueryEngineExecutionAttempt): QueryEngineExecutionAttempt => {
+    if (!hasVirtualProjectFiles || !scopedFs) return attempt;
+    const snapshot = exportProjectFilesFromFs(scopedFs, virtualProjectRoot);
+    const updatedFiles = diffProjectFiles(input.projectFiles, snapshot, systemSkillFiles);
+    if (Object.keys(updatedFiles).length === 0) return attempt;
+    input.onEvent("stream_event", {
+      subtype: "files_updated",
+      files: updatedFiles,
+    });
+    return {
+      ...attempt,
+      updatedFiles,
+    };
+  };
+
   if (!scopedFs) {
-    return runCore();
+    return attachUpdatedFiles(await runCore());
   }
-  return await runWithVirtualProjectRoot(
+  const attempt = await runWithVirtualProjectRoot(
     virtualProjectRoot,
     () =>
       runWithClaudeConfigHomeDir(path.join(virtualProjectRoot, ".aistudio"), () =>
         runWithFsImplementation(scopedFs, runCore),
       ),
   );
+  return attachUpdatedFiles(attempt);
 };
 
 export const runClaudeQueryAdapter = async (
@@ -1317,7 +1461,7 @@ export const runClaudeQueryAdapter = async (
           ...(input.selectedModel ? { model: input.selectedModel } : {}),
         },
       });
-      return { assistantMessage };
+      return { assistantMessage, updatedFiles: attempt.updatedFiles };
     }
 
     // QueryEngine-first policy: do not silently fall back to compat in query_engine mode.
@@ -1330,7 +1474,7 @@ export const runClaudeQueryAdapter = async (
         content: failureText,
       },
     });
-    return { assistantMessage };
+    return { assistantMessage, updatedFiles: attempt.updatedFiles };
   }
 
   const text = `query_engine_failed: runtime_strategy_${input.runtimeStrategy}_unsupported`;

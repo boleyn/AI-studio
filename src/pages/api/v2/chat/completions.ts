@@ -4,7 +4,7 @@ import type {
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { requireAuth } from "@server/auth/session";
-import { getProject } from "@server/projects/projectStorage";
+import { getProject, updateFile } from "@server/projects/projectStorage";
 import {
   appendConversationMessages,
   type ConversationMessage,
@@ -132,6 +132,24 @@ const streamEvent = (
   sendSseEvent(res, event, JSON.stringify(data));
 };
 
+const normalizeUpdatedFiles = (
+  value: unknown
+): Record<string, { code: string }> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output: Record<string, { code: string }> = {};
+  for (const [rawPath, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!rawPath || typeof rawPath !== "string") continue;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const code = (entry as { code?: unknown }).code;
+    if (typeof code !== "string") continue;
+    const normalizedPath = rawPath.trim().replace(/\\/g, "/");
+    if (!normalizedPath) continue;
+    const workspacePath = normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`;
+    output[workspacePath] = { code };
+  }
+  return output;
+};
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
@@ -216,6 +234,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       agentMessageCount: toAgentMessages(sdkMessages).length,
     });
 
+    const streamedUpdatedFiles: Record<string, { code: string }> = {};
     const runtimeStatusLog = (event: SdkStreamEventName, data: Record<string, unknown>) => {
       if (
         event === SdkStreamEventEnum.status &&
@@ -243,11 +262,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: toAgentMessages(sdkMessages),
       abortSignal: abortController.signal,
       onEvent: (event, data) => {
+        if (event === SdkStreamEventEnum.streamEvent && data.subtype === "files_updated") {
+          const normalized = normalizeUpdatedFiles(data.files);
+          Object.assign(streamedUpdatedFiles, normalized);
+        }
         runtimeStatusLog(event, data);
         streamEvent(res, event, data);
       },
       runtimeStrategy,
     });
+
+    const updatedFiles = {
+      ...streamedUpdatedFiles,
+      ...normalizeUpdatedFiles(runResult.updatedFiles),
+    };
+
+    if (Object.keys(updatedFiles).length > 0) {
+      await Promise.all(
+        Object.entries(updatedFiles).map(([filePath, file]) =>
+          updateFile(token, filePath, file.code)
+        )
+      );
+      streamEvent(res, SdkStreamEventEnum.streamEvent, {
+        subtype: "files_updated",
+        files: updatedFiles,
+      });
+    }
 
     if (selectedSkills.length > 0) {
       streamEvent(res, SdkStreamEventEnum.status, {

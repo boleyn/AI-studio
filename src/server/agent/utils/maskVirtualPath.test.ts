@@ -15,26 +15,26 @@ const { runWithVirtualProjectRoot } = await import("src/utils/fsOperations.js");
 const { maskAbsolutePathsInText } = await import("src/utils/virtualPathMasking.js");
 
 describe("maskVirtualPathForDisplay", () => {
-  test("returns virtual root marker for root path", () => {
+  test("returns relative root marker for root path", () => {
     const result = runWithVirtualProjectRoot("/virtual/project", () =>
       maskVirtualPathForDisplay("/virtual/project"),
     );
-    expect(result).toBe("<virtual-project-root>");
+    expect(result).toBe(".");
   });
 
-  test("returns virtualized relative child path for in-root path", () => {
+  test("returns relative child path for in-root path", () => {
     const result = runWithVirtualProjectRoot("/virtual/project", () =>
       maskVirtualPathForDisplay("/virtual/project/src/index.ts"),
     );
-    expect(result).toBe("<virtual-project-root>/src/index.ts");
+    expect(result).toBe("src/index.ts");
   });
 
-  test("does not rewrite outside-root path", () => {
+  test("masks outside-root absolute path", () => {
     const outsidePath = "/Users/real/secrets.txt";
     const result = runWithVirtualProjectRoot("/virtual/project", () =>
       maskVirtualPathForDisplay(outsidePath),
     );
-    expect(result).toBe(outsidePath);
+    expect(result).toBe("<outside-project-path>");
   });
 });
 
@@ -46,7 +46,7 @@ describe("maskAbsolutePathsInText", () => {
         maskVirtualPathForDisplay,
       ),
     );
-    expect(result).toBe('Path "<virtual-project-root>/src/a.ts" failed');
+    expect(result).toBe('Path "src/a.ts" failed');
   });
 
   test("masks bare absolute paths", () => {
@@ -56,6 +56,6 @@ describe("maskAbsolutePathsInText", () => {
         maskVirtualPathForDisplay,
       ),
     );
-    expect(result).toBe("cannot open <virtual-project-root>/src/a.ts.");
+    expect(result).toBe("cannot open src/a.ts.");
   });
 });
