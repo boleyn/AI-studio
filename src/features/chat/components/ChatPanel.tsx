@@ -351,7 +351,9 @@ const ChatPanel = ({
       setContextUsageSnapshot(cachedUsage, activeId, model);
       return;
     }
-    const recoveredUsage = getLatestContextUsageFromMessages(messagesRef.current, model);
+    // Recover from the active conversation source of truth instead of local ref,
+    // to avoid stale ref timing causing context usage to appear missing on history switch.
+    const recoveredUsage = getLatestContextUsageFromMessages(activeMessages, model);
     setContextUsageSnapshot(recoveredUsage || null, activeId, model);
   }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot]);
 
@@ -731,7 +733,7 @@ const ChatPanel = ({
         };
 
         if (!completionsStream) {
-          const historyMessages = [...messages, requestMessage].map((message) => ({
+          const historyMessages = [...baseMessages, requestMessage].map((message) => ({
             role: message.role,
             content: extractText(message.content),
           }));

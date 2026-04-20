@@ -6,7 +6,7 @@ import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import type { ToolCall } from "../../types/conversation";
 import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
-import { calculateContextPercentages, getContextWindowForModel } from "@server/agent/utils/context";
+import { getContextWindowForModel } from "@server/agent/utils/context";
 
 import { getMongoDb } from "../db/mongo";
 
@@ -227,16 +227,14 @@ const getLatestUsageContextWindow = (
       Number.isFinite(usageRecord.cache_read_input_tokens)
         ? usageRecord.cache_read_input_tokens
         : 0;
-    const usedTokens = Math.max(0, inputTokens + cacheCreationInputTokens + cacheReadInputTokens);
-    const percentages = calculateContextPercentages(
-      {
-        input_tokens: inputTokens,
-        cache_creation_input_tokens: cacheCreationInputTokens,
-        cache_read_input_tokens: cacheReadInputTokens,
-      },
-      maxContext
-    );
-    const usedPercent = typeof percentages.used === "number" ? percentages.used : 0;
+    // OpenAI-compatible providers often report prompt_tokens (mapped to input_tokens)
+    // as an inclusive value that already contains cached prompt tokens.
+    // To avoid inflating context usage in UI, do not add cache_read_input_tokens again.
+    // Keep cache_creation_input_tokens additive (it's not represented in OpenAI usage).
+    const usedTokens = Math.max(0, inputTokens + cacheCreationInputTokens);
+    // Keep percentage strictly derived from the same usedTokens/maxContext pair
+    // shown in UI, so ring/tooltip/counters always stay consistent.
+    const usedPercent = Math.max(0, Math.min(100, Math.round((usedTokens / maxContext) * 100)));
     return {
       model: resolvedModel,
       usedTokens,
