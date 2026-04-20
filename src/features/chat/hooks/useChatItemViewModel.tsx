@@ -172,12 +172,15 @@ export const useChatItemViewModel = ({
   const timelineStepIndexes = useMemo(
     () =>
       timelineItems
-        .map((item, index) => (item.type === "tool" || item.type === "reasoning" ? index : -1))
+        .map((item, index) =>
+          item.type === "tool" || item.type === "reasoning" || item.type === "agent" ? index : -1
+        )
         .filter((index) => index >= 0),
     [timelineItems]
   );
   const [expandedTimelineReasoningKeys, setExpandedTimelineReasoningKeys] = useState<Record<string, boolean>>({});
   const [expandedTimelineToolKeys, setExpandedTimelineToolKeys] = useState<Record<string, boolean>>({});
+  const [expandedTimelineAgentKeys, setExpandedTimelineAgentKeys] = useState<Record<string, boolean>>({});
   const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
   const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
@@ -196,6 +199,12 @@ export const useChatItemViewModel = ({
   }, []);
   const toggleTimelineToolDetails = useCallback((key: string) => {
     setExpandedTimelineToolKeys((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
+  const toggleTimelineAgentDetails = useCallback((key: string) => {
+    setExpandedTimelineAgentKeys((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
@@ -339,6 +348,7 @@ export const useChatItemViewModel = ({
     timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,
+    expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
     planQuestions,
@@ -367,6 +377,7 @@ export const useChatItemViewModel = ({
     setIsRunExpanded,
     toggleTimelineReasoningDetails,
     toggleTimelineToolDetails,
+    toggleTimelineAgentDetails,
     openToolDetailModal,
     handleCloseDetailModal,
     getReasoningPhaseText,

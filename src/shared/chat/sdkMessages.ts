@@ -6,15 +6,26 @@ export type SdkContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
   | {
+      type: "agent_start";
+      id: string;
+      agent_type?: string;
+      description?: string;
+      prompt?: string;
+    }
+  | {
       type: "tool_use";
       id: string;
       name: string;
       input?: Record<string, unknown>;
+      parent_agent_tool_use_id?: string;
     }
   | {
       type: "tool_result";
       tool_use_id: string;
       content: string;
+      name?: string;
+      input?: Record<string, unknown>;
+      parent_agent_tool_use_id?: string;
       is_error?: boolean;
     }
   | {

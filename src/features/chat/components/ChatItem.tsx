@@ -80,6 +80,7 @@ const ChatItem = ({
     timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,
+    expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
     planQuestions,
@@ -95,6 +96,7 @@ const ChatItem = ({
     hasRunningTool,
     toggleTimelineReasoningDetails,
     toggleTimelineToolDetails,
+    toggleTimelineAgentDetails,
     openToolDetailModal,
     handleCloseDetailModal,
     getReasoningPhaseText,
@@ -216,6 +218,282 @@ const ChatItem = ({
               <Box>
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
+                    if (item.type === "agent") {
+                      const agentKey = item.id || `${messageId}-timeline-agent-${index}`;
+                      const isExpanded = Boolean(expandedTimelineAgentKeys[agentKey]);
+                      const promptPreview = truncateDetailText(item.prompt);
+                      const promptTruncated = isDetailTruncated(item.prompt);
+                      const responseTruncated = isDetailTruncated(item.response);
+                      const agentTitle = (item.description || "").trim() || item.agentType || "子 Agent";
+                      const isRunning = isStreaming && item.progressStatus !== "completed" && item.progressStatus !== "error";
+                      return (
+                        <Box
+                          key={agentKey}
+                          bg="myGray.25"
+                          border="1px solid"
+                          borderColor="myGray.200"
+                          borderRadius="10px"
+                          py={2}
+                          px={2}
+                        >
+                          <Flex align="center" gap={2}>
+                            {isRunning ? (
+                              <Spinner color="blue.500" size="xs" speed="0.7s" thickness="2.5px" />
+                            ) : (
+                              <Box bg="blue.400" borderRadius="full" h="6px" w="6px" />
+                            )}
+                            <Text color="myGray.700" fontSize="12px" fontWeight="600" noOfLines={1}>
+                              {agentTitle}
+                            </Text>
+                            {item.agentType ? (
+                              <Text color="myGray.500" fontSize="11px" noOfLines={1}>
+                                {item.agentType}
+                              </Text>
+                            ) : null}
+                            {isRunning ? (
+                              <Text
+                                bg="blue.50"
+                                border="1px solid"
+                                borderColor="blue.200"
+                                borderRadius="999px"
+                                color="blue.700"
+                                fontSize="10px"
+                                ml={2}
+                                px={2}
+                                py="1px"
+                              >
+                                执行中
+                              </Text>
+                            ) : null}
+                            <IconButton
+                              aria-label={isExpanded ? "收起子 Agent 详情" : "展开子 Agent 详情"}
+                              icon={
+                                <Icon
+                                  boxSize={4}
+                                  color="myGray.500"
+                                  transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                  transition="transform 0.2s ease"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    d="M6 9L12 15L18 9"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                  />
+                                </Icon>
+                              }
+                              h="22px"
+                              ml="auto"
+                              minW="22px"
+                              onClick={() => toggleTimelineAgentDetails(agentKey)}
+                              size="xs"
+                              variant="ghost"
+                            />
+                          </Flex>
+
+                          <Collapse animateOpacity in={isExpanded}>
+                            <Flex direction="column" gap={2} mt={2}>
+                              {item.agentType ? (
+                                <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                  <Text color="blue.700" fontSize="10px" fontWeight="700" mb={1}>Agent 类型</Text>
+                                  <Text color="myGray.700" fontSize="12px">{item.agentType}</Text>
+                                </Box>
+                              ) : null}
+
+                              {item.prompt ? (
+                                <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                  <Flex align="center" justify="space-between" mb={1}>
+                                    <Text color="blue.700" fontSize="10px" fontWeight="700">任务内容</Text>
+                                    {promptTruncated ? (
+                                      <Button
+                                        colorScheme="blue"
+                                        h="20px"
+                                        minW="auto"
+                                        onClick={() => openToolDetailModal(`${agentTitle} · 任务内容`, item.prompt)}
+                                        px={2}
+                                        size="xs"
+                                        variant="ghost"
+                                      >
+                                        查看完整
+                                      </Button>
+                                    ) : null}
+                                  </Flex>
+                                  <ToolStreamText color="myGray.700" fontSize="12px" isStreaming={isStreaming} value={promptPreview} />
+                                </Box>
+                              ) : null}
+
+                              {Array.isArray(item.children) && item.children.length > 0 ? (
+                                <Flex direction="column" gap={2}>
+                                  {item.children.map((child, childIndex) => {
+                                    const childToolKey = `${agentKey}-child-tool-${child.id || childIndex}`;
+                                    const isChildExpanded = Boolean(expandedTimelineToolKeys[childToolKey]);
+                                    const childParams = truncateDetailText(child.params);
+                                    const childResponse = truncateDetailText(child.response);
+                                    const childParamsTruncated = isDetailTruncated(child.params);
+                                    const childResponseTruncated = isDetailTruncated(child.response);
+                                    const childRunning = isStreaming && !child.response;
+                                    return (
+                                      <Box
+                                        key={childToolKey}
+                                        bg="myGray.25"
+                                        border="1px solid"
+                                        borderColor="myGray.200"
+                                        borderRadius="8px"
+                                        p={2}
+                                      >
+                                        <Flex align="center" gap={2}>
+                                          {childRunning ? (
+                                            <Spinner color="green.500" size="xs" speed="0.7s" thickness="2.5px" />
+                                          ) : (
+                                            <Box bg="myGray.350" borderRadius="full" h="6px" w="6px" />
+                                          )}
+                                          <Text color="myGray.700" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
+                                            {child.toolName || `工具 ${childIndex + 1}`}
+                                          </Text>
+                                          <IconButton
+                                            aria-label={isChildExpanded ? "收起工具详情" : "展开工具详情"}
+                                            icon={
+                                              <Icon
+                                                boxSize={4}
+                                                color="myGray.500"
+                                                transform={isChildExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                                transition="transform 0.2s ease"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  d="M6 9L12 15L18 9"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth="2"
+                                                />
+                                              </Icon>
+                                            }
+                                            h="22px"
+                                            minW="22px"
+                                            onClick={() => toggleTimelineToolDetails(childToolKey)}
+                                            size="xs"
+                                            variant="ghost"
+                                          />
+                                        </Flex>
+                                        <Collapse animateOpacity in={isChildExpanded}>
+                                          <Flex direction="column" gap={2} mt={2}>
+                                            <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                              <Flex align="center" justify="space-between" mb={1}>
+                                                <Text color="blue.700" fontSize="10px" fontWeight="700">入参</Text>
+                                                {childParamsTruncated ? (
+                                                  <Button
+                                                    colorScheme="blue"
+                                                    h="20px"
+                                                    minW="auto"
+                                                    onClick={() =>
+                                                      openToolDetailModal(`${child.toolName || `工具 ${childIndex + 1}`} · 入参`, child.params)
+                                                    }
+                                                    px={2}
+                                                    size="xs"
+                                                    variant="ghost"
+                                                  >
+                                                    查看完整
+                                                  </Button>
+                                                ) : null}
+                                              </Flex>
+                                              <ToolStreamText color="myGray.600" fontSize="12px" isStreaming={isStreaming} value={childParams || "{}"} />
+                                            </Box>
+
+                                            <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                                              <Flex align="center" justify="space-between" mb={1}>
+                                                <Text color="primary.700" fontSize="10px" fontWeight="700">结果</Text>
+                                                {childResponseTruncated ? (
+                                                  <Button
+                                                    colorScheme="primary"
+                                                    h="20px"
+                                                    minW="auto"
+                                                    onClick={() =>
+                                                      openToolDetailModal(`${child.toolName || `工具 ${childIndex + 1}`} · 结果`, child.response)
+                                                    }
+                                                    px={2}
+                                                    size="xs"
+                                                    variant="ghost"
+                                                  >
+                                                    查看完整
+                                                  </Button>
+                                                ) : null}
+                                              </Flex>
+                                              {childResponse ? (
+                                                <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={childResponse} />
+                                              ) : childRunning ? (
+                                                <Text color="myGray.500" fontSize="12px">执行中...</Text>
+                                              ) : (
+                                                <Text color="myGray.400" fontSize="12px">暂无输出</Text>
+                                              )}
+                                            </Box>
+                                          </Flex>
+                                        </Collapse>
+                                      </Box>
+                                    );
+                                  })}
+                                </Flex>
+                              ) : null}
+
+                              {item.response ? (
+                                <Box>
+                                  {responseTruncated ? (
+                                    <Flex justify="flex-end" mb={1}>
+                                      <Button
+                                        colorScheme="primary"
+                                        h="20px"
+                                        minW="auto"
+                                        onClick={() => openToolDetailModal(`${agentTitle} · 回复`, item.response)}
+                                        px={2}
+                                        size="xs"
+                                        variant="ghost"
+                                      >
+                                        查看完整
+                                      </Button>
+                                    </Flex>
+                                  ) : null}
+                                  <Markdown source={item.response} />
+                                </Box>
+                              ) : isRunning ? (
+                                <Text color="myGray.500" fontSize="12px">执行中...</Text>
+                              ) : (
+                                <Text color="myGray.400" fontSize="12px">暂无输出</Text>
+                              )}
+
+                              {item.usageSummary ? (
+                                <Flex
+                                  align="center"
+                                  borderTop="1px solid"
+                                  borderColor="myGray.200"
+                                  color="myGray.600"
+                                  fontSize="11px"
+                                  gap={3}
+                                  mt={1}
+                                  pt={2}
+                                  wrap="wrap"
+                                >
+                                  {item.usageSummary.toolUses !== undefined ? (
+                                    <Text>调用工具: {item.usageSummary.toolUses}</Text>
+                                  ) : null}
+                                  {item.usageSummary.durationMs !== undefined ? (
+                                    <Text>耗时: {(item.usageSummary.durationMs / 1000).toFixed(2)}s</Text>
+                                  ) : null}
+                                  {item.usageSummary.totalTokens !== undefined ? (
+                                    <Text>Token: {item.usageSummary.totalTokens}</Text>
+                                  ) : null}
+                                </Flex>
+                              ) : null}
+
+                            </Flex>
+                          </Collapse>
+                        </Box>
+                      );
+                    }
+
                     if (item.type === "reasoning") {
                       if (shouldHidePlanReasoning) return null;
                       const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
@@ -618,7 +896,7 @@ const ChatItem = ({
               </Box>
             ) : null}
 
-            {shouldShowExecutionMeta ? (
+            {shouldShowExecutionMeta && timelineItems.every((item) => item.type !== "agent") ? (
               <Flex align="center" borderTop="1px solid" borderColor="myGray.200" color="myGray.600" fontSize="11px" gap={3} mt={1} pt={2} wrap="wrap">
                 <Text>调用工具: {executionSummary?.nodeCount ?? 0}</Text>
                 {executionSummary?.durationSeconds !== undefined ? (

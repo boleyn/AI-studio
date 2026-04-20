@@ -30,13 +30,23 @@ export interface ToolDetail {
 }
 
 export interface TimelineItem {
-  type: "reasoning" | "answer" | "tool";
+  type: "reasoning" | "answer" | "tool" | "agent";
   text?: string;
   id?: string;
   toolName?: string;
+  agentType?: string;
+  description?: string;
+  prompt?: string;
+  response?: string;
+  usageSummary?: {
+    totalTokens?: number;
+    toolUses?: number;
+    durationMs?: number;
+  };
   skillTag?: string;
   params?: string;
-  response?: string;
+  children?: TimelineItem[];
+  parentAgentToolUseId?: string;
   interaction?: PlanInteractionEnvelope;
   progressStatus?: "pending" | "in_progress" | "completed" | "error";
 }
@@ -98,7 +108,7 @@ const getSdkContentBlocks = (message: ConversationMessage): unknown[] | null => 
   if (!directBlocks && kwargsBlocks) return kwargsBlocks;
 
   const scoreBlocks = (blocks: unknown[]) =>
-    blocks.reduce((score, block) => {
+    blocks.reduce<number>((score, block) => {
       if (!block || typeof block !== "object") return score;
       const item = block as Record<string, unknown>;
       const type = item.type;
@@ -194,6 +204,14 @@ const stringifyCmdArgs = (record: Record<string, unknown>) => {
 const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: string) => {
   const record = parseResultRecord(rawResponse);
   if (!record) {
+    const normalizedToolName = (toolName || "").trim().toLowerCase();
+    if (isAgentToolName(normalizedToolName)) {
+      const parsedAgent = parseAgentResponseParts(rawResponse);
+      return {
+        response: parsedAgent.response,
+        paramsFallback: "",
+      };
+    }
     return {
       response: rawResponse,
       paramsFallback: "",
@@ -286,6 +304,59 @@ const getToolFingerprint = (toolName?: string, params?: string, response?: strin
   return `${normalizedName}::${normalizedParams}::${normalizedResponse}`;
 };
 
+const getAgentDisplayName = (agentType?: string) => {
+  const normalized = (agentType || "").trim();
+  if (!normalized) return "子 Agent";
+  return normalized;
+};
+
+const isAgentToolName = (toolName?: string) => {
+  const normalized = (toolName || "").trim().toLowerCase();
+  return normalized === "agent" || normalized === "task";
+};
+
+const parseAgentResponseParts = (rawResponse: string) => {
+  try {
+    const parsed = JSON.parse(rawResponse);
+    if (!Array.isArray(parsed)) {
+      return {
+        response: rawResponse,
+        usageSummary: undefined as TimelineItem["usageSummary"],
+      };
+    }
+
+    const textParts = parsed
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+      .map((item) => (typeof item.text === "string" ? item.text.trim() : ""))
+      .filter(Boolean);
+    const usageCarrier = textParts.find((item) => item.includes("<usage>")) || "";
+    const cleanedResponse = textParts
+      .map((item) => item.replace(/agentId:\s*[^\n]+/g, "").replace(/<usage>[\s\S]*?<\/usage>/g, "").trim())
+      .filter(Boolean)
+      .join("\n\n");
+    const totalTokensMatch = usageCarrier.match(/total_tokens:\s*(\d+)/);
+    const toolUsesMatch = usageCarrier.match(/tool_uses:\s*(\d+)/);
+    const durationMsMatch = usageCarrier.match(/duration_ms:\s*(\d+)/);
+
+    return {
+      response: cleanedResponse || rawResponse,
+      usageSummary:
+        totalTokensMatch || toolUsesMatch || durationMsMatch
+          ? {
+              ...(totalTokensMatch ? { totalTokens: Number(totalTokensMatch[1]) } : {}),
+              ...(toolUsesMatch ? { toolUses: Number(toolUsesMatch[1]) } : {}),
+              ...(durationMsMatch ? { durationMs: Number(durationMsMatch[1]) } : {}),
+            }
+          : undefined,
+    };
+  } catch {
+    return {
+      response: rawResponse,
+      usageSummary: undefined as TimelineItem["usageSummary"],
+    };
+  }
+};
+
 export const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
   if (!message.artifact || typeof message.artifact !== "object") return [];
   const files = (message.artifact as { files?: unknown }).files;
@@ -310,6 +381,21 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
     for (const block of sdkContent) {
       if (!block || typeof block !== "object") continue;
       const item = block as Record<string, unknown>;
+      if (item.type === "agent_start" && typeof item.id === "string") {
+        details.push({
+          id: item.id,
+          toolName: getAgentDisplayName(typeof item.agent_type === "string" ? item.agent_type : ""),
+          params:
+            typeof item.prompt === "string" && item.prompt.trim()
+              ? item.prompt
+              : typeof item.description === "string"
+              ? item.description
+              : "",
+          response: "",
+          progressStatus: "in_progress",
+        });
+        continue;
+      }
       if (item.type === "tool_use" && typeof item.id === "string") {
         const id = item.id;
         const toolName = typeof item.name === "string" ? item.name : "tool";
@@ -341,21 +427,23 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         const target = byId.get(id);
         const responseRaw = typeof item.content === "string" ? item.content : toStringValue(item.content);
         const status = item.is_error === true ? "error" : "completed";
-        const toolName = target?.toolName;
+        const toolName =
+          target?.toolName || (typeof item.name === "string" && item.name.trim() ? item.name : undefined);
         const display = getToolResultDisplayPayload(toolName, responseRaw);
         if (target) {
           target.response = display.response;
           target.progressStatus = status;
           if (!target.interaction) target.interaction = interactionByRequestId.get(id);
           if (!target.params) {
-            const fallback = display.paramsFallback;
+            const fallback = item.input ? toStringValue(item.input) : display.paramsFallback;
             if (fallback) target.params = fallback;
           }
         } else {
           details.push({
             id,
-            toolName: "tool",
-            params: display.paramsFallback || "",
+            toolName:
+              typeof item.name === "string" && item.name.trim() ? item.name : "工具调用",
+            params: item.input ? toStringValue(item.input) : display.paramsFallback || "",
             response: display.response,
             interaction: interactionByRequestId.get(id),
             progressStatus: status,
@@ -395,10 +483,25 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
   const interactionByRequestId = getInteractionByRequestId(message);
   if (Array.isArray(sdkContent)) {
     const timeline: TimelineItem[] = [];
-    const toolIndexById = new Map<string, number>();
+    const toolLocationById = new Map<string, { scope: "root"; index: number } | { scope: "agent"; agentIndex: number; childIndex: number }>();
+    const agentIndexById = new Map<string, number>();
     for (const block of sdkContent) {
       if (!block || typeof block !== "object") continue;
       const item = block as Record<string, unknown>;
+      if (item.type === "agent_start" && typeof item.id === "string") {
+        const index =
+          timeline.push({
+            type: "agent",
+            id: item.id,
+            agentType: getAgentDisplayName(typeof item.agent_type === "string" ? item.agent_type : ""),
+            description: typeof item.description === "string" ? item.description : "",
+            prompt: typeof item.prompt === "string" ? item.prompt : "",
+            children: [],
+            progressStatus: "in_progress",
+          }) - 1;
+        agentIndexById.set(item.id, index);
+        continue;
+      }
       if (item.type === "thinking" && typeof item.thinking === "string") {
         timeline.push({ type: "reasoning", text: item.thinking });
         continue;
@@ -408,11 +511,19 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
         continue;
       }
       if (item.type === "tool_use" && typeof item.id === "string") {
+        const parentAgentToolUseId =
+          typeof item.parent_agent_tool_use_id === "string" && item.parent_agent_tool_use_id.trim()
+            ? item.parent_agent_tool_use_id.trim()
+            : "";
+        const toolName = typeof item.name === "string" ? item.name : "tool";
+        if (!parentAgentToolUseId && isAgentToolName(toolName)) {
+          continue;
+        }
         const params = item.input ? toStringValue(item.input) : undefined;
-        const existingIndex = toolIndexById.get(item.id);
-        if (typeof existingIndex === "number" && timeline[existingIndex]) {
-          const existing = timeline[existingIndex];
-          timeline[existingIndex] = {
+        const existingLocation = toolLocationById.get(item.id);
+        if (existingLocation?.scope === "root" && timeline[existingLocation.index]) {
+          const existing = timeline[existingLocation.index];
+          timeline[existingLocation.index] = {
             ...existing,
             toolName:
               existing.toolName && existing.toolName !== "tool"
@@ -421,36 +532,100 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
                 ? item.name
                 : existing.toolName,
             params: mergeToolParams(existing.params, params),
+            parentAgentToolUseId: existing.parentAgentToolUseId || parentAgentToolUseId || undefined,
             progressStatus: existing.progressStatus || "in_progress",
             interaction: existing.interaction || interactionByRequestId.get(item.id),
           };
+        } else if (existingLocation?.scope === "agent") {
+          const parentAgent = timeline[existingLocation.agentIndex];
+          if (parentAgent?.type === "agent" && Array.isArray(parentAgent.children)) {
+            const children = [...parentAgent.children];
+            const existing = children[existingLocation.childIndex];
+            if (existing) {
+              children[existingLocation.childIndex] = {
+                ...existing,
+                toolName:
+                  existing.toolName && existing.toolName !== "tool"
+                    ? existing.toolName
+                    : typeof item.name === "string"
+                    ? item.name
+                    : existing.toolName,
+                params: mergeToolParams(existing.params, params),
+                parentAgentToolUseId: existing.parentAgentToolUseId || parentAgentToolUseId || undefined,
+                progressStatus: existing.progressStatus || "in_progress",
+                interaction: existing.interaction || interactionByRequestId.get(item.id),
+              };
+              timeline[existingLocation.agentIndex] = {
+                ...parentAgent,
+                children,
+              };
+            }
+          }
         } else {
-          const index =
-            timeline.push({
-              type: "tool",
-              id: item.id,
-              toolName: typeof item.name === "string" ? item.name : "tool",
-              params,
-              interaction: interactionByRequestId.get(item.id),
-              progressStatus: "in_progress",
-            }) - 1;
-          toolIndexById.set(item.id, index);
+          const nextTool: TimelineItem = {
+            type: "tool",
+            id: item.id,
+            toolName,
+            params,
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
+            interaction: interactionByRequestId.get(item.id),
+            progressStatus: "in_progress",
+          };
+          if (parentAgentToolUseId) {
+            const agentIndex = agentIndexById.get(parentAgentToolUseId);
+            const parentAgent = typeof agentIndex === "number" ? timeline[agentIndex] : undefined;
+            if (parentAgent && parentAgent.type === "agent") {
+              const children = Array.isArray(parentAgent.children) ? [...parentAgent.children, nextTool] : [nextTool];
+              const childIndex = children.length - 1;
+              timeline[agentIndex] = {
+                ...parentAgent,
+                children,
+              };
+              toolLocationById.set(item.id, { scope: "agent", agentIndex, childIndex });
+              continue;
+            }
+          }
+          const index = timeline.push(nextTool) - 1;
+          toolLocationById.set(item.id, { scope: "root", index });
         }
         continue;
       }
       if (item.type === "tool_result" && typeof item.tool_use_id === "string") {
-        const idx = toolIndexById.get(item.tool_use_id);
+        const location = toolLocationById.get(item.tool_use_id);
         const responseRaw = typeof item.content === "string" ? item.content : toStringValue(item.content);
         const status = item.is_error === true ? "error" : "completed";
-        if (typeof idx === "number" && timeline[idx]) {
-          const target = timeline[idx];
+        const parentAgentToolUseId =
+          typeof item.parent_agent_tool_use_id === "string" && item.parent_agent_tool_use_id.trim()
+            ? item.parent_agent_tool_use_id.trim()
+            : "";
+        const resultToolName =
+          typeof item.name === "string" && item.name.trim() ? item.name.trim() : "";
+        const directAgentIndex = agentIndexById.get(item.tool_use_id);
+        if (!parentAgentToolUseId && directAgentIndex !== undefined && isAgentToolName(resultToolName)) {
+          const target = timeline[directAgentIndex];
+          if (target?.type === "agent") {
+            const parsedAgent = parseAgentResponseParts(responseRaw);
+            timeline[directAgentIndex] = {
+              ...target,
+              response:
+                (target.response?.length || 0) >= (parsedAgent.response?.length || 0)
+                  ? target.response
+                  : parsedAgent.response,
+              usageSummary: parsedAgent.usageSummary || target.usageSummary,
+              progressStatus: status,
+            };
+          }
+          continue;
+        }
+        if (location?.scope === "root" && timeline[location.index]) {
+          const target = timeline[location.index];
           const display = getToolResultDisplayPayload(target.toolName, responseRaw);
           const skillTag = extractSkillTag({
             toolName: target.toolName,
             params: target.params,
             response: display.response,
           });
-          timeline[idx] = {
+          timeline[location.index] = {
             ...target,
             response: display.response,
             params: target.params || display.paramsFallback || target.params,
@@ -458,23 +633,67 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
             interaction: target.interaction || interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
           };
+        } else if (location?.scope === "agent") {
+          const parentAgent = timeline[location.agentIndex];
+          if (parentAgent?.type === "agent" && Array.isArray(parentAgent.children)) {
+            const children = [...parentAgent.children];
+            const target = children[location.childIndex];
+            if (target) {
+              const display = getToolResultDisplayPayload(target.toolName, responseRaw);
+              const skillTag = extractSkillTag({
+                toolName: target.toolName,
+                params: target.params,
+                response: display.response,
+              });
+              children[location.childIndex] = {
+                ...target,
+                response: display.response,
+                params: target.params || display.paramsFallback || target.params,
+                ...(skillTag ? { skillTag } : {}),
+                interaction: target.interaction || interactionByRequestId.get(item.tool_use_id),
+                progressStatus: status,
+              };
+              timeline[location.agentIndex] = {
+                ...parentAgent,
+                children,
+              };
+            }
+          }
         } else {
-          const display = getToolResultDisplayPayload("tool", responseRaw);
+          const toolName =
+            typeof item.name === "string" && item.name.trim() ? item.name : "工具调用";
+          const params = item.input ? toStringValue(item.input) : "";
+          const display = getToolResultDisplayPayload(toolName, responseRaw);
           const skillTag = extractSkillTag({
-            toolName: "tool",
-            params: display.paramsFallback || "",
+            toolName,
+            params: params || display.paramsFallback || "",
             response: display.response,
           });
-          timeline.push({
+          const nextTool: TimelineItem = {
             type: "tool",
             id: item.tool_use_id,
-            toolName: "tool",
-            params: display.paramsFallback || "",
+            toolName,
+            params: params || display.paramsFallback || "",
             response: display.response,
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
             ...(skillTag ? { skillTag } : {}),
             interaction: interactionByRequestId.get(item.tool_use_id),
             progressStatus: status,
-          });
+          };
+          const agentIndex = parentAgentToolUseId ? agentIndexById.get(parentAgentToolUseId) : undefined;
+          const parentAgent = typeof agentIndex === "number" ? timeline[agentIndex] : undefined;
+          if (parentAgent && parentAgent.type === "agent") {
+            const children = Array.isArray(parentAgent.children) ? [...parentAgent.children, nextTool] : [nextTool];
+            const childIndex = children.length - 1;
+            timeline[agentIndex] = {
+              ...parentAgent,
+              children,
+            };
+            toolLocationById.set(item.tool_use_id, { scope: "agent", agentIndex, childIndex });
+          } else {
+            const index = timeline.push(nextTool) - 1;
+            toolLocationById.set(item.tool_use_id, { scope: "root", index });
+          }
         }
       }
     }
@@ -732,6 +951,10 @@ export const composeTimelineItems = ({
   const next: TimelineItem[] = [];
 
   rawTimelineItems.forEach((item) => {
+    if (item.type === "agent") {
+      next.push({ ...item });
+      return;
+    }
     if ((item.type === "reasoning" || item.type === "answer") && typeof item.text === "string") {
       const last = next[next.length - 1];
       if (last && last.type === item.type && typeof last.text === "string") {
@@ -764,7 +987,12 @@ export const composeTimelineItems = ({
 
   const timelineToolIndexById = new Map<string, number>();
   const timelineToolIndexByFingerprint = new Map<string, number>();
+  const timelineAgentIndexById = new Map<string, number>();
   next.forEach((item, index) => {
+    if (item.type === "agent" && typeof item.id === "string" && item.id) {
+      timelineAgentIndexById.set(item.id, index);
+      return;
+    }
     if (item.type !== "tool") return;
     timelineToolIndexByFingerprint.set(getToolFingerprint(item.toolName, item.params, item.response), index);
     if (typeof item.id === "string" && item.id) {
@@ -774,6 +1002,32 @@ export const composeTimelineItems = ({
 
   toolDetails.forEach((tool) => {
     const toolId = typeof tool.id === "string" && tool.id ? tool.id : undefined;
+    const normalizedToolName = (tool.toolName || "").trim().toLowerCase();
+    if (toolId) {
+      const agentIndex = timelineAgentIndexById.get(toolId);
+      if (agentIndex !== undefined) {
+        const target = next[agentIndex];
+        if (target?.type === "agent") {
+          next[agentIndex] = {
+            ...target,
+            description: target.description || tool.toolName || target.description,
+            prompt: target.prompt || tool.params || target.prompt,
+            response:
+              (target.response?.length || 0) >= (tool.response?.length || 0)
+                ? target.response
+                : tool.response,
+            interaction: target.interaction || tool.interaction,
+            progressStatus: target.progressStatus || tool.progressStatus,
+          };
+        }
+        if (normalizedToolName === "agent") {
+          return;
+        }
+      }
+    }
+    if (isAgentToolName(tool.toolName)) {
+      return;
+    }
     const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
     const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
     if (targetIndexByFingerprint !== undefined) {

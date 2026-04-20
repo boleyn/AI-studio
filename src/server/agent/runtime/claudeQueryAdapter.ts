@@ -12,6 +12,7 @@ import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsO
 import { runWithClaudeConfigHomeDir } from "../utils/envUtils";
 import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
+import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from "../../builtin-tools/tools/AgentTool/constants";
 
 type RunClaudeQueryAdapterInput = {
   token: string;
@@ -54,12 +55,40 @@ type ToolInputState = {
   name: string;
   inputBuffer: string;
   lastInput?: unknown;
+  parentAgentToolUseId?: string;
 };
 
 type ProjectFilesInput = Record<string, { code?: string }>;
 type BuildProjectMemfsOverlayOptions = {
   systemSkillsRoot?: string;
   includeSystemSkills?: boolean;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const getAgentStartPayload = (toolUseId: string, input: unknown) => {
+  if (!isRecord(input)) return null;
+  const rawAgentType = typeof input.subagent_type === "string" ? input.subagent_type.trim() : "";
+  const rawDescription = typeof input.description === "string" ? input.description.trim() : "";
+  const rawPrompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+  if (!rawAgentType && !rawDescription && !rawPrompt) return null;
+  return {
+    subtype: "agent_start",
+    id: toolUseId,
+    ...(rawAgentType ? { agent_type: rawAgentType } : {}),
+    ...(rawDescription ? { description: rawDescription } : {}),
+    ...(rawPrompt ? { prompt: rawPrompt } : {}),
+  };
+};
+
+const getParentAgentToolUseId = (event: unknown): string | undefined => {
+  if (!event || typeof event !== "object" || Array.isArray(event)) return undefined;
+  const parentToolUseId =
+    "parent_tool_use_id" in event && typeof (event as { parent_tool_use_id?: unknown }).parent_tool_use_id === "string"
+      ? (event as { parent_tool_use_id: string }).parent_tool_use_id.trim()
+      : "";
+  return parentToolUseId || undefined;
 };
 
 const toVirtualDisplayFilePath = (virtualRoot: string, absolutePath: string): string => {
@@ -1151,6 +1180,8 @@ const tryRunQueryEngine = async (
     const toolStateByIndex = new Map<number, ToolInputState>();
     const toolStateById = new Map<string, ToolInputState>();
     const emittedControlKeys = new Set<string>();
+    const emittedAgentStartIds = new Set<string>();
+    const emittedToolUseStartIds = new Set<string>();
 
     const canUseTool = async (tool: { name?: string } | undefined, toolInput: unknown) => {
       const toolName = typeof tool?.name === "string" && tool.name.trim() ? tool.name.trim() : "unknown_tool";
@@ -1159,6 +1190,15 @@ const tryRunQueryEngine = async (
         updatedInput: toolInput,
         toolUseID: `qe-${toolName}-${Date.now()}`,
       };
+    };
+
+    const maybeEmitAgentStart = (toolState: ToolInputState) => {
+      if (emittedAgentStartIds.has(toolState.id)) return;
+      if (toolState.name !== AGENT_TOOL_NAME && toolState.name !== LEGACY_AGENT_TOOL_NAME) return;
+      const agentStartPayload = getAgentStartPayload(toolState.id, toolState.lastInput);
+      if (!agentStartPayload) return;
+      emittedAgentStartIds.add(toolState.id);
+      emitEvent("stream_event", agentStartPayload);
     };
 
     for await (const event of ask({
@@ -1203,21 +1243,30 @@ const tryRunQueryEngine = async (
           const id = typeof stream.event.content_block.id === "string" ? stream.event.content_block.id : "";
           const name = typeof stream.event.content_block.name === "string" ? stream.event.content_block.name : "tool";
           const index = typeof stream.event.index === "number" ? stream.event.index : -1;
+          const parentAgentToolUseId = getParentAgentToolUseId(event);
           const nextState: ToolInputState = {
             id,
             name,
             index,
             inputBuffer: "",
             lastInput: stream.event.content_block.input,
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
           };
           if (index >= 0) toolStateByIndex.set(index, nextState);
           if (id) toolStateById.set(id, nextState);
-          emitEvent("stream_event", {
-            subtype: "tool_use_start",
-            id,
-            name,
-            ...(nextState.lastInput !== undefined ? { input: nextState.lastInput } : {}),
-          });
+          if (!emittedToolUseStartIds.has(id)) {
+            emittedToolUseStartIds.add(id);
+            emitEvent("stream_event", {
+              subtype: nextState.parentAgentToolUseId ? "agent_tool_use_start" : "tool_use_start",
+              id,
+              name,
+              ...(nextState.lastInput !== undefined ? { input: nextState.lastInput } : {}),
+              ...(nextState.parentAgentToolUseId
+                ? { parent_agent_tool_use_id: nextState.parentAgentToolUseId }
+                : {}),
+            });
+          }
+          maybeEmitAgentStart(nextState);
           emitPlanControlEventFromTool(input, nextState, emittedControlKeys);
           continue;
         }
@@ -1245,19 +1294,56 @@ const tryRunQueryEngine = async (
               const parsed = parseJsonLoose(state.inputBuffer);
               if (parsed !== undefined) state.lastInput = parsed;
               emitEvent("stream_event", {
-                subtype: "tool_use_delta",
+                subtype: state.parentAgentToolUseId ? "agent_tool_use_delta" : "tool_use_delta",
                 id: state.id,
                 name: state.name,
                 input: state.lastInput ?? state.inputBuffer,
+                ...(state.parentAgentToolUseId
+                  ? { parent_agent_tool_use_id: state.parentAgentToolUseId }
+                  : {}),
               });
+              maybeEmitAgentStart(state);
               emitPlanControlEventFromTool(input, state, emittedControlKeys);
             }
             continue;
           }
         }
       }
+      if ((event as { type?: string }).type === "assistant") {
+        const assistant = event as { parent_tool_use_id?: unknown; message?: { content?: unknown } };
+        const parentAgentToolUseId = getParentAgentToolUseId(event);
+        const blocks = Array.isArray(assistant.message?.content) ? assistant.message?.content : [];
+        for (const block of blocks) {
+          if (!block || typeof block !== "object") continue;
+          const record = block as Record<string, unknown>;
+          if (record.type !== "tool_use" || typeof record.id !== "string") continue;
+          const id = record.id;
+          const name = typeof record.name === "string" ? record.name : "tool";
+          const lastInput = record.input;
+          const nextState: ToolInputState = {
+            id,
+            name,
+            index: -1,
+            inputBuffer: "",
+            lastInput,
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
+          };
+          toolStateById.set(id, nextState);
+          if (!emittedToolUseStartIds.has(id)) {
+            emittedToolUseStartIds.add(id);
+            emitEvent("stream_event", {
+              subtype: parentAgentToolUseId ? "agent_tool_use_start" : "tool_use_start",
+              id,
+              name,
+              ...(lastInput !== undefined ? { input: lastInput } : {}),
+              ...(parentAgentToolUseId ? { parent_agent_tool_use_id: parentAgentToolUseId } : {}),
+            });
+          }
+        }
+      }
       if ((event as { type?: string }).type === "user") {
         const user = event as { message?: { content?: unknown } };
+        const parentAgentToolUseIdFromEvent = getParentAgentToolUseId(event);
         const blocks = Array.isArray(user.message?.content) ? user.message?.content : [];
         for (const block of blocks) {
           if (!block || typeof block !== "object") continue;
@@ -1266,10 +1352,13 @@ const tryRunQueryEngine = async (
           const contentText =
             typeof record.content === "string" ? record.content : JSON.stringify(record.content ?? "", null, 2);
           const toolState = toolStateById.get(record.tool_use_id);
+          const parentAgentToolUseId = toolState?.parentAgentToolUseId || parentAgentToolUseIdFromEvent;
           emitEvent("stream_event", {
-            subtype: "tool_result",
+            subtype: parentAgentToolUseId ? "agent_tool_result" : "tool_result",
             id: record.tool_use_id,
             ...(toolState?.name ? { name: toolState.name } : {}),
+            ...(toolState?.lastInput !== undefined ? { input: toolState.lastInput } : {}),
+            ...(parentAgentToolUseId ? { parent_agent_tool_use_id: parentAgentToolUseId } : {}),
             content: contentText,
             ...(record.is_error === true ? { is_error: true } : {}),
           });

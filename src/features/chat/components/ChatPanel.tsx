@@ -833,8 +833,13 @@ const ChatPanel = ({
                 text?: unknown;
                 id?: unknown;
                 name?: unknown;
+                agent_type?: unknown;
+                description?: unknown;
+                prompt?: unknown;
                 input?: unknown;
                 content?: unknown;
+                files?: unknown;
+                parent_agent_tool_use_id?: unknown;
                 is_error?: unknown;
               };
               const subtype = typeof payload.subtype === "string" ? payload.subtype : "";
@@ -852,26 +857,52 @@ const ChatPanel = ({
                 appendSdkBlock({ type: "text", text: payload.text });
                 return;
               }
-              if (subtype === "tool_use_start" && typeof payload.id === "string") {
+              if (
+                (subtype === "tool_use_start" || subtype === "agent_tool_use_start") &&
+                typeof payload.id === "string"
+              ) {
                 flushPendingAssistantStreams();
                 appendSdkBlock({
                   type: "tool_use",
                   id: payload.id,
                   name: typeof payload.name === "string" ? payload.name : "tool",
                   ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
                 });
                 return;
               }
-              if (subtype === "tool_use_delta" && typeof payload.id === "string") {
+              if (subtype === "agent_start" && typeof payload.id === "string") {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "agent_start",
+                  id: payload.id,
+                  ...(typeof payload.agent_type === "string" ? { agent_type: payload.agent_type } : {}),
+                  ...(typeof payload.description === "string" ? { description: payload.description } : {}),
+                  ...(typeof payload.prompt === "string" ? { prompt: payload.prompt } : {}),
+                });
+                return;
+              }
+              if (
+                (subtype === "tool_use_delta" || subtype === "agent_tool_use_delta") &&
+                typeof payload.id === "string"
+              ) {
                 appendSdkBlock({
                   type: "tool_use",
                   id: payload.id,
                   name: typeof payload.name === "string" ? payload.name : "tool",
                   ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
                 });
                 return;
               }
-              if (subtype === "tool_result" && typeof payload.id === "string") {
+              if (
+                (subtype === "tool_result" || subtype === "agent_tool_result") &&
+                typeof payload.id === "string"
+              ) {
                 const responseText =
                   typeof payload.content === "string"
                     ? payload.content
@@ -880,6 +911,11 @@ const ChatPanel = ({
                   type: "tool_result",
                   tool_use_id: payload.id,
                   content: responseText,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
                   ...(payload.is_error === true ? { is_error: true } : {}),
                 });
                 const parsedPayload = parseToolPayload(responseText, responseText);
