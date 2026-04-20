@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import { spawn } from 'child_process'
+import { randomUUID } from 'crypto'
 import {
   copyFile,
   mkdtemp as fsMkdtemp,
@@ -201,6 +202,29 @@ const BASH_SILENT_COMMANDS = new Set([
 const VIRTUAL_BASH_ALLOWED_COMMANDS = new Set(['ls', 'pwd', 'cat', 'echo'])
 const VIRTUAL_WASI_FILE_LIMIT = 5000
 const VIRTUAL_WASI_BYTE_LIMIT = 20 * 1024 * 1024
+const VIRTUAL_HOST_SESSION_TTL_MS = 15 * 60 * 1000
+
+type VirtualHostWorkspaceSession = {
+  virtualProjectRoot: string
+  stagingRoot: string
+  workspaceDir: string
+  lastUsedAt: number
+  ptyShell?: string
+  ptyProcess?: {
+    write: (data: string) => void
+    kill: (signal?: string) => void
+    onData: (cb: (data: string) => void) => { dispose: () => void }
+    onExit: (
+      cb: (event: { exitCode: number; signal?: number }) => void,
+    ) => { dispose: () => void }
+    cols: number
+    rows: number
+  }
+  ptyQueue: Promise<void>
+}
+
+const virtualHostWorkspaceSessions = new Map<string, VirtualHostWorkspaceSession>()
+let virtualHostWorkspaceJanitorStarted = false
 
 function tokenizeShellLike(command: string): string[] {
   const matches = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || []
@@ -253,6 +277,25 @@ function isInsideVirtualRoot(candidatePath: string, rootPath: string): boolean {
 
 function maskVirtualPathsInText(input: string): string {
   return maskAbsolutePathsInText(input, maskVirtualPathForDisplay)
+}
+
+function startVirtualHostWorkspaceJanitor(): void {
+  if (virtualHostWorkspaceJanitorStarted) return
+  virtualHostWorkspaceJanitorStarted = true
+  const timer = setInterval(() => {
+    const now = Date.now()
+    for (const [key, session] of virtualHostWorkspaceSessions.entries()) {
+      if (now - session.lastUsedAt <= VIRTUAL_HOST_SESSION_TTL_MS) continue
+      virtualHostWorkspaceSessions.delete(key)
+      try {
+        session.ptyProcess?.kill('SIGKILL')
+      } catch {
+        // ignore
+      }
+      void fsRm(session.stagingRoot, { recursive: true, force: true }).catch(() => {})
+    }
+  }, 60_000)
+  timer.unref()
 }
 
 function getVirtualWasiMap(): Record<string, string> {
@@ -488,6 +531,7 @@ async function executeInHostShellFromVirtualWorkspace(
   cwd: string,
   workspaceRoot: string,
   timeoutMs: number,
+  session?: VirtualHostWorkspaceSession,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const shell =
     process.platform === 'win32'
@@ -507,20 +551,130 @@ async function executeInHostShellFromVirtualWorkspace(
   await fsMkdir(stateDir, { recursive: true })
   await fsMkdir(configDir, { recursive: true })
 
+  const env = {
+    ...process.env,
+    HOME: workspaceRoot,
+    USERPROFILE: workspaceRoot,
+    TMPDIR: tmpDir,
+    TMP: tmpDir,
+    TEMP: tmpDir,
+    XDG_CACHE_HOME: cacheDir,
+    XDG_STATE_HOME: stateDir,
+    XDG_CONFIG_HOME: configDir,
+  }
+
+  // Prefer PTY for terminal-like behavior (ANSI/color, tool output parity).
+  // Fall back to plain spawn when node-pty is unavailable at runtime.
+  if (session) {
+    const ptyMod = await import('node-pty')
+    const ptyShell =
+      session.ptyShell ||
+      (process.platform === 'win32'
+        ? process.env.ComSpec || 'cmd.exe'
+        : process.env.SHELL || '/bin/bash')
+    if (!session.ptyProcess) {
+      session.ptyShell = ptyShell
+      session.ptyProcess = ptyMod.spawn(ptyShell, [], {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        cwd: workspaceRoot,
+        env,
+        encoding: 'utf8',
+      })
+      const disposeExit = session.ptyProcess.onExit(() => {
+        disposeExit.dispose()
+        session.ptyProcess = undefined
+      })
+    }
+
+    const runWithPty = async () =>
+      await new Promise<{ code: number; stdout: string; stderr: string }>(
+        resolve => {
+          const p = session.ptyProcess
+          if (!p) {
+            resolve({
+              code: 126,
+              stdout: '',
+              stderr: 'Virtual PTY session unavailable.',
+            })
+            return
+          }
+
+          const markerId = randomUUID()
+          const marker = `__CLAUDE_VPTY_DONE_${markerId}__`
+          const quotedCwd = cwd.replace(/'/g, `'\\''`)
+          const quotedCommand = command.replace(/'/g, `'\\''`)
+          const wrapped =
+            process.platform === 'win32'
+              ? `cd /d "${cwd}" && (${command})\r`
+              : `cd '${quotedCwd}' && { ${quotedCommand}; }; __claude_code_rc=$?; printf "\\n${marker}:%s\\n" "$__claude_code_rc"\r`
+
+          let buffer = ''
+          let timeoutHandle: NodeJS.Timeout | undefined
+          let hardKillHandle: NodeJS.Timeout | undefined
+          let settled = false
+          const settle = (result: {
+            code: number
+            stdout: string
+            stderr: string
+          }) => {
+            if (settled) return
+            settled = true
+            if (timeoutHandle) clearTimeout(timeoutHandle)
+            if (hardKillHandle) clearTimeout(hardKillHandle)
+            dataDisp.dispose()
+            resolve(result)
+          }
+
+          const markerRegex = new RegExp(`${marker}:(-?\\d+)`)
+          const dataDisp = p.onData((data: string) => {
+            buffer += data
+            const m = markerRegex.exec(buffer)
+            if (!m) return
+            const exitCode = Number.parseInt(m[1] || '1', 10)
+            const content = buffer.slice(0, m.index).replace(/\r\n/g, '\n')
+            settle({
+              code: Number.isFinite(exitCode) ? exitCode : 1,
+              stdout: content,
+              stderr: '',
+            })
+          })
+
+          if (timeoutMs > 0) {
+            timeoutHandle = setTimeout(() => {
+              p.write('\u0003')
+              hardKillHandle = setTimeout(() => {
+                try {
+                  p.kill('SIGKILL')
+                } catch {
+                  // ignore
+                }
+                settle({
+                  code: 124,
+                  stdout: buffer,
+                  stderr: `Command timed out after ${timeoutMs}ms in virtual PTY shell.`,
+                })
+              }, 2_000)
+            }, timeoutMs)
+          }
+
+          p.write(wrapped)
+        },
+      )
+
+    const queued = session.ptyQueue.then(runWithPty, runWithPty)
+    session.ptyQueue = queued.then(
+      () => undefined,
+      () => undefined,
+    )
+    return await queued
+  }
+
   return await new Promise(resolve => {
     const child = spawn(shell, shellArgs, {
       cwd,
-      env: {
-        ...process.env,
-        HOME: workspaceRoot,
-        USERPROFILE: workspaceRoot,
-        TMPDIR: tmpDir,
-        TMP: tmpDir,
-        TEMP: tmpDir,
-        XDG_CACHE_HOME: cacheDir,
-        XDG_STATE_HOME: stateDir,
-        XDG_CONFIG_HOME: configDir,
-      },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -622,6 +776,93 @@ async function syncHostWorkspaceBackToVirtualFs(
   }
 }
 
+async function syncVirtualFsIntoHostWorkspace(
+  fs: ReturnType<typeof getFsImplementation>,
+  virtualProjectRoot: string,
+  hostWorkspaceRoot: string,
+): Promise<void> {
+  const virtualFiles = collectVirtualFileSet(fs, virtualProjectRoot)
+  const hostFiles = new Set<string>()
+
+  const walkVirtual = async (virtualDir: string) => {
+    const entries = fs.readdirSync(virtualDir)
+    for (const entry of entries) {
+      const virtualAbsPath = path.join(virtualDir, entry.name)
+      const relPath = normalizeRelativePathForSet(
+        path.relative(virtualProjectRoot, virtualAbsPath),
+      )
+      const hostAbsPath = path.join(hostWorkspaceRoot, relPath)
+
+      if (entry.isDirectory()) {
+        await fsMkdir(hostAbsPath, { recursive: true })
+        await walkVirtual(virtualAbsPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      hostFiles.add(relPath)
+      await fsMkdir(path.dirname(hostAbsPath), { recursive: true })
+      const bytes = fs.readFileBytesSync(virtualAbsPath)
+      await fsWriteFile(hostAbsPath, bytes)
+    }
+  }
+
+  const walkHost = async (hostDir: string) => {
+    const entries = await fsReaddir(hostDir, { withFileTypes: true })
+    for (const entry of entries) {
+      const hostAbsPath = path.join(hostDir, entry.name)
+      const relPath = normalizeRelativePathForSet(
+        path.relative(hostWorkspaceRoot, hostAbsPath),
+      )
+      if (entry.isDirectory()) {
+        await walkHost(hostAbsPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      hostFiles.add(relPath)
+    }
+  }
+
+  await walkVirtual(virtualProjectRoot)
+  await walkHost(hostWorkspaceRoot)
+
+  for (const relPath of hostFiles) {
+    if (virtualFiles.has(relPath)) continue
+    const hostAbsPath = path.join(hostWorkspaceRoot, relPath)
+    await fsRm(hostAbsPath, { force: true }).catch(() => {})
+  }
+}
+
+async function getOrCreateVirtualHostWorkspaceSession(
+  fs: ReturnType<typeof getFsImplementation>,
+  virtualProjectRoot: string,
+): Promise<VirtualHostWorkspaceSession> {
+  startVirtualHostWorkspaceJanitor()
+  const key = path.resolve(virtualProjectRoot)
+  const existing = virtualHostWorkspaceSessions.get(key)
+  if (existing) {
+    existing.lastUsedAt = Date.now()
+    await syncVirtualFsIntoHostWorkspace(fs, virtualProjectRoot, existing.workspaceDir)
+    return existing
+  }
+
+  const os = await import('node:os')
+  const stagingRoot = await fsMkdtemp(
+    path.join(os.tmpdir(), 'claude-virtual-shell-session-'),
+  )
+  const workspaceDir = path.join(stagingRoot, 'workspace')
+  await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
+  const session: VirtualHostWorkspaceSession = {
+    virtualProjectRoot: key,
+    stagingRoot,
+    workspaceDir,
+    lastUsedAt: Date.now(),
+    ptyQueue: Promise.resolve(),
+  }
+  virtualHostWorkspaceSessions.set(key, session)
+  return session
+}
+
 async function runVirtualHostShellCommand(
   command: string,
   virtualProjectRoot: string,
@@ -638,14 +879,8 @@ async function runVirtualHostShellCommand(
     }
   }
 
-  const os = await import('node:os')
-  const stagingRoot = await fsMkdtemp(
-    path.join(os.tmpdir(), 'claude-virtual-shell-'),
-  )
-  const workspaceDir = path.join(stagingRoot, 'workspace')
-
+  const session = await getOrCreateVirtualHostWorkspaceSession(fs, virtualProjectRoot)
   try {
-    await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
     const beforeFiles = collectVirtualFileSet(fs, virtualProjectRoot)
 
     const relativeCwd = path.relative(virtualProjectRoot, cwd)
@@ -656,24 +891,26 @@ async function runVirtualHostShellCommand(
         stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
       }
     }
-    const hostCwd = path.resolve(workspaceDir, relativeCwd || '.')
+    const hostCwd = path.resolve(session.workspaceDir, relativeCwd || '.')
 
     const result = await executeInHostShellFromVirtualWorkspace(
       command,
       hostCwd,
-      workspaceDir,
+      session.workspaceDir,
       timeoutMs,
+      session,
     )
 
     await syncHostWorkspaceBackToVirtualFs(
       fs,
-      workspaceDir,
+      session.workspaceDir,
       virtualProjectRoot,
       beforeFiles,
     )
+    session.lastUsedAt = Date.now()
     return result
   } finally {
-    await fsRm(stagingRoot, { recursive: true, force: true }).catch(() => {})
+    session.lastUsedAt = Date.now()
   }
 }
 
