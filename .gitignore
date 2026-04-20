@@ -85,3 +85,4 @@ tmp/docx/
 .next-derived/
 .next-dev/
 .idea/
+.aistudio-virtual/
