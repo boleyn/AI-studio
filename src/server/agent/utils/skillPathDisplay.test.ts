@@ -12,6 +12,7 @@ mock.module("env-paths", () => ({
 
 mock.module("src/bootstrap/state.js", () => ({
   getProjectRoot: () => "/virtual/project",
+  getSessionId: () => "test-session-id",
 }));
 
 const { runWithVirtualProjectRoot } = await import("src/utils/fsOperations.js");
@@ -32,6 +33,13 @@ describe("skillPathDisplay", () => {
       toModelVisibleSkillPath("/virtual/project/.aistudio-virtual/demo/.aistudio/skills/demo")
     );
     expect(result).toBe("/.aistudio/skills/demo");
+  });
+
+  test("does not infer virtual paths from repeated host directory names outside the project roots", () => {
+    const result = runWithVirtualProjectRoot("/virtual/project/.aistudio-virtual/demo", () =>
+      toModelVisibleSkillPath("/tmp/project-copy/skills/demo/virtual/project/skills/demo/SKILL.md")
+    );
+    expect(result).toBe("<outside-project-path>");
   });
 
   test("prefixes skill content with virtualized base directory and masks host paths", () => {

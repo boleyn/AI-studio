@@ -4,36 +4,43 @@ import { getVirtualProjectRoot } from './fsOperations.js'
 import { maskVirtualPathForDisplay } from './file.js'
 import { maskAbsolutePathsInText } from './virtualPathMasking.js'
 
-function inferVirtualPathFromHostAbsolute(inputPath: string): string | null {
-  const normalized = inputPath.replace(/\\/g, '/')
+function toVirtualSubpath(
+  inputPath: string,
+  rootPath: string,
+  prefix = '/',
+): string | null {
+  const normalizedInput = path.resolve(inputPath)
+  const normalizedRoot = path.resolve(rootPath)
 
-  const projectSkillMatch = normalized.match(/\/\.aistudio\/skills\/(.+)$/)
-  if (projectSkillMatch?.[1]) {
-    return `/.aistudio/skills/${projectSkillMatch[1]}`
+  if (normalizedInput === normalizedRoot) {
+    return prefix
   }
 
-  const builtinSkillMatch = normalized.match(/\/skills\/(.+)$/)
-  if (builtinSkillMatch?.[1]) {
-    return `/skills/${builtinSkillMatch[1]}`
+  if (!normalizedInput.startsWith(`${normalizedRoot}${path.sep}`)) {
+    return null
   }
 
-  const virtualProjectMatch = normalized.match(/\/\.aistudio-virtual\/[^/]+\/(.+)$/)
-  if (virtualProjectMatch?.[1]) {
-    return `/${virtualProjectMatch[1]}`
-  }
+  const rel = path.relative(normalizedRoot, normalizedInput).replaceAll('\\', '/')
+  if (!rel) return prefix
+  return prefix === '/' ? `/${rel}` : `${prefix}/${rel}`.replace(/\/{2,}/g, '/')
+}
 
-  return null
+function inferVirtualPathFromHostAbsolute(
+  inputPath: string,
+  projectRoot: string,
+  virtualRoot: string,
+): string | null {
+  return (
+    toVirtualSubpath(inputPath, path.join(projectRoot, '.aistudio', 'skills'), '/.aistudio/skills') ||
+    toVirtualSubpath(inputPath, path.join(projectRoot, 'skills'), '/skills') ||
+    toVirtualSubpath(inputPath, virtualRoot, '/')
+  )
 }
 
 export function toModelVisibleSkillPath(inputPath: string): string {
   const virtualRoot = (getVirtualProjectRoot() || '').trim()
   const projectRoot = getProjectRoot()
   const normalizedProjectRoot = path.resolve(projectRoot)
-  const inferredVirtualPath = inferVirtualPathFromHostAbsolute(inputPath)
-
-  if (inferredVirtualPath) {
-    return inferredVirtualPath
-  }
 
   if (!virtualRoot) {
     return process.platform === 'win32'
@@ -43,6 +50,15 @@ export function toModelVisibleSkillPath(inputPath: string): string {
 
   const normalizedRoot = path.resolve(virtualRoot)
   const normalizedInput = path.resolve(inputPath)
+  const inferredVirtualPath = inferVirtualPathFromHostAbsolute(
+    normalizedInput,
+    normalizedProjectRoot,
+    normalizedRoot,
+  )
+
+  if (inferredVirtualPath) {
+    return inferredVirtualPath
+  }
 
   if (
     normalizedInput === normalizedRoot ||

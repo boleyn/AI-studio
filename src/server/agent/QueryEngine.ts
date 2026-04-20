@@ -83,6 +83,7 @@ import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
 } from './utils/thinking.js'
+import { getBuiltInAgents } from '@claude-code-best/builtin-tools/tools/AgentTool/builtInAgents.js'
 
 // Lazy: MessageSelector.tsx pulls React/ink; only needed for message filtering at query time
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1314,12 +1315,13 @@ export async function* ask({
   setSDKStatus?: (status: SDKStatus) => void
   orphanedPermission?: OrphanedPermission
 }): AsyncGenerator<SDKMessage, void, unknown> {
+  const resolvedAgents = agents && agents.length > 0 ? agents : getBuiltInAgents()
   const engine = new QueryEngine({
     cwd,
     tools,
     commands,
     mcpClients,
-    agents: agents ?? [],
+    agents: resolvedAgents,
     canUseTool,
     getAppState,
     setAppState,
