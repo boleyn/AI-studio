@@ -42,6 +42,7 @@ import {
 } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
+import { getPlansDirectory } from 'src/utils/plans.js'
 import { maskAbsolutePathsInText } from 'src/utils/virtualPathMasking.js'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
@@ -157,6 +158,25 @@ function sanitizeErrorForDisplay(error: unknown): Error {
   return new Error(maskAbsolutePathsInText(error.message, maskVirtualPathForDisplay))
 }
 
+function isPlanFilePath(filePath: string): boolean {
+  const plansDir = resolve(getPlansDirectory())
+  const normalizedPath = resolve(filePath)
+  if (
+    normalizedPath === plansDir ||
+    normalizedPath.startsWith(`${plansDir}${sep}`)
+  ) {
+    return true
+  }
+
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return false
+  const virtualPlansDir = resolve(virtualRoot, 'plans')
+  return (
+    normalizedPath === virtualPlansDir ||
+    normalizedPath.startsWith(`${virtualPlansDir}${sep}`)
+  )
+}
+
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
   searchHint: 'create or overwrite files',
@@ -260,6 +280,7 @@ export const FileWriteTool = buildTool({
     }
 
     const fs = getFsImplementation()
+    const isPlanFile = isPlanFilePath(fullFilePath)
     let fileMtimeMs: number
     try {
       const fileStat = await fs.stat(fullFilePath)
@@ -272,7 +293,7 @@ export const FileWriteTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
-    if (!readTimestamp || readTimestamp.isPartialView) {
+    if ((!readTimestamp || readTimestamp.isPartialView) && !isPlanFile) {
       return {
         result: false,
         message:
@@ -285,7 +306,7 @@ export const FileWriteTool = buildTool({
     // getFileModificationTime. The readTimestamp guard above ensures this
     // block is always reached when the file exists.
     const lastWriteTime = Math.floor(fileMtimeMs)
-    if (lastWriteTime > readTimestamp.timestamp) {
+    if (readTimestamp && lastWriteTime > readTimestamp.timestamp) {
       return {
         result: false,
         message:
@@ -303,6 +324,7 @@ export const FileWriteTool = buildTool({
     parentMessage,
   ) {
     const fullFilePath = resolveWritePath(file_path)
+    const displayFilePath = toVirtualDisplayPath(fullFilePath)
     const dir = dirname(fullFilePath)
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
@@ -355,7 +377,7 @@ export const FileWriteTool = buildTool({
     if (meta !== null) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
       const lastRead = readFileState.get(fullFilePath)
-      if (!lastRead || lastWriteTime > lastRead.timestamp) {
+      if ((!lastRead && !isPlanFilePath(fullFilePath)) || (lastRead && lastWriteTime > lastRead.timestamp)) {
         // Timestamp indicates modification, but on Windows timestamps can change
         // without content changes (cloud sync, antivirus, etc.). For full reads,
         // compare content as a fallback to avoid false positives.

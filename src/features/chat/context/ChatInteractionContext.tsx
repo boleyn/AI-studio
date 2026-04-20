@@ -1,40 +1,73 @@
 import { createContext, useContext } from "react";
 
-type PlanQuestionSelectInput = {
-  messageId: string;
-  requestId?: string;
-  questionId: string;
-  header?: string;
-  question: string;
-  optionLabel: string;
-  optionDescription?: string;
-};
-
 type PlanQuestionsSubmitInput = {
-  messageId: string;
   requestId: string;
   answers: Record<string, string>;
 };
 
 type PlanModeApprovalInput = {
-  messageId: string;
   requestId: string;
   action: "enter" | "exit";
   decision: "approve" | "reject";
 };
 
 type PermissionApprovalInput = {
-  messageId: string;
+  requestId?: string;
   toolName: string;
   toolUseId?: string;
   decision: "approve" | "reject";
 };
 
+export type PendingPlanQuestion = {
+  header?: string;
+  id: string;
+  question: string;
+  options: Array<{
+    label: string;
+    description?: string;
+  }>;
+};
+
+export type PendingPlanApproval = {
+  requestId: string;
+  action: "enter" | "exit";
+  title?: string;
+  description?: string;
+};
+
+export type PendingPermissionApproval = {
+  requestId?: string;
+  toolName: string;
+  toolUseId?: string;
+  reason?: string;
+};
+
+export type PendingChatInteraction =
+  | {
+      type: "plan_questions";
+      requestId: string;
+      assistantMessageId: string;
+      questions: PendingPlanQuestion[];
+    }
+  | {
+      type: "plan_approval";
+      requestId: string;
+      assistantMessageId: string;
+      approval: PendingPlanApproval;
+    }
+  | {
+      type: "permission";
+      requestId?: string;
+      assistantMessageId: string;
+      permission: PendingPermissionApproval;
+    };
+
 export type ChatInteractionContextValue = {
   planQuestionSubmitting: boolean;
   planModeApprovalSubmitting: boolean;
+  permissionApprovalSubmitting: boolean;
+  pendingInteraction: PendingChatInteraction | null;
   hideInteractiveCards?: boolean;
-  onPlanQuestionSelect?: (input: PlanQuestionSelectInput) => void;
   onPlanQuestionsSubmit?: (input: PlanQuestionsSubmitInput) => void;
   onPlanModeApprovalSelect?: (input: PlanModeApprovalInput) => void;
   onPermissionApprovalSelect?: (input: PermissionApprovalInput) => void;

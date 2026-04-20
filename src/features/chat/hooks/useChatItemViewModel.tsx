@@ -3,19 +3,10 @@ import { extractText } from "@shared/chat/messages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationMessage } from "@/types/conversation";
 import {
-  getPlanModeApprovalFromMessage,
-  getPlanProgressFromMessage,
-} from "../utils/planModeDisplay";
-import {
   composeTimelineItems,
   formatExecutionTimeForHeader,
   getMessageFiles,
   getPathTailLabel,
-  getPlanModeApprovalDecision,
-  getPlanModeApprovalPending,
-  getPlanQuestions,
-  getPermissionApproval,
-  getPermissionApprovalDecision,
   getReasoningText,
   getRunStatus,
   getTimelineItems,
@@ -183,13 +174,6 @@ export const useChatItemViewModel = ({
   const [expandedTimelineAgentKeys, setExpandedTimelineAgentKeys] = useState<Record<string, boolean>>({});
   const [detailModalData, setDetailModalData] = useState<{ title: string; content: string } | null>(null);
   const { isOpen: isDetailModalOpen, onOpen: openDetailModal, onClose: closeDetailModal } = useDisclosure();
-  const planQuestions = useMemo(() => getPlanQuestions(message), [message]);
-  const planModeApprovalDecision = useMemo(() => getPlanModeApprovalDecision(message), [message]);
-  const planModeApprovalPending = useMemo(() => getPlanModeApprovalPending(message), [message]);
-  const planProgress = useMemo(() => getPlanProgressFromMessage(message), [message]);
-  const planModeApproval = useMemo(() => getPlanModeApprovalFromMessage(message), [message]);
-  const permissionApproval = useMemo(() => getPermissionApproval(message), [message]);
-  const permissionApprovalDecision = useMemo(() => getPermissionApprovalDecision(message), [message]);
 
   const toggleTimelineReasoningDetails = useCallback((key: string) => {
     setExpandedTimelineReasoningKeys((prev) => ({
@@ -351,13 +335,6 @@ export const useChatItemViewModel = ({
     expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
-    planQuestions,
-    planModeApprovalDecision,
-    planModeApprovalPending,
-    planProgress,
-    planModeApproval,
-    permissionApproval,
-    permissionApprovalDecision,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,

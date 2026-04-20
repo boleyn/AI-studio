@@ -246,9 +246,64 @@ export const useChatMessageActions = ({
     ]
   );
 
+  const handleRewindLatestTurn = useCallback(async () => {
+    if (isSending) return false;
+    const snapshot = [...messages];
+    const lastAssistantIndex = [...snapshot]
+      .map((message, index) => ({ message, index }))
+      .reverse()
+      .find(({ message }) => message.role === "assistant" && Boolean(message.id))?.index ?? -1;
+    if (lastAssistantIndex < 0) return false;
+
+    let anchorUserIndex = -1;
+    for (let index = lastAssistantIndex - 1; index >= 0; index -= 1) {
+      if (snapshot[index].role === "user" && snapshot[index].id) {
+        anchorUserIndex = index;
+        break;
+      }
+    }
+    if (anchorUserIndex < 0) return false;
+
+    const anchorMessage = snapshot[anchorUserIndex];
+    const conversationId = activeConversationId;
+    if (!conversationId || !anchorMessage.id) return false;
+
+    const truncated = await truncateConversationFromMessageId(
+      token,
+      conversationId,
+      anchorMessage.id
+    );
+    if (!truncated) return false;
+
+    const nextMessages = snapshot.slice(0, anchorUserIndex);
+    setMessages(nextMessages);
+    setMessageRatings((prev) => {
+      const next = { ...prev };
+      for (const message of snapshot.slice(anchorUserIndex)) {
+        if (!message.id) continue;
+        delete next[message.id];
+      }
+      return next;
+    });
+    if (streamingMessageId && snapshot.slice(anchorUserIndex).some((message) => message.id === streamingMessageId)) {
+      setStreamingMessageId(null);
+    }
+    return true;
+  }, [
+    activeConversationId,
+    isSending,
+    messages,
+    setMessageRatings,
+    setMessages,
+    setStreamingMessageId,
+    streamingMessageId,
+    token,
+  ]);
+
   return {
     handleRateMessage,
     handleDeleteMessage,
     handleRegenerateMessage,
+    handleRewindLatestTurn,
   };
 };

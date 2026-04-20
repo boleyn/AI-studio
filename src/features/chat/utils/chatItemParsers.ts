@@ -25,6 +25,7 @@ export interface ToolDetail {
   toolName?: string;
   params?: string;
   response?: string;
+  parentAgentToolUseId?: string;
   interaction?: PlanInteractionEnvelope;
   progressStatus?: "pending" | "in_progress" | "completed" | "error";
 }
@@ -400,11 +401,18 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         const id = item.id;
         const toolName = typeof item.name === "string" ? item.name : "tool";
         const params = item.input ? toStringValue(item.input) : "";
+        const parentAgentToolUseId =
+          typeof item.parent_agent_tool_use_id === "string" && item.parent_agent_tool_use_id.trim()
+            ? item.parent_agent_tool_use_id.trim()
+            : "";
         const existing = byId.get(id);
         if (existing) {
           if (!existing.toolName && toolName) existing.toolName = toolName;
           if (params) {
             existing.params = mergeToolParams(existing.params, params);
+          }
+          if (!existing.parentAgentToolUseId && parentAgentToolUseId) {
+            existing.parentAgentToolUseId = parentAgentToolUseId;
           }
           if (!existing.progressStatus) existing.progressStatus = "in_progress";
           if (!existing.interaction) existing.interaction = interactionByRequestId.get(id);
@@ -415,6 +423,7 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
             params,
             response: "",
             interaction: interactionByRequestId.get(id),
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
             progressStatus: "in_progress",
           };
           byId.set(id, next);
@@ -427,12 +436,19 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
         const target = byId.get(id);
         const responseRaw = typeof item.content === "string" ? item.content : toStringValue(item.content);
         const status = item.is_error === true ? "error" : "completed";
+        const parentAgentToolUseId =
+          typeof item.parent_agent_tool_use_id === "string" && item.parent_agent_tool_use_id.trim()
+            ? item.parent_agent_tool_use_id.trim()
+            : "";
         const toolName =
           target?.toolName || (typeof item.name === "string" && item.name.trim() ? item.name : undefined);
         const display = getToolResultDisplayPayload(toolName, responseRaw);
         if (target) {
           target.response = display.response;
           target.progressStatus = status;
+          if (!target.parentAgentToolUseId && parentAgentToolUseId) {
+            target.parentAgentToolUseId = parentAgentToolUseId;
+          }
           if (!target.interaction) target.interaction = interactionByRequestId.get(id);
           if (!target.params) {
             const fallback = item.input ? toStringValue(item.input) : display.paramsFallback;
@@ -446,6 +462,7 @@ export const getToolDetails = (message: ConversationMessage): ToolDetail[] => {
             params: item.input ? toStringValue(item.input) : display.paramsFallback || "",
             response: display.response,
             interaction: interactionByRequestId.get(id),
+            ...(parentAgentToolUseId ? { parentAgentToolUseId } : {}),
             progressStatus: status,
           });
         }
@@ -577,11 +594,13 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
             if (parentAgent && parentAgent.type === "agent") {
               const children = Array.isArray(parentAgent.children) ? [...parentAgent.children, nextTool] : [nextTool];
               const childIndex = children.length - 1;
-              timeline[agentIndex] = {
-                ...parentAgent,
-                children,
-              };
-              toolLocationById.set(item.id, { scope: "agent", agentIndex, childIndex });
+              if (typeof agentIndex === "number") {
+                timeline[agentIndex] = {
+                  ...parentAgent,
+                  children,
+                };
+                toolLocationById.set(item.id, { scope: "agent", agentIndex, childIndex });
+              }
               continue;
             }
           }
@@ -685,11 +704,13 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
           if (parentAgent && parentAgent.type === "agent") {
             const children = Array.isArray(parentAgent.children) ? [...parentAgent.children, nextTool] : [nextTool];
             const childIndex = children.length - 1;
-            timeline[agentIndex] = {
-              ...parentAgent,
-              children,
-            };
-            toolLocationById.set(item.tool_use_id, { scope: "agent", agentIndex, childIndex });
+            if (typeof agentIndex === "number") {
+              timeline[agentIndex] = {
+                ...parentAgent,
+                children,
+              };
+              toolLocationById.set(item.tool_use_id, { scope: "agent", agentIndex, childIndex });
+            }
           } else {
             const index = timeline.push(nextTool) - 1;
             toolLocationById.set(item.tool_use_id, { scope: "root", index });
@@ -988,9 +1009,17 @@ export const composeTimelineItems = ({
   const timelineToolIndexById = new Map<string, number>();
   const timelineToolIndexByFingerprint = new Map<string, number>();
   const timelineAgentIndexById = new Map<string, number>();
+  const timelineAgentChildIndexById = new Map<string, { agentIndex: number; childIndex: number }>();
   next.forEach((item, index) => {
     if (item.type === "agent" && typeof item.id === "string" && item.id) {
       timelineAgentIndexById.set(item.id, index);
+      if (Array.isArray(item.children)) {
+        item.children.forEach((child, childIndex) => {
+          if (child.type === "tool" && typeof child.id === "string" && child.id) {
+            timelineAgentChildIndexById.set(child.id, { agentIndex: index, childIndex });
+          }
+        });
+      }
       return;
     }
     if (item.type !== "tool") return;
@@ -1028,49 +1057,34 @@ export const composeTimelineItems = ({
     if (isAgentToolName(tool.toolName)) {
       return;
     }
-    const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
-    const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
-    if (targetIndexByFingerprint !== undefined) {
-      const target = next[targetIndexByFingerprint];
-        next[targetIndexByFingerprint] = {
-          ...target,
-          toolName: target.toolName || tool.toolName,
-          params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
-          response:
-            (target.response?.length || 0) >= (tool.response?.length || 0)
-              ? target.response
-              : tool.response,
-          ...(extractSkillTag({
-            toolName: target.toolName || tool.toolName,
-            params:
-              target.params && target.params.length >= (tool.params?.length || 0)
-                ? target.params
-                : tool.params,
-            response:
-              (target.response?.length || 0) >= (tool.response?.length || 0)
-                ? target.response
-                : tool.response,
-          })
-            ? {
-                skillTag: extractSkillTag({
-                  toolName: target.toolName || tool.toolName,
-                  params:
-                    target.params && target.params.length >= (tool.params?.length || 0)
-                      ? target.params
-                      : tool.params,
-                  response:
-                    (target.response?.length || 0) >= (tool.response?.length || 0)
-                      ? target.response
-                      : tool.response,
-                }),
-              }
-            : {}),
-          interaction: target.interaction || tool.interaction,
-          progressStatus: target.progressStatus || tool.progressStatus,
-        };
-        return;
+    if (toolId) {
+      const agentChildLocation = timelineAgentChildIndexById.get(toolId);
+      if (agentChildLocation) {
+        const parentAgent = next[agentChildLocation.agentIndex];
+        if (parentAgent?.type === "agent" && Array.isArray(parentAgent.children)) {
+          const children = [...parentAgent.children];
+          const target = children[agentChildLocation.childIndex];
+          if (target) {
+            children[agentChildLocation.childIndex] = {
+              ...target,
+              toolName: target.toolName || tool.toolName,
+              params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+              response:
+                (target.response?.length || 0) >= (tool.response?.length || 0)
+                  ? target.response
+                  : tool.response,
+              interaction: target.interaction || tool.interaction,
+              progressStatus: target.progressStatus || tool.progressStatus,
+            };
+            next[agentChildLocation.agentIndex] = {
+              ...parentAgent,
+              children,
+            };
+            return;
+          }
+        }
       }
-
+    }
     if (toolId) {
       const targetIndex = timelineToolIndexById.get(toolId);
       if (targetIndex !== undefined) {
@@ -1113,6 +1127,79 @@ export const composeTimelineItems = ({
         };
         return;
       }
+    }
+
+    const parentAgentToolUseId =
+      typeof tool.parentAgentToolUseId === "string" && tool.parentAgentToolUseId.trim()
+        ? tool.parentAgentToolUseId.trim()
+        : "";
+    if (parentAgentToolUseId) {
+      const agentIndex = timelineAgentIndexById.get(parentAgentToolUseId);
+      const parentAgent = typeof agentIndex === "number" ? next[agentIndex] : undefined;
+      if (parentAgent?.type === "agent") {
+        const children = Array.isArray(parentAgent.children) ? [...parentAgent.children] : [];
+        const childIndex =
+          children.push({
+            type: "tool",
+            id: toolId,
+            toolName: tool.toolName || "",
+            params: tool.params || "",
+            response: tool.response || "",
+            parentAgentToolUseId,
+            interaction: tool.interaction,
+            progressStatus: tool.progressStatus,
+          }) - 1;
+        if (typeof agentIndex === "number") {
+          next[agentIndex] = {
+            ...parentAgent,
+            children,
+          };
+          if (toolId) timelineAgentChildIndexById.set(toolId, { agentIndex, childIndex });
+        }
+        return;
+      }
+    }
+    const toolFingerprint = getToolFingerprint(tool.toolName, tool.params, tool.response);
+    const targetIndexByFingerprint = timelineToolIndexByFingerprint.get(toolFingerprint);
+    if (targetIndexByFingerprint !== undefined) {
+      const target = next[targetIndexByFingerprint];
+      next[targetIndexByFingerprint] = {
+        ...target,
+        toolName: target.toolName || tool.toolName,
+        params: target.params && target.params.length >= (tool.params?.length || 0) ? target.params : tool.params,
+        response:
+          (target.response?.length || 0) >= (tool.response?.length || 0)
+            ? target.response
+            : tool.response,
+        ...(extractSkillTag({
+          toolName: target.toolName || tool.toolName,
+          params:
+            target.params && target.params.length >= (tool.params?.length || 0)
+              ? target.params
+              : tool.params,
+          response:
+            (target.response?.length || 0) >= (tool.response?.length || 0)
+              ? target.response
+              : tool.response,
+        })
+          ? {
+              skillTag: extractSkillTag({
+                toolName: target.toolName || tool.toolName,
+                params:
+                  target.params && target.params.length >= (tool.params?.length || 0)
+                    ? target.params
+                    : tool.params,
+                response:
+                  (target.response?.length || 0) >= (tool.response?.length || 0)
+                    ? target.response
+                    : tool.response,
+              }),
+            }
+          : {}),
+        interaction: target.interaction || tool.interaction,
+        progressStatus: target.progressStatus || tool.progressStatus,
+      };
+      return;
     }
 
     const insertedIndex =

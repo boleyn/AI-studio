@@ -144,6 +144,28 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
   Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
 
+const resolveWorkspaceFilePath = (inputPath: string, knownPaths: string[]): string | null => {
+  const normalizedInput = (inputPath || "").trim().replace(/\\/g, "/");
+  if (!normalizedInput) return null;
+  const prefixedInput = normalizedInput.startsWith("/") ? normalizedInput : `/${normalizedInput}`;
+  if (knownPaths.includes(prefixedInput)) return prefixedInput;
+
+  const candidates = [prefixedInput, normalizedInput];
+  for (const candidate of candidates) {
+    const foundBySuffix = knownPaths.find((path) => path === candidate || path.endsWith(candidate));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  const segments = prefixedInput.split("/").filter(Boolean);
+  for (let index = 0; index < segments.length; index += 1) {
+    const suffix = `/${segments.slice(index).join("/")}`;
+    const foundBySuffix = knownPaths.find((path) => path === suffix || path.endsWith(suffix));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  return null;
+};
+
 const AgentFilesSandpackSync = ({ payload }: { payload: AgentFilesSyncPayload | null }) => {
   const { sandpack } = useSandpack();
   const lastAppliedVersionRef = useRef(0);
@@ -204,6 +226,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [openSkillsSignal, setOpenSkillsSignal] = useState(0);
   const [topSearchConversations, setTopSearchConversations] = useState<Array<{ id: string; title: string }>>([]);
   const [topSearchOpenFilePath, setTopSearchOpenFilePath] = useState<string | null>(null);
+  const [chatOpenFilePath, setChatOpenFilePath] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<Record<ShareMode, string>>({
     editable: "",
     preview: "",
@@ -300,6 +323,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     () => Object.keys(sandpackFiles).filter(shouldShowPath),
     [sandpackFiles, shouldShowPath]
   );
+  const mergedOpenFileRequest = chatOpenFilePath || topSearchOpenFilePath;
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -754,6 +778,14 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 height="100%"
                 openSkillsSignal={openSkillsSignal}
                 fileOptions={chatFileOptions}
+                onOpenWorkspaceFile={(filePath) => {
+                  const knownPaths = Object.keys(latestFilesRef.current || files || {});
+                  const resolvedPath = resolveWorkspaceFilePath(filePath, knownPaths);
+                  if (!resolvedPath) return false;
+                  setActiveView("code");
+                  setChatOpenFilePath(resolvedPath);
+                  return true;
+                }}
               />
             </Box>
             <Box
@@ -776,8 +808,16 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
-              openFileRequest={topSearchOpenFilePath}
-              onOpenFileRequestHandled={() => setTopSearchOpenFilePath(null)}
+              openFileRequest={mergedOpenFileRequest}
+              onOpenFileRequestHandled={() => {
+                if (chatOpenFilePath) {
+                  setChatOpenFilePath(null);
+                  return;
+                }
+                if (topSearchOpenFilePath) {
+                  setTopSearchOpenFilePath(null);
+                }
+              }}
               filePathFilter={shouldShowPath}
               saveStatus={saveStatus}
               onManualPreview={() => setActiveView("preview")}

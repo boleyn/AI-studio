@@ -4,6 +4,7 @@ import { createSdkMessage, sdkContentToText } from "@shared/chat/sdkMessages";
 import type { SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Volume, createFsFromVolume } from "memfs";
@@ -13,6 +14,7 @@ import { runWithClaudeConfigHomeDir } from "../utils/envUtils";
 import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from "../../builtin-tools/tools/AgentTool/constants";
+import { registerPendingConversationInteraction } from "@server/chat/activeRuns";
 
 type RunClaudeQueryAdapterInput = {
   token: string;
@@ -36,6 +38,12 @@ type RunClaudeQueryAdapterResult = {
 type QueryEngineExecutionAttempt = {
   ok: boolean;
   assistantText?: string;
+  assistantMessagePayload?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    content?: unknown;
+    [key: string]: unknown;
+  };
+  pendingInteraction?: boolean;
   updatedFiles?: Record<string, { code: string }>;
   stopReason?: string | null;
   warnings?: string[];
@@ -56,6 +64,13 @@ type ToolInputState = {
   inputBuffer: string;
   lastInput?: unknown;
   parentAgentToolUseId?: string;
+};
+
+type PendingInteractionDecision = {
+  decision: "approve" | "reject";
+  answers?: Record<string, string>;
+  note?: string;
+  updatedInput?: unknown;
 };
 
 type ProjectFilesInput = Record<string, { code?: string }>;
@@ -221,9 +236,9 @@ const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput =>
 
   const files: ProjectFilesInput = {};
   const walk = (currentDir: string) => {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: Dirent[];
     try {
-      entries = readdirSync(currentDir, { withFileTypes: true });
+      entries = readdirSync(currentDir, { withFileTypes: true }) as Dirent[];
     } catch {
       return;
     }
@@ -458,7 +473,8 @@ export const buildProjectMemfsOverlay = (
       memfs.appendFileSync(routed, data);
     },
     writeFileSync(fsPath, data, options) {
-      memfs.writeFileSync(routePath(fsPath), data, options as any);
+      void options;
+      memfs.writeFileSync(routePath(fsPath), data as any);
     },
     copyFileSync(src, dest) {
       memfs.copyFileSync(routePath(src), routePath(dest));
@@ -971,14 +987,14 @@ const emitPlanControlEventFromTool = (
   input: RunClaudeQueryAdapterInput,
   toolState: ToolInputState,
   emittedControlKeys: Set<string>
-) => {
+): boolean => {
   const toolName = toolState.name.trim().toLowerCase();
-  if (!toolState.id) return;
-  if (toolName === "askuserquestion") {
+  if (!toolState.id) return false;
+  if (toolName === "askuserquestion" || toolName === "request_user_input" || toolName === "requestuserinput") {
     const payload = normalizePlanQuestionPayload(toolState.lastInput);
-    if (!payload) return;
+    if (!payload) return false;
     const dedupeKey = `${toolState.id}:plan_question`;
-    if (emittedControlKeys.has(dedupeKey)) return;
+    if (emittedControlKeys.has(dedupeKey)) return false;
     emittedControlKeys.add(dedupeKey);
     input.onEvent("control", {
       interaction: {
@@ -987,12 +1003,12 @@ const emitPlanControlEventFromTool = (
         payload,
       },
     });
-    return;
+    return true;
   }
-  if (toolName === "exitplanmode") {
+  if (toolName === "exitplanmode" || toolName === "exit_plan_mode" || toolName === "exitplanmodev2") {
     const payload = normalizePlanApprovalPayload(toolState.lastInput);
     const dedupeKey = `${toolState.id}:plan_approval`;
-    if (emittedControlKeys.has(dedupeKey)) return;
+    if (emittedControlKeys.has(dedupeKey)) return false;
     emittedControlKeys.add(dedupeKey);
     input.onEvent("control", {
       interaction: {
@@ -1001,13 +1017,13 @@ const emitPlanControlEventFromTool = (
         payload,
       },
     });
-    return;
+    return true;
   }
   if (toolName === "update_plan") {
     const payload = normalizePlanProgressPayload(toolState.lastInput);
-    if (!payload) return;
+    if (!payload) return false;
     const dedupeKey = `${toolState.id}:plan_progress`;
-    if (emittedControlKeys.has(dedupeKey)) return;
+    if (emittedControlKeys.has(dedupeKey)) return false;
     emittedControlKeys.add(dedupeKey);
     input.onEvent("control", {
       interaction: {
@@ -1016,7 +1032,76 @@ const emitPlanControlEventFromTool = (
         payload,
       },
     });
+    return false;
   }
+  return false;
+};
+
+const waitForPendingInteractionDecision = ({
+  input,
+  toolState,
+  kind,
+  signal,
+}: {
+  input: RunClaudeQueryAdapterInput;
+  toolState: ToolInputState;
+  kind: "plan_question" | "plan_approval" | "permission";
+  signal?: AbortSignal;
+}): Promise<PendingInteractionDecision | null> => {
+  if (!toolState.id) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (decision: PendingInteractionDecision | null) => {
+      if (settled) return;
+      settled = true;
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
+      resolve(decision);
+    };
+    const abortHandler = () => finalize(null);
+    if (signal) {
+      if (signal.aborted) {
+        finalize(null);
+        return;
+      }
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+    const registered = registerPendingConversationInteraction({
+      token: input.token,
+      chatId: input.chatId,
+      requestId: toolState.id,
+      interaction: {
+        kind,
+        toolName: toolState.name,
+        toolUseId: toolState.id,
+        input: toolState.lastInput,
+      },
+      resolve: finalize,
+    });
+    if (!registered) finalize(null);
+  });
+};
+
+const getInteractionKindForToolName = (
+  toolName: string
+): "plan_question" | "plan_approval" | "permission" | null => {
+  const normalized = toolName.trim().toLowerCase();
+  if (
+    normalized === "askuserquestion" ||
+    normalized === "request_user_input" ||
+    normalized === "requestuserinput"
+  ) {
+    return "plan_question";
+  }
+  if (
+    normalized === "exitplanmode" ||
+    normalized === "exit_plan_mode" ||
+    normalized === "exitplanmodev2"
+  ) {
+    return "plan_approval";
+  }
+  return null;
 };
 
 const tryRunQueryEngine = async (
@@ -1043,6 +1128,12 @@ const tryRunQueryEngine = async (
       : undefined;
 
   const runCore = async (): Promise<QueryEngineExecutionAttempt> => {
+    let assistantText = "";
+    let assistantMessagePayload: QueryEngineExecutionAttempt["assistantMessagePayload"] | undefined;
+    let pendingInteraction = false;
+    let stopReason: string | null = null;
+    let resultSubtype: string | null = null;
+    let resultUsage: QueryEngineExecutionAttempt["usage"] = null;
     try {
       const configMod = await import("../utils/config");
       const enableConfigs = pickNamedExport<() => void>(configMod, "enableConfigs");
@@ -1050,58 +1141,58 @@ const tryRunQueryEngine = async (
         enableConfigs();
       }
 
-    const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
+      const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
 
-    const toVirtualDisplayPath = (candidate: string): string => {
-      const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
-      const normalizedRoot = normalize(virtualProjectRoot);
-      const normalizedCandidate = normalize(candidate);
-      if (normalizedCandidate === normalizedRoot) return ".";
-      if (!normalizedCandidate.startsWith(`${normalizedRoot}/`)) return candidate;
-      const rel = normalizedCandidate.slice(normalizedRoot.length + 1);
-      return rel || ".";
-    };
-
-    const sanitizeStringForUi = (value: string): string => {
-      if (!hasVirtualProjectFiles || !value) return value;
-      return value.replace(/\/[^\s"'<>]+/g, (rawPath) => {
-        if (!rawPath.startsWith("/")) return rawPath;
-        const converted = toVirtualDisplayPath(rawPath);
-        return converted === rawPath ? rawPath : converted;
-      });
-    };
-
-    const sanitizeForUi = (inputValue: unknown): unknown => {
-      if (!hasVirtualProjectFiles) return inputValue;
-      const visited = new WeakSet<object>();
-      const walk = (node: unknown): unknown => {
-        if (typeof node === "string") return sanitizeStringForUi(node);
-        if (!node || typeof node !== "object") return node;
-        if (visited.has(node as object)) return node;
-        visited.add(node as object);
-        if (Array.isArray(node)) return node.map((item) => walk(item));
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-          out[k] = walk(v);
-        }
-        return out;
+      const toVirtualDisplayPath = (candidate: string): string => {
+        const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+        const normalizedRoot = normalize(virtualProjectRoot);
+        const normalizedCandidate = normalize(candidate);
+        if (normalizedCandidate === normalizedRoot) return ".";
+        if (!normalizedCandidate.startsWith(`${normalizedRoot}/`)) return candidate;
+        const rel = normalizedCandidate.slice(normalizedRoot.length + 1);
+        return rel || ".";
       };
-      return walk(inputValue);
-    };
 
-    const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
-      input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
-    };
-    const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
-      await Promise.all([
-        import("../state/AppStateStore"),
-        import("../commands"),
-        import("../tools"),
-        import("../Tool"),
-        import("../utils/permissions/PermissionMode"),
-        import("../QueryEngine"),
-        import("../utils/fileStateCache"),
-      ]);
+      const sanitizeStringForUi = (value: string): string => {
+        if (!hasVirtualProjectFiles || !value) return value;
+        return value.replace(/\/[^\s"'<>]+/g, (rawPath) => {
+          if (!rawPath.startsWith("/")) return rawPath;
+          const converted = toVirtualDisplayPath(rawPath);
+          return converted === rawPath ? rawPath : converted;
+        });
+      };
+
+      const sanitizeForUi = (inputValue: unknown): unknown => {
+        if (!hasVirtualProjectFiles) return inputValue;
+        const visited = new WeakSet<object>();
+        const walk = (node: unknown): unknown => {
+          if (typeof node === "string") return sanitizeStringForUi(node);
+          if (!node || typeof node !== "object") return node;
+          if (visited.has(node as object)) return node;
+          visited.add(node as object);
+          if (Array.isArray(node)) return node.map((item) => walk(item));
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+            out[k] = walk(v);
+          }
+          return out;
+        };
+        return walk(inputValue);
+      };
+
+      const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
+        input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
+      };
+      const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
+        await Promise.all([
+          import("../state/AppStateStore"),
+          import("../commands"),
+          import("../tools"),
+          import("../Tool"),
+          import("../utils/permissions/PermissionMode"),
+          import("../QueryEngine"),
+          import("../utils/fileStateCache"),
+        ]);
 
     const getDefaultAppState = pickNamedExport<() => any>(appStateMod, "getDefaultAppState");
     const getCommands = pickNamedExport<(cwd: string) => Promise<any[]>>(commandsMod, "getCommands");
@@ -1173,22 +1264,89 @@ const tryRunQueryEngine = async (
       ...toInteractionToolResultMessages(input.historyMessages),
     ];
     const appendSystemPrompt = buildAppendSystemPrompt(input);
-    let assistantText = "";
-    let stopReason: string | null = null;
-    let resultSubtype: string | null = null;
-    let resultUsage: QueryEngineExecutionAttempt["usage"] = null;
     const toolStateByIndex = new Map<number, ToolInputState>();
     const toolStateById = new Map<string, ToolInputState>();
     const emittedControlKeys = new Set<string>();
     const emittedAgentStartIds = new Set<string>();
     const emittedToolUseStartIds = new Set<string>();
+    const queryAbortController = input.abortSignal
+      ? (() => {
+          const controller = new AbortController();
+          if (input.abortSignal.aborted) controller.abort();
+          else {
+            input.abortSignal.addEventListener("abort", () => controller.abort(), { once: true });
+          }
+          return controller;
+        })()
+      : undefined;
 
-    const canUseTool = async (tool: { name?: string } | undefined, toolInput: unknown) => {
+    const canUseTool = async (
+      tool: { name?: string } | undefined,
+      toolInput: unknown,
+      _toolUseContext?: unknown,
+      _assistantMessage?: unknown,
+      toolUseID?: string
+    ) => {
       const toolName = typeof tool?.name === "string" && tool.name.trim() ? tool.name.trim() : "unknown_tool";
+      const interactionKind = getInteractionKindForToolName(toolName);
+      const normalizedToolUseId = typeof toolUseID === "string" ? toolUseID.trim() : "";
+      if (!interactionKind || !normalizedToolUseId) {
+        return {
+          behavior: "allow",
+          updatedInput: toolInput,
+          ...(normalizedToolUseId ? { toolUseID: normalizedToolUseId } : {}),
+        };
+      }
+
+      const toolState = toolStateById.get(normalizedToolUseId) || {
+        id: normalizedToolUseId,
+        name: toolName,
+        index: -1,
+        inputBuffer: "",
+        lastInput: toolInput,
+      };
+      toolState.lastInput = toolInput;
+      toolStateById.set(normalizedToolUseId, toolState);
+
+      if (emitPlanControlEventFromTool(input, toolState, emittedControlKeys)) {
+        pendingInteraction = true;
+      }
+
+      const decision = await waitForPendingInteractionDecision({
+        input,
+        toolState,
+        kind: interactionKind,
+        signal: queryAbortController?.signal,
+      });
+
+      if (!decision) {
+        return {
+          behavior: "deny",
+          message: "User interaction was cancelled before a response was received.",
+          decisionReason: "user_denied",
+          toolUseID: normalizedToolUseId,
+        };
+      }
+
+      if (decision.decision === "reject") {
+        const rejectMessage =
+          interactionKind === "plan_question"
+            ? decision.note || "User declined to answer the questions."
+            : interactionKind === "plan_approval"
+            ? decision.note || "User rejected the current plan."
+            : decision.note || `User rejected permission for ${toolName}.`;
+        return {
+          behavior: "deny",
+          message: rejectMessage,
+          decisionReason: "user_denied",
+          toolUseID: normalizedToolUseId,
+        };
+      }
+
       return {
         behavior: "allow",
-        updatedInput: toolInput,
-        toolUseID: `qe-${toolName}-${Date.now()}`,
+        updatedInput: decision.updatedInput !== undefined ? decision.updatedInput : toolInput,
+        toolUseID: normalizedToolUseId,
       };
     };
 
@@ -1216,16 +1374,7 @@ const tryRunQueryEngine = async (
       fallbackModel: undefined,
       getAppState,
       setAppState,
-      abortController: input.abortSignal
-        ? (() => {
-            const controller = new AbortController();
-            if (input.abortSignal.aborted) controller.abort();
-            else {
-              input.abortSignal.addEventListener("abort", () => controller.abort(), { once: true });
-            }
-            return controller;
-          })()
-        : undefined,
+      abortController: queryAbortController,
       replayUserMessages: false,
       includePartialMessages: true,
     })) {
@@ -1267,7 +1416,6 @@ const tryRunQueryEngine = async (
             });
           }
           maybeEmitAgentStart(nextState);
-          emitPlanControlEventFromTool(input, nextState, emittedControlKeys);
           continue;
         }
         if (streamType === "content_block_delta") {
@@ -1303,7 +1451,6 @@ const tryRunQueryEngine = async (
                   : {}),
               });
               maybeEmitAgentStart(state);
-              emitPlanControlEventFromTool(input, state, emittedControlKeys);
             }
             continue;
           }
@@ -1398,6 +1545,24 @@ const tryRunQueryEngine = async (
       }
       if ((event as { type?: string }).type === "assistant") {
         const msg = event as { message?: { content?: unknown } };
+        if (msg.message && typeof msg.message === "object") {
+          const payload = msg.message as Record<string, unknown>;
+          const content = payload.content;
+          const hasStructuredContent =
+            (typeof content === "string" && content.trim().length > 0) ||
+            (Array.isArray(content) && content.length > 0);
+          if (hasStructuredContent) {
+            assistantMessagePayload = {
+              ...payload,
+              role:
+                payload.role === "user" ||
+                payload.role === "system" ||
+                payload.role === "tool"
+                  ? payload.role
+                  : "assistant",
+            };
+          }
+        }
         const text = sdkContentToText(msg.message?.content);
         if (text.trim()) assistantText = text;
       }
@@ -1441,10 +1606,12 @@ const tryRunQueryEngine = async (
       }
     }
 
-      if (assistantText.trim()) {
+      if (assistantMessagePayload || assistantText.trim() || pendingInteraction) {
         return {
           ok: true,
           assistantText,
+          assistantMessagePayload,
+          pendingInteraction,
           stopReason,
           resultSubtype,
           usage: resultUsage,
@@ -1460,6 +1627,18 @@ const tryRunQueryEngine = async (
         error: "query_engine_finished_without_assistant_text",
       };
     } catch (error) {
+      if (pendingInteraction) {
+        return {
+          ok: true,
+          assistantText,
+          assistantMessagePayload,
+          pendingInteraction: true,
+          stopReason: stopReason || "pending_interaction",
+          resultSubtype,
+          usage: resultUsage,
+          warnings: probe.warnings,
+        };
+      }
       if (error instanceof Error) {
         console.error("[query_engine][exception]", {
           message: error.message,
@@ -1533,6 +1712,7 @@ export const runClaudeQueryAdapter = async (
     input.onEvent("status", {
       phase: "query_engine_attempt",
       ok: attempt.ok,
+      pendingInteraction: attempt.pendingInteraction === true,
       permissionMode:
         typeof input.permissionMode === "string" && input.permissionMode.trim() ? input.permissionMode.trim() : "default",
       resultSubtype: attempt.resultSubtype ?? null,
@@ -1540,15 +1720,32 @@ export const runClaudeQueryAdapter = async (
       warnings: attempt.warnings ?? [],
       error: attempt.error ?? null,
     });
-    if (attempt.ok && attempt.assistantText) {
+    if (attempt.ok && (attempt.assistantMessagePayload || attempt.assistantText)) {
+      const payload =
+        attempt.assistantMessagePayload && typeof attempt.assistantMessagePayload === "object"
+          ? {
+              ...attempt.assistantMessagePayload,
+              role:
+                attempt.assistantMessagePayload.role === "user" ||
+                attempt.assistantMessagePayload.role === "system" ||
+                attempt.assistantMessagePayload.role === "tool"
+                  ? attempt.assistantMessagePayload.role
+                  : "assistant",
+              ...(attempt.assistantMessagePayload.content !== undefined
+                ? {}
+                : { content: attempt.assistantText || "" }),
+            }
+          : {
+              role: "assistant" as const,
+              content: attempt.assistantText || "",
+            };
       const assistantMessage = createSdkMessage({
         type: "assistant",
         message: {
-          role: "assistant",
-          content: attempt.assistantText,
+          ...payload,
           ...(attempt.usage ? { usage: attempt.usage } : {}),
           ...(input.selectedModel ? { model: input.selectedModel } : {}),
-        },
+        } as any,
       });
       return { assistantMessage, updatedFiles: attempt.updatedFiles };
     }

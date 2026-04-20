@@ -5,13 +5,12 @@ import Markdown from "@/components/Markdown";
 import { useCopyData } from "@/hooks/useCopyData";
 import { ToolStreamText, useChatItemViewModel } from "../hooks/useChatItemViewModel";
 import type { MessageExecutionSummary } from "../utils/executionSummary";
+import AgentTimelineCard from "./message/timeline/AgentTimelineCard";
+import ToolTimelineCard from "./message/timeline/ToolTimelineCard";
 import {
   PLAN_MODE_TOOL_NAMES,
-  isDetailTruncated,
   isImageFile,
-  truncateDetailText,
 } from "../utils/chatItemParsers";
-import PlanModeTimelineCard from "./message/PlanModeTimelineCard";
 
 import type { ConversationMessage } from "@/types/conversation";
 
@@ -23,13 +22,8 @@ const ChatItem = ({
   requestMessage,
   requestContent,
   isLatestRun,
-  planQuestionSubmitting,
-  planModeApprovalSubmitting,
   hideInteractiveCards,
-  onPlanQuestionSelect,
-  onPlanQuestionsSubmit,
-  onPlanModeApprovalSelect,
-  onPermissionApprovalSelect,
+  onOpenWorkspaceFile,
 }: {
   message: ConversationMessage;
   isStreaming?: boolean;
@@ -38,35 +32,8 @@ const ChatItem = ({
   requestMessage?: ConversationMessage;
   requestContent?: string;
   isLatestRun?: boolean;
-  planQuestionSubmitting?: boolean;
-  planModeApprovalSubmitting?: boolean;
   hideInteractiveCards?: boolean;
-  onPlanQuestionSelect?: (input: {
-    messageId: string;
-    requestId?: string;
-    questionId: string;
-    header?: string;
-    question: string;
-    optionLabel: string;
-    optionDescription?: string;
-  }) => void;
-  onPlanQuestionsSubmit?: (input: {
-    messageId: string;
-    requestId: string;
-    answers: Record<string, string>;
-  }) => void;
-  onPlanModeApprovalSelect?: (input: {
-    messageId: string;
-    requestId: string;
-    action: "enter" | "exit";
-    decision: "approve" | "reject";
-  }) => void;
-  onPermissionApprovalSelect?: (input: {
-    messageId: string;
-    toolName: string;
-    toolUseId?: string;
-    decision: "approve" | "reject";
-  }) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }) => {
   const { copyData } = useCopyData();
   const {
@@ -83,12 +50,6 @@ const ChatItem = ({
     expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
-    planQuestions,
-    planModeApprovalDecision,
-    planModeApprovalPending,
-    planModeApproval,
-    permissionApproval,
-    permissionApprovalDecision,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,
@@ -110,39 +71,6 @@ const ChatItem = ({
   });
 
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
-  const hasPendingPlanQuestions = planQuestions.length > 0;
-  const currentPlanRequestId = planQuestions[0]?.requestId;
-  const currentPlanSelectionsByRequest =
-    message.additional_kwargs &&
-    typeof message.additional_kwargs === "object" &&
-    (message.additional_kwargs as Record<string, unknown>).planQuestionSelections &&
-    typeof (message.additional_kwargs as Record<string, unknown>).planQuestionSelections === "object" &&
-    !Array.isArray((message.additional_kwargs as Record<string, unknown>).planQuestionSelections)
-      ? ((message.additional_kwargs as Record<string, unknown>).planQuestionSelections as Record<string, unknown>)
-      : {};
-  const currentPlanSelections =
-    currentPlanRequestId &&
-    currentPlanSelectionsByRequest[currentPlanRequestId] &&
-    typeof currentPlanSelectionsByRequest[currentPlanRequestId] === "object" &&
-    !Array.isArray(currentPlanSelectionsByRequest[currentPlanRequestId])
-      ? (currentPlanSelectionsByRequest[currentPlanRequestId] as Record<string, unknown>)
-      : {};
-  const selectedPlanAnswerCount = planQuestions.reduce((count, item) => {
-    const selected =
-      typeof currentPlanSelections[item.id] === "string"
-        ? String(currentPlanSelections[item.id]).trim()
-        : "";
-    return selected ? count + 1 : count;
-  }, 0);
-  const canSubmitPlanQuestions =
-    Boolean(currentPlanRequestId) && planQuestions.length > 0 && selectedPlanAnswerCount >= planQuestions.length;
-  const shouldShowPermissionApproval = Boolean(permissionApproval && !permissionApprovalDecision);
-  const shouldHidePlanReasoning = Boolean(
-    hasPendingPlanQuestions ||
-      (planModeApproval && planModeApprovalPending && !planModeApprovalDecision) ||
-      shouldShowPermissionApproval
-  );
-  const shouldSuppressPlanVerboseAnswer = Boolean(shouldHidePlanReasoning);
 
   if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
 
@@ -219,283 +147,20 @@ const ChatItem = ({
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
                     if (item.type === "agent") {
-                      const agentKey = item.id || `${messageId}-timeline-agent-${index}`;
-                      const isExpanded = Boolean(expandedTimelineAgentKeys[agentKey]);
-                      const promptPreview = truncateDetailText(item.prompt);
-                      const promptTruncated = isDetailTruncated(item.prompt);
-                      const responseTruncated = isDetailTruncated(item.response);
-                      const agentTitle = (item.description || "").trim() || item.agentType || "子 Agent";
-                      const isRunning = isStreaming && item.progressStatus !== "completed" && item.progressStatus !== "error";
                       return (
-                        <Box
-                          key={agentKey}
-                          bg="myGray.25"
-                          border="1px solid"
-                          borderColor="myGray.200"
-                          borderRadius="10px"
-                          py={2}
-                          px={2}
-                        >
-                          <Flex align="center" gap={2}>
-                            {isRunning ? (
-                              <Spinner color="blue.500" size="xs" speed="0.7s" thickness="2.5px" />
-                            ) : (
-                              <Box bg="blue.400" borderRadius="full" h="6px" w="6px" />
-                            )}
-                            <Text color="myGray.700" fontSize="12px" fontWeight="600" noOfLines={1}>
-                              {agentTitle}
-                            </Text>
-                            {item.agentType ? (
-                              <Text color="myGray.500" fontSize="11px" noOfLines={1}>
-                                {item.agentType}
-                              </Text>
-                            ) : null}
-                            {isRunning ? (
-                              <Text
-                                bg="blue.50"
-                                border="1px solid"
-                                borderColor="blue.200"
-                                borderRadius="999px"
-                                color="blue.700"
-                                fontSize="10px"
-                                ml={2}
-                                px={2}
-                                py="1px"
-                              >
-                                执行中
-                              </Text>
-                            ) : null}
-                            <IconButton
-                              aria-label={isExpanded ? "收起子 Agent 详情" : "展开子 Agent 详情"}
-                              icon={
-                                <Icon
-                                  boxSize={4}
-                                  color="myGray.500"
-                                  transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
-                                  transition="transform 0.2s ease"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M6 9L12 15L18 9"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                  />
-                                </Icon>
-                              }
-                              h="22px"
-                              ml="auto"
-                              minW="22px"
-                              onClick={() => toggleTimelineAgentDetails(agentKey)}
-                              size="xs"
-                              variant="ghost"
-                            />
-                          </Flex>
-
-                          <Collapse animateOpacity in={isExpanded}>
-                            <Flex direction="column" gap={2} mt={2}>
-                              {item.agentType ? (
-                                <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                  <Text color="blue.700" fontSize="10px" fontWeight="700" mb={1}>Agent 类型</Text>
-                                  <Text color="myGray.700" fontSize="12px">{item.agentType}</Text>
-                                </Box>
-                              ) : null}
-
-                              {item.prompt ? (
-                                <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                  <Flex align="center" justify="space-between" mb={1}>
-                                    <Text color="blue.700" fontSize="10px" fontWeight="700">任务内容</Text>
-                                    {promptTruncated ? (
-                                      <Button
-                                        colorScheme="blue"
-                                        h="20px"
-                                        minW="auto"
-                                        onClick={() => openToolDetailModal(`${agentTitle} · 任务内容`, item.prompt)}
-                                        px={2}
-                                        size="xs"
-                                        variant="ghost"
-                                      >
-                                        查看完整
-                                      </Button>
-                                    ) : null}
-                                  </Flex>
-                                  <ToolStreamText color="myGray.700" fontSize="12px" isStreaming={isStreaming} value={promptPreview} />
-                                </Box>
-                              ) : null}
-
-                              {Array.isArray(item.children) && item.children.length > 0 ? (
-                                <Flex direction="column" gap={2}>
-                                  {item.children.map((child, childIndex) => {
-                                    const childToolKey = `${agentKey}-child-tool-${child.id || childIndex}`;
-                                    const isChildExpanded = Boolean(expandedTimelineToolKeys[childToolKey]);
-                                    const childParams = truncateDetailText(child.params);
-                                    const childResponse = truncateDetailText(child.response);
-                                    const childParamsTruncated = isDetailTruncated(child.params);
-                                    const childResponseTruncated = isDetailTruncated(child.response);
-                                    const childRunning = isStreaming && !child.response;
-                                    return (
-                                      <Box
-                                        key={childToolKey}
-                                        bg="myGray.25"
-                                        border="1px solid"
-                                        borderColor="myGray.200"
-                                        borderRadius="8px"
-                                        p={2}
-                                      >
-                                        <Flex align="center" gap={2}>
-                                          {childRunning ? (
-                                            <Spinner color="green.500" size="xs" speed="0.7s" thickness="2.5px" />
-                                          ) : (
-                                            <Box bg="myGray.350" borderRadius="full" h="6px" w="6px" />
-                                          )}
-                                          <Text color="myGray.700" flex="1" fontSize="12px" fontWeight="600" noOfLines={1}>
-                                            {child.toolName || `工具 ${childIndex + 1}`}
-                                          </Text>
-                                          <IconButton
-                                            aria-label={isChildExpanded ? "收起工具详情" : "展开工具详情"}
-                                            icon={
-                                              <Icon
-                                                boxSize={4}
-                                                color="myGray.500"
-                                                transform={isChildExpanded ? "rotate(180deg)" : "rotate(0deg)"}
-                                                transition="transform 0.2s ease"
-                                                viewBox="0 0 24 24"
-                                              >
-                                                <path
-                                                  d="M6 9L12 15L18 9"
-                                                  fill="none"
-                                                  stroke="currentColor"
-                                                  strokeLinecap="round"
-                                                  strokeLinejoin="round"
-                                                  strokeWidth="2"
-                                                />
-                                              </Icon>
-                                            }
-                                            h="22px"
-                                            minW="22px"
-                                            onClick={() => toggleTimelineToolDetails(childToolKey)}
-                                            size="xs"
-                                            variant="ghost"
-                                          />
-                                        </Flex>
-                                        <Collapse animateOpacity in={isChildExpanded}>
-                                          <Flex direction="column" gap={2} mt={2}>
-                                            <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                              <Flex align="center" justify="space-between" mb={1}>
-                                                <Text color="blue.700" fontSize="10px" fontWeight="700">入参</Text>
-                                                {childParamsTruncated ? (
-                                                  <Button
-                                                    colorScheme="blue"
-                                                    h="20px"
-                                                    minW="auto"
-                                                    onClick={() =>
-                                                      openToolDetailModal(`${child.toolName || `工具 ${childIndex + 1}`} · 入参`, child.params)
-                                                    }
-                                                    px={2}
-                                                    size="xs"
-                                                    variant="ghost"
-                                                  >
-                                                    查看完整
-                                                  </Button>
-                                                ) : null}
-                                              </Flex>
-                                              <ToolStreamText color="myGray.600" fontSize="12px" isStreaming={isStreaming} value={childParams || "{}"} />
-                                            </Box>
-
-                                            <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                              <Flex align="center" justify="space-between" mb={1}>
-                                                <Text color="primary.700" fontSize="10px" fontWeight="700">结果</Text>
-                                                {childResponseTruncated ? (
-                                                  <Button
-                                                    colorScheme="primary"
-                                                    h="20px"
-                                                    minW="auto"
-                                                    onClick={() =>
-                                                      openToolDetailModal(`${child.toolName || `工具 ${childIndex + 1}`} · 结果`, child.response)
-                                                    }
-                                                    px={2}
-                                                    size="xs"
-                                                    variant="ghost"
-                                                  >
-                                                    查看完整
-                                                  </Button>
-                                                ) : null}
-                                              </Flex>
-                                              {childResponse ? (
-                                                <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={childResponse} />
-                                              ) : childRunning ? (
-                                                <Text color="myGray.500" fontSize="12px">执行中...</Text>
-                                              ) : (
-                                                <Text color="myGray.400" fontSize="12px">暂无输出</Text>
-                                              )}
-                                            </Box>
-                                          </Flex>
-                                        </Collapse>
-                                      </Box>
-                                    );
-                                  })}
-                                </Flex>
-                              ) : null}
-
-                              {item.response ? (
-                                <Box>
-                                  {responseTruncated ? (
-                                    <Flex justify="flex-end" mb={1}>
-                                      <Button
-                                        colorScheme="primary"
-                                        h="20px"
-                                        minW="auto"
-                                        onClick={() => openToolDetailModal(`${agentTitle} · 回复`, item.response)}
-                                        px={2}
-                                        size="xs"
-                                        variant="ghost"
-                                      >
-                                        查看完整
-                                      </Button>
-                                    </Flex>
-                                  ) : null}
-                                  <Markdown source={item.response} />
-                                </Box>
-                              ) : isRunning ? (
-                                <Text color="myGray.500" fontSize="12px">执行中...</Text>
-                              ) : (
-                                <Text color="myGray.400" fontSize="12px">暂无输出</Text>
-                              )}
-
-                              {item.usageSummary ? (
-                                <Flex
-                                  align="center"
-                                  borderTop="1px solid"
-                                  borderColor="myGray.200"
-                                  color="myGray.600"
-                                  fontSize="11px"
-                                  gap={3}
-                                  mt={1}
-                                  pt={2}
-                                  wrap="wrap"
-                                >
-                                  {item.usageSummary.toolUses !== undefined ? (
-                                    <Text>调用工具: {item.usageSummary.toolUses}</Text>
-                                  ) : null}
-                                  {item.usageSummary.durationMs !== undefined ? (
-                                    <Text>耗时: {(item.usageSummary.durationMs / 1000).toFixed(2)}s</Text>
-                                  ) : null}
-                                  {item.usageSummary.totalTokens !== undefined ? (
-                                    <Text>Token: {item.usageSummary.totalTokens}</Text>
-                                  ) : null}
-                                </Flex>
-                              ) : null}
-
-                            </Flex>
-                          </Collapse>
-                        </Box>
+                        <AgentTimelineCard
+                          key={item.id || `${messageId}-timeline-agent-${index}`}
+                          index={index}
+                          isExpanded={Boolean(expandedTimelineAgentKeys[item.id || `${messageId}-timeline-agent-${index}`])}
+                          isStreaming={isStreaming}
+                          item={item}
+                          onOpenToolDetailModal={openToolDetailModal}
+                          onToggle={() => toggleTimelineAgentDetails(item.id || `${messageId}-timeline-agent-${index}`)}
+                        />
                       );
                     }
 
                     if (item.type === "reasoning") {
-                      if (shouldHidePlanReasoning) return null;
                       const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
                       const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
                       const reasoningPhaseText = getReasoningPhaseText(index);
@@ -549,172 +214,29 @@ const ChatItem = ({
                     }
 
                     if (item.type === "tool") {
-                      const isRunning = isStreaming && !item.response;
-                      const toolKey = `${messageId}-timeline-tool-${item.id || "unknown"}-${index}`;
-                      const isExpanded = Boolean(expandedTimelineToolKeys[toolKey]);
                       const normalizedToolName = (item.toolName || "").trim().toLowerCase();
                       const isPlanModeTool = PLAN_MODE_TOOL_NAMES.has(normalizedToolName);
                       if (isPlanModeTool) {
-                        return (
-                          <PlanModeTimelineCard
-                            isStreaming={isStreaming}
-                            key={toolKey}
-                            planModeApprovalDecision={planModeApprovalDecision}
-                            planPreview={undefined}
-                            toolItem={{
-                              toolName: item.toolName,
-                              interaction: item.interaction,
-                              progressStatus: item.progressStatus,
-                            }}
-                          />
-                        );
+                        return null;
                       }
-
-                      const truncatedParams = truncateDetailText(item.params);
-                      const truncatedResponse = truncateDetailText(item.response);
-                      const paramsTruncated = isDetailTruncated(item.params);
-                      const responseTruncated = isDetailTruncated(item.response);
-
+                      const toolKey = `${messageId}-timeline-tool-${item.id || "unknown"}-${index}`;
                       return (
-                        <Box
+                        <ToolTimelineCard
                           key={toolKey}
-                          bg="myGray.25"
-                          border="1px solid"
-                          borderColor="myGray.200"
-                          borderRadius="10px"
-                          py={2}
-                          px={2}
-                        >
-                          <Flex align="center" gap={2}>
-                            {isRunning ? (
-                              <Spinner color="green.500" size="xs" speed="0.7s" thickness="2.5px" />
-                            ) : (
-                              <Box bg="myGray.350" borderRadius="full" h="6px" w="6px" />
-                            )}
-                            <Text color="myGray.700" fontSize="12px" fontWeight="600" noOfLines={1}>
-                              {item.toolName || `工具 ${index + 1}`}
-                            </Text>
-                            {item.skillTag ? (
-                              <Box
-                                as="span"
-                                display="inline-flex"
-                                alignItems="center"
-                                px={2}
-                                py="1px"
-                                borderRadius="8px"
-                                border="1px solid"
-                                borderColor="adora.300"
-                                bg="adora.50"
-                                color="adora.800"
-                                fontSize="10px"
-                                fontWeight={700}
-                              >
-                                skill: {item.skillTag}
-                              </Box>
-                            ) : null}
-                            {isRunning ? (
-                              <Text
-                                bg="green.50"
-                                border="1px solid"
-                                borderColor="green.200"
-                                borderRadius="999px"
-                                color="green.700"
-                                fontSize="10px"
-                                ml={2}
-                                px={2}
-                                py="1px"
-                              >
-                                执行中
-                              </Text>
-                            ) : null}
-                            <IconButton
-                              aria-label={isExpanded ? "收起详情" : "展开详情"}
-                              icon={
-                                <Icon
-                                  boxSize={4}
-                                  color="myGray.500"
-                                  transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
-                                  transition="transform 0.2s ease"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M6 9L12 15L18 9"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                  />
-                                </Icon>
-                              }
-                              h="22px"
-                              ml="auto"
-                              minW="22px"
-                              onClick={() => toggleTimelineToolDetails(toolKey)}
-                              size="xs"
-                              variant="ghost"
-                            />
-                          </Flex>
-
-                          {isExpanded ? (
-                            <Flex direction="column" gap={2} mt={2}>
-                              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                <Flex align="center" justify="space-between" mb={1}>
-                                  <Text color="blue.700" fontSize="10px" fontWeight="700">入参</Text>
-                                  {paramsTruncated ? (
-                                    <Button
-                                      colorScheme="blue"
-                                      h="20px"
-                                      minW="auto"
-                                      onClick={() => openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 入参`, item.params)}
-                                      px={2}
-                                      size="xs"
-                                      variant="ghost"
-                                    >
-                                      查看完整
-                                    </Button>
-                                  ) : null}
-                                </Flex>
-                                <ToolStreamText color="myGray.600" fontSize="12px" isStreaming={isStreaming} value={truncatedParams || "{}"} />
-                              </Box>
-
-                              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                                <Flex align="center" justify="space-between" mb={1}>
-                                  <Text color="primary.700" fontSize="10px" fontWeight="700">出参</Text>
-                                  {responseTruncated ? (
-                                    <Button
-                                      colorScheme="primary"
-                                      h="20px"
-                                      minW="auto"
-                                      onClick={() => openToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)}
-                                      px={2}
-                                      size="xs"
-                                      variant="ghost"
-                                    >
-                                      查看完整
-                                    </Button>
-                                  ) : null}
-                                </Flex>
-
-                                {truncatedResponse ? (
-                                  <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
-                                ) : isRunning ? (
-                                  <Text color="myGray.500" fontSize="12px">执行中...</Text>
-                                ) : (
-                                  <Text color="myGray.400" fontSize="12px">暂无输出</Text>
-                                )}
-                              </Box>
-                            </Flex>
-                          ) : null}
-                        </Box>
+                          index={index}
+                          isExpanded={Boolean(expandedTimelineToolKeys[toolKey])}
+                          isStreaming={isStreaming}
+                          item={item}
+                          onOpenWorkspaceFile={onOpenWorkspaceFile}
+                          onOpenToolDetailModal={openToolDetailModal}
+                          onToggle={() => toggleTimelineToolDetails(toolKey)}
+                        />
                       );
                     }
 
                     return (
                       <Box key={`${messageId}-timeline-answer-${index}`} pl={timelineStepIndexes.length > 0 ? "20px" : 0}>
-                        {shouldSuppressPlanVerboseAnswer ? null : (
-                          <Markdown showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />
-                        )}
+                        <Markdown showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />
                       </Box>
                     );
                   })}
@@ -722,178 +244,8 @@ const ChatItem = ({
               </Box>
             ) : null}
 
-            {(!timelineHasAnswer || timelineItems.length === 0) && content && !shouldSuppressPlanVerboseAnswer ? (
+            {(!timelineHasAnswer || timelineItems.length === 0) && content ? (
               <Markdown showAnimation={showAssistantAnimation} source={content} />
-            ) : null}
-
-            {isAssistant && !hideInteractiveCards && hasPendingPlanQuestions ? (
-              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
-                <Text color="myGray.900" fontSize="12px" fontWeight="700">计划确认</Text>
-                <Flex direction="column" gap={2} mt={2}>
-                  {planQuestions.map((question, qIndex) => (
-                    <Box key={`${question.requestId || "rq"}-${question.id}-${qIndex}`} bg="white" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
-                      <Text color="myGray.800" fontSize="12px" fontWeight="600">
-                        {question.header || "确认"}: {question.question}
-                      </Text>
-                      <Flex gap={2} mt={2} wrap="wrap">
-                        {question.options.map((option, oIndex) => (
-                          <Button
-                            key={`${question.id}-option-${oIndex}`}
-                            h="28px"
-                            onClick={() =>
-                              onPlanQuestionSelect?.({
-                                messageId,
-                                requestId: question.requestId,
-                                questionId: question.id,
-                                header: question.header,
-                                question: question.question,
-                                optionLabel: option.label,
-                                optionDescription: option.description,
-                              })
-                            }
-                            size="sm"
-                            variant="outline"
-                          >
-                            {option.label}
-                          </Button>
-                        ))}
-                      </Flex>
-                    </Box>
-                  ))}
-                </Flex>
-                {planQuestions[0]?.requestId ? (
-                  <Flex justify="flex-end" mt={3}>
-                    <Button
-                      colorScheme="primary"
-                      isDisabled={Boolean(planQuestionSubmitting || !onPlanQuestionsSubmit || !canSubmitPlanQuestions)}
-                      isLoading={Boolean(planQuestionSubmitting)}
-                      onClick={() => {
-                        const firstRequestId = planQuestions[0]?.requestId;
-                        if (!firstRequestId) return;
-                        const answers = planQuestions.reduce<Record<string, string>>((acc, item) => {
-                          const selected =
-                            typeof currentPlanSelections[item.id] === "string"
-                              ? String(currentPlanSelections[item.id]).trim()
-                              : "";
-                          if (selected) acc[item.id] = selected;
-                          return acc;
-                        }, {});
-                        onPlanQuestionsSubmit?.({
-                          messageId,
-                          requestId: firstRequestId,
-                          answers,
-                        });
-                      }}
-                      size="sm"
-                    >
-                      提交选择
-                    </Button>
-                  </Flex>
-                ) : null}
-                {planQuestions.length > 0 ? (
-                  <Text color="myGray.500" fontSize="11px" mt={2}>
-                    已选择 {selectedPlanAnswerCount}/{planQuestions.length}，全部选择后可提交。
-                  </Text>
-                ) : null}
-              </Box>
-            ) : null}
-
-            {isAssistant &&
-            !hideInteractiveCards &&
-            planModeApproval &&
-            planModeApprovalPending &&
-            !planModeApprovalDecision ? (
-              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
-                <Text color="myGray.900" fontSize="12px" fontWeight="700">
-                  {planModeApproval.title || "计划模式审批"}
-                </Text>
-                {planModeApproval.description ? (
-                  <Text color="myGray.700" fontSize="12px" mt={1} whiteSpace="pre-wrap">
-                    {planModeApproval.description}
-                  </Text>
-                ) : null}
-                <Flex gap={2} mt={3}>
-                  <Button
-                    colorScheme="primary"
-                    isDisabled={Boolean(planModeApprovalSubmitting || !onPlanModeApprovalSelect)}
-                    isLoading={Boolean(planModeApprovalSubmitting)}
-                    onClick={() => {
-                      if (!planModeApproval.requestId) return;
-                      onPlanModeApprovalSelect?.({
-                        messageId,
-                        requestId: planModeApproval.requestId,
-                        action: planModeApproval.action,
-                        decision: "approve",
-                      });
-                    }}
-                    size="sm"
-                  >
-                    批准
-                  </Button>
-                  <Button
-                    isDisabled={Boolean(planModeApprovalSubmitting || !onPlanModeApprovalSelect)}
-                    onClick={() => {
-                      if (!planModeApproval.requestId) return;
-                      onPlanModeApprovalSelect?.({
-                        messageId,
-                        requestId: planModeApproval.requestId,
-                        action: planModeApproval.action,
-                        decision: "reject",
-                      });
-                    }}
-                    size="sm"
-                    variant="outline"
-                  >
-                    拒绝
-                  </Button>
-                </Flex>
-              </Box>
-            ) : null}
-
-            {isAssistant && !hideInteractiveCards && permissionApproval && !permissionApprovalDecision ? (
-              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="10px" p={3}>
-                <Text color="myGray.900" fontSize="12px" fontWeight="700">工具权限审批</Text>
-                <Text color="myGray.700" fontSize="12px" mt={1}>
-                  工具: {permissionApproval.toolName}
-                </Text>
-                {permissionApproval.reason ? (
-                  <Text color="myGray.600" fontSize="12px" mt={1}>
-                    {permissionApproval.reason}
-                  </Text>
-                ) : null}
-                <Flex gap={2} mt={3}>
-                  <Button
-                    colorScheme="primary"
-                    isDisabled={Boolean(planModeApprovalSubmitting || !onPermissionApprovalSelect)}
-                    onClick={() =>
-                      onPermissionApprovalSelect?.({
-                        messageId,
-                        toolName: permissionApproval.toolName,
-                        toolUseId: permissionApproval.toolUseId,
-                        decision: "approve",
-                      })
-                    }
-                    size="sm"
-                  >
-                    允许
-                  </Button>
-                  <Button
-                    isDisabled={Boolean(planModeApprovalSubmitting || !onPermissionApprovalSelect)}
-                    onClick={() =>
-                      onPermissionApprovalSelect?.({
-                        messageId,
-                        toolName: permissionApproval.toolName,
-                        toolUseId: permissionApproval.toolUseId,
-                        decision: "reject",
-                      })
-                    }
-                    size="sm"
-                    variant="outline"
-                  >
-                    拒绝
-                  </Button>
-                </Flex>
-              </Box>
             ) : null}
 
             {shouldShowExecutionMeta && timelineItems.every((item) => item.type !== "agent") ? (
@@ -939,11 +291,6 @@ export default React.memo(
     prevProps.executionSummary?.durationSeconds === nextProps.executionSummary?.durationSeconds &&
     prevProps.requestContent === nextProps.requestContent &&
     prevProps.isLatestRun === nextProps.isLatestRun &&
-    prevProps.planQuestionSubmitting === nextProps.planQuestionSubmitting &&
-    prevProps.planModeApprovalSubmitting === nextProps.planModeApprovalSubmitting &&
     prevProps.hideInteractiveCards === nextProps.hideInteractiveCards &&
-    prevProps.onPlanQuestionSelect === nextProps.onPlanQuestionSelect &&
-    prevProps.onPlanQuestionsSubmit === nextProps.onPlanQuestionsSubmit &&
-    prevProps.onPlanModeApprovalSelect === nextProps.onPlanModeApprovalSelect &&
-    prevProps.onPermissionApprovalSelect === nextProps.onPermissionApprovalSelect
+    prevProps.onOpenWorkspaceFile === nextProps.onOpenWorkspaceFile
 );

@@ -3,8 +3,8 @@ import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import ChatHeader from "./ChatHeader";
 import ChatInput from "./ChatInput";
 import SkillsManagerModal from "./SkillsManagerModal";
+import ChatInteractionSurface from "./message/ChatInteractionSurface";
 import ChatMessageTimeline from "./message/ChatMessageTimeline";
-import PlanProgressDock from "./message/PlanProgressDock";
 
 const ChatPanelView = () => {
   const context = useChatPanelViewContext();
@@ -40,6 +40,7 @@ const ChatPanelView = () => {
         onDeleteConversation={context.onDeleteConversation}
         onNewConversation={context.onNewConversation}
         onOpenSkills={undefined}
+        onRewindLatestTurn={context.onRewindLatestTurn}
         onSelectConversation={context.onSelectConversation}
         title={context.activeConversationTitle}
       />
@@ -95,6 +96,7 @@ const ChatPanelView = () => {
                 onDelete={context.onDeleteMessage}
                 onRate={context.onRateMessage}
                 onRegenerate={context.onRegenerateMessage}
+                onOpenWorkspaceFile={context.onOpenWorkspaceFile}
                 streamingMessageId={context.streamingMessageId}
                 t={context.t}
               />
@@ -102,44 +104,33 @@ const ChatPanelView = () => {
           )}
         </Box>
 
-        {!context.planResumeInputEnabled ? (
-          <Box bg="myGray.50" px={4} pt={2}>
-            <PlanProgressDock
-              isSending={context.isSending}
-              onContinueAdjust={context.onResumePlanAdjust}
-              onContinueExecute={context.onResumePlanExecute}
-              state={context.planResumeState}
-            />
-          </Box>
-        ) : null}
+        <ChatInteractionSurface
+          interaction={context.chatInteractionContextValue}
+        />
 
-        {(!context.planResumeState.visible || context.planResumeInputEnabled) ? (
-          <ChatInput
-            isSending={context.isSending}
-            model={context.model}
-            modelLoading={context.modelLoading}
-            modelOptions={context.modelOptions}
-            modelGroups={context.modelGroups}
-            thinkingEnabled={context.thinkingEnabled}
-            mode={context.chatMode}
-            planAdjusting={context.planResumeInputEnabled}
-            showThinkingToggle={context.selectedModelSupportsReasoning}
-            thinkingTooltipEnabled={context.thinkingTooltipEnabled}
-            thinkingTooltipDisabled={context.thinkingTooltipDisabled}
-            selectedSkill={context.selectedSkills[0]}
-            selectedSkills={context.selectedSkills}
-            skillOptions={context.skillOptions}
-            fileOptions={context.fileOptions}
-            onChangeModel={context.onChangeModel}
-            onChangeMode={context.onChangeMode}
-            onChangeThinkingEnabled={context.onChangeThinkingEnabled}
-            onExitPlanAdjusting={context.onExitPlanAdjusting}
-            onChangeSelectedSkills={context.onChangeSelectedSkills}
-            onUploadFiles={context.onUploadFiles}
-            onSend={context.onSend}
-            onStop={context.onStop}
-          />
-        ) : null}
+        <ChatInput
+          isSending={context.isSending}
+          model={context.model}
+          modelLoading={context.modelLoading}
+          modelOptions={context.modelOptions}
+          modelGroups={context.modelGroups}
+          thinkingEnabled={context.thinkingEnabled}
+          mode={context.chatMode}
+          showThinkingToggle={context.selectedModelSupportsReasoning}
+          thinkingTooltipEnabled={context.thinkingTooltipEnabled}
+          thinkingTooltipDisabled={context.thinkingTooltipDisabled}
+          selectedSkill={context.selectedSkills[0]}
+          selectedSkills={context.selectedSkills}
+          skillOptions={context.skillOptions}
+          fileOptions={context.fileOptions}
+          onChangeModel={context.onChangeModel}
+          onChangeMode={context.onChangeMode}
+          onChangeThinkingEnabled={context.onChangeThinkingEnabled}
+          onChangeSelectedSkills={context.onChangeSelectedSkills}
+          onUploadFiles={context.onUploadFiles}
+          onSend={context.onSend}
+          onStop={context.onStop}
+        />
       </Flex>
 
       {!context.hideSkillsManager ? (

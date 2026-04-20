@@ -1,17 +1,18 @@
-import { useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
-import type { ConversationMessage } from "@/types/conversation";
+import { useCallback, useMemo, useState } from "react";
 import type { ChatInteractionContextValue } from "../context/ChatInteractionContext";
 import type { ChatInputSubmitPayload } from "../types/chatInput";
 
 export const useChatPlanInteractions = ({
-  isSending,
-  setMessages,
+  token,
+  conversationId,
   handleSend,
   selectedSkills,
   thinkingEnabled,
+  pendingInteraction,
+  clearPendingInteraction,
 }: {
-  isSending: boolean;
-  setMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
+  token: string;
+  conversationId?: string;
   handleSend: (
     input: ChatInputSubmitPayload,
     options?: {
@@ -22,81 +23,48 @@ export const useChatPlanInteractions = ({
   ) => Promise<void>;
   selectedSkills: string[];
   thinkingEnabled: boolean;
+  pendingInteraction: ChatInteractionContextValue["pendingInteraction"];
+  clearPendingInteraction: (input: { requestId?: string; toolUseId?: string; toolName?: string }) => void;
 }) => {
-  const handlePlanQuestionSelect = useCallback(
-    (input: {
-      messageId: string;
-      requestId?: string;
-      questionId: string;
-      header?: string;
-      question: string;
-      optionLabel: string;
-      optionDescription?: string;
-    }) => {
-      if (!input.messageId || !input.questionId || !input.optionLabel || isSending) return;
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          const requestId = input.requestId?.trim();
-          const existingSelectionsByRequest =
-            kwargs.planQuestionSelections &&
-            typeof kwargs.planQuestionSelections === "object" &&
-            !Array.isArray(kwargs.planQuestionSelections)
-              ? (kwargs.planQuestionSelections as Record<string, unknown>)
-              : {};
-          const existingSelectionsForRequest =
-            requestId &&
-            existingSelectionsByRequest[requestId] &&
-            typeof existingSelectionsByRequest[requestId] === "object" &&
-            !Array.isArray(existingSelectionsByRequest[requestId])
-              ? (existingSelectionsByRequest[requestId] as Record<string, unknown>)
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              ...(requestId
-                ? {
-                    planQuestionSelections: {
-                      ...existingSelectionsByRequest,
-                      [requestId]: {
-                        ...existingSelectionsForRequest,
-                        [input.questionId]: input.optionLabel,
-                      },
-                    },
-                    planModeInteractionState: {
-                      ...(kwargs.planModeInteractionState &&
-                      typeof kwargs.planModeInteractionState === "object" &&
-                      !Array.isArray(kwargs.planModeInteractionState)
-                        ? (kwargs.planModeInteractionState as Record<string, unknown>)
-                        : {}),
-                      [requestId]: {
-                        type: "plan_question",
-                        status: "pending",
-                      },
-                    },
-                  }
-                : {}),
-            },
-          };
-        })
-      );
+  const [isResolvingInteraction, setIsResolvingInteraction] = useState(false);
 
+  const resolveInteraction = useCallback(
+    async (input: {
+      requestId: string;
+      decision: "approve" | "reject";
+      answers?: Record<string, string>;
+      note?: string;
+      updatedInput?: unknown;
+    }) => {
+      if (!conversationId) return false;
+      const response = await fetch("/api/v2/chat/resolve-interaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token,
+          chatId: conversationId,
+          requestId: input.requestId,
+          decision: input.decision,
+          ...(input.answers ? { answers: input.answers } : {}),
+          ...(input.note ? { note: input.note } : {}),
+          ...(input.updatedInput !== undefined ? { updatedInput: input.updatedInput } : {}),
+        }),
+      }).catch(() => null);
+      if (!response?.ok) return false;
+      const payload = (await response.json().catch(() => ({}))) as { resolved?: boolean };
+      return payload.resolved === true;
     },
-    [isSending, setMessages]
+    [conversationId, token]
   );
 
   const handlePlanQuestionsSubmit = useCallback(
-    (input: {
-      messageId: string;
+    async (input: {
       requestId: string;
       answers: Record<string, string>;
     }) => {
-      if (!input.messageId || !input.requestId || isSending) return;
+      if (!input.requestId || isResolvingInteraction) return;
       const answerEntries = Object.entries(input.answers).filter(
         ([key, value]) => Boolean(key && typeof value === "string" && value.trim().length > 0)
       );
@@ -104,43 +72,20 @@ export const useChatPlanInteractions = ({
       const answerMap = Object.fromEntries(answerEntries);
       const executionDecision = (answerMap.plan_execute_confirm || "").trim();
       const shouldExecuteNow = executionDecision === "确认执行";
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              planQuestionSelections: {
-                ...(kwargs.planQuestionSelections &&
-                typeof kwargs.planQuestionSelections === "object" &&
-                !Array.isArray(kwargs.planQuestionSelections)
-                  ? (kwargs.planQuestionSelections as Record<string, unknown>)
-                  : {}),
-                [input.requestId]: answerMap,
-              },
-              planModeInteractionState: {
-                ...(kwargs.planModeInteractionState &&
-                typeof kwargs.planModeInteractionState === "object" &&
-                !Array.isArray(kwargs.planModeInteractionState)
-                  ? (kwargs.planModeInteractionState as Record<string, unknown>)
-                  : {}),
-                [input.requestId]: {
-                  type: "plan_question",
-                  status: "submitted",
-                },
-              },
-            },
-          };
-        })
-      );
-      // Keep mode transition server-driven (via persisted planModeState),
-      // avoiding optimistic local flips that can desync with history replay.
+      setIsResolvingInteraction(true);
+      try {
+        const resolved = await resolveInteraction({
+          requestId: input.requestId,
+          decision: "approve",
+          answers: answerMap,
+        });
+        if (resolved) {
+          clearPendingInteraction({ requestId: input.requestId });
+          return;
+        }
+      } finally {
+        setIsResolvingInteraction(false);
+      }
 
       const answerText = [
         "Plan mode user selection:",
@@ -172,54 +117,43 @@ export const useChatPlanInteractions = ({
         },
         {
           echoUserMessage: false,
-          continueAssistantMessageId: input.messageId,
+          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
         }
       );
     },
-    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
+    [
+      clearPendingInteraction,
+      handleSend,
+      isResolvingInteraction,
+      pendingInteraction?.assistantMessageId,
+      resolveInteraction,
+      selectedSkills,
+      thinkingEnabled,
+    ]
   );
 
   const handlePlanModeApprovalSelect = useCallback(
-    (input: {
-      messageId: string;
+    async (input: {
       requestId: string;
       action: "enter" | "exit";
       decision: "approve" | "reject";
       note?: string;
     }) => {
-      if (!input.messageId || isSending) return;
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              planModeApproval: null,
-              planModeInteractionState: {
-                ...(kwargs.planModeInteractionState &&
-                typeof kwargs.planModeInteractionState === "object" &&
-                !Array.isArray(kwargs.planModeInteractionState)
-                  ? (kwargs.planModeInteractionState as Record<string, unknown>)
-                  : {}),
-                [input.requestId]: {
-                  type: "plan_approval",
-                  status: "submitted",
-                  decision: input.decision,
-                },
-              },
-            },
-          };
-        })
-      );
-
-      // Keep mode transition server-driven (via persisted planModeState),
-      // avoiding optimistic local flips that can desync with history replay.
+      if (isResolvingInteraction) return;
+      setIsResolvingInteraction(true);
+      try {
+        const resolved = await resolveInteraction({
+          requestId: input.requestId,
+          decision: input.decision,
+          ...(input.note ? { note: input.note } : {}),
+        });
+        if (resolved) {
+          clearPendingInteraction({ requestId: input.requestId });
+          return;
+        }
+      } finally {
+        setIsResolvingInteraction(false);
+      }
 
       const answerText = [
         "Plan mode approval response:",
@@ -245,47 +179,51 @@ export const useChatPlanInteractions = ({
         },
         {
           echoUserMessage: false,
-          continueAssistantMessageId: input.messageId,
+          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
         }
       );
     },
-    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
+    [
+      clearPendingInteraction,
+      handleSend,
+      isResolvingInteraction,
+      pendingInteraction?.assistantMessageId,
+      resolveInteraction,
+      selectedSkills,
+      thinkingEnabled,
+    ]
   );
 
   const handlePermissionApprovalSelect = useCallback(
-    (input: { messageId: string; toolName: string; toolUseId?: string; decision: "approve" | "reject"; note?: string }) => {
-      if (!input.messageId || !input.toolName || isSending) return;
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== input.messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              permissionApproval: null,
-              permissionApprovalState: {
-                ...(kwargs.permissionApprovalState &&
-                typeof kwargs.permissionApprovalState === "object" &&
-                !Array.isArray(kwargs.permissionApprovalState)
-                  ? (kwargs.permissionApprovalState as Record<string, unknown>)
-                  : {}),
-                [(input.toolUseId && input.toolUseId.trim()) || input.toolName.trim().toLowerCase()]: {
-                  toolName: input.toolName,
-                  ...(input.toolUseId ? { toolUseId: input.toolUseId } : {}),
-                  status: "submitted",
-                  decision: input.decision,
-                },
-              },
-            },
-          };
-        })
-      );
-
+    async (input: {
+      requestId?: string;
+      toolName: string;
+      toolUseId?: string;
+      decision: "approve" | "reject";
+      note?: string;
+    }) => {
+      if (!input.toolName || isResolvingInteraction) return;
+      const requestId = (input.toolUseId || input.requestId || "").trim();
+      if (requestId) {
+        setIsResolvingInteraction(true);
+        try {
+          const resolved = await resolveInteraction({
+            requestId,
+            decision: input.decision,
+            ...(input.note ? { note: input.note } : {}),
+          });
+          if (resolved) {
+            clearPendingInteraction({
+              requestId: input.requestId,
+              toolUseId: input.toolUseId,
+              toolName: input.toolName,
+            });
+            return;
+          }
+        } finally {
+          setIsResolvingInteraction(false);
+        }
+      }
       const answerText = [
         "Tool permission approval response:",
         `- tool_name: ${input.toolName}`,
@@ -293,29 +231,45 @@ export const useChatPlanInteractions = ({
         ...(input.note ? [`- note: ${input.note}`] : []),
       ].join("\n");
 
-      void handleSend({
-        text: answerText,
-        uploadedFiles: [],
-        files: [],
-        selectedSkills,
-        permissionApprovalResponse: {
-          ...(input.toolUseId ? { requestId: input.toolUseId, toolUseId: input.toolUseId } : {}),
-          toolName: input.toolName,
-          decision: input.decision,
-          ...(input.note ? { note: input.note } : {}),
+      void handleSend(
+        {
+          text: answerText,
+          uploadedFiles: [],
+          files: [],
+          selectedSkills,
+          permissionApprovalResponse: {
+            ...(input.requestId ? { requestId: input.requestId } : {}),
+            ...(input.toolUseId ? { toolUseId: input.toolUseId } : {}),
+            toolName: input.toolName,
+            decision: input.decision,
+            ...(input.note ? { note: input.note } : {}),
+          },
+          thinkingEnabled,
         },
-        thinkingEnabled,
-      });
+        {
+          echoUserMessage: false,
+          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
+        }
+      );
     },
-    [handleSend, isSending, selectedSkills, setMessages, thinkingEnabled]
+    [
+      clearPendingInteraction,
+      handleSend,
+      isResolvingInteraction,
+      pendingInteraction?.assistantMessageId,
+      resolveInteraction,
+      selectedSkills,
+      thinkingEnabled,
+    ]
   );
 
   const chatInteractionContextValue = useMemo<ChatInteractionContextValue>(
     () => ({
-      planQuestionSubmitting: isSending,
-      planModeApprovalSubmitting: isSending,
+      planQuestionSubmitting: isResolvingInteraction,
+      planModeApprovalSubmitting: isResolvingInteraction,
+      permissionApprovalSubmitting: isResolvingInteraction,
+      pendingInteraction,
       hideInteractiveCards: false,
-      onPlanQuestionSelect: handlePlanQuestionSelect,
       onPlanQuestionsSubmit: handlePlanQuestionsSubmit,
       onPlanModeApprovalSelect: handlePlanModeApprovalSelect,
       onPermissionApprovalSelect: handlePermissionApprovalSelect,
@@ -323,14 +277,13 @@ export const useChatPlanInteractions = ({
     [
       handlePermissionApprovalSelect,
       handlePlanModeApprovalSelect,
-      handlePlanQuestionSelect,
       handlePlanQuestionsSubmit,
-      isSending,
+      isResolvingInteraction,
+      pendingInteraction,
     ]
   );
 
   return {
-    handlePlanQuestionSelect,
     handlePlanQuestionsSubmit,
     handlePlanModeApprovalSelect,
     handlePermissionApprovalSelect,

@@ -31,10 +31,10 @@ import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
 import { getExecutionSummary } from "../utils/executionSummary";
 import {
   derivePlanModeFromMessages,
+  getPlanModeApprovalFromMessage,
   parseToolPayload,
   type PlanModeApprovalPayload,
 } from "../utils/planModeDisplay";
-import { derivePlanResumeState } from "../utils/planResume";
 
 import ChatPanelView from "./ChatPanelView";
 import type { MessageRating } from "./message/MessageActionBar";
@@ -62,6 +62,14 @@ import { useChatSkills } from "../hooks/useChatSkills";
 import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import { updatePrimaryModel } from "../services/models";
+import { mergeSdkBlock } from "../utils/sdkBlockMerge";
+import type { PendingChatInteraction, PendingPlanQuestion } from "../context/ChatInteractionContext";
+import {
+  getPermissionApproval,
+  getPermissionApprovalDecision,
+  getPlanModeApprovalPending,
+  getPlanQuestions,
+} from "../utils/chatItemParsers";
 
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
@@ -86,6 +94,34 @@ const persistThinkingEnabled = (enabled: boolean) => {
   } catch {
     // ignore
   }
+};
+
+const hasPendingInteractionState = (kwargs: unknown): boolean => {
+  if (!kwargs || typeof kwargs !== "object" || Array.isArray(kwargs)) return false;
+  const record = kwargs as Record<string, unknown>;
+  const planState =
+    record.planModeInteractionState &&
+    typeof record.planModeInteractionState === "object" &&
+    !Array.isArray(record.planModeInteractionState)
+      ? (record.planModeInteractionState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(planState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
+  }
+
+  const permissionState =
+    record.permissionApprovalState &&
+    typeof record.permissionApprovalState === "object" &&
+    !Array.isArray(record.permissionApprovalState)
+      ? (record.permissionApprovalState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(permissionState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
+  }
+
+  return Boolean(record.planModeApproval || record.permissionApproval);
 };
 
 const isSdkLikeMessage = (value: unknown): value is {
@@ -119,6 +155,186 @@ const sdkContentToText = (content: unknown): string => {
     .join("");
 };
 
+const getPendingInteractionKey = (interaction: PendingChatInteraction) => {
+  if (interaction.type === "permission") {
+    return (interaction.permission.toolUseId || interaction.requestId || interaction.permission.toolName || "")
+      .toString()
+      .trim()
+      .toLowerCase();
+  }
+  return interaction.requestId.trim().toLowerCase();
+};
+
+const buildPendingInteractionsFromMessages = (
+  messages: ConversationMessage[]
+): PendingChatInteraction[] => {
+  const pending: PendingChatInteraction[] = [];
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    const assistantMessageId = (message.id || "").trim();
+    if (!assistantMessageId) continue;
+
+    const permission = getPermissionApproval(message);
+    const permissionDecision = getPermissionApprovalDecision(message);
+    if (permission && !permissionDecision) {
+      pending.push({
+        type: "permission",
+        requestId: permission.toolUseId,
+        assistantMessageId,
+        permission: {
+          toolName: permission.toolName,
+          ...(permission.toolUseId ? { toolUseId: permission.toolUseId } : {}),
+          ...(permission.reason ? { reason: permission.reason } : {}),
+        },
+      });
+    }
+
+    const approval = getPlanModeApprovalFromMessage(message);
+    const approvalPending = getPlanModeApprovalPending(message);
+    if (approval && approvalPending && approval.requestId) {
+      pending.push({
+        type: "plan_approval",
+        requestId: approval.requestId,
+        assistantMessageId,
+        approval: {
+          requestId: approval.requestId,
+          action: approval.action,
+          ...(approval.title ? { title: approval.title } : {}),
+          ...(approval.description ? { description: approval.description } : {}),
+        },
+      });
+    }
+
+    const questions = getPlanQuestions(message);
+    if (questions.length > 0) {
+      const requestId = (questions[0]?.requestId || "").trim();
+      if (requestId) {
+        pending.push({
+          type: "plan_questions",
+          requestId,
+          assistantMessageId,
+          questions: questions.map((question) => ({
+            header: question.header,
+            id: question.id,
+            question: question.question,
+            options: question.options,
+          })),
+        });
+      }
+    }
+  }
+  return pending;
+};
+
+const normalizePendingPlanQuestionPayload = (
+  input: unknown
+): { questions: PendingPlanQuestion[] } | null => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const questionsRaw = Array.isArray((input as { questions?: unknown }).questions)
+    ? ((input as { questions: unknown[] }).questions ?? [])
+    : [];
+  const questions = questionsRaw
+    .filter((question): question is Record<string, unknown> => Boolean(question && typeof question === "object" && !Array.isArray(question)))
+    .map((question) => ({
+      ...(typeof question.header === "string" && question.header.trim() ? { header: question.header.trim() } : {}),
+      id: typeof question.id === "string" ? question.id.trim() : "",
+      question: typeof question.question === "string" ? question.question.trim() : "",
+      options: Array.isArray(question.options)
+        ? question.options
+            .filter(
+              (option): option is Record<string, unknown> =>
+                Boolean(option && typeof option === "object" && !Array.isArray(option) && typeof option.label === "string")
+            )
+            .map((option) => ({
+              label: String(option.label).trim(),
+              ...(typeof option.description === "string" && option.description.trim()
+                ? { description: option.description.trim() }
+                : {}),
+            }))
+            .filter((option) => option.label.length > 0)
+        : [],
+    }))
+    .filter((question) => question.id.length > 0 && question.question.length > 0);
+  if (questions.length === 0) return null;
+  return { questions };
+};
+
+const normalizePendingPlanApprovalPayload = (
+  input: unknown
+): { action: "enter" | "exit"; title?: string; description?: string } => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      action: "exit",
+      title: "计划已完成，是否进入执行？",
+    };
+  }
+  const record = input as Record<string, unknown>;
+  return {
+    action: record.action === "enter" ? "enter" : "exit",
+    ...(typeof record.title === "string" && record.title.trim() ? { title: record.title.trim() } : {}),
+    ...(typeof record.description === "string" && record.description.trim()
+      ? { description: record.description.trim() }
+      : {}),
+  };
+};
+
+const toPendingInteractionFromApi = (
+  item: unknown,
+  assistantMessageId: string
+): PendingChatInteraction | null => {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const record = item as Record<string, unknown>;
+  const requestId = typeof record.requestId === "string" ? record.requestId.trim() : "";
+  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
+  if (!requestId || !assistantMessageId) return null;
+
+  if (kind === "plan_question") {
+    const inputValue =
+      record.input && typeof record.input === "object" && !Array.isArray(record.input) ? record.input : undefined;
+    const payload = normalizePendingPlanQuestionPayload(inputValue);
+    if (!payload || payload.questions.length === 0) return null;
+    return {
+      type: "plan_questions",
+      requestId,
+      assistantMessageId,
+      questions: payload.questions,
+    };
+  }
+
+  if (kind === "plan_approval") {
+    const payload = normalizePendingPlanApprovalPayload(record.input);
+    return {
+      type: "plan_approval",
+      requestId,
+      assistantMessageId,
+      approval: {
+        requestId,
+        action: payload.action,
+        ...(payload.title ? { title: payload.title } : {}),
+        ...(payload.description ? { description: payload.description } : {}),
+      },
+    };
+  }
+
+  if (kind === "permission") {
+    const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
+    if (!toolName) return null;
+    const toolUseId =
+      typeof record.toolUseId === "string" && record.toolUseId.trim() ? record.toolUseId.trim() : requestId;
+    return {
+      type: "permission",
+      requestId,
+      assistantMessageId,
+      permission: {
+        toolName,
+        ...(toolUseId ? { toolUseId } : {}),
+      },
+    };
+  }
+
+  return null;
+};
+
 
 const ChatPanel = ({
   token,
@@ -139,6 +355,7 @@ const ChatPanel = ({
   openSkillsSignal = 0,
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
+  onOpenWorkspaceFile,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -158,6 +375,7 @@ const ChatPanel = ({
   openSkillsSignal?: number;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -180,7 +398,7 @@ const ChatPanel = ({
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
   const [chatMode, setChatMode] = useState<"default" | "plan">("default");
-  const [planResumeInputEnabled, setPlanResumeInputEnabled] = useState(false);
+  const [pendingInteractions, setPendingInteractions] = useState<PendingChatInteraction[]>([]);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
@@ -234,6 +452,38 @@ const ChatPanel = ({
     return selected?.reasoning === true;
   }, [model, modelCatalog]);
 
+  const upsertPendingInteraction = useCallback((interaction: PendingChatInteraction) => {
+    const nextKey = getPendingInteractionKey(interaction);
+    if (!nextKey) return;
+    setPendingInteractions((current) => {
+      const filtered = current.filter((item) => getPendingInteractionKey(item) !== nextKey);
+      return [...filtered, interaction];
+    });
+  }, []);
+
+  const clearPendingInteraction = useCallback((input: {
+    requestId?: string;
+    toolUseId?: string;
+    toolName?: string;
+  }) => {
+    const requestId = (input.requestId || "").trim().toLowerCase();
+    const toolUseId = (input.toolUseId || "").trim().toLowerCase();
+    const toolName = (input.toolName || "").trim().toLowerCase();
+    setPendingInteractions((current) =>
+      current.filter((item) => {
+        const itemKey = getPendingInteractionKey(item);
+        if (requestId && item.requestId?.trim().toLowerCase() === requestId) return false;
+        if (toolUseId && itemKey === toolUseId) return false;
+        if (toolName && item.type === "permission" && item.permission.toolName.trim().toLowerCase() === toolName) {
+          return false;
+        }
+        return true;
+      })
+    );
+  }, []);
+
+  const activePendingInteraction = pendingInteractions.length > 0 ? pendingInteractions[0] : null;
+
   const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
   const {
     streamingTextRef,
@@ -272,6 +522,19 @@ const ChatPanel = ({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    if (isSending) return;
+    setPendingInteractions((current) =>
+      current.filter((interaction) => {
+        const assistantId = interaction.assistantMessageId.trim();
+        if (!assistantId) return false;
+        return messagesRef.current.some(
+          (message) => message.role === "assistant" && message.id === assistantId
+        );
+      })
+    );
+  }, [isSending, messages]);
 
   useEffect(() => {
     streamingMessageIdRef.current = streamingMessageId;
@@ -314,8 +577,8 @@ const ChatPanel = ({
       }
     }
     setMessages(normalizedHydratedMessages);
+    setPendingInteractions(buildPendingInteractionsFromMessages(normalizedHydratedMessages));
     setChatMode(derivePlanModeFromMessages(normalizedHydratedMessages));
-    setPlanResumeInputEnabled(false);
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
       for (const message of normalizedHydratedMessages) {
@@ -333,6 +596,48 @@ const ChatPanel = ({
     activeConversation?.messages,
     token,
   ]);
+
+  useEffect(() => {
+    const conversationId = (activeConversation?.id || "").trim();
+    if (!conversationId) return;
+    const assistantMessageId = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.id)?.id;
+    if (!assistantMessageId) return;
+    let cancelled = false;
+    void fetch(
+      `/api/v2/chat/pending-interactions?token=${encodeURIComponent(token)}&chatId=${encodeURIComponent(conversationId)}`,
+      {
+        headers: withAuthHeaders(),
+      }
+    )
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload || !Array.isArray(payload.interactions)) return;
+        const recovered = payload.interactions
+          .map((item: unknown) => toPendingInteractionFromApi(item, assistantMessageId))
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => Boolean(item));
+        if (recovered.length === 0) return;
+        setPendingInteractions((current) => {
+          const next = [...current];
+          for (const interaction of recovered) {
+            const key = getPendingInteractionKey(interaction);
+            if (!key) continue;
+            const withoutExisting = next.filter((item) => getPendingInteractionKey(item) !== key);
+            withoutExisting.push(interaction);
+            next.splice(0, next.length, ...withoutExisting);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Ignore pending interaction recovery failures and keep local state.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation?.id, token]);
 
   useEffect(() => {
     const activeId = activeConversation?.id || "";
@@ -434,15 +739,26 @@ const ChatPanel = ({
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
       const hasArtifacts = finalArtifacts.length > 0;
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
-      if (planResumeInputEnabled) {
-        setPlanResumeInputEnabled(false);
-      }
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
       const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
       const baseMessagesOverride = Array.isArray(options?.baseMessagesOverride)
         ? options?.baseMessagesOverride
         : null;
+
+      if (payload.planQuestionResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planQuestionResponse.requestId });
+      }
+      if (payload.planModeApprovalResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planModeApprovalResponse.requestId });
+      }
+      if (payload.permissionApprovalResponse) {
+        clearPendingInteraction({
+          requestId: payload.permissionApprovalResponse.requestId,
+          toolUseId: payload.permissionApprovalResponse.toolUseId,
+          toolName: payload.permissionApprovalResponse.toolName,
+        });
+      }
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
@@ -725,7 +1041,7 @@ const ChatPanel = ({
                 message: {
                   ...sdkPayload,
                   role: sdkPayload.role || "assistant",
-                  content: [...content, block],
+                  content: mergeSdkBlock(content, block),
                 },
               },
             };
@@ -933,8 +1249,22 @@ const ChatPanel = ({
                     typeof permission === "object" &&
                     typeof permission.toolName === "string"
                   ) {
+                    const toolUseId =
+                      typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : "";
+                    upsertPendingInteraction({
+                      type: "permission",
+                      requestId: toolUseId || undefined,
+                      assistantMessageId,
+                      permission: {
+                        requestId: toolUseId || undefined,
+                        toolName: permission.toolName,
+                        ...(toolUseId ? { toolUseId } : {}),
+                        ...(typeof permission.reason === "string"
+                          ? { reason: permission.reason }
+                          : {}),
+                      },
+                    });
                     updateAssistantMetadata((current) => {
-                      const toolUseId = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : "";
                       const interactionKey = toolUseId || permission.toolName.trim().toLowerCase();
                       const currentPermissionState =
                         current.permissionApprovalState &&
@@ -994,6 +1324,84 @@ const ChatPanel = ({
                 ? payload.interaction
                 : undefined;
               if (!interaction) return;
+              if (interaction.type === "plan_question") {
+                const questionPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as { questions?: unknown }).questions
+                    : undefined;
+                const questions = Array.isArray(questionPayload)
+                  ? questionPayload
+                      .filter((question): question is {
+                        header?: string;
+                        id: string;
+                        question: string;
+                        options?: Array<{ label: string; description?: string }>;
+                      } => {
+                        if (!question || typeof question !== "object" || Array.isArray(question)) {
+                          return false;
+                        }
+                        const record = question as Record<string, unknown>;
+                        return (
+                          typeof record.id === "string" &&
+                          Boolean(record.id.trim()) &&
+                          typeof record.question === "string" &&
+                          Boolean(record.question.trim())
+                        );
+                      })
+                      .map((question) => ({
+                        header: question.header,
+                        id: question.id,
+                        question: question.question,
+                        options: Array.isArray(question.options)
+                          ? question.options
+                              .filter(
+                                (option): option is { label: string; description?: string } =>
+                                  Boolean(
+                                    option &&
+                                      typeof option === "object" &&
+                                      !Array.isArray(option) &&
+                                      typeof (option as { label?: unknown }).label === "string"
+                                  )
+                              )
+                              .map((option) => ({
+                                label: option.label,
+                                ...(typeof option.description === "string"
+                                  ? { description: option.description }
+                                  : {}),
+                              }))
+                          : [],
+                      }))
+                  : [];
+                if (questions.length > 0) {
+                  upsertPendingInteraction({
+                    type: "plan_questions",
+                    requestId: interaction.requestId,
+                    assistantMessageId,
+                    questions,
+                  });
+                }
+              }
+              if (interaction.type === "plan_approval") {
+                const approvalPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as Record<string, unknown>)
+                    : {};
+                upsertPendingInteraction({
+                  type: "plan_approval",
+                  requestId: interaction.requestId,
+                  assistantMessageId,
+                  approval: {
+                    requestId: interaction.requestId,
+                    action: approvalPayload.action === "enter" ? "enter" : "exit",
+                    ...(typeof approvalPayload.title === "string"
+                      ? { title: approvalPayload.title }
+                      : {}),
+                    ...(typeof approvalPayload.description === "string"
+                      ? { description: approvalPayload.description }
+                      : {}),
+                  },
+                });
+              }
               updateAssistantMetadata((current) => {
                 const controlEventsBase = Array.isArray(current.controlEvents)
                   ? (current.controlEvents as unknown[])
@@ -1245,6 +1653,7 @@ const ChatPanel = ({
                 assistant.additional_kwargs && typeof assistant.additional_kwargs === "object"
                   ? assistant.additional_kwargs
                   : {};
+              const hasPendingInteraction = hasPendingInteractionState(kwargs);
               const recoveredContextUsage =
                 getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
               snapshot[assistantIndex] = {
@@ -1253,7 +1662,7 @@ const ChatPanel = ({
                   finalAssistantText ||
                   extractText(assistant.content) ||
                   assistantFailureText ||
-                  "[已中断]",
+                  (hasPendingInteraction ? "" : "[已中断]"),
                 ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: {
                   ...kwargs,
@@ -1359,20 +1768,21 @@ const ChatPanel = ({
   }, [activeConversation?.id, token]);
 
   const {
-    handlePlanQuestionSelect,
     handlePlanQuestionsSubmit,
     handlePlanModeApprovalSelect,
     handlePermissionApprovalSelect,
     chatInteractionContextValue,
   } = useChatPlanInteractions({
-    isSending,
-    setMessages,
+    token,
+    conversationId: activeConversation?.id,
     handleSend,
     selectedSkills,
     thinkingEnabled,
+    pendingInteraction: activePendingInteraction,
+    clearPendingInteraction,
   });
 
-  const { handleRateMessage, handleDeleteMessage, handleRegenerateMessage } = useChatMessageActions({
+  const { handleRateMessage, handleDeleteMessage, handleRegenerateMessage, handleRewindLatestTurn } = useChatMessageActions({
     token,
     activeConversationId: activeConversation?.id,
     isSending,
@@ -1405,57 +1815,6 @@ const ChatPanel = ({
     );
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;
-  const planResumeState = useMemo(() => derivePlanResumeState(messages), [messages]);
-
-  const handleResumePlanExecute = useCallback(() => {
-    if (isSending || !planResumeState.visible) return;
-    setPlanResumeInputEnabled(false);
-    setChatMode("plan");
-    const targetMessageId = planResumeState.messageId;
-    const pendingQuestion = planResumeState.pendingQuestion;
-    if (!targetMessageId) return;
-
-    if (pendingQuestion) {
-      const executeOption =
-        pendingQuestion.options.find((option) => /确认执行|执行|approve|proceed|yes/i.test(option.label.trim())) ||
-        pendingQuestion.options[0];
-      if (!executeOption) return;
-      handlePlanQuestionsSubmit({
-        messageId: targetMessageId,
-        requestId: pendingQuestion.requestId,
-        answers: {
-          [pendingQuestion.questionId]: executeOption.label,
-        },
-      });
-      return;
-    }
-
-    void handleSend({
-      text: "继续执行当前未完成计划，并保持计划进度持续回写。",
-      uploadedFiles: [],
-      files: [],
-      selectedSkills,
-      thinkingEnabled,
-    });
-  }, [
-    handlePlanQuestionsSubmit,
-    handleSend,
-    isSending,
-    planResumeState.messageId,
-    planResumeState.pendingQuestion,
-    planResumeState.visible,
-    selectedSkills,
-    thinkingEnabled,
-  ]);
-
-  const handleResumePlanAdjust = useCallback(() => {
-    if (isSending || !planResumeState.visible) return;
-    setPlanResumeInputEnabled(true);
-    setChatMode("plan");
-  }, [isSending, planResumeState.visible]);
-  const handleExitPlanAdjusting = useCallback(() => {
-    setPlanResumeInputEnabled(false);
-  }, []);
 
   const chatPanelViewContextValue = useMemo(
     () => ({
@@ -1497,12 +1856,8 @@ const ChatPanel = ({
       onDeleteMessage: (messageId: string) => void handleDeleteMessage(messageId),
       onRateMessage: (messageId: string, rating: MessageRating) => void handleRateMessage(messageId, rating),
       onRegenerateMessage: (messageId: string) => void handleRegenerateMessage(messageId),
+      onRewindLatestTurn: () => void handleRewindLatestTurn(),
       streamingMessageId,
-      planResumeState,
-      planResumeInputEnabled,
-      onResumePlanExecute: handleResumePlanExecute,
-      onResumePlanAdjust: handleResumePlanAdjust,
-      onExitPlanAdjusting: handleExitPlanAdjusting,
       thinkingEnabled,
       chatMode,
       selectedModelSupportsReasoning,
@@ -1521,6 +1876,7 @@ const ChatPanel = ({
       onCloseSkills: () => setIsSkillsOpen(false),
       token,
       onFilesApplied: onFilesUpdated,
+      onOpenWorkspaceFile,
       onCreateSkillViaChat: handleCreateSkillViaChat,
       onUseSkill: handleUseSkill,
     }),
@@ -1555,12 +1911,8 @@ const ChatPanel = ({
       handleDeleteMessage,
       handleRateMessage,
       handleRegenerateMessage,
+      handleRewindLatestTurn,
       streamingMessageId,
-      planResumeState,
-      planResumeInputEnabled,
-      handleResumePlanExecute,
-      handleResumePlanAdjust,
-      handleExitPlanAdjusting,
       thinkingEnabled,
       chatMode,
       selectedModelSupportsReasoning,
@@ -1578,6 +1930,7 @@ const ChatPanel = ({
       isSkillsOpen,
       token,
       onFilesUpdated,
+      onOpenWorkspaceFile,
       handleCreateSkillViaChat,
       handleUseSkill,
     ]

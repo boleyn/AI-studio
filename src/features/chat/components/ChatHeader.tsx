@@ -15,7 +15,7 @@ import { useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 
-import { AddIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
+import { AddIcon, BackIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
 import type { ConversationSummary } from "@/types/conversation";
 import type { ContextWindowUsage } from "../types/contextWindow";
 
@@ -31,6 +31,7 @@ interface ChatHeaderProps {
   onSelectConversation?: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
   onDeleteAllConversations?: () => void;
+  onRewindLatestTurn?: () => void;
   onReset?: () => void;
   onNewConversation?: () => void;
   onOpenSkills?: () => void;
@@ -54,6 +55,7 @@ const ChatHeader = ({
   onSelectConversation,
   onDeleteConversation,
   onDeleteAllConversations,
+  onRewindLatestTurn,
   onReset,
   onNewConversation,
   onOpenSkills,
@@ -127,6 +129,21 @@ const ChatHeader = ({
 
       <Flex align="center" gap={2}>
         <Flex gap={1}>
+        <MyTooltip label="撤回上一轮">
+          <IconButton
+            _hover={{ bg: "myGray.100" }}
+            aria-label="撤回上一轮"
+            bg="white"
+            border="1px solid"
+            borderColor="myGray.200"
+            borderRadius="10px"
+            icon={<BackIcon />}
+            onClick={onRewindLatestTurn}
+            size="sm"
+            variant="ghost"
+          />
+        </MyTooltip>
+
         <Menu placement="bottom-end">
           <MyTooltip label="历史对话">
             <MenuButton

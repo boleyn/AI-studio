@@ -68,11 +68,9 @@ export interface ChatInputProps {
   fileOptions?: string[];
   prefillText?: string;
   prefillVersion?: number;
-  planAdjusting?: boolean;
   onChangeModel: (model: string) => void;
   onChangeMode?: (mode: "default" | "plan") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;
-  onExitPlanAdjusting?: () => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
   onChangeSelectedSkills?: (skillNames: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;

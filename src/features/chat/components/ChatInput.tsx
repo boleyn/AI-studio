@@ -45,11 +45,9 @@ const ChatInput = ({
   fileOptions = [],
   prefillText,
   prefillVersion,
-  planAdjusting = false,
   onChangeModel,
   onChangeMode,
   onChangeThinkingEnabled,
-  onExitPlanAdjusting,
   onChangeSelectedSkill,
   onChangeSelectedSkills,
   onUploadFiles,
@@ -71,7 +69,7 @@ const ChatInput = ({
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
-  const inputBaseHeight = planAdjusting ? 36 : 50;
+  const inputBaseHeight = 50;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const skillPickerRef = useRef<HTMLDivElement | null>(null);
@@ -632,32 +630,6 @@ const ChatInput = ({
               </Flex>
             ) : null}
             <Flex align="center" gap={2} px={2} pt={2}>
-              {planAdjusting ? (
-                <Flex
-                  align="center"
-                  bg="orange.50"
-                  border="1px solid"
-                  borderColor="orange.200"
-                  borderRadius="10px"
-                  color="orange.800"
-                  flexShrink={0}
-                  gap={1.5}
-                  h="28px"
-                  pl={2}
-                  pr={1}
-                >
-                  <Text fontSize="12px" fontWeight={700}>
-                    调整计划
-                  </Text>
-                  <CloseButton
-                    color="orange.700"
-                    onClick={onExitPlanAdjusting}
-                    aria-label="退出调整计划"
-                    size="sm"
-                    transform="scale(0.88)"
-                  />
-                </Flex>
-              ) : null}
               <Textarea
                 ref={textAreaRef}
                 _focusVisible={{ border: "none", boxShadow: "none" }}
@@ -781,7 +753,6 @@ const ChatInput = ({
                 overflowY="hidden"
                 placeholder={inputPlaceholder}
                 px={2}
-                py={planAdjusting ? "6px" : undefined}
                 resize="none"
                 rows={1}
                 value={text}

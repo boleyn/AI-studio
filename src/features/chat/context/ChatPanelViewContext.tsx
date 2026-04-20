@@ -8,7 +8,6 @@ import type { ContextWindowUsage } from "../types/contextWindow";
 import type { MessageRating } from "../components/message/MessageActionBar";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import type { PlanResumeState } from "../utils/planResume";
 
 export type ChatPanelViewContextValue = {
   height: string;
@@ -42,12 +41,8 @@ export type ChatPanelViewContextValue = {
   onDeleteMessage: (messageId: string) => void;
   onRateMessage: (messageId: string, rating: MessageRating) => void;
   onRegenerateMessage: (messageId: string) => void;
+  onRewindLatestTurn: () => void;
   streamingMessageId: string | null;
-  planResumeState: PlanResumeState;
-  planResumeInputEnabled: boolean;
-  onResumePlanExecute: () => void;
-  onResumePlanAdjust: () => void;
-  onExitPlanAdjusting: () => void;
   thinkingEnabled: boolean;
   chatMode: "default" | "plan";
   selectedModelSupportsReasoning?: boolean;
@@ -73,6 +68,7 @@ export type ChatPanelViewContextValue = {
   onCloseSkills: () => void;
   token: string;
   onFilesApplied?: (files: Record<string, { code: string }>) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
   onCreateSkillViaChat: () => void;
   onUseSkill: (skillName: string) => void;
 };

@@ -106,6 +106,7 @@ const ChatMessageTimeline = ({
   onDelete,
   onRate,
   onRegenerate,
+  onOpenWorkspaceFile,
   chatInteractionContextValue,
 }: {
   t: TFunction;
@@ -117,6 +118,7 @@ const ChatMessageTimeline = ({
   onDelete: (messageId: string) => void;
   onRate: (messageId: string, rating: MessageRating) => void;
   onRegenerate: (messageId: string) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
   chatInteractionContextValue: ChatInteractionContextValue;
 }) => {
   const rows = buildChatRows({
@@ -156,6 +158,7 @@ const ChatMessageTimeline = ({
                   message={row.message}
                   messageId={row.messageId}
                   onDelete={onDelete}
+                  onOpenWorkspaceFile={onOpenWorkspaceFile}
                   onRate={onRate}
                   onRegenerate={onRegenerate}
                   rating={row.rating}

@@ -50,6 +50,7 @@ import {
 } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
+import { getPlansDirectory } from 'src/utils/plans.js'
 import { validateInputForSettingsFileEdit } from 'src/utils/settings/validateEditTool.js'
 import { maskAbsolutePathsInText } from 'src/utils/virtualPathMasking.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
@@ -147,6 +148,25 @@ function sanitizeErrorForDisplay(error: unknown): Error {
     return new Error(String(error))
   }
   return new Error(maskAbsolutePathsInText(error.message, maskVirtualPathForDisplay))
+}
+
+function isPlanFilePath(filePath: string): boolean {
+  const plansDir = resolve(getPlansDirectory())
+  const normalizedPath = resolve(filePath)
+  if (
+    normalizedPath === plansDir ||
+    normalizedPath.startsWith(`${plansDir}${sep}`)
+  ) {
+    return true
+  }
+
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return false
+  const virtualPlansDir = resolve(virtualRoot, 'plans')
+  return (
+    normalizedPath === virtualPlansDir ||
+    normalizedPath.startsWith(`${virtualPlansDir}${sep}`)
+  )
 }
 
 export const FileEditTool = buildTool({
@@ -349,7 +369,7 @@ export const FileEditTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
-    if (!readTimestamp || readTimestamp.isPartialView) {
+    if ((!readTimestamp || readTimestamp.isPartialView) && !isPlanFilePath(fullFilePath)) {
       return {
         result: false,
         behavior: 'ask',
