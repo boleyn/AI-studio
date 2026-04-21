@@ -1775,9 +1775,6 @@ const ChatPanel = ({
   } = useChatPlanInteractions({
     token,
     conversationId: activeConversation?.id,
-    handleSend,
-    selectedSkills,
-    thinkingEnabled,
     pendingInteraction: activePendingInteraction,
     clearPendingInteraction,
   });

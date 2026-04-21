@@ -1,28 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ChatInteractionContextValue } from "../context/ChatInteractionContext";
-import type { ChatInputSubmitPayload } from "../types/chatInput";
 
 export const useChatPlanInteractions = ({
   token,
   conversationId,
-  handleSend,
-  selectedSkills,
-  thinkingEnabled,
   pendingInteraction,
   clearPendingInteraction,
 }: {
   token: string;
   conversationId?: string;
-  handleSend: (
-    input: ChatInputSubmitPayload,
-    options?: {
-      echoUserMessage?: boolean;
-      persistIncomingMessages?: boolean;
-      continueAssistantMessageId?: string;
-    }
-  ) => Promise<void>;
-  selectedSkills: string[];
-  thinkingEnabled: boolean;
   pendingInteraction: ChatInteractionContextValue["pendingInteraction"];
   clearPendingInteraction: (input: { requestId?: string; toolUseId?: string; toolName?: string }) => void;
 }) => {
@@ -70,8 +56,6 @@ export const useChatPlanInteractions = ({
       );
       if (answerEntries.length === 0) return;
       const answerMap = Object.fromEntries(answerEntries);
-      const executionDecision = (answerMap.plan_execute_confirm || "").trim();
-      const shouldExecuteNow = executionDecision === "确认执行";
       setIsResolvingInteraction(true);
       try {
         const resolved = await resolveInteraction({
@@ -81,54 +65,17 @@ export const useChatPlanInteractions = ({
         });
         if (resolved) {
           clearPendingInteraction({ requestId: input.requestId });
-          return;
+          return true;
         }
+        return false;
       } finally {
         setIsResolvingInteraction(false);
       }
-
-      const answerText = [
-        "Plan mode user selection:",
-        `- request_id: ${input.requestId}`,
-        ...answerEntries.map(([questionId, answer]) => `- ${questionId}: ${answer}`),
-      ].join("\n");
-
-      void handleSend(
-        {
-          text: answerText,
-          uploadedFiles: [],
-          files: [],
-          planQuestionResponse: {
-            requestId: input.requestId,
-            answers: answerMap,
-          },
-          ...(shouldExecuteNow
-            ? {
-                planModeApprovalResponse: {
-                  requestId: input.requestId,
-                  action: "exit" as const,
-                  decision: "approve" as const,
-                  note: "execute_confirmed",
-                },
-              }
-            : {}),
-          selectedSkills,
-          thinkingEnabled,
-        },
-        {
-          echoUserMessage: false,
-          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
-        }
-      );
     },
     [
       clearPendingInteraction,
-      handleSend,
       isResolvingInteraction,
-      pendingInteraction?.assistantMessageId,
       resolveInteraction,
-      selectedSkills,
-      thinkingEnabled,
     ]
   );
 
@@ -149,48 +96,17 @@ export const useChatPlanInteractions = ({
         });
         if (resolved) {
           clearPendingInteraction({ requestId: input.requestId });
-          return;
+          return true;
         }
+        return false;
       } finally {
         setIsResolvingInteraction(false);
       }
-
-      const answerText = [
-        "Plan mode approval response:",
-        `- request_id: ${input.requestId}`,
-        `- action: ${input.action}`,
-        `- decision: ${input.decision}`,
-        ...(input.note ? [`- note: ${input.note}`] : []),
-      ].join("\n");
-
-      void handleSend(
-        {
-          text: answerText,
-          uploadedFiles: [],
-          files: [],
-          selectedSkills,
-          planModeApprovalResponse: {
-            requestId: input.requestId,
-            action: input.action,
-            decision: input.decision,
-            ...(input.note ? { note: input.note } : {}),
-          },
-          thinkingEnabled,
-        },
-        {
-          echoUserMessage: false,
-          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
-        }
-      );
     },
     [
       clearPendingInteraction,
-      handleSend,
       isResolvingInteraction,
-      pendingInteraction?.assistantMessageId,
       resolveInteraction,
-      selectedSkills,
-      thinkingEnabled,
     ]
   );
 
@@ -218,48 +134,19 @@ export const useChatPlanInteractions = ({
               toolUseId: input.toolUseId,
               toolName: input.toolName,
             });
-            return;
+            return true;
           }
+          return false;
         } finally {
           setIsResolvingInteraction(false);
         }
       }
-      const answerText = [
-        "Tool permission approval response:",
-        `- tool_name: ${input.toolName}`,
-        `- decision: ${input.decision}`,
-        ...(input.note ? [`- note: ${input.note}`] : []),
-      ].join("\n");
-
-      void handleSend(
-        {
-          text: answerText,
-          uploadedFiles: [],
-          files: [],
-          selectedSkills,
-          permissionApprovalResponse: {
-            ...(input.requestId ? { requestId: input.requestId } : {}),
-            ...(input.toolUseId ? { toolUseId: input.toolUseId } : {}),
-            toolName: input.toolName,
-            decision: input.decision,
-            ...(input.note ? { note: input.note } : {}),
-          },
-          thinkingEnabled,
-        },
-        {
-          echoUserMessage: false,
-          continueAssistantMessageId: pendingInteraction?.assistantMessageId,
-        }
-      );
+      return false;
     },
     [
       clearPendingInteraction,
-      handleSend,
       isResolvingInteraction,
-      pendingInteraction?.assistantMessageId,
       resolveInteraction,
-      selectedSkills,
-      thinkingEnabled,
     ]
   );
 

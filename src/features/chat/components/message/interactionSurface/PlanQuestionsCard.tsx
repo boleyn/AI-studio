@@ -49,7 +49,7 @@ const PlanQuestionsCard = ({
   return (
     <>
       {currentQuestion ? (
-        <Flex direction="column" gap={2} mt={2}>
+        <Flex direction="column" gap={2} mt={1.5}>
           <Flex align="center" gap={2}>
             <Text color="myGray.500" fontSize="11px" fontWeight={600}>
               {safeStep + 1}/{totalSteps}
@@ -73,33 +73,55 @@ const PlanQuestionsCard = ({
           </Flex>
           <Box
             key={`${pending.requestId}-${currentQuestion.id}-${safeStep}`}
-            bg="white"
+            bg="myWhite.100"
             border="1px solid"
             borderColor="myGray.200"
             borderRadius="8px"
-            p={2}
+            p={2.5}
           >
-            <Text color="myGray.800" fontSize="12px" fontWeight={600}>
-              {currentQuestion.header || "确认"}: {currentQuestion.question}
+            <Text color="myGray.500" fontSize="11px" fontWeight={600} mb={1}>
+              {(currentQuestion.header || "确认").toUpperCase()}
             </Text>
-            <Flex gap={2} mt={2} wrap="wrap">
+            <Text color="myGray.800" fontSize="12px" fontWeight={700}>
+              {currentQuestion.question}
+            </Text>
+            <Flex direction="column" gap={1.5} mt={2.5}>
               {currentQuestion.options.map((option, oIndex) => {
                 const isSelected = selections[currentQuestion.id] === option.label;
                 return (
                   <Button
                     key={`${currentQuestion.id}-option-${oIndex}`}
-                    colorScheme={isSelected ? "primary" : undefined}
-                    h="28px"
+                    alignItems="flex-start"
+                    bg={isSelected ? "blue.600" : "myWhite.100"}
+                    border="1px solid"
+                    borderColor={isSelected ? "blue.600" : "myGray.250"}
+                    color={isSelected ? "white" : "myGray.800"}
+                    h="auto"
+                    justifyContent="flex-start"
                     onClick={() =>
                       setSelections((current) => ({
                         ...current,
                         [currentQuestion.id]: option.label,
                       }))
                     }
+                    px={2.5}
+                    py={2}
                     size="sm"
-                    variant={isSelected ? "solid" : "outline"}
+                    variant="unstyled"
+                    w="full"
+                    _hover={{
+                      bg: isSelected ? "blue.700" : "myGray.50",
+                      borderColor: isSelected ? "blue.700" : "myGray.350",
+                    }}
                   >
-                    {option.label}
+                    <Flex align="center" justify="space-between" w="full">
+                      <Text fontSize="12px" fontWeight={isSelected ? 700 : 600}>
+                        {option.label}
+                      </Text>
+                      <Text color={isSelected ? "whiteAlpha.900" : "myGray.400"} fontSize="14px">
+                        {isSelected ? "❯" : ""}
+                      </Text>
+                    </Flex>
                   </Button>
                 );
               })}
@@ -110,8 +132,9 @@ const PlanQuestionsCard = ({
           </Box>
         </Flex>
       ) : null}
-      <Flex justify="flex-end" mt={3}>
+      <Flex justify="flex-end" mt={2.5}>
         <Button
+          h="30px"
           isDisabled={Boolean(interaction.planQuestionSubmitting || !canGoPrev)}
           mr={2}
           onClick={() => setCurrentStep((step) => Math.max(step - 1, 0))}
@@ -123,6 +146,7 @@ const PlanQuestionsCard = ({
         {!isLastStep ? (
           <Button
             colorScheme="primary"
+            h="30px"
             isDisabled={Boolean(interaction.planQuestionSubmitting || !canGoNext)}
             onClick={() => setCurrentStep((step) => Math.min(step + 1, totalSteps - 1))}
             size="sm"
@@ -132,6 +156,7 @@ const PlanQuestionsCard = ({
         ) : null}
         <Button
           colorScheme="primary"
+          h="30px"
           isDisabled={Boolean(
             interaction.planQuestionSubmitting ||
               !interaction.onPlanQuestionsSubmit ||

@@ -1,6 +1,6 @@
 import { Box, Flex, Icon, Menu, MenuButton, MenuItem, MenuList, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckIcon, CopyIcon } from "@/components/common/Icon";
+import { CheckIcon, ChevronDownIcon, CopyIcon } from "@/components/common/Icon";
 import MyTooltip from "@/components/ui/MyTooltip";
 import { useCopyData } from "@/hooks/useCopyData";
 
@@ -118,16 +118,7 @@ const MessageCopyControl = ({
               py={0.5}
               _hover={{ color: hoverColor, bg: "myGray.100" }}
             >
-              <Icon boxSize={3} color="currentColor" viewBox="0 0 24 24">
-                <path
-                  d="M6 9L12 15L18 9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-              </Icon>
+              <Icon as={ChevronDownIcon} boxSize="12px" color="currentColor" />
             </MenuButton>
           </MyTooltip>
           <MenuList minW="148px" p={1}>

@@ -22,9 +22,10 @@ const PermissionApprovalCard = ({
     <Text color="myGray.500" fontSize="11px" mt={2}>
       允许后本次调用会继续，拒绝将返回工具被拒绝状态。
     </Text>
-    <Flex gap={2} justify="flex-end" mt={3}>
+    <Flex gap={2} justify="flex-end" mt={2.5}>
       <Button
         colorScheme="primary"
+        h="30px"
         isDisabled={Boolean(interaction.permissionApprovalSubmitting || !interaction.onPermissionApprovalSelect)}
         isLoading={Boolean(interaction.permissionApprovalSubmitting)}
         onClick={() =>
@@ -40,6 +41,8 @@ const PermissionApprovalCard = ({
         允许
       </Button>
       <Button
+        colorScheme="orange"
+        h="30px"
         isDisabled={Boolean(interaction.permissionApprovalSubmitting || !interaction.onPermissionApprovalSelect)}
         onClick={() =>
           interaction.onPermissionApprovalSelect?.({

@@ -1,4 +1,5 @@
 import { Box, Button, Collapse, Flex, Icon, IconButton, Spinner, Text } from "@chakra-ui/react";
+import { ChevronDownIcon } from "@/components/common/Icon";
 import type { TimelineItem } from "@/features/chat/utils/chatItemParsers";
 import { isDetailTruncated, truncateDetailText } from "@/features/chat/utils/chatItemParsers";
 import { ToolStreamText } from "@/features/chat/hooks/useChatItemViewModel";
@@ -59,6 +60,15 @@ const toPreviewLines = (value: string): string[] =>
     .split("\n")
     .slice(0, 80);
 
+const HEADER_BTN_SX = {
+  borderRadius: "6px",
+  _hover: { bg: "myGray.100" },
+} as const;
+const RESULT_TEXT_SX = {
+  fontSize: "11px",
+  lineHeight: "18px",
+} as const;
+
 const ToolTimelineCard = ({
   item,
   index,
@@ -84,15 +94,7 @@ const ToolTimelineCard = ({
   const isGlobTool = normalizedToolName === "glob";
   const isEditTool = normalizedToolName === "edit" || normalizedToolName === "apply_patch" || normalizedToolName === "applypatch";
   const isWriteTool = normalizedToolName === "write";
-  const leftBorderColor = isReadTool
-    ? "gray.400"
-    : isGlobTool
-    ? "gray.500"
-    : isWriteTool
-    ? "green.400"
-    : isEditTool
-    ? "orange.400"
-    : "myGray.350";
+  const leftBorderColor = "myGray.300";
   const isRunning =
     item.progressStatus === "in_progress" ||
     item.progressStatus === "pending" ||
@@ -136,6 +138,7 @@ const ToolTimelineCard = ({
             px={1.5}
             size="xs"
             variant="ghost"
+            sx={HEADER_BTN_SX}
           >
             {fileName || filePath || `工具 ${index + 1}`}
           </Button>
@@ -161,9 +164,20 @@ const ToolTimelineCard = ({
         <Flex align="center" gap={2}>
           <Text color="myGray.500" fontSize="12px">Glob</Text>
           <Text color="myGray.350" fontSize="11px">/</Text>
-          <Text color="myGray.800" fontFamily="mono" fontSize="12px" noOfLines={1}>
+          <Button
+            color="myGray.800"
+            fontFamily="mono"
+            fontSize="12px"
+            h="22px"
+            minW="auto"
+            onClick={onToggle}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
             {globPattern || `工具 ${index + 1}`}
-          </Text>
+          </Button>
           {globPath ? (
             <Text color="myGray.500" fontSize="11px" fontStyle="italic" noOfLines={1}>
               in {globPath}
@@ -180,33 +194,25 @@ const ToolTimelineCard = ({
             aria-label={isExpanded ? "收起结果" : "展开结果"}
             icon={
               <Icon
-                boxSize={4}
+                as={ChevronDownIcon}
+                boxSize="14px"
                 color="myGray.500"
                 transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                 transition="transform 0.2s ease"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M6 9L12 15L18 9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-              </Icon>
+              />
             }
             h="22px"
             minW="22px"
             onClick={onToggle}
             size="xs"
             variant="ghost"
+            sx={HEADER_BTN_SX}
           />
         </Flex>
         <Collapse animateOpacity in={isExpanded}>
           <Box mt={2}>
             {files.length > 0 ? (
-              <Text color="myGray.500" fontSize="11px" mb={1}>
+              <Text color="myGray.500" mb={1} sx={RESULT_TEXT_SX}>
                 Found {files.length} {files.length === 1 ? "file" : "files"}
               </Text>
             ) : null}
@@ -219,7 +225,7 @@ const ToolTimelineCard = ({
                       <Button
                         color="blue.600"
                         fontFamily="mono"
-                        fontSize="11px"
+                        fontSize={RESULT_TEXT_SX.fontSize}
                         h="18px"
                         minW="auto"
                         onClick={() => {
@@ -237,7 +243,7 @@ const ToolTimelineCard = ({
                         {displayName || file}
                       </Button>
                       {fileIndex < Math.min(files.length, 120) - 1 ? (
-                        <Text color="myGray.350" fontSize="10px">
+                        <Text color="myGray.350" sx={RESULT_TEXT_SX}>
                           ,
                         </Text>
                       ) : null}
@@ -296,7 +302,19 @@ const ToolTimelineCard = ({
         )}
         {(isWriteTool || isEditTool) ? (
           <>
-            <Text color="myGray.500" fontSize="12px">{toolLabel}</Text>
+            <Button
+              color="myGray.500"
+              fontSize="12px"
+              h="22px"
+              minW="auto"
+              onClick={onToggle}
+              px={1}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
+            {toolLabel}
+          </Button>
             <Text color="myGray.350" fontSize="11px">/</Text>
           </>
         ) : null}
@@ -308,7 +326,7 @@ const ToolTimelineCard = ({
             fontWeight={600}
             h="22px"
             minW="auto"
-              onClick={() => {
+            onClick={() => {
               if (workspaceFilePath && onOpenWorkspaceFile?.(workspaceFilePath)) {
                 return;
               }
@@ -317,13 +335,25 @@ const ToolTimelineCard = ({
             px={1.5}
             size="xs"
             variant="ghost"
+            sx={HEADER_BTN_SX}
           >
             {title}
           </Button>
         ) : (
-          <Text color="myGray.800" fontSize="12px" fontWeight="600" noOfLines={1}>
+          <Button
+            color="myGray.800"
+            fontSize="12px"
+            fontWeight={600}
+            h="22px"
+            minW="auto"
+            onClick={onToggle}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
             {title}
-          </Text>
+          </Button>
         )}
         {shouldShowStatusPill ? (
           <Box ml="auto">
@@ -336,42 +366,30 @@ const ToolTimelineCard = ({
           aria-label={isExpanded ? "收起详情" : "展开详情"}
           icon={
             <Icon
-              boxSize={4}
+              as={ChevronDownIcon}
+              boxSize="14px"
               color="myGray.500"
               transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
               transition="transform 0.2s ease"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 9L12 15L18 9"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </Icon>
+            />
           }
           h="22px"
           minW="22px"
           onClick={onToggle}
           size="xs"
           variant="ghost"
+          sx={HEADER_BTN_SX}
         />
       </Flex>
 
       <Collapse animateOpacity in={isExpanded}>
         <Flex direction="column" gap={2} mt={2}>
           {(isEditTool || isWriteTool) && newString ? (
-            <Box border="1px solid" borderColor="myGray.200" borderRadius="8px" overflow="hidden">
+            <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
               <Flex
                 align="center"
-                bg="myGray.25"
-                borderBottom="1px solid"
-                borderColor="myGray.200"
                 justify="space-between"
-                px={2}
-                py={1}
+                mb={1}
               >
                 <Text color="myGray.600" fontFamily="mono" fontSize="11px" noOfLines={1}>
                   {filePath || title}
@@ -389,7 +407,7 @@ const ToolTimelineCard = ({
                   {isWriteTool ? "New" : "Diff"}
                 </Box>
               </Flex>
-              <Box fontFamily="mono" fontSize="11px">
+              <Box border="1px solid" borderColor="myGray.200" borderRadius="8px" fontFamily="mono" fontSize="11px" overflow="hidden">
                 {oldString
                   ? toPreviewLines(oldString).map((line, rowIndex) => (
                       <Flex bg="red.50" key={`old-${rowIndex}`} lineHeight="18px">
@@ -413,7 +431,7 @@ const ToolTimelineCard = ({
           ) : null}
 
           {!(isEditTool || isWriteTool) || status !== "completed" ? (
-            <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+            <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
               <Flex align="center" justify="space-between" mb={1}>
                 <Text color="primary.700" fontSize="10px" fontWeight="700">
                   结果
@@ -432,17 +450,19 @@ const ToolTimelineCard = ({
                   </Button>
                 ) : null}
               </Flex>
-              {truncatedResponse ? (
-                <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
-              ) : isRunning ? (
-                <Text color="myGray.500" fontSize="12px">
-                  执行中...
-                </Text>
-              ) : (
-                <Text color="myGray.400" fontSize="12px">
-                  暂无输出
-                </Text>
-              )}
+              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                {truncatedResponse ? (
+                  <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+                ) : isRunning ? (
+                  <Text color="myGray.500" fontSize="12px">
+                    执行中...
+                  </Text>
+                ) : (
+                  <Text color="myGray.400" fontSize="12px">
+                    暂无输出
+                  </Text>
+                )}
+              </Box>
             </Box>
           ) : null}
         </Flex>

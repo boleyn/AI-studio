@@ -19,9 +19,10 @@ const PlanApprovalCard = ({
     <Text color="myGray.500" fontSize="11px" mt={2}>
       批准后将继续当前流程，拒绝会中断当前计划步骤。
     </Text>
-    <Flex gap={2} justify="flex-end" mt={3}>
+    <Flex gap={2} justify="flex-end" mt={2.5}>
       <Button
         colorScheme="primary"
+        h="30px"
         isDisabled={Boolean(interaction.planModeApprovalSubmitting || !interaction.onPlanModeApprovalSelect)}
         isLoading={Boolean(interaction.planModeApprovalSubmitting)}
         onClick={() => {
@@ -36,6 +37,8 @@ const PlanApprovalCard = ({
         批准
       </Button>
       <Button
+        colorScheme="orange"
+        h="30px"
         isDisabled={Boolean(interaction.planModeApprovalSubmitting || !interaction.onPlanModeApprovalSelect)}
         onClick={() => {
           interaction.onPlanModeApprovalSelect?.({

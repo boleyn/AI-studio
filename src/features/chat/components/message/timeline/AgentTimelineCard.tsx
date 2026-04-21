@@ -1,8 +1,18 @@
 import { Box, Button, Collapse, Flex, Icon, IconButton, Spinner, Text } from "@chakra-ui/react";
+import { ChevronDownIcon } from "@/components/common/Icon";
 import type { TimelineItem } from "@/features/chat/utils/chatItemParsers";
 import { isDetailTruncated, truncateDetailText } from "@/features/chat/utils/chatItemParsers";
 import { ToolStreamText } from "@/features/chat/hooks/useChatItemViewModel";
 import TimelineStatusPill, { type TimelineStatus } from "./TimelineStatusPill";
+
+const HEADER_BTN_SX = {
+  borderRadius: "6px",
+  _hover: { bg: "myGray.100" },
+} as const;
+const RESULT_TEXT_SX = {
+  fontSize: "11px",
+  lineHeight: "18px",
+} as const;
 
 const getCompactToolDisplay = (tool: TimelineItem): string => {
   const name = (tool.toolName || "").trim();
@@ -70,16 +80,27 @@ const AgentTimelineCard = ({
   const responseTruncated = isDetailTruncated(item.response);
 
   return (
-    <Box borderLeft="2px solid" borderLeftColor="purple.400" key={`agent-${item.id || index}`} pl={3} py={1}>
+    <Box borderLeft="2px solid" borderLeftColor="myGray.300" key={`agent-${item.id || index}`} pl={3} py={1}>
       <Flex align="center" gap={2}>
         {isRunning ? (
           <Spinner color="purple.500" size="xs" speed="0.7s" thickness="2.5px" />
         ) : (
           <Box bg="purple.400" borderRadius="full" h="6px" w="6px" />
         )}
-        <Text color="myGray.800" fontSize="12px" fontWeight="600" noOfLines={1}>
+        <Button
+          color="myGray.800"
+          fontSize="12px"
+          fontWeight={600}
+          h="22px"
+          minW="auto"
+          onClick={onToggle}
+          px={1.5}
+          size="xs"
+          variant="ghost"
+          sx={HEADER_BTN_SX}
+        >
           Subagent / {agentTitle}
-        </Text>
+        </Button>
         <Flex align="center" gap={2} ml="auto">
           {!isRunning ? (
             <Text color="myGray.600" fontSize="11px">
@@ -92,27 +113,19 @@ const AgentTimelineCard = ({
           aria-label={isExpanded ? "收起子 Agent 详情" : "展开子 Agent 详情"}
           icon={
             <Icon
-              boxSize={4}
+              as={ChevronDownIcon}
+              boxSize="14px"
               color="myGray.500"
               transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
               transition="transform 0.2s ease"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 9L12 15L18 9"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </Icon>
+            />
           }
           h="22px"
           minW="22px"
           onClick={onToggle}
           size="xs"
           variant="ghost"
+          sx={HEADER_BTN_SX}
         />
       </Flex>
 
@@ -132,7 +145,7 @@ const AgentTimelineCard = ({
       ) : null}
 
       <Collapse animateOpacity in={isExpanded}>
-        <Flex direction="column" gap={2} mt={2}>
+        <Flex borderTop="1px dashed" borderColor="myGray.250" direction="column" gap={1.5} mt={1.5} pt={2}>
           {item.prompt ? (
             <Box>
               <Flex align="center" justify="space-between" mb={1}>
@@ -158,33 +171,28 @@ const AgentTimelineCard = ({
           ) : null}
 
           {children.length > 0 ? (
-            <Box>
-              <Text color="myGray.500" fontSize="11px" mb={1}>
-                工具历史（{children.length}）
-              </Text>
-              <Flex direction="column" gap={0.5}>
-                {children.map((child, childIndex) => (
-                  <Flex align="center" gap={2} key={`${item.id || index}-child-${child.id || childIndex}`}>
-                    <Text color="myGray.500" fontSize="11px" minW="14px" textAlign="right">
-                      {childIndex + 1}.
+            <Flex direction="column" gap={0.5}>
+              {children.map((child, childIndex) => (
+                <Flex align="center" gap={2} key={`${item.id || index}-child-${child.id || childIndex}`}>
+                  <Text color="myGray.500" minW="14px" sx={RESULT_TEXT_SX} textAlign="right">
+                    {childIndex + 1}.
+                  </Text>
+                  <Text color="myGray.700" fontWeight={600} sx={RESULT_TEXT_SX}>
+                    {child.toolName || "tool"}
+                  </Text>
+                  {getCompactToolDisplay(child) ? (
+                    <Text color="myGray.600" fontFamily="mono" noOfLines={1} sx={RESULT_TEXT_SX}>
+                      {getCompactToolDisplay(child)}
                     </Text>
-                    <Text color="myGray.700" fontSize="11px" fontWeight={600}>
-                      {child.toolName || "tool"}
+                  ) : null}
+                  {child.progressStatus === "error" ? (
+                    <Text color="red.600" sx={RESULT_TEXT_SX}>
+                      (error)
                     </Text>
-                    {getCompactToolDisplay(child) ? (
-                      <Text color="myGray.600" fontFamily="mono" fontSize="11px" noOfLines={1}>
-                        {getCompactToolDisplay(child)}
-                      </Text>
-                    ) : null}
-                    {child.progressStatus === "error" ? (
-                      <Text color="red.600" fontSize="11px">
-                        (error)
-                      </Text>
-                    ) : null}
-                  </Flex>
-                ))}
-              </Flex>
-            </Box>
+                  ) : null}
+                </Flex>
+              ))}
+            </Flex>
           ) : null}
 
           {item.response ? (

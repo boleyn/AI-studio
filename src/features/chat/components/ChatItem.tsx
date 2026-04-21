@@ -2,6 +2,7 @@ import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, 
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
 import Markdown from "@/components/Markdown";
+import { ChevronDownIcon } from "@/components/common/Icon";
 import { useCopyData } from "@/hooks/useCopyData";
 import { ToolStreamText, useChatItemViewModel } from "../hooks/useChatItemViewModel";
 import type { MessageExecutionSummary } from "../utils/executionSummary";
@@ -181,21 +182,12 @@ const ChatItem = ({
                               aria-label={isExpanded ? "收起思考内容" : "展开思考内容"}
                               icon={
                                 <Icon
-                                  boxSize={4}
+                                  as={ChevronDownIcon}
+                                  boxSize="14px"
                                   color="myGray.500"
                                   transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                                   transition="transform 0.2s ease"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M6 9L12 15L18 9"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                  />
-                                </Icon>
+                                />
                               }
                               h="22px"
                               minW="22px"
