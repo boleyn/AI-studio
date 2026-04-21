@@ -1,4 +1,4 @@
-import { Box, Button, Collapse, Flex, Icon, IconButton, Spinner, Text } from "@chakra-ui/react";
+import { Box, Button, Collapse, Flex, Icon, IconButton, Text } from "@chakra-ui/react";
 import { ChevronDownIcon } from "@/components/common/Icon";
 import type { TimelineItem } from "@/features/chat/utils/chatItemParsers";
 import { isDetailTruncated, truncateDetailText } from "@/features/chat/utils/chatItemParsers";
@@ -82,11 +82,7 @@ const AgentTimelineCard = ({
   return (
     <Box borderLeft="2px solid" borderLeftColor="myGray.300" key={`agent-${item.id || index}`} pl={3} py={1}>
       <Flex align="center" gap={2}>
-        {isRunning ? (
-          <Spinner color="purple.500" size="xs" speed="0.7s" thickness="2.5px" />
-        ) : (
-          <Box bg="purple.400" borderRadius="full" h="6px" w="6px" />
-        )}
+        <Box bg="purple.400" borderRadius="full" h="6px" w="6px" />
         <Button
           color="myGray.800"
           fontSize="12px"
@@ -101,9 +97,9 @@ const AgentTimelineCard = ({
         >
           Subagent / {agentTitle}
         </Button>
-        <Flex align="center" gap={2} ml="auto">
+        <Flex align="center" gap={1.5} ml="auto">
           {!isRunning ? (
-            <Text color="myGray.600" fontSize="11px">
+            <Text color="myGray.600" fontSize="11px" minW="56px" textAlign="right" whiteSpace="nowrap">
               {children.length} tools
             </Text>
           ) : null}

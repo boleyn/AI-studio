@@ -309,12 +309,12 @@ const ToolTimelineCard = ({
               minW="auto"
               onClick={onToggle}
               px={1}
-            size="xs"
-            variant="ghost"
-            sx={HEADER_BTN_SX}
-          >
-            {toolLabel}
-          </Button>
+              size="xs"
+              variant="ghost"
+              sx={HEADER_BTN_SX}
+            >
+              {toolLabel}
+            </Button>
             <Text color="myGray.350" fontSize="11px">/</Text>
           </>
         ) : null}

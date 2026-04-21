@@ -165,6 +165,16 @@ const toStringValue = (value: unknown) => {
   }
 };
 
+const TOOL_USE_ERROR_TAG_REGEX = /<tool_use_error\b[^>]*>([\s\S]*?)<\/tool_use_error>/i;
+
+const stripToolUseErrorTag = (value?: string) => {
+  const raw = value || "";
+  if (!raw) return "";
+  const match = raw.match(TOOL_USE_ERROR_TAG_REGEX);
+  if (!match) return raw;
+  return (match[1] || "").trim();
+};
+
 const mergeToolParams = (prev?: string, next?: string) => {
   const left = (prev || "").trim();
   const right = (next || "").trim();
@@ -214,7 +224,7 @@ const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: 
       };
     }
     return {
-      response: rawResponse,
+      response: stripToolUseErrorTag(rawResponse),
       paramsFallback: "",
     };
   }
@@ -223,7 +233,7 @@ const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: 
   const content = typeof record.content === "string" ? record.content : "";
   if (content) {
     return {
-      response: content,
+      response: stripToolUseErrorTag(content),
       paramsFallback,
     };
   }
@@ -249,13 +259,13 @@ const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: 
     const error = typeof record.error === "string" ? record.error : "";
     const response = stdout || stderr || error || rawResponse;
     return {
-      response,
+      response: stripToolUseErrorTag(response),
       paramsFallback,
     };
   }
 
   return {
-    response: rawResponse,
+    response: stripToolUseErrorTag(rawResponse),
     paramsFallback,
   };
 };
@@ -308,6 +318,8 @@ const getToolFingerprint = (toolName?: string, params?: string, response?: strin
 const getAgentDisplayName = (agentType?: string) => {
   const normalized = (agentType || "").trim();
   if (!normalized) return "子 Agent";
+  if (normalized === "default") return "general-purpose";
+  if (normalized === "aistudio-mcp-code-agent") return "general-purpose";
   return normalized;
 };
 
@@ -340,7 +352,7 @@ const parseAgentResponseParts = (rawResponse: string) => {
     const durationMsMatch = usageCarrier.match(/duration_ms:\s*(\d+)/);
 
     return {
-      response: cleanedResponse || rawResponse,
+      response: stripToolUseErrorTag(cleanedResponse || rawResponse),
       usageSummary:
         totalTokensMatch || toolUsesMatch || durationMsMatch
           ? {
@@ -352,7 +364,7 @@ const parseAgentResponseParts = (rawResponse: string) => {
     };
   } catch {
     return {
-      response: rawResponse,
+      response: stripToolUseErrorTag(rawResponse),
       usageSummary: undefined as TimelineItem["usageSummary"],
     };
   }
@@ -1049,9 +1061,9 @@ export const composeTimelineItems = ({
             progressStatus: target.progressStatus || tool.progressStatus,
           };
         }
-        if (normalizedToolName === "agent") {
-          return;
-        }
+        // This tool detail is the same agent run as an existing agent timeline item.
+        // Do not append a duplicated root tool row.
+        return;
       }
     }
     if (isAgentToolName(tool.toolName)) {

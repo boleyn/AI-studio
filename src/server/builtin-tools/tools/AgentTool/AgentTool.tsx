@@ -162,6 +162,18 @@ function getAutoBackgroundMs(): number {
 
 // Multi-agent type constants are defined inline inside gated blocks to enable dead code elimination
 
+const normalizeLegacySubagentType = (value?: string): string | undefined => {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  if (!normalized) return undefined
+  if (normalized === 'aistudio-mcp-code-agent') {
+    return GENERAL_PURPOSE_AGENT.agentType
+  }
+  if (normalized === 'default') {
+    return GENERAL_PURPOSE_AGENT.agentType
+  }
+  return normalized
+}
+
 // Base input schema without multi-agent parameters
 const baseInputSchema = lazySchema(() =>
   z.object({
@@ -479,8 +491,9 @@ export const AgentTool = buildTool({
     // - subagent_type set: use it (explicit wins)
     // - subagent_type omitted, gate on: fork path (undefined)
     // - subagent_type omitted, gate off: default general-purpose
+    const normalizedSubagentType = normalizeLegacySubagentType(subagent_type)
     const effectiveType =
-      subagent_type ??
+      normalizedSubagentType ??
       (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType)
     const isForkPath = effectiveType === undefined
 

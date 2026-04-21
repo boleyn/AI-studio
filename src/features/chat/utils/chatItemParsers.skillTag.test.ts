@@ -146,3 +146,97 @@ test("composeTimelineItems does not duplicate root tool when parent agent id arr
   assert.equal(rootTools.length, 1);
   assert.equal(rootTools[0]?.id, "toolu_child");
 });
+
+test("getTimelineItems normalizes legacy agent types for subagent display", () => {
+  const message = {
+    role: "assistant",
+    content: "",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "agent_start",
+          id: "agent_1",
+          agent_type: "default",
+          description: "run task",
+        },
+        {
+          type: "agent_start",
+          id: "agent_2",
+          agent_type: "aistudio-mcp-code-agent",
+          description: "run task",
+        },
+      ],
+    },
+  } as unknown as ConversationMessage;
+
+  const items = getTimelineItems(message);
+  const firstAgent = items.find((item) => item.type === "agent" && item.id === "agent_1");
+  const secondAgent = items.find((item) => item.type === "agent" && item.id === "agent_2");
+  assert.equal(firstAgent?.agentType, "general-purpose");
+  assert.equal(secondAgent?.agentType, "general-purpose");
+});
+
+test("getTimelineItems strips tool_use_error tags from tool result content", () => {
+  const message = {
+    role: "assistant",
+    content: "",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_write_1",
+          name: "Write",
+          input: { file_path: "plans/hazy-marinating-tower.md" },
+        },
+        {
+          type: "tool_result",
+          tool_use_id: "toolu_write_1",
+          is_error: true,
+          content:
+            "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
+        },
+      ],
+    },
+  } as unknown as ConversationMessage;
+
+  const items = getTimelineItems(message);
+  const toolItem = items.find((item) => item.type === "tool" && item.id === "toolu_write_1");
+  assert.ok(toolItem);
+  assert.equal(toolItem?.progressStatus, "error");
+  assert.equal(toolItem?.response, "File has not been read yet. Read it first before writing to it.");
+});
+
+test("composeTimelineItems does not append duplicate root tool for existing agent id", () => {
+  const rawTimelineItems: TimelineItem[] = [
+    {
+      type: "agent",
+      id: "toolu_agent_1",
+      agentType: "general-purpose",
+      description: "run task",
+      children: [],
+      progressStatus: "in_progress",
+    },
+  ];
+
+  const toolDetails: ToolDetail[] = [
+    {
+      id: "toolu_agent_1",
+      toolName: "general-purpose",
+      params: "run task",
+      response: "",
+      progressStatus: "in_progress",
+    },
+  ];
+
+  const items = composeTimelineItems({
+    rawTimelineItems,
+    reasoningText: "",
+    toolDetails,
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.type, "agent");
+  assert.equal(items.some((item) => item.type === "tool"), false);
+});

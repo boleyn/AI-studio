@@ -1203,6 +1203,25 @@ const ChatPanel = ({
                 return;
               }
               if (
+                subtype === "agent_error" &&
+                typeof payload.id === "string"
+              ) {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content:
+                    typeof payload.content === "string"
+                      ? payload.content
+                      : typeof payload.text === "string"
+                      ? payload.text
+                      : "Agent execution failed",
+                  is_error: true,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+                });
+                return;
+              }
+              if (
                 (subtype === "tool_use_delta" || subtype === "agent_tool_use_delta") &&
                 typeof payload.id === "string"
               ) {

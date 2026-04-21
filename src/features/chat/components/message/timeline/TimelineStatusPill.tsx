@@ -1,4 +1,6 @@
-import { Box } from "@chakra-ui/react";
+import { Box, Icon, Spinner } from "@chakra-ui/react";
+import { CloseIcon } from "@/components/common/Icon";
+import MyTooltip from "@/components/ui/MyTooltip";
 
 export type TimelineStatus = "running" | "completed" | "error" | "denied";
 
@@ -21,6 +23,50 @@ const statusToneMap: Record<
 
 const TimelineStatusPill = ({ status }: { status: TimelineStatus }) => {
   const tone = statusToneMap[status];
+  if (status === "running") {
+    return (
+      <MyTooltip label={statusTextMap[status]}>
+        <Box
+          as="span"
+          alignItems="center"
+          bg={tone.bg}
+          border="1px solid"
+          borderColor={tone.border}
+          borderRadius="999px"
+          display="inline-flex"
+          h="18px"
+          justifyContent="center"
+          minW="18px"
+          w="18px"
+        >
+          <Spinner color={tone.color} size="xs" speed="0.7s" thickness="2.5px" />
+        </Box>
+      </MyTooltip>
+    );
+  }
+
+  if (status === "error" || status === "denied") {
+    return (
+      <MyTooltip label={statusTextMap[status]}>
+        <Box
+          as="span"
+          alignItems="center"
+          bg={tone.bg}
+          border="1px solid"
+          borderColor={tone.border}
+          borderRadius="999px"
+          display="inline-flex"
+          h="18px"
+          justifyContent="center"
+          minW="18px"
+          w="18px"
+        >
+          <Icon as={CloseIcon} boxSize="10px" color={tone.color} />
+        </Box>
+      </MyTooltip>
+    );
+  }
+
   return (
     <Box
       as="span"
