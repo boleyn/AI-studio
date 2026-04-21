@@ -15,6 +15,7 @@ import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from "../../builtin-tools/tools/AgentTool/constants";
 import { registerPendingConversationInteraction } from "@server/chat/activeRuns";
+import { getContextWindowForModel, getModelMaxOutputTokens } from "../utils/context";
 
 type RunClaudeQueryAdapterInput = {
   token: string;
@@ -57,6 +58,21 @@ type QueryEngineExecutionAttempt = {
   error?: string;
 };
 
+type TokenBudgetPayload = {
+  used: number;
+  total: number;
+  percentage: number;
+  model: string;
+  usedTokens: number;
+  maxContext: number;
+  remainingTokens: number;
+  usedPercent: number;
+  rawContextWindow: number;
+  effectiveContextWindow: number;
+  autoCompactThreshold: number;
+  reservedOutputTokens: number;
+};
+
 type ToolInputState = {
   id: string;
   index: number;
@@ -81,6 +97,54 @@ type BuildProjectMemfsOverlayOptions = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const toTokenBudgetFromUsage = ({
+  usage,
+  model,
+}: {
+  usage: unknown;
+  model: string;
+}): TokenBudgetPayload | null => {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  const record = usage as Record<string, unknown>;
+  const inputTokens = record.input_tokens;
+  if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens)) return null;
+  const cacheCreationInputTokens =
+    typeof record.cache_creation_input_tokens === "number" &&
+    Number.isFinite(record.cache_creation_input_tokens)
+      ? record.cache_creation_input_tokens
+      : 0;
+  const cacheReadInputTokens =
+    typeof record.cache_read_input_tokens === "number" &&
+    Number.isFinite(record.cache_read_input_tokens)
+      ? record.cache_read_input_tokens
+      : 0;
+  const usedTokens = Math.max(
+    0,
+    Math.floor(inputTokens + cacheCreationInputTokens + cacheReadInputTokens)
+  );
+
+  const rawContextWindow = Math.max(1, getContextWindowForModel(model));
+  const reservedOutputTokens = Math.min(getModelMaxOutputTokens(model).default, 20_000);
+  const effectiveContextWindow = Math.max(1, rawContextWindow - reservedOutputTokens);
+  const autoCompactThreshold = Math.max(1, effectiveContextWindow - 13_000);
+  const maxContext = autoCompactThreshold;
+  const usedPercent = Math.max(0, Math.min(100, (usedTokens / maxContext) * 100));
+  return {
+    used: usedTokens,
+    total: maxContext,
+    percentage: usedPercent,
+    model,
+    usedTokens,
+    maxContext,
+    remainingTokens: Math.max(0, maxContext - usedTokens),
+    usedPercent,
+    rawContextWindow,
+    effectiveContextWindow,
+    autoCompactThreshold,
+    reservedOutputTokens,
+  };
+};
 
 const getAgentStartPayload = (toolUseId: string, input: unknown) => {
   if (!isRecord(input)) return null;
@@ -1183,6 +1247,25 @@ const tryRunQueryEngine = async (
       const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
         input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
       };
+      const selectedModelId =
+        typeof input.selectedModel === "string" && input.selectedModel.trim()
+          ? input.selectedModel.trim()
+          : "agent";
+      let lastTokenBudgetFingerprint = "";
+      const emitTokenBudgetStatus = (usage: unknown) => {
+        const tokenBudget = toTokenBudgetFromUsage({
+          usage,
+          model: selectedModelId,
+        });
+        if (!tokenBudget) return;
+        const fingerprint = `${tokenBudget.usedTokens}:${tokenBudget.maxContext}:${tokenBudget.usedPercent.toFixed(3)}`;
+        if (fingerprint === lastTokenBudgetFingerprint) return;
+        lastTokenBudgetFingerprint = fingerprint;
+        emitEvent("status", {
+          text: "token_budget",
+          tokenBudget,
+        });
+      };
       const [appStateMod, commandsMod, toolsMod, toolMod, permissionMod, queryEngineMod, fileStateCacheMod] =
         await Promise.all([
           import("../state/AppStateStore"),
@@ -1598,6 +1681,7 @@ const tryRunQueryEngine = async (
                   ? usage.output_tokens
                   : 0,
             };
+            emitTokenBudgetStatus(resultUsage);
           }
         }
         if (!assistantText.trim() && typeof result.result === "string" && result.result.trim()) {

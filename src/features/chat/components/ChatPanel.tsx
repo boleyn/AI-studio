@@ -1482,12 +1482,87 @@ const ChatPanel = ({
             }
 
             if (event === SdkStreamEventEnum.status) {
-              const payload = item as { phase?: unknown; toolName?: unknown };
+              const payload = item as {
+                phase?: unknown;
+                toolName?: unknown;
+                text?: unknown;
+                tokenBudget?: unknown;
+              };
               if (payload.phase === "tool_error") {
                 appendSdkBlock({
                   type: "text",
                   text: `\n[tool-error] ${typeof payload.toolName === "string" ? payload.toolName : "tool"}\n`,
                 });
+              }
+              if (payload.text === "token_budget" && payload.tokenBudget) {
+                const budget = payload.tokenBudget;
+                if (budget && typeof budget === "object" && !Array.isArray(budget)) {
+                  const record = budget as Record<string, unknown>;
+                  const usedTokens = record.usedTokens;
+                  const maxContext = record.maxContext;
+                  const remainingTokens = record.remainingTokens;
+                  const usedPercent = record.usedPercent;
+                  if (
+                    typeof usedTokens === "number" &&
+                    Number.isFinite(usedTokens) &&
+                    typeof maxContext === "number" &&
+                    Number.isFinite(maxContext) &&
+                    typeof remainingTokens === "number" &&
+                    Number.isFinite(remainingTokens) &&
+                    typeof usedPercent === "number" &&
+                    Number.isFinite(usedPercent)
+                  ) {
+                    const contextWindowPayload: ContextWindowUsage = {
+                      model:
+                        typeof record.model === "string" && record.model.trim()
+                          ? record.model.trim()
+                          : model,
+                      usedTokens,
+                      maxContext,
+                      remainingTokens,
+                      usedPercent,
+                      totalPromptTokens:
+                        typeof record.totalPromptTokens === "number" &&
+                        Number.isFinite(record.totalPromptTokens)
+                          ? record.totalPromptTokens
+                          : undefined,
+                      currentInputTokens:
+                        typeof record.currentInputTokens === "number" &&
+                        Number.isFinite(record.currentInputTokens)
+                          ? record.currentInputTokens
+                          : undefined,
+                      rawContextWindow:
+                        typeof record.rawContextWindow === "number" &&
+                        Number.isFinite(record.rawContextWindow)
+                          ? record.rawContextWindow
+                          : undefined,
+                      effectiveContextWindow:
+                        typeof record.effectiveContextWindow === "number" &&
+                        Number.isFinite(record.effectiveContextWindow)
+                          ? record.effectiveContextWindow
+                          : undefined,
+                      autoCompactThreshold:
+                        typeof record.autoCompactThreshold === "number" &&
+                        Number.isFinite(record.autoCompactThreshold)
+                          ? record.autoCompactThreshold
+                          : undefined,
+                      reservedOutputTokens:
+                        typeof record.reservedOutputTokens === "number" &&
+                        Number.isFinite(record.reservedOutputTokens)
+                          ? record.reservedOutputTokens
+                          : undefined,
+                    };
+                    setContextUsageSnapshot(
+                      contextWindowPayload,
+                      conversationId || activeConversation?.id || null,
+                      contextWindowPayload.model
+                    );
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      contextWindow: contextWindowPayload,
+                    }));
+                  }
+                }
               }
               return;
             }
@@ -1809,6 +1884,7 @@ const ChatPanel = ({
     setMessageRatings,
     selectedSkills,
     handleSend,
+    onFilesUpdated,
   });
 
   const activeConversationTitle = useMemo(

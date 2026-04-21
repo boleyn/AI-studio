@@ -5,6 +5,7 @@ import type {
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { requireAuth } from "@server/auth/session";
 import { getProject, updateFile } from "@server/projects/projectStorage";
+import { saveChatFileSnapshot } from "@server/chat/fileSnapshotStorage";
 import {
   appendConversationMessages,
   type ConversationMessage,
@@ -278,6 +279,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     if (Object.keys(updatedFiles).length > 0) {
+      const assistantMessageIdForSnapshot =
+        typeof runResult.assistantMessage?.uuid === "string" && runResult.assistantMessage.uuid.trim()
+          ? runResult.assistantMessage.uuid.trim()
+          : createDataId();
+      await saveChatFileSnapshot({
+        token,
+        chatId,
+        assistantMessageId: assistantMessageIdForSnapshot,
+        files: project.files || {},
+      });
       await Promise.all(
         Object.entries(updatedFiles).map(([filePath, file]) =>
           updateFile(token, filePath, file.code)

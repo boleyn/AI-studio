@@ -3,7 +3,11 @@ import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ConversationMessage } from "@/types/conversation";
 import { updateMessageFeedback } from "../services/feedback";
-import { deleteConversationMessageById, truncateConversationFromMessageId } from "../services/conversations";
+import {
+  deleteConversationMessageById,
+  rewindLatestConversationTurn,
+  truncateConversationFromMessageId,
+} from "../services/conversations";
 import type { ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { stripInlineImageMarkdown, stripTagMarkersFromUserContent } from "../utils/chatPanelUtils";
@@ -22,6 +26,7 @@ export const useChatMessageActions = ({
   setMessageRatings,
   selectedSkills,
   handleSend,
+  onFilesUpdated,
 }: {
   token: string;
   activeConversationId?: string;
@@ -41,6 +46,7 @@ export const useChatMessageActions = ({
       baseMessagesOverride?: ConversationMessage[];
     }
   ) => Promise<void>;
+  onFilesUpdated?: (files: Record<string, { code: string }>) => void;
 }) => {
   const handleRateMessage = useCallback(
     async (messageId: string, nextRating: MessageRating) => {
@@ -264,17 +270,10 @@ export const useChatMessageActions = ({
     }
     if (anchorUserIndex < 0) return false;
 
-    const anchorMessage = snapshot[anchorUserIndex];
     const conversationId = activeConversationId;
-    if (!conversationId || !anchorMessage.id) return false;
-
-    const truncated = await truncateConversationFromMessageId(
-      token,
-      conversationId,
-      anchorMessage.id
-    );
-    if (!truncated) return false;
-
+    if (!conversationId) return false;
+    const rewindResult = await rewindLatestConversationTurn(token, conversationId);
+    if (!rewindResult.success) return false;
     const nextMessages = snapshot.slice(0, anchorUserIndex);
     setMessages(nextMessages);
     setMessageRatings((prev) => {
@@ -288,11 +287,15 @@ export const useChatMessageActions = ({
     if (streamingMessageId && snapshot.slice(anchorUserIndex).some((message) => message.id === streamingMessageId)) {
       setStreamingMessageId(null);
     }
+    if (rewindResult.files && onFilesUpdated) {
+      onFilesUpdated(rewindResult.files);
+    }
     return true;
   }, [
     activeConversationId,
     isSending,
     messages,
+    onFilesUpdated,
     setMessageRatings,
     setMessages,
     setStreamingMessageId,

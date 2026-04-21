@@ -3,6 +3,10 @@ export interface ContextWindowUsage {
   phase?: "start" | "final";
   totalPromptTokens?: number;
   currentInputTokens?: number;
+  rawContextWindow?: number;
+  effectiveContextWindow?: number;
+  autoCompactThreshold?: number;
+  reservedOutputTokens?: number;
   usedTokens: number;
   maxContext: number;
   remainingTokens: number;

@@ -5,6 +5,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import { getChatModelProfile } from '@server/aiProxy/catalogStore'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -70,6 +71,18 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // AIStudio model config override: respect per-model maxContext first.
+  // This keeps context budgeting aligned with runtime model switching.
+  const configuredProfile = getChatModelProfile(model)
+  if (
+    configuredProfile &&
+    typeof configuredProfile.maxContext === 'number' &&
+    Number.isFinite(configuredProfile.maxContext) &&
+    configuredProfile.maxContext > 0
+  ) {
+    return Math.floor(configuredProfile.maxContext)
   }
 
   const cap = getModelCapability(model)

@@ -10,6 +10,7 @@ import {
   getConversationInit,
   getConversationRecordsV2,
   putConversationHistory,
+  rewindConversationLatestTurn,
   truncateConversationFromMessage,
 } from "./conversationApi";
 
@@ -168,5 +169,20 @@ export async function truncateConversationFromMessageId(
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function rewindLatestConversationTurn(
+  token: string,
+  chatId: string
+): Promise<{ success: boolean; files?: Record<string, { code: string }> }> {
+  try {
+    const payload = await rewindConversationLatestTurn({ token, chatId });
+    return {
+      success: payload?.success !== false,
+      ...(payload?.files && typeof payload.files === "object" ? { files: payload.files } : {}),
+    };
+  } catch {
+    return { success: false };
   }
 }

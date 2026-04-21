@@ -47,6 +47,9 @@ const formatTokenCompact = (value?: number): string => {
   return `${Math.round(normalized)}`;
 };
 
+const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
+const BLOCKING_THRESHOLD_BUFFER_TOKENS = 3_000;
+
 const ChatHeader = ({
   title,
   messageCount = 0,
@@ -68,21 +71,34 @@ const ChatHeader = ({
   const hasUsage = Boolean(contextUsage);
   const isReady = contextStatus === "ready" && !!contextUsage;
   const isPending = contextStatus === "pending";
-  const usedPercent = Math.min(100, Math.max(0, hasUsage ? contextUsage?.usedPercent || 0 : 0));
+  const computedUsedPercent = hasUsage && contextUsage && contextUsage.maxContext > 0
+    ? (contextUsage.usedTokens / contextUsage.maxContext) * 100
+    : 0;
+  const usedPercent = Math.min(100, Math.max(0, computedUsedPercent));
   const usedPercentText = usedPercent.toFixed(1);
-  const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
+  const remainingTokens = Number.isFinite(contextUsage?.remainingTokens)
+    ? Math.max(0, Number(contextUsage?.remainingTokens))
+    : 0;
+  const warningState =
+    hasUsage && remainingTokens <= BLOCKING_THRESHOLD_BUFFER_TOKENS
+      ? "danger"
+      : hasUsage && remainingTokens <= WARNING_THRESHOLD_BUFFER_TOKENS
+      ? "warning"
+      : "ok";
   const usedTokenText = formatTokenCompact(contextUsage?.usedTokens);
   const maxTokenText = formatTokenCompact(contextUsage?.maxContext);
   const tokenWindowText = hasUsage ? `${usedTokenText}/${maxTokenText}` : "--/--";
   const tooltipWithInput = isReady
-    ? `已用 ${usedTokenText}/${maxTokenText} tokens，剩余 ${remainingPercentText}%`
+    ? `${usedTokenText}/${maxTokenText} tokens (${usedPercentText}%)`
     : isPending
     ? hasUsage
-      ? `计算中...（当前显示上次快照：已用 ${usedTokenText}/${maxTokenText} tokens，剩余 ${remainingPercentText}%）`
+      ? `计算中...（${usedTokenText}/${maxTokenText} tokens）`
       : "计算中..."
     : "继续提问后会自动更新";
-  const ringColor = usedPercent < 60 ? "#72C284" : "#E58888";
-  const ringTrackColor = usedPercent < 60 ? "#E3F3E7" : "#F7E3E3";
+  const ringColor =
+    warningState === "danger" ? "#EF4444" : warningState === "warning" ? "#F59E0B" : "#3B82F6";
+  const ringTrackColor =
+    warningState === "danger" ? "#FEE2E2" : warningState === "warning" ? "#FEF3C7" : "#DBEAFE";
 
   const handleConfirmDeleteOne = async () => {
     if (!pendingDeleteId) return;
