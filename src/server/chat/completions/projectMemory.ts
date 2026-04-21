@@ -223,7 +223,7 @@ const buildRecallPromptBlock = (recall: ProjectMemoryRecall) => {
 export const getProjectMemoryBehaviorPrompt = () => {
   return [
     "Project Memory Rules:",
-    "- You have project memory files under /.aistudio/projects/<project>/memory.",
+    "- You have project memory files under /.aistudio/memory.",
     "- Use memory as durable cross-session facts; do not store transient task state.",
     "- Memory types: user, feedback, project, reference.",
     "- If user asks to ignore memory, proceed as if memory were empty.",

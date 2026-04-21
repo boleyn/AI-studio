@@ -17,8 +17,17 @@ export const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 export const normalizeAttachmentWorkspacePath = (filePath: string): string => {
   const normalized = (filePath || "").replace(/\\/g, "/").trim();
   if (!normalized) return normalized;
-  if (normalized === "/files") return "/.files";
-  if (normalized.startsWith("/files/")) return `/.files/${normalized.slice("/files/".length)}`;
+  if (normalized === ".files" || normalized === "/.files") return ".files";
+  if (normalized.startsWith(".files/")) return normalized;
+  if (normalized.startsWith("/.files/")) return `.files/${normalized.slice("/.files/".length)}`;
+  if (normalized === "/files") return ".files";
+  if (normalized.startsWith("/files/")) return `.files/${normalized.slice("/files/".length)}`;
+  const filesMarker = "/.files/";
+  const markerIndex = normalized.lastIndexOf(filesMarker);
+  if (markerIndex !== -1) {
+    return `.files/${normalized.slice(markerIndex + filesMarker.length)}`;
+  }
+  if (normalized.endsWith("/.files")) return ".files";
   return normalized;
 };
 
@@ -175,6 +184,23 @@ export const stripTagMarkersFromUserContent = (content: string): string => {
     ""
   );
   return noFileTags;
+};
+
+export const extractSelectedFilePathsFromUserContent = (content: string): string[] => {
+  if (!content) return [];
+  const matches = content.match(/\[[^\]]+\]\(FILETAG:([^)]+)\)/g) || [];
+  const parsed = matches
+    .map((entry) => {
+      const pathMatch = entry.match(/\(FILETAG:([^)]+)\)/);
+      if (!pathMatch || !pathMatch[1]) return "";
+      try {
+        return normalizeAttachmentWorkspacePath(decodeURIComponent(pathMatch[1]));
+      } catch {
+        return normalizeAttachmentWorkspacePath(pathMatch[1]);
+      }
+    })
+    .filter((item) => item.length > 0);
+  return Array.from(new Set(parsed));
 };
 
 export const stripInlineImageMarkdown = (content: string): string => {

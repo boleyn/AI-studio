@@ -15,7 +15,7 @@ import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from "../../builtin-tools/tools/AgentTool/constants";
 import { registerPendingConversationInteraction } from "@server/chat/activeRuns";
-import { getContextWindowForModel, getModelMaxOutputTokens } from "../utils/context";
+import { getContextWindowForModel } from "../utils/context";
 
 type RunClaudeQueryAdapterInput = {
   token: string;
@@ -67,10 +67,6 @@ type TokenBudgetPayload = {
   maxContext: number;
   remainingTokens: number;
   usedPercent: number;
-  rawContextWindow: number;
-  effectiveContextWindow: number;
-  autoCompactThreshold: number;
-  reservedOutputTokens: number;
 };
 
 type ToolInputState = {
@@ -119,16 +115,11 @@ const toTokenBudgetFromUsage = ({
     Number.isFinite(record.cache_read_input_tokens)
       ? record.cache_read_input_tokens
       : 0;
-  const usedTokens = Math.max(
-    0,
-    Math.floor(inputTokens + cacheCreationInputTokens + cacheReadInputTokens)
-  );
-
-  const rawContextWindow = Math.max(1, getContextWindowForModel(model));
-  const reservedOutputTokens = Math.min(getModelMaxOutputTokens(model).default, 20_000);
-  const effectiveContextWindow = Math.max(1, rawContextWindow - reservedOutputTokens);
-  const autoCompactThreshold = Math.max(1, effectiveContextWindow - 13_000);
-  const maxContext = autoCompactThreshold;
+  void cacheReadInputTokens;
+  // Keep usage semantics aligned with conversationStorage/history recovery:
+  // treat input_tokens as inclusive prompt usage and only add cache_creation.
+  const usedTokens = Math.max(0, Math.floor(inputTokens + cacheCreationInputTokens));
+  const maxContext = Math.max(1, getContextWindowForModel(model));
   const usedPercent = Math.max(0, Math.min(100, (usedTokens / maxContext) * 100));
   return {
     used: usedTokens,
@@ -139,10 +130,6 @@ const toTokenBudgetFromUsage = ({
     maxContext,
     remainingTokens: Math.max(0, maxContext - usedTokens),
     usedPercent,
-    rawContextWindow,
-    effectiveContextWindow,
-    autoCompactThreshold,
-    reservedOutputTokens,
   };
 };
 
@@ -1217,35 +1204,8 @@ const tryRunQueryEngine = async (
         return rel || ".";
       };
 
-      const sanitizeStringForUi = (value: string): string => {
-        if (!hasVirtualProjectFiles || !value) return value;
-        return value.replace(/\/[^\s"'<>]+/g, (rawPath) => {
-          if (!rawPath.startsWith("/")) return rawPath;
-          const converted = toVirtualDisplayPath(rawPath);
-          return converted === rawPath ? rawPath : converted;
-        });
-      };
-
-      const sanitizeForUi = (inputValue: unknown): unknown => {
-        if (!hasVirtualProjectFiles) return inputValue;
-        const visited = new WeakSet<object>();
-        const walk = (node: unknown): unknown => {
-          if (typeof node === "string") return sanitizeStringForUi(node);
-          if (!node || typeof node !== "object") return node;
-          if (visited.has(node as object)) return node;
-          visited.add(node as object);
-          if (Array.isArray(node)) return node.map((item) => walk(item));
-          const out: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-            out[k] = walk(v);
-          }
-          return out;
-        };
-        return walk(inputValue);
-      };
-
       const emitEvent = (event: SdkStreamEventName, data: Record<string, unknown>) => {
-        input.onEvent(event, sanitizeForUi(data) as Record<string, unknown>);
+        input.onEvent(event, data);
       };
       const selectedModelId =
         typeof input.selectedModel === "string" && input.selectedModel.trim()

@@ -785,9 +785,18 @@ export async function enhanceSystemPromptWithEnvDetails(
   additionalWorkingDirectories?: string[],
   enabledToolNames?: ReadonlySet<string>,
 ): Promise<string[]> {
+  const isVirtualSession = Boolean((getVirtualProjectRoot() || '').trim())
   const notes = `Notes:
-- Agent threads always have their cwd reset between bash calls, as a result bash commands should use absolute file paths. For search tools (for example Grep), path is optional and should be omitted for whole-workspace search.
-- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
+- Agent threads always have their cwd reset between bash calls. ${
+    isVirtualSession
+      ? 'In virtual sessions, prefer workspace-relative paths (e.g. `src/app.ts` or `.files/a.pdf`) and avoid host absolute paths like `/Users/...`.'
+      : 'Use absolute file paths for bash commands when needed.'
+  } For search tools (for example Grep), path is optional and should be omitted for whole-workspace search.
+- In your final response, share file paths that are relevant to the task. ${
+    isVirtualSession
+      ? 'Use workspace-visible paths; never expose host absolute paths.'
+      : 'Prefer absolute paths for consistency.'
+  } Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
 - For clear communication with the user the assistant MUST avoid using emojis.
 - Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`
   // Subagents get skill_discovery attachments (prefetch.ts runs in query(),

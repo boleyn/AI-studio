@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeHistoryMessagesForTimeline, toUpdatedFilesMap } from "./chatPanelUtils";
+import {
+  extractSelectedFilePathsFromUserContent,
+  normalizeAttachmentWorkspacePath,
+  normalizeHistoryMessagesForTimeline,
+  toUpdatedFilesMap,
+} from "./chatPanelUtils";
 
 test("normalizeHistoryMessagesForTimeline does not overwrite persisted planProgress", () => {
   const input = [
@@ -131,4 +136,25 @@ test("toUpdatedFilesMap normalizes updated file paths to workspace-style absolut
   assert.ok(result);
   assert.equal(result?.["/App.js"]?.code, "export default function App() { return null; }");
   assert.equal(result?.["/src/index.ts"]?.code, "console.log('ok');");
+});
+
+test("normalizeAttachmentWorkspacePath keeps file tags relative to workspace .files", () => {
+  assert.equal(
+    normalizeAttachmentWorkspacePath(
+      "/Users/santain/Desktop/sandpack/examples/nextjs-ai-studio/.files/唐继明_简历.pdf"
+    ),
+    ".files/唐继明_简历.pdf"
+  );
+  assert.equal(normalizeAttachmentWorkspacePath("/files/a.txt"), ".files/a.txt");
+  assert.equal(normalizeAttachmentWorkspacePath("/.files/a.txt"), ".files/a.txt");
+  assert.equal(normalizeAttachmentWorkspacePath(".files/a.txt"), ".files/a.txt");
+});
+
+test("extractSelectedFilePathsFromUserContent parses FILETAG markers", () => {
+  const content = [
+    "[唐继明_简历.pdf](FILETAG:.files%2F%E5%94%90%E7%BB%A7%E6%98%8E_%E7%AE%80%E5%8E%86.pdf)",
+    "[a.txt](FILETAG:%2Ffiles%2Fa.txt)",
+  ].join("\n");
+  const selected = extractSelectedFilePathsFromUserContent(content);
+  assert.deepEqual(selected, [".files/唐继明_简历.pdf", ".files/a.txt"]);
 });

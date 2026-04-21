@@ -82,6 +82,7 @@ import {
   memoryHeader,
 } from './attachments.js'
 import { quote } from './bash/shellQuote.js'
+import { maskVirtualPathForDisplay } from './file.js'
 import { formatNumber, formatTokens } from './format.js'
 import { getPewterLedgerVariant } from './planModeV2.js'
 import { jsonStringify } from './slowOperations.js'
@@ -3503,6 +3504,16 @@ function getAutoModeSparseInstructions(): UserMessage[] {
 export function normalizeAttachmentForAPI(
   attachment: Attachment,
 ): UserMessage[] {
+  const getModelVisiblePath = (pathLike: {
+    filename: string
+    displayPath?: string
+  }): string => {
+    const displayPath = pathLike.displayPath?.trim()
+    return displayPath && displayPath.length > 0
+      ? displayPath
+      : maskVirtualPathForDisplay(pathLike.filename)
+  }
+
   if (isAgentSwarmsEnabled()) {
     if (attachment.type === 'teammate_mailbox') {
       return [
@@ -3588,17 +3599,18 @@ Read the team config to discover your teammates' names. Check the task list peri
     case 'edited_text_file':
       return wrapMessagesInSystemReminder([
         createUserMessage({
-          content: `Note: ${attachment.filename} was modified, either by the user or by a linter. This change was intentional, so make sure to take it into account as you proceed (ie. don't revert it unless the user asks you to). Don't tell the user this, since they are already aware. Here are the relevant changes (shown with line numbers):\n${attachment.snippet}`,
+          content: `Note: ${getModelVisiblePath(attachment)} was modified, either by the user or by a linter. This change was intentional, so make sure to take it into account as you proceed (ie. don't revert it unless the user asks you to). Don't tell the user this, since they are already aware. Here are the relevant changes (shown with line numbers):\n${attachment.snippet}`,
           isMeta: true,
         }),
       ])
     case 'file': {
+      const visiblePath = getModelVisiblePath(attachment)
       const fileContent = attachment.content as FileReadToolOutput
       switch (fileContent.type) {
         case 'image': {
           return wrapMessagesInSystemReminder([
             createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
+              file_path: visiblePath,
             }),
             createToolResultMessage(FileReadTool, fileContent),
           ])
@@ -3606,13 +3618,13 @@ Read the team config to discover your teammates' names. Check the task list peri
         case 'text': {
           return wrapMessagesInSystemReminder([
             createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
+              file_path: visiblePath,
             }),
             createToolResultMessage(FileReadTool, fileContent),
             ...(attachment.truncated
               ? [
                   createUserMessage({
-                    content: `Note: The file ${attachment.filename} was too large and has been truncated to the first ${MAX_LINES_TO_READ} lines. Don't tell the user about this truncation. Use ${FileReadTool.name} to read more of the file if you need.`,
+                    content: `Note: The file ${visiblePath} was too large and has been truncated to the first ${MAX_LINES_TO_READ} lines. Don't tell the user about this truncation. Use ${FileReadTool.name} to read more of the file if you need.`,
                     isMeta: true, // only claude will see this
                   }),
                 ]
@@ -3622,7 +3634,7 @@ Read the team config to discover your teammates' names. Check the task list peri
         case 'notebook': {
           return wrapMessagesInSystemReminder([
             createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
+              file_path: visiblePath,
             }),
             createToolResultMessage(FileReadTool, fileContent),
           ])
@@ -3631,7 +3643,7 @@ Read the team config to discover your teammates' names. Check the task list peri
           // PDFs are handled via supplementalContent in the tool result
           return wrapMessagesInSystemReminder([
             createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
+              file_path: visiblePath,
             }),
             createToolResultMessage(FileReadTool, fileContent),
           ])
@@ -3642,16 +3654,17 @@ Read the team config to discover your teammates' names. Check the task list peri
     case 'compact_file_reference': {
       return wrapMessagesInSystemReminder([
         createUserMessage({
-          content: `Note: ${attachment.filename} was read before the last conversation was summarized, but the contents are too large to include. Use ${FileReadTool.name} tool if you need to access it.`,
+          content: `Note: ${getModelVisiblePath(attachment)} was read before the last conversation was summarized, but the contents are too large to include. Use ${FileReadTool.name} tool if you need to access it.`,
           isMeta: true,
         }),
       ])
     }
     case 'pdf_reference': {
+      const visiblePath = getModelVisiblePath(attachment)
       return wrapMessagesInSystemReminder([
         createUserMessage({
           content:
-            `PDF file: ${attachment.filename} (${attachment.pageCount} pages, ${formatFileSize(attachment.fileSize)}). ` +
+            `PDF file: ${visiblePath} (${attachment.pageCount} pages, ${formatFileSize(attachment.fileSize)}). ` +
             `This PDF is too large to read all at once. You MUST use the ${FILE_READ_TOOL_NAME} tool with the pages parameter ` +
             `to read specific page ranges (e.g., pages: "1-5"). Do NOT call ${FILE_READ_TOOL_NAME} without the pages parameter ` +
             `or it will fail. Start by reading the first few pages to understand the structure, then read more as needed. ` +
@@ -3670,7 +3683,7 @@ Read the team config to discover your teammates' names. Check the task list peri
 
       return wrapMessagesInSystemReminder([
         createUserMessage({
-          content: `The user selected the lines ${attachment.lineStart} to ${attachment.lineEnd} from ${attachment.filename}:\n${content}\n\nThis may or may not be related to the current task.`,
+          content: `The user selected the lines ${attachment.lineStart} to ${attachment.lineEnd} from ${getModelVisiblePath(attachment)}:\n${content}\n\nThis may or may not be related to the current task.`,
           isMeta: true,
         }),
       ])
@@ -3678,7 +3691,7 @@ Read the team config to discover your teammates' names. Check the task list peri
     case 'opened_file_in_ide': {
       return wrapMessagesInSystemReminder([
         createUserMessage({
-          content: `The user opened the file ${attachment.filename} in the IDE. This may or may not be related to the current task.`,
+          content: `The user opened the file ${getModelVisiblePath(attachment)} in the IDE. This may or may not be related to the current task.`,
           isMeta: true,
         }),
       ])

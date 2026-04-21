@@ -21,6 +21,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { hasEmbeddedSearchTools } from '../utils/embeddedTools.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { formatFileSize } from '../utils/format.js'
+import { maskVirtualPathForDisplay } from '../utils/file.js'
 import { getProjectDir } from '../utils/sessionStorage.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import {
@@ -118,12 +119,16 @@ export const DIR_EXISTS_GUIDANCE =
 export const DIRS_EXIST_GUIDANCE =
   'Both directories already exist — write to them directly with the Write tool (do not run mkdir or check for their existence).'
 
+export function toModelVisibleMemoryPath(inputPath: string): string {
+  return maskVirtualPathForDisplay(inputPath)
+}
+
 /**
  * Ensure a memory directory exists. Idempotent — called from loadMemoryPrompt
  * (once per session via systemPromptSection cache) so the model can always
  * write without checking existence first. FsOperations.mkdir is recursive
  * by default and already swallows EEXIST, so the full parent chain
- * (~/.claude/projects/<slug>/memory/) is created in one call with no
+ * (~/.claude/memory/) is created in one call with no
  * try/catch needed for the happy path.
  */
 export async function ensureMemoryDirExists(memoryDir: string): Promise<void> {
@@ -202,6 +207,7 @@ export function buildMemoryLines(
   extraGuidelines?: string[],
   skipIndex = false,
 ): string[] {
+  const visibleMemoryDir = toModelVisibleMemoryPath(memoryDir)
   const howToSave = skipIndex
     ? [
         '## How to save memories',
@@ -236,7 +242,7 @@ export function buildMemoryLines(
   const lines: string[] = [
     `# ${displayName}`,
     '',
-    `You have a persistent, file-based memory system at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE}`,
+    `You have a persistent, file-based memory system at \`${visibleMemoryDir}\`. ${DIR_EXISTS_GUIDANCE}`,
     '',
     "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
     '',
@@ -260,7 +266,7 @@ export function buildMemoryLines(
     '',
   ]
 
-  lines.push(...buildSearchingPastContextSection(memoryDir))
+  lines.push(...buildSearchingPastContextSection(visibleMemoryDir))
 
   return lines
 }
@@ -326,18 +332,19 @@ export function buildMemoryPrompt(params: {
  */
 function buildAssistantDailyLogPrompt(skipIndex = false): string {
   const memoryDir = getAutoMemPath()
+  const visibleMemoryDir = toModelVisibleMemoryPath(memoryDir)
   // Describe the path as a pattern rather than inlining today's literal path:
   // this prompt is cached by systemPromptSection('memory', ...) and NOT
   // invalidated on date change. The model derives the current date from the
   // date_change attachment (appended at the tail on midnight rollover) rather
   // than the user-context message — the latter is intentionally left stale to
   // preserve the prompt cache prefix across midnight.
-  const logPathPattern = join(memoryDir, 'logs', 'YYYY', 'MM', 'YYYY-MM-DD.md')
+  const logPathPattern = join(visibleMemoryDir, 'logs', 'YYYY', 'MM', 'YYYY-MM-DD.md')
 
   const lines: string[] = [
     '# auto memory',
     '',
-    `You have a persistent, file-based memory system found at: \`${memoryDir}\``,
+    `You have a persistent, file-based memory system found at: \`${visibleMemoryDir}\``,
     '',
     "This session is long-lived. As you work, record anything worth remembering by **appending** to today's daily log file:",
     '',
@@ -363,7 +370,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
           `\`${ENTRYPOINT_NAME}\` is the distilled index (maintained nightly from your logs) and is loaded into your context automatically. Read it for orientation, but do not edit it directly — record new information in today's log instead.`,
           '',
         ]),
-    ...buildSearchingPastContextSection(memoryDir),
+    ...buildSearchingPastContextSection(visibleMemoryDir),
   ]
 
   return lines.join('\n')

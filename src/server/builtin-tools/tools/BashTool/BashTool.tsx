@@ -226,6 +226,10 @@ type VirtualHostWorkspaceSession = {
 const virtualHostWorkspaceSessions = new Map<string, VirtualHostWorkspaceSession>()
 let virtualHostWorkspaceJanitorStarted = false
 
+function getDirEntryName(entry: string | { name: string }): string {
+  return typeof entry === 'string' ? entry : entry.name
+}
+
 function tokenizeShellLike(command: string): string[] {
   const matches = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || []
   return matches.map(part => {
@@ -345,8 +349,9 @@ async function materializeVirtualTreeToHost(
     await fsMkdir(currentHost, { recursive: true })
     const entries = virtualFs.readdirSync(currentVirtual)
     for (const entry of entries) {
-      const source = path.join(currentVirtual, entry)
-      const target = path.join(currentHost, entry)
+      const entryName = getDirEntryName(entry)
+      const source = path.join(currentVirtual, entryName)
+      const target = path.join(currentHost, entryName)
       const stat = virtualFs.statSync(source)
       if (stat.isDirectory()) {
         await walk(source, target)
@@ -512,12 +517,14 @@ function collectVirtualFileSet(
   const walk = (dir: string) => {
     const entries = fs.readdirSync(dir)
     for (const entry of entries) {
-      const absPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
+      const entryName = getDirEntryName(entry)
+      const absPath = path.join(dir, entryName)
+      const stat = fs.statSync(absPath)
+      if (stat.isDirectory()) {
         walk(absPath)
         continue
       }
-      if (!entry.isFile()) continue
+      if (!stat.isFile()) continue
       const relPath = path.relative(virtualRoot, absPath)
       out.add(normalizeRelativePathForSet(relPath))
     }
@@ -787,18 +794,20 @@ async function syncVirtualFsIntoHostWorkspace(
   const walkVirtual = async (virtualDir: string) => {
     const entries = fs.readdirSync(virtualDir)
     for (const entry of entries) {
-      const virtualAbsPath = path.join(virtualDir, entry.name)
+      const entryName = getDirEntryName(entry)
+      const virtualAbsPath = path.join(virtualDir, entryName)
       const relPath = normalizeRelativePathForSet(
         path.relative(virtualProjectRoot, virtualAbsPath),
       )
       const hostAbsPath = path.join(hostWorkspaceRoot, relPath)
 
-      if (entry.isDirectory()) {
+      const stat = fs.statSync(virtualAbsPath)
+      if (stat.isDirectory()) {
         await fsMkdir(hostAbsPath, { recursive: true })
         await walkVirtual(virtualAbsPath)
         continue
       }
-      if (!entry.isFile()) continue
+      if (!stat.isFile()) continue
 
       hostFiles.add(relPath)
       await fsMkdir(path.dirname(hostAbsPath), { recursive: true })

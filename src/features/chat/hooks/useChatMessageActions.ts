@@ -10,7 +10,11 @@ import {
 } from "../services/conversations";
 import type { ChatInputSubmitPayload } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import { stripInlineImageMarkdown, stripTagMarkersFromUserContent } from "../utils/chatPanelUtils";
+import {
+  extractSelectedFilePathsFromUserContent,
+  stripInlineImageMarkdown,
+  stripTagMarkersFromUserContent,
+} from "../utils/chatPanelUtils";
 import type { MessageRating } from "../components/message/MessageActionBar";
 
 const VIRTUAL_FAILED_ASSISTANT_PREFIX = "virtual-failed-assistant:";
@@ -43,7 +47,6 @@ export const useChatMessageActions = ({
       echoUserMessage?: boolean;
       persistIncomingMessages?: boolean;
       continueAssistantMessageId?: string;
-      baseMessagesOverride?: ConversationMessage[];
     }
   ) => Promise<void>;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -180,8 +183,10 @@ export const useChatMessageActions = ({
       if (userIndex < 0) return;
       const userMessage = snapshot[userIndex];
 
-      const text = stripInlineImageMarkdown(stripTagMarkersFromUserContent(extractText(userMessage.content)));
+      const userContent = extractText(userMessage.content);
+      const text = stripInlineImageMarkdown(stripTagMarkersFromUserContent(userContent));
       if (!text) return;
+      const selectedFilePaths = extractSelectedFilePathsFromUserContent(userContent);
       const uploadedFiles =
         userMessage.artifact && typeof userMessage.artifact === "object"
           ? (
@@ -223,18 +228,11 @@ export const useChatMessageActions = ({
           uploadedFiles,
           selectedSkill: Array.from(new Set(selectedSkills.filter(Boolean)))[0],
           selectedSkills: Array.from(new Set(selectedSkills.filter(Boolean))),
-          selectedFilePaths:
-            userMessage.additional_kwargs &&
-            typeof userMessage.additional_kwargs === "object" &&
-            Array.isArray((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
-              ? ((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
-                  .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-              : undefined,
+          selectedFilePaths: selectedFilePaths.length > 0 ? selectedFilePaths : undefined,
         },
         {
           echoUserMessage: false,
           persistIncomingMessages: false,
-          baseMessagesOverride: snapshot.slice(0, cutIndex),
         }
       );
     },

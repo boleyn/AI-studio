@@ -113,7 +113,6 @@ import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 import { createTrace, endTrace, isLangfuseEnabled } from './services/langfuse/index.js'
 import { getAPIProvider } from './utils/model/providers.js'
-import { getVirtualProjectRoot } from './utils/fsOperations.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const snipModule = feature('HISTORY_SNIP')
@@ -183,24 +182,7 @@ function isWithheldMaxOutputTokens(
 }
 
 function sanitizeToolUseInputForDisplay(input: Record<string, unknown>): void {
-  const rawPath = input.file_path
-  if (typeof rawPath !== 'string') return
-  const virtualRoot = (getVirtualProjectRoot() || '').trim()
-  if (!virtualRoot) return
-  const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
-  const normalizedRoot = normalize(virtualRoot)
-  const normalizedPath = rawPath.replace(/\\/g, '/')
-  if (!normalizedPath.startsWith(`${normalizedRoot}/`)) {
-    if (normalizedPath === normalizedRoot) {
-      input.file_path = '.'
-      return
-    }
-    input.file_path = '<outside-project-path>'
-    return
-  }
-  const rel = normalizedPath.slice(normalizedRoot.length)
-  const displayPath = rel.startsWith('/') ? rel.slice(1) : rel
-  input.file_path = displayPath || '.'
+  void input
 }
 
 export type QueryParams = {

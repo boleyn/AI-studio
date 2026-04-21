@@ -11,8 +11,6 @@ import {
   isEnvDefinedFalsy,
   isEnvTruthy,
 } from '../utils/envUtils.js'
-import { findCanonicalGitRoot } from '../utils/git.js'
-import { sanitizePath } from '../utils/path.js'
 import {
   getInitialSettings,
   getSettingsForSource,
@@ -84,7 +82,31 @@ export function isExtractModeActive(): boolean {
  */
 export function getMemoryBaseDir(): string {
   if (process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) {
-    return process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+    const raw = process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+    const normalized = raw.replace(/\\/g, '/')
+    const stableAistudioMarker = '/.aistudio/projects/'
+    const stableAistudioIndex = normalized.indexOf(stableAistudioMarker)
+    // Some runtimes still pass a legacy project-scoped path:
+    //   <root>/.aistudio/projects/<sanitized-project>/...
+    // Collapse it to the stable memory base:
+    //   <root>/.aistudio/
+    if (stableAistudioIndex > 0) {
+      const stableRoot = normalized.slice(0, stableAistudioIndex)
+      if (stableRoot.trim()) {
+        return (join(stableRoot, '.aistudio') + sep).normalize('NFC')
+      }
+    }
+    const virtualMarker = '/.aistudio-virtual/'
+    const markerIndex = normalized.indexOf(virtualMarker)
+    // AI Studio virtual-session paths include a volatile .aistudio-virtual/<sessionId>/ segment.
+    // Collapse to a stable project-local base so memory survives session restarts.
+    if (markerIndex > 0) {
+      const stableRoot = normalized.slice(0, markerIndex)
+      if (stableRoot.trim()) {
+        return (join(stableRoot, '.aistudio') + sep).normalize('NFC')
+      }
+    }
+    return raw
   }
   return getClaudeConfigHomeDir()
 }
@@ -152,7 +174,7 @@ function validateMemoryPath(
 /**
  * Direct override for the full auto-memory directory path via env var.
  * When set, getAutoMemPath()/getAutoMemEntrypoint() return this path directly
- * instead of computing `{base}/projects/{sanitized-cwd}/memory/`.
+ * instead of computing `{base}/memory/`.
  *
  * Used by Cowork to redirect memory to a space-scoped mount where the
  * per-session cwd (which contains the VM process name) would otherwise
@@ -196,21 +218,12 @@ export function hasAutoMemPathOverride(): boolean {
 }
 
 /**
- * Returns the canonical git repo root if available, otherwise falls back to
- * the stable project root. Uses findCanonicalGitRoot so all worktrees of the
- * same repo share one auto-memory directory (anthropics/claude-code#24382).
- */
-function getAutoMemBase(): string {
-  return findCanonicalGitRoot(getProjectRoot()) ?? getProjectRoot()
-}
-
-/**
  * Returns the auto-memory directory path.
  *
  * Resolution order:
  *   1. CLAUDE_COWORK_MEMORY_PATH_OVERRIDE env var (full-path override, used by Cowork)
  *   2. autoMemoryDirectory in settings.json (trusted sources only: policy/local/user)
- *   3. <memoryBase>/projects/<sanitized-git-root>/memory/
+ *   3. <memoryBase>/memory/
  *      where memoryBase is resolved by getMemoryBaseDir()
  *
  * Memoized: render-path callers (collapseReadSearchGroups → isAutoManagedMemoryFile)
@@ -226,10 +239,7 @@ export const getAutoMemPath = memoize(
     if (override) {
       return override
     }
-    const projectsDir = join(getMemoryBaseDir(), 'projects')
-    return (
-      join(projectsDir, sanitizePath(getAutoMemBase()), AUTO_MEM_DIRNAME) + sep
-    ).normalize('NFC')
+    return (join(getMemoryBaseDir(), AUTO_MEM_DIRNAME) + sep).normalize('NFC')
   },
   () => getProjectRoot(),
 )

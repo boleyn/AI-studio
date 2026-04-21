@@ -730,7 +730,6 @@ const ChatPanel = ({
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
         continueAssistantMessageId?: string;
-        baseMessagesOverride?: ConversationMessage[];
       }
     ) => {
       const text = payload.text.trim();
@@ -742,9 +741,6 @@ const ChatPanel = ({
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
       const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
-      const baseMessagesOverride = Array.isArray(options?.baseMessagesOverride)
-        ? options?.baseMessagesOverride
-        : null;
 
       if (payload.planQuestionResponse?.requestId) {
         clearPendingInteraction({ requestId: payload.planQuestionResponse.requestId });
@@ -819,34 +815,19 @@ const ChatPanel = ({
         id: userMessageId,
         time: userCreatedAt,
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
-        additional_kwargs: payload.selectedFilePaths
-          ? {
-              selectedFilePaths: payload.selectedFilePaths,
-              ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
-              planModeState: effectiveMode === "plan",
-              ...(payload.planModeApprovalResponse
-                ? { planModeApprovalResponse: payload.planModeApprovalResponse }
-                : {}),
-              ...(payload.planQuestionResponse
-                ? { planQuestionResponse: payload.planQuestionResponse }
-                : {}),
-              ...(payload.permissionApprovalResponse
-                ? { permissionApprovalResponse: payload.permissionApprovalResponse }
-                : {}),
-            }
-          : {
-              ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
-              planModeState: effectiveMode === "plan",
-              ...(payload.planModeApprovalResponse
-                ? { planModeApprovalResponse: payload.planModeApprovalResponse }
-                : {}),
-              ...(payload.planQuestionResponse
-                ? { planQuestionResponse: payload.planQuestionResponse }
-                : {}),
-              ...(payload.permissionApprovalResponse
-                ? { permissionApprovalResponse: payload.permissionApprovalResponse }
-                : {}),
-            },
+        additional_kwargs: {
+          ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+            : {}),
+        },
       };
 
       if (echoUserMessage) {
@@ -867,7 +848,6 @@ const ChatPanel = ({
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-          ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
           planModeState: effectiveMode === "plan",
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
@@ -903,17 +883,7 @@ const ChatPanel = ({
           ? existingAssistantKwargs.reasoning_text
           : "";
 
-      const baseMessages = baseMessagesOverride || messagesRef.current;
-      const requestMessagesForApi = [
-        ...baseMessages
-          .filter((item) => !(item.role === "assistant" && item.id === assistantMessageId))
-          .map((item) => ({
-            ...item,
-            role: item.role || (item.type as ConversationMessage["role"]) || "user",
-            content: item.content,
-          })),
-        requestMessage,
-      ];
+      const requestMessagesForApi = [requestMessage];
       console.log("[skill-debug][chatpanel-send]", {
         selectedSkillsState: selectedSkills,
         payloadSelectedSkill: payload.selectedSkill || null,
@@ -1049,10 +1019,6 @@ const ChatPanel = ({
         };
 
         if (!completionsStream) {
-          const historyMessages = [...baseMessages, requestMessage].map((message) => ({
-            role: message.role,
-            content: extractText(message.content),
-          }));
           const response = await fetch(completionsPath, {
             method: "POST",
             headers: {
@@ -1062,7 +1028,7 @@ const ChatPanel = ({
             signal: abortCtrl.signal,
             body: JSON.stringify({
               token,
-              messages: historyMessages,
+              messages: [requestMessage],
               permissionMode: effectiveMode,
               persistIncomingMessages,
               ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
@@ -1074,7 +1040,6 @@ const ChatPanel = ({
                 : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             }),
           });
@@ -1531,26 +1496,6 @@ const ChatPanel = ({
                         Number.isFinite(record.currentInputTokens)
                           ? record.currentInputTokens
                           : undefined,
-                      rawContextWindow:
-                        typeof record.rawContextWindow === "number" &&
-                        Number.isFinite(record.rawContextWindow)
-                          ? record.rawContextWindow
-                          : undefined,
-                      effectiveContextWindow:
-                        typeof record.effectiveContextWindow === "number" &&
-                        Number.isFinite(record.effectiveContextWindow)
-                          ? record.effectiveContextWindow
-                          : undefined,
-                      autoCompactThreshold:
-                        typeof record.autoCompactThreshold === "number" &&
-                        Number.isFinite(record.autoCompactThreshold)
-                          ? record.autoCompactThreshold
-                          : undefined,
-                      reservedOutputTokens:
-                        typeof record.reservedOutputTokens === "number" &&
-                        Number.isFinite(record.reservedOutputTokens)
-                          ? record.reservedOutputTokens
-                          : undefined,
                     };
                     setContextUsageSnapshot(
                       contextWindowPayload,
@@ -1695,7 +1640,6 @@ const ChatPanel = ({
                 : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             },
             headers: withAuthHeaders(),

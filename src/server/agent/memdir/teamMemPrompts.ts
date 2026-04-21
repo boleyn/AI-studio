@@ -3,6 +3,7 @@ import {
   DIRS_EXIST_GUIDANCE,
   ENTRYPOINT_NAME,
   MAX_ENTRYPOINT_LINES,
+  toModelVisibleMemoryPath,
 } from './memdir.js'
 import {
   MEMORY_DRIFT_CAVEAT,
@@ -25,6 +26,8 @@ export function buildCombinedMemoryPrompt(
 ): string {
   const autoDir = getAutoMemPath()
   const teamDir = getTeamMemPath()
+  const visibleAutoDir = toModelVisibleMemoryPath(autoDir)
+  const visibleTeamDir = toModelVisibleMemoryPath(teamDir)
 
   const howToSave = skipIndex
     ? [
@@ -60,7 +63,7 @@ export function buildCombinedMemoryPrompt(
   const lines = [
     '# Memory',
     '',
-    `You have a persistent, file-based memory system with two directories: a private directory at \`${autoDir}\` and a shared team directory at \`${teamDir}\`. ${DIRS_EXIST_GUIDANCE}`,
+    `You have a persistent, file-based memory system with two directories: a private directory at \`${visibleAutoDir}\` and a shared team directory at \`${visibleTeamDir}\`. ${DIRS_EXIST_GUIDANCE}`,
     '',
     "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
     '',
@@ -70,8 +73,8 @@ export function buildCombinedMemoryPrompt(
     '',
     'There are two scope levels:',
     '',
-    `- private: memories that are private between you and the current user. They persist across conversations with only this specific user and are stored at the root \`${autoDir}\`.`,
-    `- team: memories that are shared with and contributed by all of the users who work within this project directory. Team memories are synced at the beginning of every session and they are stored at \`${teamDir}\`.`,
+    `- private: memories that are private between you and the current user. They persist across conversations with only this specific user and are stored at the root \`${visibleAutoDir}\`.`,
+    `- team: memories that are shared with and contributed by all of the users who work within this project directory. Team memories are synced at the beginning of every session and they are stored at \`${visibleTeamDir}\`.`,
     '',
     ...TYPES_SECTION_COMBINED,
     ...WHAT_NOT_TO_SAVE_SECTION,
@@ -93,7 +96,7 @@ export function buildCombinedMemoryPrompt(
     '- When to use or update tasks instead of memory: When you need to break your work in current conversation into discrete steps or keep track of your progress use tasks instead of saving to memory. Tasks are great for persisting information about the work that needs to be done in the current conversation, but memory should be reserved for information that will be useful in future conversations.',
     ...(extraGuidelines ?? []),
     '',
-    ...buildSearchingPastContextSection(autoDir),
+    ...buildSearchingPastContextSection(visibleAutoDir),
   ]
 
   return lines.join('\n')

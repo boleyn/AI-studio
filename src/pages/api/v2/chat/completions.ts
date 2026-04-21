@@ -8,6 +8,7 @@ import { getProject, updateFile } from "@server/projects/projectStorage";
 import { saveChatFileSnapshot } from "@server/chat/fileSnapshotStorage";
 import {
   appendConversationMessages,
+  getConversation,
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
 import {
@@ -211,6 +212,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
+  const lastIncomingUserMessage = (() => {
+    for (let i = sdkMessages.length - 1; i >= 0; i -= 1) {
+      const candidate = sdkMessages[i];
+      if ((candidate.message?.role || "user") === "user") {
+        return candidate;
+      }
+    }
+    return null;
+  })();
+  if (!lastIncomingUserMessage) {
+    res.status(400).json({ error: "缺少用户消息" });
+    return;
+  }
+  const incomingUserMessages = [lastIncomingUserMessage];
+
+  const persistedHistoryMessages: ConversationMessage[] = conversationId
+    ? ((await getConversation(token, conversationId))?.messages || [])
+    : [];
+  const historySdkMessages = toSdkMessages(persistedHistoryMessages as unknown);
+  const historyAgentMessages = toAgentMessages(historySdkMessages);
+  const incomingAgentMessages = toAgentMessages(incomingUserMessages);
+
   startSse(res);
   const stopHeartbeat = startSseHeartbeat(res);
 
@@ -231,8 +254,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       conversationId,
       selectedModel,
       selectedSkills,
-      sdkMessageCount: sdkMessages.length,
-      agentMessageCount: toAgentMessages(sdkMessages).length,
+      sdkMessageCount: incomingUserMessages.length,
+      historySdkMessageCount: historySdkMessages.length,
+      agentMessageCount: historyAgentMessages.length + incomingAgentMessages.length,
     });
 
     const streamedUpdatedFiles: Record<string, { code: string }> = {};
@@ -257,10 +281,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       chatId,
       selectedModel,
       selectedSkills,
-      historyMessages: req.body?.messages,
+      historyMessages: persistedHistoryMessages,
       projectFiles: project.files || {},
       permissionMode,
-      messages: toAgentMessages(sdkMessages),
+      messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,
       onEvent: (event, data) => {
         if (event === SdkStreamEventEnum.streamEvent && data.subtype === "files_updated") {
@@ -312,7 +336,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (conversationId) {
-      const incomingMessages = sdkMessages
+      const incomingMessages = incomingUserMessages
         .filter((message) => (message.message?.role || "user") === "user")
         .map(toConversationMessage);
       const assistantStored = toConversationMessage(runResult.assistantMessage);
