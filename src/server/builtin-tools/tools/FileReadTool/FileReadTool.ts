@@ -24,8 +24,11 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from 'src/skills/loadSkillsDir.js'
-import { getChatModelCatalog, getChatModelProfile } from '@server/aiProxy/catalogStore'
-import { getOpenAIClient } from '../../../agent/services/api/openai/client.js'
+import {
+  generateImageCaption,
+  modelSupportsVision,
+  resolveVisionModelForCaption,
+} from '@server/vision/imageCaptionService'
 import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
@@ -139,6 +142,14 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
     normalizedPath === normalizedRoot ||
     normalizedPath.startsWith(`${normalizedRoot}${path.sep}`)
   )
+}
+
+function resolveProjectTokenForUsageEvents(): string | undefined {
+  const virtualRoot = (getVirtualProjectRoot() || '').trim()
+  if (!virtualRoot) return undefined
+  const token = path.basename(path.resolve(virtualRoot)).trim()
+  if (!token || token === '.' || token === '/') return undefined
+  return token
 }
 
 function toSanitizedReadError(error: unknown, requestedPath: string): Error | null {
@@ -835,78 +846,7 @@ function shouldIncludeFileReadMitigation(): boolean {
 }
 
 function modelSupportsImageInput(mainLoopModel: string): boolean {
-  const profile = getChatModelProfile(mainLoopModel)
-  // AIStudio rule: only trust model config in config.json.
-  return profile?.vision === true
-}
-
-async function resolveVisionCaptionModel(
-  mainLoopModel: string,
-): Promise<string | null> {
-  const profile = getChatModelProfile(mainLoopModel)
-  if (typeof profile?.visionModel === 'string' && profile.visionModel.trim()) {
-    return profile.visionModel.trim()
-  }
-  try {
-    const catalog = await getChatModelCatalog()
-    const fallbackVisionModel = catalog.models.find(m => m.vision)?.id
-    if (fallbackVisionModel) return fallbackVisionModel
-  } catch {
-    // Ignore catalog lookup failures and fall through to null.
-  }
-  return null
-}
-
-async function describeImageViaVisionModel(params: {
-  imageBase64: string
-  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-  mainLoopModel: string
-  dimensions?: ImageDimensions
-}): Promise<{ description: string; visionModel: string }> {
-  const { imageBase64, mediaType, mainLoopModel, dimensions } = params
-  const model = await resolveVisionCaptionModel(mainLoopModel)
-  if (!model) {
-    throw new Error(
-      `No visionModel configured for model '${mainLoopModel}' in model config`,
-    )
-  }
-  const client = getOpenAIClient()
-
-  const response = await client.chat.completions.create({
-    model,
-    temperature: 0.2,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text:
-              '请用中文客观描述这张图片的主要内容。' +
-              '输出1-3句话，聚焦可见事实，不要臆测，不要额外解释。',
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mediaType};base64,${imageBase64}`,
-            },
-          },
-        ],
-      },
-    ],
-  } as any)
-
-  const text = response.choices?.[0]?.message?.content?.trim()
-  if (text) return { description: text, visionModel: model }
-
-  const dimensionHint =
-    dimensions?.originalWidth && dimensions?.originalHeight
-      ? `，分辨率约 ${dimensions.originalWidth}x${dimensions.originalHeight}`
-      : ''
-  return {
-    description: `这是一个图片文件（${mediaType}${dimensionHint}），但视觉模型未返回可用描述。`,
-    visionModel: model,
-  }
+  return modelSupportsVision(mainLoopModel)
 }
 
 /**
@@ -1045,17 +985,24 @@ async function callInner(
     if (!supportsImage) {
       let imageDescription: string
       let descriptionFailureReason = ''
-      let attemptedVisionModel = await resolveVisionCaptionModel(
+      let attemptedVisionModel = await resolveVisionModelForCaption(
         context.options.mainLoopModel,
       )
       try {
-        const described = await describeImageViaVisionModel({
+        const described = await generateImageCaption({
           imageBase64: data.file.base64,
           mediaType: data.file.type,
           mainLoopModel: context.options.mainLoopModel,
-          dimensions: data.file.dimensions,
+          token: resolveProjectTokenForUsageEvents(),
         })
-        imageDescription = described.description
+        const dimensionHint =
+          data.file.dimensions?.originalWidth &&
+          data.file.dimensions?.originalHeight
+            ? `（分辨率约 ${data.file.dimensions.originalWidth}x${data.file.dimensions.originalHeight}）`
+            : ''
+        imageDescription =
+          described.caption ||
+          `这是一个图片文件（${data.file.type}${dimensionHint}），但视觉模型未返回可用描述。`
         attemptedVisionModel = described.visionModel
       } catch (error) {
         descriptionFailureReason =
@@ -1080,7 +1027,7 @@ async function callInner(
       logError(
         new Error(
           `[FileReadTool] Image read description path: mainLoopModel=${context.options.mainLoopModel}, configuredVisionModel=${
-            (await resolveVisionCaptionModel(context.options.mainLoopModel)) ??
+            (await resolveVisionModelForCaption(context.options.mainLoopModel)) ??
             'none'
           }, attemptedVisionModel=${attemptedVisionModel ?? 'none'}, failureReason=${
             descriptionFailureReason || 'none'
@@ -1119,7 +1066,7 @@ async function callInner(
     logError(
       new Error(
         `[FileReadTool] Image read as base64: mainLoopModel=${context.options.mainLoopModel}, configuredVisionModel=${
-          (await resolveVisionCaptionModel(context.options.mainLoopModel)) ??
+          (await resolveVisionModelForCaption(context.options.mainLoopModel)) ??
           'none'
         }`,
       ),

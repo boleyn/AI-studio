@@ -36,6 +36,24 @@ type ModelUsageResponse = {
     }>
   >;
   items: ModelUsageItem[];
+  toolUsage?: {
+    summary: {
+      totalCalls: number;
+      totalUsedTokens: number;
+      activeModels: number;
+    };
+    trendWindow: string[];
+    trends: Record<
+      string,
+      Array<{
+        date: string;
+        calls: number;
+        totalUsedTokens: number;
+        avgUsedPercent: number;
+      }>
+    >;
+    items: ModelUsageItem[];
+  };
 };
 
 type UsageAggRow = {
@@ -47,6 +65,24 @@ type UsageAggRow = {
 };
 
 type UsageTrendAggRow = {
+  _id?: {
+    modelId?: string;
+    day?: string;
+  };
+  calls?: number;
+  totalUsedTokens?: number;
+  avgUsedPercent?: number;
+};
+
+type VisionUsageAggRow = {
+  _id: string;
+  calls?: number;
+  totalUsedTokens?: number;
+  avgUsedPercent?: number;
+  lastUsedAt?: Date;
+};
+
+type VisionUsageTrendAggRow = {
   _id?: {
     modelId?: string;
     day?: string;
@@ -137,10 +173,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const tokens = Array.from(tokenSet);
     let usageRows: UsageAggRow[] = [];
     let usageTrendRows: UsageTrendAggRow[] = [];
+    let visionUsageRows: VisionUsageAggRow[] = [];
+    let visionUsageTrendRows: VisionUsageTrendAggRow[] = [];
 
     if (tokens.length > 0) {
       const db = await getMongoDb();
       const itemCol = db.collection("conversation_items");
+      const usageEventCol = db.collection("model_usage_events");
       usageRows = (await itemCol
         .aggregate([
           {
@@ -231,6 +270,81 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           },
         ])
         .toArray()) as UsageTrendAggRow[];
+
+      visionUsageRows = (await usageEventCol
+        .aggregate([
+          {
+            $match: {
+              token: { $in: tokens },
+              source: "image_vision",
+              modelId: { $type: "string", $ne: "" },
+            },
+          },
+          {
+            $group: {
+              _id: "$modelId",
+              calls: { $sum: 1 },
+              totalUsedTokens: {
+                $sum: {
+                  $cond: [{ $isNumber: "$usedTokens" }, "$usedTokens", 0],
+                },
+              },
+              avgUsedPercent: {
+                $avg: {
+                  $cond: [{ $isNumber: "$usedPercent" }, "$usedPercent", 0],
+                },
+              },
+              lastUsedAt: { $max: "$time" },
+            },
+          },
+        ])
+        .toArray()) as VisionUsageAggRow[];
+
+      visionUsageTrendRows = (await usageEventCol
+        .aggregate([
+          {
+            $match: {
+              token: { $in: tokens },
+              source: "image_vision",
+              modelId: { $type: "string", $ne: "" },
+            },
+          },
+          {
+            $project: {
+              modelId: "$modelId",
+              day: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: "$time",
+                  timezone: trendTimezone,
+                },
+              },
+              usedTokens: {
+                $cond: [{ $isNumber: "$usedTokens" }, "$usedTokens", 0],
+              },
+              usedPercent: {
+                $cond: [{ $isNumber: "$usedPercent" }, "$usedPercent", null],
+              },
+            },
+          },
+          {
+            $match: {
+              day: { $in: trendWindow },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                modelId: "$modelId",
+                day: "$day",
+              },
+              calls: { $sum: 1 },
+              totalUsedTokens: { $sum: "$usedTokens" },
+              avgUsedPercent: { $avg: "$usedPercent" },
+            },
+          },
+        ])
+        .toArray()) as VisionUsageTrendAggRow[];
     }
 
     const usageByModel = new Map<string, UsageAggRow>();
@@ -279,6 +393,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         avgUsedPercent: Number(Math.max(0, Math.min(100, toSafeNumber(row.avgUsedPercent))).toFixed(1)),
       });
     });
+    const toolUsageByModel = new Map<string, VisionUsageAggRow>();
+    visionUsageRows.forEach((row) => {
+      const modelId = typeof row._id === "string" ? row._id.trim() : "";
+      if (!modelId) return;
+      toolUsageByModel.set(modelId, row);
+    });
+
+    const allToolModelIds = new Set<string>([
+      ...Array.from(toolUsageByModel.keys()),
+      ...visionUsageTrendRows
+        .map((row) => (typeof row?._id?.modelId === "string" ? row._id.modelId.trim() : ""))
+        .filter(Boolean),
+    ]);
+
+    const toolItems: ModelUsageItem[] = Array.from(allToolModelIds)
+      .map((modelId) => {
+        const meta = mergedCatalog.get(modelId);
+        const usage = toolUsageByModel.get(modelId);
+        const scope: ModelUsageItem["scope"] = meta?.scope ?? "unknown";
+        return {
+          modelId,
+          label: meta?.label || modelId,
+          icon: meta?.icon,
+          scope,
+          calls: Math.max(0, Math.floor(toSafeNumber(usage?.calls))),
+          totalUsedTokens: Math.max(0, Math.floor(toSafeNumber(usage?.totalUsedTokens))),
+          avgUsedPercent: Number(Math.max(0, Math.min(100, toSafeNumber(usage?.avgUsedPercent))).toFixed(1)),
+          lastUsedAt:
+            usage?.lastUsedAt instanceof Date && !Number.isNaN(usage.lastUsedAt.getTime())
+              ? usage.lastUsedAt.toISOString()
+              : undefined,
+        };
+      })
+      .sort((a, b) => {
+        if (b.calls !== a.calls) return b.calls - a.calls;
+        if (b.totalUsedTokens !== a.totalUsedTokens) return b.totalUsedTokens - a.totalUsedTokens;
+        return a.label.localeCompare(b.label, "zh-CN");
+      });
+
+    const toolTrendMap = new Map<string, Map<string, { calls: number; totalUsedTokens: number; avgUsedPercent: number }>>();
+    visionUsageTrendRows.forEach((row) => {
+      const modelId = typeof row?._id?.modelId === "string" ? row._id.modelId.trim() : "";
+      const day = typeof row?._id?.day === "string" ? row._id.day : "";
+      if (!modelId || !day) return;
+      if (!toolTrendMap.has(modelId)) toolTrendMap.set(modelId, new Map());
+      toolTrendMap.get(modelId)!.set(day, {
+        calls: Math.max(0, Math.floor(toSafeNumber(row.calls))),
+        totalUsedTokens: Math.max(0, Math.floor(toSafeNumber(row.totalUsedTokens))),
+        avgUsedPercent: Number(Math.max(0, Math.min(100, toSafeNumber(row.avgUsedPercent))).toFixed(1)),
+      });
+    });
+
+    const toolTrends: NonNullable<ModelUsageResponse["toolUsage"]>["trends"] = {};
+    allToolModelIds.forEach((modelId) => {
+      const modelTrend = toolTrendMap.get(modelId);
+      toolTrends[modelId] = trendWindow.map((date) => {
+        const point = modelTrend?.get(date);
+        return {
+          date,
+          calls: point?.calls || 0,
+          totalUsedTokens: point?.totalUsedTokens || 0,
+          avgUsedPercent: point?.avgUsedPercent || 0,
+        };
+      });
+    });
 
     const trends: ModelUsageResponse["trends"] = {};
     allModelIds.forEach((modelId) => {
@@ -304,6 +483,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       trendWindow,
       trends,
       items,
+      toolUsage: {
+        summary: {
+          totalCalls: toolItems.reduce((sum, item) => sum + item.calls, 0),
+          totalUsedTokens: toolItems.reduce((sum, item) => sum + item.totalUsedTokens, 0),
+          activeModels: toolItems.filter((item) => item.calls > 0).length,
+        },
+        trendWindow,
+        trends: toolTrends,
+        items: toolItems,
+      },
     };
 
     res.setHeader("Cache-Control", "private, no-store, must-revalidate");

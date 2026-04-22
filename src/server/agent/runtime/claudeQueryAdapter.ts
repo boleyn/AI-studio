@@ -689,6 +689,7 @@ const ensureClaudeProviderEnv = (input: RunClaudeQueryAdapterInput): void => {
   if (selectedModel && !process.env.OPENAI_MODEL) {
     process.env.OPENAI_MODEL = selectedModel;
   }
+
 };
 
 const extractPrompt = (messages: ChatCompletionMessageParam[]): string => {
