@@ -5,7 +5,9 @@ import type {
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { requireAuth } from "@server/auth/session";
+import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile } from "@server/projects/projectStorage";
+import { getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
 import { saveChatFileSnapshot } from "@server/chat/fileSnapshotStorage";
 import {
   appendConversationMessages,
@@ -310,6 +312,20 @@ const normalizeUpdatedFiles = (
   return output;
 };
 
+const normalizeSnapshotFiles = (
+  files: Record<string, { code?: string }>
+): Record<string, { code: string }> => {
+  const output: Record<string, { code: string }> = {};
+  for (const [rawPath, entry] of Object.entries(files || {})) {
+    const code = typeof entry?.code === "string" ? entry.code : "";
+    const normalizedPath = rawPath.trim().replace(/\\/g, "/");
+    if (!normalizedPath) continue;
+    const workspacePath = normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`;
+    output[workspacePath] = { code };
+  }
+  return output;
+};
+
 const isLikelyTextContentType = (contentType?: string) => {
   const normalized = (contentType || "").toLowerCase().split(";")[0].trim();
   if (!normalized) return false;
@@ -449,9 +465,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const project = await getProject(token);
-  if (!project) {
+  const access = await getChatTokenAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目或技能不存在" });
+    return;
+  }
+  if (access === "forbidden") {
+    res.status(403).json({ error: "无权访问该项目或技能" });
+    return;
+  }
+  const isProjectToken = access === "ok_project";
+  const project = isProjectToken ? await getProject(token) : null;
+  const skill = !isProjectToken ? await getUserSkill({ token, userId: String(auth.user._id) }) : null;
+  if (isProjectToken && !project) {
     res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (!isProjectToken && !skill) {
+    res.status(404).json({ error: "技能不存在" });
     return;
   }
 
@@ -536,7 +567,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     scope: `v2-chat:${token}:${conversationId || "new"}`,
   });
 
-  const chatId = conversationId || `project-${token}`;
+  const chatId = conversationId || `${isProjectToken ? "project" : "skill"}-${token}`;
   registerActiveConversationRun({ token, chatId, controller: abortController });
 
   try {
@@ -567,9 +598,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
+    const baseFiles = isProjectToken
+      ? (project?.files || {})
+      : ((skill?.files || {}) as Record<string, { code?: string }>);
     const projectFilesForRun = await materializeAttachmentRuntimeFiles({
       token,
-      projectFiles: project.files || {},
+      projectFiles: baseFiles,
       messages: incomingUserMessages,
     });
 
@@ -608,13 +642,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         token,
         chatId,
         assistantMessageId: assistantMessageIdForSnapshot,
-        files: project.files || {},
+        files: normalizeSnapshotFiles(baseFiles),
       });
-      await Promise.all(
-        Object.entries(updatedFiles).map(([filePath, file]) =>
-          updateFile(token, filePath, file.code)
-        )
-      );
+      if (isProjectToken) {
+        await Promise.all(
+          Object.entries(updatedFiles).map(([filePath, file]) =>
+            updateFile(token, filePath, file.code)
+          )
+        );
+      } else {
+        const nextSkillFiles: Record<string, { code: string }> = {
+          ...((skill?.files || {}) as Record<string, { code: string }>),
+          ...updatedFiles,
+        };
+        await updateUserSkill({
+          token,
+          userId: String(auth.user._id),
+          updates: {
+            files: nextSkillFiles,
+          },
+        });
+      }
       streamEvent(res, SdkStreamEventEnum.streamEvent, {
         subtype: "files_updated",
         files: updatedFiles,

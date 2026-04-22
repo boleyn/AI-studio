@@ -929,13 +929,15 @@ const SkillCreatePage = () => {
           projectName={skillName}
           activeView={activeView}
           onChangeView={setActiveView}
-          onBack={() => {
+          onBack={async () => {
             const target = returnTo || (projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/");
-            if (typeof window !== "undefined") {
-              window.location.assign(target);
-              return;
+            try {
+              await router.push(target);
+            } catch {
+              if (typeof window !== "undefined") {
+                window.location.assign(target);
+              }
             }
-            void router.push(target);
           }}
           onOpenSettings={() => {
             toast({
@@ -978,7 +980,7 @@ const SkillCreatePage = () => {
               >
                 <ChatPanel
                   key={workspaceId}
-                  token={`skill-studio:${workspaceId}`}
+                  token={workspaceId}
                   height="100%"
                   completionsPath="/api/v2/chat/completions"
                   completionsStream
