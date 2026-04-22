@@ -156,6 +156,68 @@ const sdkContentToText = (content: unknown): string => {
     .join("");
 };
 
+const toUserMessageContentBlocks = ({
+  text,
+  artifacts,
+}: {
+  text: string;
+  artifacts: UploadedFileArtifact[];
+}): Array<Record<string, unknown>> => {
+  const toSafeFileName = (value: string): string => {
+    const base = (value || "file")
+      .split("/")
+      .pop()
+      ?.split("\\")
+      .pop()
+      ?.trim() || "file";
+    const withoutControlChars = base.replace(/[\u0000-\u001f\u007f]/g, "");
+    const sanitized = withoutControlChars
+      .replace(/[\\/:"*?<>|]/g, "_")
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalized = sanitized.replace(/^\.+/, "").slice(0, 180);
+    return normalized || "file";
+  };
+  const toRuntimeAttachmentPath = (file: UploadedFileArtifact): string => {
+    const raw = typeof file.storagePath === "string" ? file.storagePath.trim() : "";
+    if (!raw) {
+      return `/.files/${toSafeFileName(file.name || "file")}`;
+    }
+    const normalized = raw.replace(/\\/g, "/");
+    if (normalized === ".files" || normalized === "/.files") return "/.files";
+    if (normalized.startsWith(".files/")) return `/${normalized}`;
+    if (normalized.startsWith("/.files/")) return normalized;
+    if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
+      return `/.files/${toSafeFileName(file.name || normalized)}`;
+    }
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  };
+
+  const blocks: Array<Record<string, unknown>> = [];
+  if (text.trim()) {
+    blocks.push({
+      type: "text",
+      text,
+    });
+  }
+  artifacts.forEach((file) => {
+    const storagePath = toRuntimeAttachmentPath(file);
+    if (!storagePath) return;
+    blocks.push({
+      type: "attachment",
+      name: file.name || "",
+      mime_type: file.type || "application/octet-stream",
+      storage_path: storagePath,
+      ...(typeof file.storagePath === "string" && file.storagePath.trim()
+        ? { source_storage_path: file.storagePath.trim() }
+        : {}),
+      ...(file.previewUrl ? { preview_url: file.previewUrl } : {}),
+      ...(file.downloadUrl ? { download_url: file.downloadUrl } : {}),
+    });
+  });
+  return blocks;
+};
+
 const getPendingInteractionKey = (interaction: PendingChatInteraction) => {
   if (interaction.type === "permission") {
     return (interaction.permission.toolUseId || interaction.requestId || interaction.permission.toolName || "")
@@ -746,7 +808,7 @@ const ChatPanel = ({
       };
       const seenArtifactKeys = new Set<string>();
       const finalArtifacts: UploadedFileArtifact[] = [];
-      [...uploadedArtifacts, ...selectedPathArtifacts].forEach((file) => {
+      [...selectedPathArtifacts, ...uploadedArtifacts].forEach((file) => {
         const key = dedupeKey(file);
         if (seenArtifactKeys.has(key)) return;
         seenArtifactKeys.add(key);
@@ -822,21 +884,22 @@ const ChatPanel = ({
         selectedSkills: payload.selectedSkills || (payload.selectedSkill ? [payload.selectedSkill] : undefined),
         selectedFilePaths: payload.selectedFilePaths,
       });
+      const userContentBlocks = toUserMessageContentBlocks({
+        text: userBubbleContent || displayText,
+        artifacts: finalArtifacts,
+      });
 
       const userMessage: ConversationMessage = {
         type: "user",
         subtype: effectiveMode === "plan" ? "plan_user" : "user",
         role: "user",
-        content: userBubbleContent || displayText,
+        content: userContentBlocks.length > 0 ? userContentBlocks : userBubbleContent || displayText,
         id: userMessageId,
         time: userCreatedAt,
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: {
           ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
           planModeState: effectiveMode === "plan",
-          ...(payload.selectedFilePaths && payload.selectedFilePaths.length > 0
-            ? { selectedFilePaths: payload.selectedFilePaths }
-            : {}),
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
             : {}),

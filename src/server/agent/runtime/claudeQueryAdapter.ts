@@ -215,6 +215,8 @@ const isExportableRuntimeProjectPath = (filePath: string): boolean => {
   const normalized = normalizeProjectFilePath(filePath);
   if (normalized === "/.aistudio" || normalized.startsWith("/.aistudio/")) return false;
   if (normalized === "/.aistudio-home" || normalized.startsWith("/.aistudio-home/")) return false;
+  // Uploaded/binary attachments mirrored under /.files should not be pushed to code editor updates.
+  if (normalized === "/.files" || normalized.startsWith("/.files/")) return false;
   return true;
 };
 
@@ -331,6 +333,17 @@ const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectF
   return expanded;
 };
 
+const decodeDataUrlToBuffer = (value: string): Buffer | null => {
+  const trimmed = (value || "").trim();
+  const matched = trimmed.match(/^data:([^;,]+)?;base64,(.+)$/is);
+  if (!matched || !matched[2]) return null;
+  try {
+    return Buffer.from(matched[2], "base64");
+  } catch {
+    return null;
+  }
+};
+
 export const buildProjectMemfsOverlay = (
   projectRoot: string,
   projectFiles: ProjectFilesInput,
@@ -383,7 +396,9 @@ export const buildProjectMemfsOverlay = (
     const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
     const dirPath = path.dirname(absolutePath);
     memfs.mkdirSync(dirPath, { recursive: true });
-    memfs.writeFileSync(absolutePath, typeof file?.code === "string" ? file.code : "");
+    const rawCode = typeof file?.code === "string" ? file.code : "";
+    const binary = decodeDataUrlToBuffer(rawCode);
+    memfs.writeFileSync(absolutePath, binary ?? rawCode);
   }
   memfs.mkdirSync(projectRoot, { recursive: true });
   const hostProjectRoot = path.resolve(process.cwd());
@@ -686,7 +701,29 @@ const extractPrompt = (messages: ChatCompletionMessageParam[]): string => {
 
 const normalizeMessageContent = (content: unknown): string => {
   if (typeof content === "string") return content;
-  return sdkContentToText(content);
+  if (!Array.isArray(content)) return sdkContentToText(content);
+  const parts: string[] = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const block = item as Record<string, unknown>;
+    if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+      parts.push(block.text.trim());
+      continue;
+    }
+    if (block.type === "attachment") {
+      const name = typeof block.name === "string" ? block.name.trim() : "";
+      const storagePath = typeof block.storage_path === "string" ? block.storage_path.trim() : "";
+      const mime = typeof block.mime_type === "string" ? block.mime_type.trim() : "";
+      if (name || storagePath) {
+        parts.push(
+          `[attachment] name=${name || "file"} path=${storagePath || "unknown"}${mime ? ` mime=${mime}` : ""}`
+        );
+      }
+      continue;
+    }
+  }
+  const merged = parts.join("\n");
+  return merged || sdkContentToText(content);
 };
 
 const getRawMessagesArray = (historyMessages: unknown): Array<Record<string, unknown>> => {
@@ -1570,6 +1607,9 @@ const tryRunQueryEngine = async (
                 const latestCode = scopedFs?.readFileSync(absoluteFilePath, { encoding: "utf8" });
                 if (typeof latestCode === "string") {
                   const displayPath = toVirtualDisplayFilePath(virtualProjectRoot, absoluteFilePath);
+                  if (!isExportableRuntimeProjectPath(displayPath)) {
+                    continue;
+                  }
                   emitEvent("stream_event", {
                     subtype: "files_updated",
                     files: {

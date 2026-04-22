@@ -110,7 +110,14 @@ const ChatItem = ({
                   const icon = getFileIcon(file.name || "");
                   const fileUrl = file.previewUrl || file.downloadUrl || "";
                   return (
-                    <Box key={`${file.name || "file"}-${index}`} bg="myWhite.100" borderRadius="md" overflow="hidden">
+                    <Box
+                      key={`${file.name || "file"}-${index}`}
+                      bg="myWhite.100"
+                      border="1px solid"
+                      borderColor="myGray.200"
+                      borderRadius="md"
+                      overflow="hidden"
+                    >
                       {image ? (
                         fileUrl ? (
                           <Box as="img" src={fileUrl} alt={file.name || `文件 ${index + 1}`} maxH="220px" objectFit="contain" w="100%" />

@@ -301,6 +301,19 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
   }));
 
 export const toSelectedPathArtifacts = (paths: string[]): UploadedFileArtifact[] => {
+  const inferMimeType = (inputPath: string): string => {
+    const lower = inputPath.toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".txt")) return "text/plain";
+    if (lower.endsWith(".md")) return "text/markdown";
+    if (lower.endsWith(".json")) return "application/json";
+    if (lower.endsWith(".csv")) return "text/csv";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".webp")) return "image/webp";
+    return "application/octet-stream";
+  };
+
   const normalized = Array.isArray(paths)
     ? paths
         .filter((item): item is string => typeof item === "string")
@@ -309,12 +322,13 @@ export const toSelectedPathArtifacts = (paths: string[]): UploadedFileArtifact[]
     : [];
   const unique = Array.from(new Set(normalized));
   return unique.map((path, index) => ({
-    id: `selected-path-${index}-${path}`,
+    id: `selected-file-${index + 1}`,
     name: toFileTagLabel(path),
     size: 0,
-    type: "application/octet-stream",
+    type: inferMimeType(path),
     storagePath: path,
     publicUrl: "",
+    lastModified: 0,
   }));
 };
 

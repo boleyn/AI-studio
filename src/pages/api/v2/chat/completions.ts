@@ -1,4 +1,5 @@
 import "module-alias/register";
+import path from "node:path";
 import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
@@ -28,6 +29,7 @@ import {
 } from "@shared/chat/sdkMessages";
 import { SdkStreamEventEnum, type SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { sendSseEvent, startSse, startSseHeartbeat } from "@server/http/sse";
+import { getObjectFromStorage, normalizeStorageKey } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type RequestBodyMessage = {
@@ -150,6 +152,129 @@ const normalizeUpdatedFiles = (
     output[workspacePath] = { code };
   }
   return output;
+};
+
+const isLikelyTextContentType = (contentType?: string) => {
+  const normalized = (contentType || "").toLowerCase().split(";")[0].trim();
+  if (!normalized) return false;
+  if (normalized.startsWith("text/")) return true;
+  return [
+    "application/json",
+    "application/ld+json",
+    "application/xml",
+    "application/javascript",
+    "application/x-javascript",
+    "application/typescript",
+    "application/x-typescript",
+    "application/ecmascript",
+    "application/x-www-form-urlencoded",
+    "application/graphql",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "image/svg+xml",
+  ].includes(normalized);
+};
+
+const toSafeFileName = (value: string) => {
+  const base = path.posix.basename((value || "file").trim());
+  const withoutControlChars = base.replace(/[\u0000-\u001f\u007f]/g, "");
+  const sanitized = withoutControlChars
+    .replace(/[\\/:"*?<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  const normalized = sanitized.replace(/^\.+/, "").slice(0, 180);
+  return normalized || "file";
+};
+
+const normalizeAttachmentRuntimePath = (rawPath: string, name: string): string => {
+  const normalized = rawPath.replace(/\\/g, "/").trim();
+  if (!normalized) return `/.files/${toSafeFileName(name)}`;
+  if (normalized === ".files" || normalized === "/.files") return "/.files";
+  if (normalized.startsWith(".files/")) return `/${normalized}`;
+  if (normalized.startsWith("/.files/")) return normalized;
+  if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
+    return `/.files/${toSafeFileName(name || normalized)}`;
+  }
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+};
+
+const extractAttachmentBlocks = (messages: SdkMessage[]) => {
+  const output: Array<{ name: string; runtimePath: string; sourceStoragePath?: string }> = [];
+  for (const message of messages) {
+    if ((message.message?.role || "user") !== "user") continue;
+    const content = message.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const record = block as Record<string, unknown>;
+      if (record.type !== "attachment") continue;
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      const storagePath = typeof record.storage_path === "string" ? record.storage_path.trim() : "";
+      const sourceStoragePathRaw =
+        typeof record.source_storage_path === "string" ? record.source_storage_path.trim() : "";
+      const sourceStoragePath =
+        sourceStoragePathRaw ||
+        (storagePath.startsWith("chat_uploads/") || storagePath.startsWith("/chat_uploads/")
+          ? storagePath
+          : "");
+      const runtimePath = normalizeAttachmentRuntimePath(storagePath || sourceStoragePath, name);
+      if (!runtimePath.startsWith("/.files/")) continue;
+      output.push({
+        name,
+        runtimePath,
+        ...(sourceStoragePath ? { sourceStoragePath } : {}),
+      });
+    }
+  }
+  return output;
+};
+
+const materializeAttachmentRuntimeFiles = async ({
+  token,
+  projectFiles,
+  messages,
+}: {
+  token: string;
+  projectFiles: Record<string, { code?: string }>;
+  messages: SdkMessage[];
+}): Promise<Record<string, { code?: string }>> => {
+  const merged: Record<string, { code?: string }> = { ...projectFiles };
+  const attachments = extractAttachmentBlocks(messages);
+  if (attachments.length === 0) return merged;
+
+  for (const attachment of attachments) {
+    if (merged[attachment.runtimePath]?.code) continue;
+    const source = (attachment.sourceStoragePath || "").trim();
+    if (!source) continue;
+    let normalizedSource = "";
+    try {
+      normalizedSource = normalizeStorageKey(source);
+    } catch {
+      continue;
+    }
+    if (!normalizedSource.startsWith(`chat_uploads/${token}/`)) continue;
+    try {
+      const object = await getObjectFromStorage({
+        key: normalizedSource,
+        bucketType: "private",
+      });
+      const mime =
+        (object.contentType || "application/octet-stream").split(";")[0].trim() || "application/octet-stream";
+      const code = isLikelyTextContentType(object.contentType)
+        ? object.buffer.toString("utf8")
+        : `data:${mime};base64,${object.buffer.toString("base64")}`;
+      merged[attachment.runtimePath] = { code };
+    } catch (error) {
+      console.warn("[v2/chat] materialize attachment failed", {
+        runtimePath: attachment.runtimePath,
+        sourceStoragePath: normalizedSource,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
+  }
+
+  return merged;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -276,13 +401,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
+    const projectFilesForRun = await materializeAttachmentRuntimeFiles({
+      token,
+      projectFiles: project.files || {},
+      messages: incomingUserMessages,
+    });
+
     const runResult = await runClaudeQueryAdapter({
       token,
       chatId,
       selectedModel,
       selectedSkills,
       historyMessages: persistedHistoryMessages,
-      projectFiles: project.files || {},
+      projectFiles: projectFilesForRun,
       permissionMode,
       messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,

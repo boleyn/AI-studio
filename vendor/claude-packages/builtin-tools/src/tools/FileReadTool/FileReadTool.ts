@@ -29,12 +29,10 @@ import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from 'src/utils/envUtils.js'
-import { getErrnoCode, isENOENT } from 'src/utils/errors.js'
+import { getErrnoCode, isENOENT, isFsInaccessible } from 'src/utils/errors.js'
 import {
   addLineNumbers,
-  FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
-  getCwdForErrorNote,
   maskVirtualPathForDisplay,
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
@@ -139,6 +137,28 @@ function isUnderVirtualProjectRoot(filePath: string): boolean {
     normalizedPath === normalizedRoot ||
     normalizedPath.startsWith(`${normalizedRoot}${path.sep}`)
   )
+}
+
+function toSanitizedReadError(error: unknown, requestedPath: string): Error | null {
+  const code = getErrnoCode(error)
+  if (code === 'EACCES' || code === 'EPERM') {
+    return new Error(`Cannot read '${requestedPath}': permission denied.`)
+  }
+  if (code === 'ENOTDIR' || code === 'ELOOP') {
+    return new Error(`Cannot read '${requestedPath}': invalid path.`)
+  }
+  if (isFsInaccessible(error)) {
+    return new Error(`Cannot read '${requestedPath}': file not found or inaccessible.`)
+  }
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (/no such file or directory|\\bENOENT\\b/i.test(message)) {
+    return new Error(`Cannot read '${requestedPath}': file not found or inaccessible.`)
+  }
+  if (/permission denied|\\bEACCES\\b|\\bEPERM\\b/i.test(message)) {
+    return new Error(`Cannot read '${requestedPath}': permission denied.`)
+  }
+  return null
 }
 
 function resolveReadPath(filePath: string): string {
@@ -681,7 +701,7 @@ export const FileReadTool = buildTool({
             )
           } catch (altError) {
             if (!isENOENT(altError)) {
-              throw altError
+              throw toSanitizedReadError(altError, file_path) ?? altError
             }
             // Alt path also missing — fall through to friendly error
           }
@@ -689,7 +709,7 @@ export const FileReadTool = buildTool({
 
         const similarFilename = findSimilarFile(fullFilePath)
         const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwdForErrorNote()}.`
+        let message = `Cannot read '${file_path}': file not found or inaccessible.`
         if (cwdSuggestion) {
           message += ` Did you mean ${maskVirtualPathForDisplay(cwdSuggestion)}?`
         } else if (similarFilename) {
@@ -697,7 +717,7 @@ export const FileReadTool = buildTool({
         }
         throw new Error(message)
       }
-      throw error
+      throw toSanitizedReadError(error, file_path) ?? error
     }
   },
   mapToolResultToToolResultBlockParam(data, toolUseID) {

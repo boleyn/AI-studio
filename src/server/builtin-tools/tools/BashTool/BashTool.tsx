@@ -200,8 +200,23 @@ const BASH_SILENT_COMMANDS = new Set([
 ])
 
 const VIRTUAL_BASH_ALLOWED_COMMANDS = new Set(['ls', 'pwd', 'cat', 'echo'])
-const VIRTUAL_WASI_FILE_LIMIT = 5000
-const VIRTUAL_WASI_BYTE_LIMIT = 20 * 1024 * 1024
+const parseLimitEnv = (value: string | undefined, fallback: number): number => {
+  const raw = (value || '').trim()
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+// Default to high limits for server deployments with sufficient resources.
+// Can still be overridden via env if operators need tighter bounds.
+const VIRTUAL_WASI_FILE_LIMIT = parseLimitEnv(
+  process.env.CLAUDE_CODE_VIRTUAL_WASI_FILE_LIMIT,
+  200_000,
+)
+const VIRTUAL_WASI_BYTE_LIMIT = parseLimitEnv(
+  process.env.CLAUDE_CODE_VIRTUAL_WASI_BYTE_LIMIT,
+  1024 * 1024 * 1024, // 1GB
+)
 const VIRTUAL_HOST_SESSION_TTL_MS = 15 * 60 * 1000
 
 type VirtualHostWorkspaceSession = {
@@ -480,6 +495,17 @@ function normalizeRelativePathForSet(input: string): string {
   return input.split(path.sep).join('/')
 }
 
+function isVirtualAbsolutePathToken(token: string): boolean {
+  return (
+    token === '/.files' ||
+    token.startsWith('/.files/') ||
+    token === '/skills' ||
+    token.startsWith('/skills/') ||
+    token === '/.aistudio' ||
+    token.startsWith('/.aistudio/')
+  )
+}
+
 function commandReferencesDisallowedPath(command: string): string | null {
   // Block explicit absolute/home/parent-traversal paths at shell-token level.
   // This avoids false positives for relative paths containing '/'.
@@ -503,10 +529,35 @@ function commandReferencesDisallowedPath(command: string): string | null {
     }
 
     if (t.startsWith('/') || t.startsWith('file:///')) {
+      if (isVirtualAbsolutePathToken(t)) continue
       return 'absolute path'
     }
   }
   return null
+}
+
+function rewriteVirtualAbsolutePathsInCommand(
+  command: string,
+  workspaceRoot: string,
+): string {
+  const tokens = tokenizeShellLike(command.trim())
+  if (tokens.length === 0) return command
+
+  const toWorkspacePath = (virtualPath: string): string => {
+    const relative = virtualPath.replace(/^\/+/, '')
+    return path.join(workspaceRoot, relative)
+  }
+
+  const rewritten = tokens.map(token => {
+    const t = token.trim()
+    if (!t) return token
+    // Rewrite virtual absolute paths to host absolute paths rooted at the staged workspace.
+    // This keeps absolute semantics even when current cwd is a subdirectory.
+    if (isVirtualAbsolutePathToken(t)) return toWorkspacePath(t)
+    return token
+  })
+
+  return rewritten.join(' ')
 }
 
 function collectVirtualFileSet(
@@ -540,10 +591,31 @@ async function executeInHostShellFromVirtualWorkspace(
   timeoutMs: number,
   session?: VirtualHostWorkspaceSession,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const shell =
-    process.platform === 'win32'
-      ? process.env.ComSpec || 'cmd.exe'
-      : process.env.SHELL || '/bin/bash'
+  const resolveHostShell = (): string => {
+    if (process.platform === 'win32') {
+      return process.env.ComSpec || 'cmd.exe'
+    }
+    const envShell = (process.env.SHELL || '').trim()
+    if (envShell && nodeFs.existsSync(envShell)) {
+      try {
+        nodeFs.accessSync(envShell, nodeFs.constants.X_OK)
+        return envShell
+      } catch {
+        // fall through
+      }
+    }
+    return '/bin/bash'
+  }
+  const shell = resolveHostShell()
+  const safeCwd = (() => {
+    try {
+      const stat = nodeFs.statSync(cwd)
+      if (stat.isDirectory()) return cwd
+    } catch {
+      // ignore
+    }
+    return workspaceRoot
+  })()
   const shellArgs =
     process.platform === 'win32'
       ? ['/d', '/s', '/c', command]
@@ -570,29 +642,102 @@ async function executeInHostShellFromVirtualWorkspace(
     XDG_CONFIG_HOME: configDir,
   }
 
+  const runWithSpawn = async (): Promise<{ code: number; stdout: string; stderr: string }> =>
+    await new Promise(resolve => {
+      const child = spawn(shell, shellArgs, {
+        cwd: safeCwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      let stdout = ''
+      let stderr = ''
+      let timedOut = false
+      let timeoutHandle: NodeJS.Timeout | undefined
+      let hardKillHandle: NodeJS.Timeout | undefined
+
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true
+          child.kill('SIGTERM')
+          hardKillHandle = setTimeout(() => child.kill('SIGKILL'), 2_000)
+        }, timeoutMs)
+      }
+
+      child.stdout.on('data', chunk => {
+        stdout += chunk.toString()
+      })
+      child.stderr.on('data', chunk => {
+        stderr += chunk.toString()
+      })
+
+      child.on('error', error => {
+        if (timeoutHandle) clearTimeout(timeoutHandle)
+        if (hardKillHandle) clearTimeout(hardKillHandle)
+        resolve({
+          code: 126,
+          stdout,
+          stderr:
+            stderr +
+            (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
+            `Virtual host shell failed: ${maskVirtualPathsInText(error.message)}`,
+        })
+      })
+
+      child.on('close', code => {
+        if (timeoutHandle) clearTimeout(timeoutHandle)
+        if (hardKillHandle) clearTimeout(hardKillHandle)
+        if (timedOut) {
+          resolve({
+            code: 124,
+            stdout,
+            stderr:
+              stderr +
+              (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
+              `Command timed out after ${timeoutMs}ms in virtual host shell.`,
+          })
+          return
+        }
+        resolve({
+          code: typeof code === 'number' ? code : 1,
+          stdout,
+          stderr,
+        })
+      })
+    })
+
   // Prefer PTY for terminal-like behavior (ANSI/color, tool output parity).
   // Fall back to plain spawn when node-pty is unavailable at runtime.
   if (session) {
-    const ptyMod = await import('node-pty')
-    const ptyShell =
-      session.ptyShell ||
-      (process.platform === 'win32'
-        ? process.env.ComSpec || 'cmd.exe'
-        : process.env.SHELL || '/bin/bash')
+    let ptyMod: Awaited<typeof import('node-pty')> | null = null
+    try {
+      ptyMod = await import('node-pty')
+    } catch {
+      ptyMod = null
+    }
+    if (!ptyMod) {
+      return await runWithSpawn()
+    }
+    const ptyShell = session.ptyShell || shell
     if (!session.ptyProcess) {
-      session.ptyShell = ptyShell
-      session.ptyProcess = ptyMod.spawn(ptyShell, [], {
-        name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
-        cwd: workspaceRoot,
-        env,
-        encoding: 'utf8',
-      })
-      const disposeExit = session.ptyProcess.onExit(() => {
-        disposeExit.dispose()
+      try {
+        session.ptyShell = ptyShell
+        session.ptyProcess = ptyMod.spawn(ptyShell, [], {
+          name: 'xterm-256color',
+          cols: 120,
+          rows: 30,
+          cwd: workspaceRoot,
+          env,
+          encoding: 'utf8',
+        })
+        const disposeExit = session.ptyProcess.onExit(() => {
+          disposeExit.dispose()
+          session.ptyProcess = undefined
+        })
+      } catch {
         session.ptyProcess = undefined
-      })
+        return await runWithSpawn()
+      }
     }
 
     const runWithPty = async () =>
@@ -678,68 +823,7 @@ async function executeInHostShellFromVirtualWorkspace(
     return await queued
   }
 
-  return await new Promise(resolve => {
-    const child = spawn(shell, shellArgs, {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    let stdout = ''
-    let stderr = ''
-    let timedOut = false
-    let timeoutHandle: NodeJS.Timeout | undefined
-    let hardKillHandle: NodeJS.Timeout | undefined
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        timedOut = true
-        child.kill('SIGTERM')
-        hardKillHandle = setTimeout(() => child.kill('SIGKILL'), 2_000)
-      }, timeoutMs)
-    }
-
-    child.stdout.on('data', chunk => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', chunk => {
-      stderr += chunk.toString()
-    })
-
-    child.on('error', error => {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      if (hardKillHandle) clearTimeout(hardKillHandle)
-      resolve({
-        code: 126,
-        stdout,
-        stderr:
-          stderr +
-          (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
-          `Virtual host shell failed: ${maskVirtualPathsInText(error.message)}`,
-      })
-    })
-
-    child.on('close', code => {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      if (hardKillHandle) clearTimeout(hardKillHandle)
-      if (timedOut) {
-        resolve({
-          code: 124,
-          stdout,
-          stderr:
-            stderr +
-            (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
-            `Command timed out after ${timeoutMs}ms in virtual host shell.`,
-        })
-        return
-      }
-      resolve({
-        code: typeof code === 'number' ? code : 1,
-        stdout,
-        stderr,
-      })
-    })
-  })
+  return await runWithSpawn()
 }
 
 async function syncHostWorkspaceBackToVirtualFs(
@@ -889,6 +973,7 @@ async function runVirtualHostShellCommand(
   }
 
   const session = await getOrCreateVirtualHostWorkspaceSession(fs, virtualProjectRoot)
+  const rewrittenCommand = rewriteVirtualAbsolutePathsInCommand(command, session.workspaceDir)
   try {
     const beforeFiles = collectVirtualFileSet(fs, virtualProjectRoot)
 
@@ -903,7 +988,7 @@ async function runVirtualHostShellCommand(
     const hostCwd = path.resolve(session.workspaceDir, relativeCwd || '.')
 
     const result = await executeInHostShellFromVirtualWorkspace(
-      command,
+      rewrittenCommand,
       hostCwd,
       session.workspaceDir,
       timeoutMs,

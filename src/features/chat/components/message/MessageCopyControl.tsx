@@ -69,8 +69,8 @@ const MessageCopyControl = ({
     return convertMarkdownToPlainText(content);
   }, [content, selectedFormat]);
 
-  const toneColor = messageType === "user" ? "blue.100" : "myGray.500";
-  const hoverColor = messageType === "user" ? "white" : "primary.600";
+  const toneColor = "myGray.500";
+  const hoverColor = "primary.600";
   const formatTag = selectedFormat === "markdown" ? "MD" : "TXT";
 
   const handleCopy = async () => {
@@ -93,7 +93,7 @@ const MessageCopyControl = ({
           onClick={() => void handleCopy()}
           px={1}
           py={0.5}
-          _hover={{ color: hoverColor, bg: messageType === "user" ? "whiteAlpha.200" : "myGray.100" }}
+          _hover={{ color: hoverColor, bg: "myGray.100" }}
         >
           {copied ? <Box as={CheckIcon} boxSize="14px" /> : <Box as={CopyIcon} boxSize="14px" />}
           <Text fontSize="10px" fontWeight="700" lineHeight="1" textTransform="uppercase">

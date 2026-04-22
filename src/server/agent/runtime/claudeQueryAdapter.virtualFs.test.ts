@@ -249,6 +249,31 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
     expect(exported["/.aistudio/tmp/ignored.txt"]).toBeUndefined();
   });
 
+  test("decodes data-url base64 content for binary attachment files", () => {
+    const overlay = buildProjectMemfsOverlay(projectRoot, {
+      "/.files/sample.pdf": {
+        code: "data:application/pdf;base64,JVBERi0xLjQK",
+      },
+    });
+
+    const raw = overlay.readFileBytesSync(path.join(projectRoot, ".files", "sample.pdf")) as Buffer;
+    expect(Buffer.isBuffer(raw)).toBe(true);
+    expect(raw.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  test("does not export mirrored /.files attachments to updated editor files", () => {
+    const overlay = buildProjectMemfsOverlay(projectRoot, {
+      "/App.js": { code: "export const ok = true;\n" },
+      "/.files/sample.pdf": {
+        code: "data:application/pdf;base64,JVBERi0xLjQK",
+      },
+    });
+
+    const exported = exportProjectFilesFromFs(overlay, projectRoot);
+    expect(exported["/App.js"]?.code).toContain("ok = true");
+    expect(exported["/.files/sample.pdf"]).toBeUndefined();
+  });
+
   test("writeTextContent writes through virtual filesystem implementation", () => {
     const overlay = buildProjectMemfsOverlay(projectRoot, {
       "/App.js": { code: "<h1>old</h1>\n" },
