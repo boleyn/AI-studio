@@ -1967,7 +1967,9 @@ const ChatPanel = ({
     const params = new URLSearchParams();
     const currentPath = typeof router.asPath === "string" ? router.asPath : "";
     if (projectToken) params.set("projectToken", projectToken);
-    if (currentPath.startsWith("/")) params.set("returnTo", currentPath);
+    if (currentPath.startsWith("/") && !currentPath.startsWith("/skills/create")) {
+      params.set("returnTo", currentPath);
+    }
     void router.push(
       params.toString() ? `/skills/create?${params.toString()}` : "/skills/create"
     );

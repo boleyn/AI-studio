@@ -10,6 +10,9 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
   && apk add --no-cache \
     libc6-compat \
     bash \
+    make \
+    g++ \
+    linux-headers \
     ripgrep \
     pandoc \
     python3 \
@@ -41,8 +44,8 @@ RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}";
 FROM base AS deps
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 COPY package.json bun.lock ./
+COPY vendor ./vendor
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
-  && if [ -n "${NPM_REGISTRY}" ]; then bun config set registry "${NPM_REGISTRY}"; fi \
   && bun install --frozen-lockfile
 
 FROM base AS builder
