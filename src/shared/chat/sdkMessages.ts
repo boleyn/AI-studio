@@ -4,6 +4,14 @@ export type SdkRole = "user" | "assistant" | "system" | "tool";
 
 export type SdkContentBlock =
   | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: {
+        type: "base64";
+        media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+        data: string;
+      };
+    }
   | { type: "thinking"; thinking: string }
   | {
       type: "agent_start";
@@ -33,6 +41,7 @@ export type SdkContentBlock =
       name?: string;
       mime_type?: string;
       storage_path?: string;
+      source_storage_path?: string;
       preview_url?: string;
       download_url?: string;
     };

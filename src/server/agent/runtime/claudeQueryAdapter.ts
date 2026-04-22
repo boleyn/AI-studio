@@ -1002,6 +1002,41 @@ const parseJsonLoose = (value: string): unknown => {
   }
 };
 
+const summarizeToolResultContentForStream = ({
+  toolName,
+  content,
+}: {
+  toolName?: string;
+  content: unknown;
+}): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return JSON.stringify(content ?? "", null, 2);
+
+  const imageBlocks = content
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .filter((item) => item.type === "image");
+
+  if (imageBlocks.length > 0) {
+    const normalizedTool = (toolName || "").trim().toLowerCase();
+    const label = normalizedTool === "read" ? "Read image result" : "Image tool result";
+    const parts = imageBlocks.slice(0, 4).map((block, index) => {
+      const source =
+        block.source && typeof block.source === "object" && !Array.isArray(block.source)
+          ? (block.source as Record<string, unknown>)
+          : null;
+      const mediaType = typeof source?.media_type === "string" ? source.media_type : "image";
+      const base64 = typeof source?.data === "string" ? source.data : "";
+      const bytes = base64 ? Math.max(0, Math.floor((base64.length * 3) / 4)) : 0;
+      const size = bytes > 0 ? ` ~${Math.round(bytes / 1024)}KB` : "";
+      return `image${index + 1}: ${mediaType}${size}`;
+    });
+    const extra = imageBlocks.length > 4 ? ` (+${imageBlocks.length - 4} more)` : "";
+    return `[${label}] ${parts.join("; ")}${extra}`;
+  }
+
+  return JSON.stringify(content, null, 2);
+};
+
 const normalizePlanQuestionPayload = (toolInput: unknown): { questions: Array<Record<string, unknown>> } | null => {
   if (!toolInput || typeof toolInput !== "object" || Array.isArray(toolInput)) return null;
   const input = toolInput as Record<string, unknown>;
@@ -1576,9 +1611,11 @@ const tryRunQueryEngine = async (
           if (!block || typeof block !== "object") continue;
           const record = block as Record<string, unknown>;
           if (record.type !== "tool_result" || typeof record.tool_use_id !== "string") continue;
-          const contentText =
-            typeof record.content === "string" ? record.content : JSON.stringify(record.content ?? "", null, 2);
           const toolState = toolStateById.get(record.tool_use_id);
+          const contentText = summarizeToolResultContentForStream({
+            toolName: toolState?.name,
+            content: record.content,
+          });
           const parentAgentToolUseId = toolState?.parentAgentToolUseId || parentAgentToolUseIdFromEvent;
           emitEvent("stream_event", {
             subtype: parentAgentToolUseId ? "agent_tool_result" : "tool_result",

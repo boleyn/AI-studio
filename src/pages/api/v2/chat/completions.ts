@@ -43,6 +43,162 @@ type RequestBodyMessage = {
     content?: unknown;
   };
   meta?: Record<string, unknown>;
+  additional_kwargs?: Record<string, unknown>;
+};
+
+type ImageInputPart = {
+  type: "image_url";
+  image_url: { url: string };
+  key?: string;
+};
+
+const IMAGE_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+] as const);
+
+const normalizeImageMediaType = (
+  value: unknown
+): "image/jpeg" | "image/png" | "image/gif" | "image/webp" | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.toLowerCase().split(";")[0].trim();
+  if (normalized === "image/jpg") return "image/jpeg";
+  if (IMAGE_MEDIA_TYPES.has(normalized as "image/jpeg")) {
+    return normalized as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  }
+  return null;
+};
+
+const isImageInputPart = (value: unknown): value is ImageInputPart => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (record.type !== "image_url") return false;
+  const imageUrl = record.image_url;
+  if (!imageUrl || typeof imageUrl !== "object" || Array.isArray(imageUrl)) return false;
+  const url = (imageUrl as Record<string, unknown>).url;
+  if (typeof url !== "string") return false;
+  if (typeof record.key !== "undefined" && typeof record.key !== "string") return false;
+  return true;
+};
+
+const extractImageInputParts = (messages: unknown): ImageInputPart[] => {
+  if (!Array.isArray(messages)) return [];
+  const output: ImageInputPart[] = [];
+  for (const item of messages) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const msg = item as RequestBodyMessage;
+    const role = (msg.type || msg.role || msg.message?.role || "").trim();
+    if (role !== "user") continue;
+    const kwargs =
+      msg.additional_kwargs && typeof msg.additional_kwargs === "object" && !Array.isArray(msg.additional_kwargs)
+        ? (msg.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs) continue;
+    const raw = kwargs.imageInputParts;
+    if (!Array.isArray(raw)) continue;
+    for (const candidate of raw) {
+      if (!isImageInputPart(candidate)) continue;
+      output.push(candidate);
+    }
+  }
+  return output;
+};
+
+const toStorageKeyFromImagePart = (token: string, part: ImageInputPart): string | null => {
+  const key = typeof part.key === "string" ? part.key.trim() : "";
+  if (!key) return null;
+  try {
+    const normalized = normalizeStorageKey(key);
+    if (!normalized.startsWith(`chat_uploads/${token}/`)) return null;
+    return normalized;
+  } catch {
+    return null;
+  }
+};
+
+const materializeImageBlocksFromInputParts = async ({
+  token,
+  parts,
+}: {
+  token: string;
+  parts: ImageInputPart[];
+}): Promise<SdkContentBlock[]> => {
+  const output: SdkContentBlock[] = [];
+  const seen = new Set<string>();
+
+  for (const part of parts) {
+    const storageKey = toStorageKeyFromImagePart(token, part);
+    if (!storageKey || seen.has(storageKey)) continue;
+    seen.add(storageKey);
+    try {
+      const object = await getObjectFromStorage({
+        key: storageKey,
+        bucketType: "private",
+      });
+      const mediaType = normalizeImageMediaType(object.contentType);
+      if (!mediaType) continue;
+      output.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mediaType,
+          data: object.buffer.toString("base64"),
+        },
+      });
+    } catch (error) {
+      console.warn("[v2/chat] materialize image part failed", {
+        key: storageKey,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
+    if (output.length >= 4) break;
+  }
+  return output;
+};
+
+const mergeImageBlocksIntoMessages = ({
+  messages,
+  imageBlocks,
+}: {
+  messages: unknown;
+  imageBlocks: SdkContentBlock[];
+}): unknown => {
+  if (!Array.isArray(messages) || imageBlocks.length === 0) return messages;
+  const cloned = [...messages];
+  for (let i = cloned.length - 1; i >= 0; i -= 1) {
+    const item = cloned[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const msg = item as RequestBodyMessage;
+    const role = (msg.type || msg.role || msg.message?.role || "").trim();
+    if (role !== "user") continue;
+    const raw = msg.message?.content ?? msg.content;
+    const blocks =
+      Array.isArray(raw)
+        ? (raw as SdkContentBlock[])
+        : typeof raw === "string"
+        ? raw.trim()
+          ? ([{ type: "text", text: raw }] as SdkContentBlock[])
+          : []
+        : [];
+    const alreadyHasImage = blocks.some(
+      (block) => block && typeof block === "object" && (block as Record<string, unknown>).type === "image"
+    );
+    if (alreadyHasImage) break;
+    const mergedContent: SdkContentBlock[] = [...imageBlocks, ...blocks];
+    const nextItem: RequestBodyMessage = {
+      ...msg,
+      message: {
+        role: msg.message?.role || role || "user",
+        content: mergedContent,
+      },
+      content: mergedContent,
+    };
+    cloned[i] = nextItem as unknown as typeof item;
+    break;
+  }
+  return cloned;
 };
 
 const getToken = (req: NextApiRequest): string | null => {
@@ -299,7 +455,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const sdkMessages = toSdkMessages(req.body?.messages);
+  const rawMessages = req.body?.messages;
+  const imageInputParts = extractImageInputParts(rawMessages);
+  const imageBlocks = await materializeImageBlocksFromInputParts({
+    token,
+    parts: imageInputParts,
+  });
+  const messagesWithImages = mergeImageBlocksIntoMessages({
+    messages: rawMessages,
+    imageBlocks,
+  });
+  const sdkMessages = toSdkMessages(messagesWithImages);
   if (sdkMessages.length === 0) {
     res.status(400).json({ error: "缺少 messages" });
     return;

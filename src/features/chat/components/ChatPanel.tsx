@@ -799,7 +799,11 @@ const ChatPanel = ({
       const fallbackArtifacts = toFileArtifacts(payload.files);
       const uploadedArtifacts =
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
-      const selectedPathArtifacts = toSelectedPathArtifacts(payload.selectedFilePaths || []);
+      const selectedPathArtifacts = toSelectedPathArtifacts({
+        paths: payload.selectedFilePaths || [],
+        token,
+        chatId: activeConversation?.id || undefined,
+      });
       const dedupeKey = (file: UploadedFileArtifact) => {
         if (file.storagePath) return `path:${normalizeAttachmentWorkspacePath(file.storagePath)}`;
         if (file.publicUrl) return `url:${file.publicUrl}`;

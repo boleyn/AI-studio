@@ -240,11 +240,42 @@ const getToolResultDisplayPayload = (toolName: string | undefined, rawResponse: 
 
   const normalizedToolName = (toolName || "").trim().toLowerCase();
   if (normalizedToolName === "read") {
+    const resultType = typeof record.type === "string" ? record.type : "";
     const file = record.file && typeof record.file === "object" && !Array.isArray(record.file)
       ? (record.file as Record<string, unknown>)
       : null;
     const fileContent = typeof file?.content === "string" ? file.content : "";
     const filePath = typeof file?.filePath === "string" ? file.filePath : "";
+    if (resultType === "image") {
+      const mime = typeof file?.type === "string" ? file.type : "image";
+      const originalSize =
+        typeof file?.originalSize === "number" && Number.isFinite(file.originalSize)
+          ? Math.max(0, Math.floor(file.originalSize))
+          : null;
+      const dim =
+        file?.dimensions && typeof file.dimensions === "object" && !Array.isArray(file.dimensions)
+          ? (file.dimensions as Record<string, unknown>)
+          : null;
+      const width =
+        typeof dim?.displayWidth === "number" && Number.isFinite(dim.displayWidth)
+          ? Math.floor(dim.displayWidth)
+          : typeof dim?.originalWidth === "number" && Number.isFinite(dim.originalWidth)
+          ? Math.floor(dim.originalWidth)
+          : null;
+      const height =
+        typeof dim?.displayHeight === "number" && Number.isFinite(dim.displayHeight)
+          ? Math.floor(dim.displayHeight)
+          : typeof dim?.originalHeight === "number" && Number.isFinite(dim.originalHeight)
+          ? Math.floor(dim.originalHeight)
+          : null;
+      const sizeText = originalSize !== null ? `${(originalSize / 1024).toFixed(1)}KB` : "";
+      const dimText = width && height ? `${width}x${height}` : "";
+      const summary = ["[Image read]", mime, dimText, sizeText].filter(Boolean).join(" ");
+      return {
+        response: summary,
+        paramsFallback: filePath || paramsFallback,
+      };
+    }
     if (fileContent) {
       return {
         response: fileContent,

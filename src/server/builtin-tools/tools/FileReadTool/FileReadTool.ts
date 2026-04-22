@@ -24,6 +24,8 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from 'src/skills/loadSkillsDir.js'
+import { getChatModelCatalog, getChatModelProfile } from '@server/aiProxy/catalogStore'
+import { getOpenAIClient } from '../../../agent/services/api/openai/client.js'
 import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
@@ -832,6 +834,81 @@ function shouldIncludeFileReadMitigation(): boolean {
   return !MITIGATION_EXEMPT_MODELS.has(shortName)
 }
 
+function modelSupportsImageInput(mainLoopModel: string): boolean {
+  const profile = getChatModelProfile(mainLoopModel)
+  // AIStudio rule: only trust model config in config.json.
+  return profile?.vision === true
+}
+
+async function resolveVisionCaptionModel(
+  mainLoopModel: string,
+): Promise<string | null> {
+  const profile = getChatModelProfile(mainLoopModel)
+  if (typeof profile?.visionModel === 'string' && profile.visionModel.trim()) {
+    return profile.visionModel.trim()
+  }
+  try {
+    const catalog = await getChatModelCatalog()
+    const fallbackVisionModel = catalog.models.find(m => m.vision)?.id
+    if (fallbackVisionModel) return fallbackVisionModel
+  } catch {
+    // Ignore catalog lookup failures and fall through to null.
+  }
+  return null
+}
+
+async function describeImageViaVisionModel(params: {
+  imageBase64: string
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  mainLoopModel: string
+  dimensions?: ImageDimensions
+}): Promise<{ description: string; visionModel: string }> {
+  const { imageBase64, mediaType, mainLoopModel, dimensions } = params
+  const model = await resolveVisionCaptionModel(mainLoopModel)
+  if (!model) {
+    throw new Error(
+      `No visionModel configured for model '${mainLoopModel}' in model config`,
+    )
+  }
+  const client = getOpenAIClient()
+
+  const response = await client.chat.completions.create({
+    model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              '请用中文客观描述这张图片的主要内容。' +
+              '输出1-3句话，聚焦可见事实，不要臆测，不要额外解释。',
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mediaType};base64,${imageBase64}`,
+            },
+          },
+        ],
+      },
+    ],
+  } as any)
+
+  const text = response.choices?.[0]?.message?.content?.trim()
+  if (text) return { description: text, visionModel: model }
+
+  const dimensionHint =
+    dimensions?.originalWidth && dimensions?.originalHeight
+      ? `，分辨率约 ${dimensions.originalWidth}x${dimensions.originalHeight}`
+      : ''
+  return {
+    description: `这是一个图片文件（${mediaType}${dimensionHint}），但视觉模型未返回可用描述。`,
+    visionModel: model,
+  }
+}
+
 /**
  * Side-channel from call() to mapToolResultToToolResultBlockParam: mtime
  * of auto-memory files, keyed by the `data` object identity. Avoids
@@ -964,12 +1041,89 @@ async function callInner(
     const data = await readImageWithTokenBudget(resolvedFilePath, maxTokens)
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
+    const supportsImage = modelSupportsImageInput(context.options.mainLoopModel)
+    if (!supportsImage) {
+      let imageDescription: string
+      let descriptionFailureReason = ''
+      let attemptedVisionModel = await resolveVisionCaptionModel(
+        context.options.mainLoopModel,
+      )
+      try {
+        const described = await describeImageViaVisionModel({
+          imageBase64: data.file.base64,
+          mediaType: data.file.type,
+          mainLoopModel: context.options.mainLoopModel,
+          dimensions: data.file.dimensions,
+        })
+        imageDescription = described.description
+        attemptedVisionModel = described.visionModel
+      } catch (error) {
+        descriptionFailureReason =
+          error instanceof Error ? error.message : String(error)
+        const dimensionHint =
+          data.file.dimensions?.originalWidth &&
+          data.file.dimensions?.originalHeight
+            ? `，分辨率约 ${data.file.dimensions.originalWidth}x${data.file.dimensions.originalHeight}`
+            : ''
+        imageDescription =
+          `这是一个图片文件（${data.file.type}${dimensionHint}），当前无法生成更详细的图像描述。` +
+          `失败原因：${descriptionFailureReason || 'unknown'}。`
+        logError(
+          new Error(
+            `[FileReadTool] Failed to generate image description via vision model: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+        )
+      }
+
+      logError(
+        new Error(
+          `[FileReadTool] Image read description path: mainLoopModel=${context.options.mainLoopModel}, configuredVisionModel=${
+            (await resolveVisionCaptionModel(context.options.mainLoopModel)) ??
+            'none'
+          }, attemptedVisionModel=${attemptedVisionModel ?? 'none'}, failureReason=${
+            descriptionFailureReason || 'none'
+          }`,
+        ),
+      )
+
+      const lineCount = Math.max(1, imageDescription.split('\n').length)
+      const textData: Output = {
+        type: 'text',
+        file: {
+          filePath: file_path,
+          content: imageDescription,
+          numLines: lineCount,
+          startLine: 1,
+          totalLines: lineCount,
+        },
+      }
+
+      logFileOperation({
+        operation: 'read',
+        tool: 'FileReadTool',
+        filePath: toVirtualDisplayPath(fullFilePath),
+        content: imageDescription,
+      })
+
+      return { data: textData }
+    }
+
     logFileOperation({
       operation: 'read',
       tool: 'FileReadTool',
-          filePath: toVirtualDisplayPath(fullFilePath),
+      filePath: toVirtualDisplayPath(fullFilePath),
       content: data.file.base64,
     })
+    logError(
+      new Error(
+        `[FileReadTool] Image read as base64: mainLoopModel=${context.options.mainLoopModel}, configuredVisionModel=${
+          (await resolveVisionCaptionModel(context.options.mainLoopModel)) ??
+          'none'
+        }`,
+      ),
+    )
 
     const metadataText = data.file.dimensions
       ? createImageMetadataText(data.file.dimensions)

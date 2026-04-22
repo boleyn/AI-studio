@@ -210,6 +210,16 @@ export const toStableChatFileViewUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
+const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
+  if (!storagePath || !token) return "";
+  const params = new URLSearchParams({
+    token,
+    action: "view",
+    path: storagePath,
+  });
+  return `/api/code?${params.toString()}`;
+};
+
 export const hydrateHistoryUserMessage = ({
   message,
   token,
@@ -232,7 +242,10 @@ export const hydrateHistoryUserMessage = ({
   const hydratedFiles = files.map((file) => {
     if (!isImageArtifact(file)) return file;
     const stablePreviewUrl =
-      file.publicUrl || toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) || file.previewUrl;
+      file.publicUrl ||
+      toProjectFileViewUrl({ storagePath: file.storagePath, token }) ||
+      toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) ||
+      file.previewUrl;
     if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
     return {
       ...file,
@@ -300,7 +313,15 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
     },
   }));
 
-export const toSelectedPathArtifacts = (paths: string[]): UploadedFileArtifact[] => {
+export const toSelectedPathArtifacts = ({
+  paths,
+  token,
+  chatId,
+}: {
+  paths: string[];
+  token: string;
+  chatId?: string;
+}): UploadedFileArtifact[] => {
   const inferMimeType = (inputPath: string): string => {
     const lower = inputPath.toLowerCase();
     if (lower.endsWith(".pdf")) return "application/pdf";
@@ -327,7 +348,13 @@ export const toSelectedPathArtifacts = (paths: string[]): UploadedFileArtifact[]
     size: 0,
     type: inferMimeType(path),
     storagePath: path,
-    publicUrl: "",
+    publicUrl: toProjectFileViewUrl({ storagePath: path, token }),
+    previewUrl: toProjectFileViewUrl({ storagePath: path, token }),
+    downloadUrl: toStableChatFileViewUrl({
+      storagePath: path,
+      token,
+      chatId: chatId || "",
+    }),
     lastModified: 0,
   }));
 };
