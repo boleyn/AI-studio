@@ -47,9 +47,6 @@ const formatTokenCompact = (value?: number): string => {
   return `${Math.round(normalized)}`;
 };
 
-const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
-const BLOCKING_THRESHOLD_BUFFER_TOKENS = 3_000;
-
 const ChatHeader = ({
   title,
   messageCount = 0,
@@ -76,18 +73,9 @@ const ChatHeader = ({
     : 0;
   const usedPercent = Math.min(100, Math.max(0, computedUsedPercent));
   const usedPercentText = usedPercent.toFixed(1);
-  const remainingTokens = Number.isFinite(contextUsage?.remainingTokens)
-    ? Math.max(0, Number(contextUsage?.remainingTokens))
-    : 0;
-  const warningState =
-    hasUsage && remainingTokens <= BLOCKING_THRESHOLD_BUFFER_TOKENS
-      ? "danger"
-      : hasUsage && remainingTokens <= WARNING_THRESHOLD_BUFFER_TOKENS
-      ? "warning"
-      : "ok";
+  const usageState = hasUsage && usedPercent >= 80 ? "danger" : hasUsage && usedPercent >= 60 ? "warning" : "ok";
   const usedTokenText = formatTokenCompact(contextUsage?.usedTokens);
   const maxTokenText = formatTokenCompact(contextUsage?.maxContext);
-  const tokenWindowText = hasUsage ? `${usedTokenText}/${maxTokenText}` : "--/--";
   const tooltipWithInput = isReady
     ? `${usedTokenText}/${maxTokenText} tokens (${usedPercentText}%)`
     : isPending
@@ -95,10 +83,8 @@ const ChatHeader = ({
       ? `计算中...（${usedTokenText}/${maxTokenText} tokens）`
       : "计算中..."
     : "继续提问后会自动更新";
-  const ringColor =
-    warningState === "danger" ? "#EF4444" : warningState === "warning" ? "#F59E0B" : "#3B82F6";
-  const ringTrackColor =
-    warningState === "danger" ? "#FEE2E2" : warningState === "warning" ? "#FEF3C7" : "#DBEAFE";
+  const ringColor = usageState === "danger" ? "#EF4444" : usageState === "warning" ? "#F59E0B" : "primary.500";
+  const ringTrackColor = usageState === "danger" ? "#FEE2E2" : usageState === "warning" ? "#FEF3C7" : "primary.100";
 
   const handleConfirmDeleteOne = async () => {
     if (!pendingDeleteId) return;
@@ -243,7 +229,7 @@ const ChatHeader = ({
         </Flex>
 
         <MyTooltip label={tooltipWithInput}>
-          <Flex align="center" direction="column" gap={0.5} minW="56px">
+          <Flex align="center" direction="column" minW="56px">
             <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
               <CircularProgress
                 color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
@@ -263,9 +249,6 @@ const ChatHeader = ({
                 </CircularProgressLabel>
               </CircularProgress>
             </Box>
-            <Text color="myGray.500" fontSize="9px" fontWeight="700" lineHeight="1">
-              {tokenWindowText}
-            </Text>
           </Flex>
         </MyTooltip>
       </Flex>
