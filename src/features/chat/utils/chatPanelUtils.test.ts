@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildUserBubbleContent,
   extractSelectedFilePathsFromUserContent,
   normalizeAttachmentWorkspacePath,
   normalizeHistoryMessagesForTimeline,
@@ -143,10 +144,10 @@ test("normalizeAttachmentWorkspacePath keeps file tags relative to workspace .fi
     normalizeAttachmentWorkspacePath(
       "/Users/santain/Desktop/sandpack/examples/nextjs-ai-studio/.files/唐继明_简历.pdf"
     ),
-    ".files/唐继明_简历.pdf"
+    "/Users/santain/Desktop/sandpack/examples/nextjs-ai-studio/.files/唐继明_简历.pdf"
   );
-  assert.equal(normalizeAttachmentWorkspacePath("/files/a.txt"), ".files/a.txt");
-  assert.equal(normalizeAttachmentWorkspacePath("/.files/a.txt"), ".files/a.txt");
+  assert.equal(normalizeAttachmentWorkspacePath("/files/a.txt"), "/files/a.txt");
+  assert.equal(normalizeAttachmentWorkspacePath("/.files/a.txt"), "/.files/a.txt");
   assert.equal(normalizeAttachmentWorkspacePath(".files/a.txt"), ".files/a.txt");
 });
 
@@ -156,5 +157,17 @@ test("extractSelectedFilePathsFromUserContent parses FILETAG markers", () => {
     "[a.txt](FILETAG:%2Ffiles%2Fa.txt)",
   ].join("\n");
   const selected = extractSelectedFilePathsFromUserContent(content);
-  assert.deepEqual(selected, [".files/唐继明_简历.pdf", ".files/a.txt"]);
+  assert.deepEqual(selected, [".files/唐继明_简历.pdf", "/files/a.txt"]);
+});
+
+test("buildUserBubbleContent does not emit FILETAG for selected files", () => {
+  const content = buildUserBubbleContent({
+    text: "请帮我总结",
+    files: [],
+    selectedSkills: ["pdf-text-extractor"],
+    selectedFilePaths: [".files/唐继明_简历.pdf"],
+  });
+  assert.ok(content.includes("SKILLTAG:"));
+  assert.ok(!content.includes("FILETAG:"));
+  assert.ok(content.includes("请帮我总结"));
 });

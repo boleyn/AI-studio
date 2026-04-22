@@ -42,7 +42,6 @@ import type { MessageRating } from "./message/MessageActionBar";
 import type { ConversationMessage } from "@/types/conversation";
 
 import {
-  FILE_TAG_MARKER_PREFIX,
   SKILL_TAG_MARKER_PREFIX,
   buildConversationTitle,
   buildUserBubbleContent,
@@ -50,7 +49,9 @@ import {
   getMessageFeedback,
   hydrateHistoryUserMessage,
   normalizeProjectFiles,
+  normalizeAttachmentWorkspacePath,
   toFileArtifacts,
+  toSelectedPathArtifacts,
   getImageInputParts,
   toUpdatedFilesMap,
   normalizeHistoryMessagesForTimeline,
@@ -734,8 +735,23 @@ const ChatPanel = ({
     ) => {
       const text = payload.text.trim();
       const fallbackArtifacts = toFileArtifacts(payload.files);
-      const finalArtifacts =
+      const uploadedArtifacts =
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
+      const selectedPathArtifacts = toSelectedPathArtifacts(payload.selectedFilePaths || []);
+      const dedupeKey = (file: UploadedFileArtifact) => {
+        if (file.storagePath) return `path:${normalizeAttachmentWorkspacePath(file.storagePath)}`;
+        if (file.publicUrl) return `url:${file.publicUrl}`;
+        if (file.id) return `id:${file.id}`;
+        return `name:${file.name}`;
+      };
+      const seenArtifactKeys = new Set<string>();
+      const finalArtifacts: UploadedFileArtifact[] = [];
+      [...uploadedArtifacts, ...selectedPathArtifacts].forEach((file) => {
+        const key = dedupeKey(file);
+        if (seenArtifactKeys.has(key)) return;
+        seenArtifactKeys.add(key);
+        finalArtifacts.push(file);
+      });
       const hasArtifacts = finalArtifacts.length > 0;
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
@@ -818,6 +834,9 @@ const ChatPanel = ({
         additional_kwargs: {
           ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
           planModeState: effectiveMode === "plan",
+          ...(payload.selectedFilePaths && payload.selectedFilePaths.length > 0
+            ? { selectedFilePaths: payload.selectedFilePaths }
+            : {}),
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
             : {}),

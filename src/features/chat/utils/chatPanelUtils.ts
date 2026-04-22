@@ -16,18 +16,6 @@ export const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 
 export const normalizeAttachmentWorkspacePath = (filePath: string): string => {
   const normalized = (filePath || "").replace(/\\/g, "/").trim();
-  if (!normalized) return normalized;
-  if (normalized === ".files" || normalized === "/.files") return ".files";
-  if (normalized.startsWith(".files/")) return normalized;
-  if (normalized.startsWith("/.files/")) return `.files/${normalized.slice("/.files/".length)}`;
-  if (normalized === "/files") return ".files";
-  if (normalized.startsWith("/files/")) return `.files/${normalized.slice("/files/".length)}`;
-  const filesMarker = "/.files/";
-  const markerIndex = normalized.lastIndexOf(filesMarker);
-  if (markerIndex !== -1) {
-    return `.files/${normalized.slice(markerIndex + filesMarker.length)}`;
-  }
-  if (normalized.endsWith("/.files")) return ".files";
   return normalized;
 };
 
@@ -147,7 +135,7 @@ export const buildUserBubbleContent = ({
   text,
   files: _files,
   selectedSkills,
-  selectedFilePaths,
+  selectedFilePaths: _selectedFilePaths,
 }: {
   text: string;
   files: UploadedFileArtifact[];
@@ -161,16 +149,9 @@ export const buildUserBubbleContent = ({
           .map((skill) => `[${skill}](${SKILL_TAG_MARKER_PREFIX}${encodeURIComponent(skill)})`)
           .join(" ")
       : "";
-  const fileTagsMarkdown =
-    selectedFilePaths && selectedFilePaths.length > 0
-      ? selectedFilePaths
-          .map((path) => normalizeAttachmentWorkspacePath(path))
-          .filter(Boolean)
-          .map((path) => `[${toFileTagLabel(path)}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
-          .join(" ")
-      : "";
-  // User image previews are rendered from artifact.files in ChatItem to avoid stale markdown URLs in history.
-  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText].filter(Boolean).join("\n\n");
+  // User image previews and selected project files are rendered from artifact/files
+  // and additional_kwargs.selectedFilePaths in timeline view, so no FILETAG is emitted.
+  return [skillTagsMarkdown, trimmedText].filter(Boolean).join("\n\n");
 };
 
 export const stripTagMarkersFromUserContent = (content: string): string => {
@@ -318,6 +299,24 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
       parser: "metadata" as const,
     },
   }));
+
+export const toSelectedPathArtifacts = (paths: string[]): UploadedFileArtifact[] => {
+  const normalized = Array.isArray(paths)
+    ? paths
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => normalizeAttachmentWorkspacePath(item))
+        .filter(Boolean)
+    : [];
+  const unique = Array.from(new Set(normalized));
+  return unique.map((path, index) => ({
+    id: `selected-path-${index}-${path}`,
+    name: toFileTagLabel(path),
+    size: 0,
+    type: "application/octet-stream",
+    storagePath: path,
+    publicUrl: "",
+  }));
+};
 
 export const getImageInputParts = async (files: UploadedFileArtifact[]) => {
   const imageFiles = files

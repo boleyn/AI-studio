@@ -186,7 +186,19 @@ export const useChatMessageActions = ({
       const userContent = extractText(userMessage.content);
       const text = stripInlineImageMarkdown(stripTagMarkersFromUserContent(userContent));
       if (!text) return;
-      const selectedFilePaths = extractSelectedFilePathsFromUserContent(userContent);
+      const selectedFilePathsFromKwargs =
+        userMessage.additional_kwargs &&
+        typeof userMessage.additional_kwargs === "object" &&
+        Array.isArray((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
+          ? ((userMessage.additional_kwargs as { selectedFilePaths: unknown[] }).selectedFilePaths
+              .filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim())
+              .filter(Boolean))
+          : [];
+      const selectedFilePaths =
+        selectedFilePathsFromKwargs.length > 0
+          ? Array.from(new Set(selectedFilePathsFromKwargs))
+          : extractSelectedFilePathsFromUserContent(userContent);
       const uploadedFiles =
         userMessage.artifact && typeof userMessage.artifact === "object"
           ? (
