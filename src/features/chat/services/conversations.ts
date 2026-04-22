@@ -101,6 +101,57 @@ export async function getConversation(
         break;
       }
     }
+
+    // Recover compact timeline marker for historical sessions where streamed
+    // compact_boundary blocks were not persisted in sdkMessage content.
+    if (messages.length > 0) {
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        if (messages[i].role !== "assistant") continue;
+        const kwargs =
+          messages[i].additional_kwargs && typeof messages[i].additional_kwargs === "object"
+            ? (messages[i].additional_kwargs as Record<string, unknown>)
+            : {};
+        const compactEvent =
+          kwargs.compactEvent && typeof kwargs.compactEvent === "object" && !Array.isArray(kwargs.compactEvent)
+            ? (kwargs.compactEvent as Record<string, unknown>)
+            : null;
+        if (!compactEvent) continue;
+        const sdkMessage =
+          kwargs.sdkMessage && typeof kwargs.sdkMessage === "object"
+            ? (kwargs.sdkMessage as Record<string, unknown>)
+            : null;
+        const sdkPayload =
+          sdkMessage?.message && typeof sdkMessage.message === "object"
+            ? (sdkMessage.message as Record<string, unknown>)
+            : null;
+        const content = Array.isArray(sdkPayload?.content) ? [...(sdkPayload!.content as unknown[])] : [];
+        const hasCompactBlock = content.some((block) => {
+          if (!block || typeof block !== "object") return false;
+          return (block as Record<string, unknown>).type === "compact_boundary";
+        });
+        if (!hasCompactBlock) {
+          content.push({
+            type: "compact_boundary",
+            compact_metadata: compactEvent,
+          });
+        }
+        messages[i] = {
+          ...messages[i],
+          additional_kwargs: {
+            ...kwargs,
+            sdkMessage: {
+              ...(sdkMessage || {}),
+              message: {
+                ...(sdkPayload || {}),
+                role: (sdkPayload?.role as string) || "assistant",
+                content,
+              },
+            },
+          },
+        };
+        break;
+      }
+    }
     const now = new Date().toISOString();
     return {
       id,

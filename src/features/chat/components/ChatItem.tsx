@@ -233,6 +233,51 @@ const ChatItem = ({
                       );
                     }
 
+                    if (item.type === "compact") {
+                      const compact = item.compact || { trigger: "auto" as const };
+                      const preText =
+                        typeof compact.preTokens === "number"
+                          ? `${(compact.preTokens / 1000).toFixed(1)}k`
+                          : "--";
+                      const postText =
+                        typeof compact.postTokens === "number"
+                          ? `${(compact.postTokens / 1000).toFixed(1)}k`
+                          : "--";
+                      const savedText =
+                        typeof compact.savedTokens === "number"
+                          ? `${(compact.savedTokens / 1000).toFixed(1)}k`
+                          : "";
+                      const afterPercentText =
+                        typeof compact.usedPercentAfter === "number"
+                          ? `${compact.usedPercentAfter.toFixed(1)}%`
+                          : "";
+                      return (
+                        <Box
+                          key={`${messageId}-timeline-compact-${index}`}
+                          bg={compact.trigger === "manual" ? "orange.50" : "blue.50"}
+                          border="1px solid"
+                          borderColor={compact.trigger === "manual" ? "orange.200" : "blue.200"}
+                          borderRadius="10px"
+                          p={2}
+                        >
+                          <Flex align="center" gap={2} justify="space-between">
+                            <Text color="myGray.700" fontSize="12px" fontWeight="700">
+                              {compact.trigger === "manual" ? "已手动压缩上下文" : "已自动压缩上下文"}
+                            </Text>
+                            {savedText ? (
+                              <Text color="green.600" fontFamily="mono" fontSize="11px" fontWeight="700">
+                                -{savedText}
+                              </Text>
+                            ) : null}
+                          </Flex>
+                          <Flex color="myGray.600" fontFamily="mono" fontSize="11px" gap={3} mt={1} wrap="wrap">
+                            <Text>{preText} → {postText} tokens</Text>
+                            {afterPercentText ? <Text>压缩后占用 {afterPercentText}</Text> : null}
+                          </Flex>
+                        </Box>
+                      );
+                    }
+
                     return (
                       <Box key={`${messageId}-timeline-answer-${index}`} pl={timelineStepIndexes.length > 0 ? "20px" : 0}>
                         <Markdown showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />

@@ -56,6 +56,17 @@ import {
 } from './types.js'
 import { getProjectMcpServerStatus } from './utils.js'
 
+const PROJECT_MCP_CONFIG_RELATIVE_PATH = join('config', 'mcp.json')
+const PROJECT_MCP_CONFIG_LEGACY_FILENAME = '.mcp.json'
+
+function getProjectMcpConfigPathFromDir(dir: string): string {
+  return join(dir, PROJECT_MCP_CONFIG_RELATIVE_PATH)
+}
+
+function getLegacyProjectMcpConfigPathFromDir(dir: string): string {
+  return join(dir, PROJECT_MCP_CONFIG_LEGACY_FILENAME)
+}
+
 /**
  * Get the path to the managed MCP configuration file
  */
@@ -81,12 +92,12 @@ function addScopeToServers(
 }
 
 /**
- * Internal utility: Write MCP config to .mcp.json file.
+ * Internal utility: Write MCP config to project config/mcp.json file.
  * Preserves file permissions and flushes to disk before rename.
  * Uses the original path for rename (does not follow symlinks).
  */
 async function writeMcpjsonFile(config: McpJsonConfig): Promise<void> {
-  const mcpJsonPath = join(getCwd(), '.mcp.json')
+  const mcpJsonPath = getProjectMcpConfigPathFromDir(getCwd())
 
   // Read existing file permissions to preserve them
   let existingMode: number | undefined
@@ -102,6 +113,9 @@ async function writeMcpjsonFile(config: McpJsonConfig): Promise<void> {
   }
 
   // Write to temp file, flush to disk, then atomic rename
+  await getFsImplementation().promises.mkdir(dirname(mcpJsonPath), {
+    recursive: true,
+  })
   const tempPath = `${mcpJsonPath}.tmp.${process.pid}.${Date.now()}`
   const handle = await open(tempPath, 'w', existingMode ?? 0o644)
   try {
@@ -683,7 +697,9 @@ export async function addMcpConfig(
     case 'project': {
       const { servers } = getProjectMcpConfigsFromCwd()
       if (servers[name]) {
-        throw new Error(`MCP server ${name} already exists in .mcp.json`)
+        throw new Error(
+          `MCP server ${name} already exists in project config/mcp.json`,
+        )
       }
       break
     }
@@ -724,11 +740,11 @@ export async function addMcpConfig(
       mcpServers[name] = validatedConfig
       const mcpConfig = { mcpServers }
 
-      // Write back to .mcp.json
+      // Write back to project config/mcp.json
       try {
         await writeMcpjsonFile(mcpConfig)
       } catch (error) {
-        throw new Error(`Failed to write to .mcp.json: ${error}`)
+        throw new Error(`Failed to write to project config/mcp.json: ${error}`)
       }
       break
     }
@@ -775,10 +791,12 @@ export async function removeMcpConfig(
       const { servers: existingServers } = getProjectMcpConfigsFromCwd()
 
       if (!existingServers[name]) {
-        throw new Error(`No MCP server found with name: ${name} in .mcp.json`)
+        throw new Error(
+          `No MCP server found with name: ${name} in project config/mcp.json`,
+        )
       }
 
-      // Strip scope information when writing back to .mcp.json
+      // Strip scope information when writing back to project config/mcp.json
       const mcpServers: Record<string, McpServerConfig> = {}
       for (const [serverName, serverConfig] of Object.entries(
         existingServers,
@@ -792,7 +810,9 @@ export async function removeMcpConfig(
       try {
         await writeMcpjsonFile(mcpConfig)
       } catch (error) {
-        throw new Error(`Failed to remove from .mcp.json: ${error}`)
+        throw new Error(
+          `Failed to remove from project config/mcp.json: ${error}`,
+        )
       }
       break
     }
@@ -835,10 +855,10 @@ export async function removeMcpConfig(
 
 /**
  * Get MCP configs from current directory only (no parent traversal).
- * Used by addMcpConfig and removeMcpConfig to modify the local .mcp.json file.
+ * Used by addMcpConfig and removeMcpConfig to modify the project config file.
  * Exported for testing purposes.
  *
- * @returns Servers with scope information and any validation errors from current directory's .mcp.json
+ * Prefers config/mcp.json and falls back to legacy .mcp.json for compatibility.
  */
 export function getProjectMcpConfigsFromCwd(): {
   servers: Record<string, ScopedMcpServerConfig>
@@ -849,22 +869,33 @@ export function getProjectMcpConfigsFromCwd(): {
     return { servers: {}, errors: [] }
   }
 
-  const mcpJsonPath = join(getCwd(), '.mcp.json')
+  const primaryPath = getProjectMcpConfigPathFromDir(getCwd())
+  const legacyPath = getLegacyProjectMcpConfigPathFromDir(getCwd())
 
-  const { config, errors } = parseMcpConfigFromFilePath({
-    filePath: mcpJsonPath,
+  const primary = parseMcpConfigFromFilePath({
+    filePath: primaryPath,
+    expandVars: true,
+    scope: 'project',
+  })
+  const legacy = parseMcpConfigFromFilePath({
+    filePath: legacyPath,
     expandVars: true,
     scope: 'project',
   })
 
+  const selected =
+    primary.config || !legacy.config
+      ? { path: primaryPath, ...primary }
+      : { path: legacyPath, ...legacy }
+
   // Missing .mcp.json is expected, but malformed files should report errors
-  if (!config) {
-    const nonMissingErrors = errors.filter(
+  if (!selected.config) {
+    const nonMissingErrors = selected.errors.filter(
       e => !e.message.startsWith('MCP config file not found'),
     )
     if (nonMissingErrors.length > 0) {
       logForDebugging(
-        `MCP config errors for ${mcpJsonPath}: ${jsonStringify(nonMissingErrors.map(e => e.message))}`,
+        `MCP config errors for ${selected.path}: ${jsonStringify(nonMissingErrors.map(e => e.message))}`,
         { level: 'error' },
       )
       return { servers: {}, errors: nonMissingErrors }
@@ -873,10 +904,10 @@ export function getProjectMcpConfigsFromCwd(): {
   }
 
   return {
-    servers: config.mcpServers
-      ? addScopeToServers(config.mcpServers, 'project')
+    servers: selected.config.mcpServers
+      ? addScopeToServers(selected.config.mcpServers, 'project')
       : {},
-    errors: errors || [],
+    errors: selected.errors || [],
   }
 }
 
@@ -921,22 +952,32 @@ export function getMcpConfigsByScope(
 
       // Process from root downward to CWD (so closer files have higher priority)
       for (const dir of dirs.reverse()) {
-        const mcpJsonPath = join(dir, '.mcp.json')
+        const primaryPath = getProjectMcpConfigPathFromDir(dir)
+        const legacyPath = getLegacyProjectMcpConfigPathFromDir(dir)
 
-        const { config, errors } = parseMcpConfigFromFilePath({
-          filePath: mcpJsonPath,
+        const primary = parseMcpConfigFromFilePath({
+          filePath: primaryPath,
           expandVars: true,
           scope: 'project',
         })
+        const legacy = parseMcpConfigFromFilePath({
+          filePath: legacyPath,
+          expandVars: true,
+          scope: 'project',
+        })
+        const selected =
+          primary.config || !legacy.config
+            ? { path: primaryPath, ...primary }
+            : { path: legacyPath, ...legacy }
 
         // Missing .mcp.json in parent directories is expected, but malformed files should report errors
-        if (!config) {
-          const nonMissingErrors = errors.filter(
+        if (!selected.config) {
+          const nonMissingErrors = selected.errors.filter(
             e => !e.message.startsWith('MCP config file not found'),
           )
           if (nonMissingErrors.length > 0) {
             logForDebugging(
-              `MCP config errors for ${mcpJsonPath}: ${jsonStringify(nonMissingErrors.map(e => e.message))}`,
+              `MCP config errors for ${selected.path}: ${jsonStringify(nonMissingErrors.map(e => e.message))}`,
               { level: 'error' },
             )
             allErrors.push(...nonMissingErrors)
@@ -944,13 +985,16 @@ export function getMcpConfigsByScope(
           continue
         }
 
-        if (config.mcpServers) {
+        if (selected.config.mcpServers) {
           // Merge servers, with files closer to CWD overriding parent configs
-          Object.assign(allServers, addScopeToServers(config.mcpServers, scope))
+          Object.assign(
+            allServers,
+            addScopeToServers(selected.config.mcpServers, scope),
+          )
         }
 
-        if (errors.length > 0) {
-          allErrors.push(...errors)
+        if (selected.errors.length > 0) {
+          allErrors.push(...selected.errors)
         }
       }
 

@@ -58,6 +58,8 @@ type QueryEngineExecutionAttempt = {
   error?: string;
 };
 
+type UsagePayload = NonNullable<QueryEngineExecutionAttempt["usage"]>;
+
 type TokenBudgetPayload = {
   used: number;
   total: number;
@@ -93,6 +95,31 @@ type BuildProjectMemfsOverlayOptions = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const toUsagePayload = (usage: unknown): UsagePayload | null => {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  const record = usage as Record<string, unknown>;
+  if (typeof record.input_tokens !== "number" || !Number.isFinite(record.input_tokens)) {
+    return null;
+  }
+  return {
+    input_tokens: record.input_tokens,
+    cache_creation_input_tokens:
+      typeof record.cache_creation_input_tokens === "number" &&
+      Number.isFinite(record.cache_creation_input_tokens)
+        ? record.cache_creation_input_tokens
+        : 0,
+    cache_read_input_tokens:
+      typeof record.cache_read_input_tokens === "number" &&
+      Number.isFinite(record.cache_read_input_tokens)
+        ? record.cache_read_input_tokens
+        : 0,
+    output_tokens:
+      typeof record.output_tokens === "number" && Number.isFinite(record.output_tokens)
+        ? record.output_tokens
+        : 0,
+  };
+};
 
 const toTokenBudgetFromUsage = ({
   usage,
@@ -1258,6 +1285,7 @@ const tryRunQueryEngine = async (
     let stopReason: string | null = null;
     let resultSubtype: string | null = null;
     let resultUsage: QueryEngineExecutionAttempt["usage"] = null;
+    let lastTopLevelAssistantUsage: UsagePayload | null = null;
     try {
       const configMod = await import("../utils/config");
       const enableConfigs = pickNamedExport<() => void>(configMod, "enableConfigs");
@@ -1573,8 +1601,18 @@ const tryRunQueryEngine = async (
         }
       }
       if ((event as { type?: string }).type === "assistant") {
-        const assistant = event as { parent_tool_use_id?: unknown; message?: { content?: unknown } };
+        const assistant = event as {
+          parent_tool_use_id?: unknown;
+          message?: { content?: unknown; usage?: unknown };
+        };
         const parentAgentToolUseId = getParentAgentToolUseId(event);
+        if (!parentAgentToolUseId) {
+          const assistantUsage = toUsagePayload(assistant.message?.usage);
+          if (assistantUsage) {
+            lastTopLevelAssistantUsage = assistantUsage;
+            emitTokenBudgetStatus(lastTopLevelAssistantUsage);
+          }
+        }
         const blocks = Array.isArray(assistant.message?.content) ? assistant.message?.content : [];
         for (const block of blocks) {
           if (!block || typeof block !== "object") continue;
@@ -1687,6 +1725,39 @@ const tryRunQueryEngine = async (
         const text = sdkContentToText(msg.message?.content);
         if (text.trim()) assistantText = text;
       }
+      if ((event as { type?: string }).type === "system") {
+        const systemEvent = event as {
+          subtype?: unknown;
+          compact_metadata?: unknown;
+          pre_tokens?: unknown;
+          tokens_saved?: unknown;
+        };
+        const subtype =
+          typeof systemEvent.subtype === "string" ? systemEvent.subtype.trim().toLowerCase() : "";
+        if (subtype === "compact_boundary") {
+          const compactMetadata =
+            systemEvent.compact_metadata &&
+            typeof systemEvent.compact_metadata === "object" &&
+            !Array.isArray(systemEvent.compact_metadata)
+              ? (systemEvent.compact_metadata as Record<string, unknown>)
+              : {};
+          const trigger =
+            typeof compactMetadata.trigger === "string" && compactMetadata.trigger.trim()
+              ? compactMetadata.trigger.trim()
+              : "auto";
+          const preTokensRaw = compactMetadata.pre_tokens;
+          const preTokens =
+            typeof preTokensRaw === "number" && Number.isFinite(preTokensRaw)
+              ? Math.max(0, Math.floor(preTokensRaw))
+              : undefined;
+          emitEvent("stream_event", {
+            subtype: "compact_boundary",
+            trigger,
+            ...(preTokens !== undefined ? { pre_tokens: preTokens } : {}),
+          });
+          continue;
+        }
+      }
       if ((event as { type?: string }).type === "result") {
         const result = event as {
           subtype?: string;
@@ -1696,31 +1767,12 @@ const tryRunQueryEngine = async (
         };
         resultSubtype = result.subtype ?? null;
         stopReason = result.stop_reason ?? null;
-        if (result.usage && typeof result.usage === "object" && !Array.isArray(result.usage)) {
-          const usage = result.usage as Record<string, unknown>;
-          if (
-            typeof usage.input_tokens === "number" &&
-            Number.isFinite(usage.input_tokens)
-          ) {
-            resultUsage = {
-              input_tokens: usage.input_tokens,
-              cache_creation_input_tokens:
-                typeof usage.cache_creation_input_tokens === "number" &&
-                Number.isFinite(usage.cache_creation_input_tokens)
-                  ? usage.cache_creation_input_tokens
-                  : 0,
-              cache_read_input_tokens:
-                typeof usage.cache_read_input_tokens === "number" &&
-                Number.isFinite(usage.cache_read_input_tokens)
-                  ? usage.cache_read_input_tokens
-                  : 0,
-              output_tokens:
-                typeof usage.output_tokens === "number" && Number.isFinite(usage.output_tokens)
-                  ? usage.output_tokens
-                  : 0,
-            };
-            emitTokenBudgetStatus(resultUsage);
-          }
+        const normalizedResultUsage = toUsagePayload(result.usage);
+        if (normalizedResultUsage) {
+          resultUsage = normalizedResultUsage;
+          // result.usage can be cumulative across iterations/background work;
+          // prefer the latest top-level assistant usage for context window UI.
+          emitTokenBudgetStatus(lastTopLevelAssistantUsage ?? resultUsage);
         }
         if (!assistantText.trim() && typeof result.result === "string" && result.result.trim()) {
           assistantText = result.result;
@@ -1729,6 +1781,7 @@ const tryRunQueryEngine = async (
     }
 
       if (assistantMessagePayload || assistantText.trim() || pendingInteraction) {
+        const finalUsage = lastTopLevelAssistantUsage ?? resultUsage;
         return {
           ok: true,
           assistantText,
@@ -1736,7 +1789,7 @@ const tryRunQueryEngine = async (
           pendingInteraction,
           stopReason,
           resultSubtype,
-          usage: resultUsage,
+          usage: finalUsage,
           warnings: probe.warnings,
         };
       }

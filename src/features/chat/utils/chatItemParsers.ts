@@ -31,7 +31,7 @@ export interface ToolDetail {
 }
 
 export interface TimelineItem {
-  type: "reasoning" | "answer" | "tool" | "agent";
+  type: "reasoning" | "answer" | "tool" | "agent" | "compact";
   text?: string;
   id?: string;
   toolName?: string;
@@ -50,6 +50,14 @@ export interface TimelineItem {
   parentAgentToolUseId?: string;
   interaction?: PlanInteractionEnvelope;
   progressStatus?: "pending" | "in_progress" | "completed" | "error";
+  compact?: {
+    trigger: "auto" | "manual";
+    preTokens?: number;
+    postTokens?: number;
+    savedTokens?: number;
+    usedPercentBefore?: number;
+    usedPercentAfter?: number;
+  };
 }
 
 export interface PlanQuestionOption {
@@ -541,6 +549,22 @@ export const getReasoningText = (message: ConversationMessage): string => {
 export const getTimelineItems = (message: ConversationMessage): TimelineItem[] => {
   const sdkContent = getSdkContentBlocks(message);
   const interactionByRequestId = getInteractionByRequestId(message);
+  const kwargs =
+    message.additional_kwargs && typeof message.additional_kwargs === "object"
+      ? (message.additional_kwargs as Record<string, unknown>)
+      : {};
+  const contextWindow =
+    kwargs.contextWindow && typeof kwargs.contextWindow === "object" && !Array.isArray(kwargs.contextWindow)
+      ? (kwargs.contextWindow as Record<string, unknown>)
+      : null;
+  const usedTokensAfterCompact =
+    contextWindow && typeof contextWindow.usedTokens === "number" && Number.isFinite(contextWindow.usedTokens)
+      ? Math.max(0, Math.floor(contextWindow.usedTokens))
+      : undefined;
+  const usedPercentAfterCompact =
+    contextWindow && typeof contextWindow.usedPercent === "number" && Number.isFinite(contextWindow.usedPercent)
+      ? Math.max(0, Math.min(100, contextWindow.usedPercent))
+      : undefined;
   if (Array.isArray(sdkContent)) {
     const timeline: TimelineItem[] = [];
     const toolLocationById = new Map<string, { scope: "root"; index: number } | { scope: "agent"; agentIndex: number; childIndex: number }>();
@@ -568,6 +592,30 @@ export const getTimelineItems = (message: ConversationMessage): TimelineItem[] =
       }
       if (item.type === "text" && typeof item.text === "string") {
         timeline.push({ type: "answer", text: item.text });
+        continue;
+      }
+      if (item.type === "compact_boundary") {
+        const compactMetadata =
+          item.compact_metadata && typeof item.compact_metadata === "object" && !Array.isArray(item.compact_metadata)
+            ? (item.compact_metadata as Record<string, unknown>)
+            : {};
+        const triggerRaw = compactMetadata.trigger;
+        const trigger = triggerRaw === "manual" ? "manual" : "auto";
+        const preTokensRaw = compactMetadata.preTokens;
+        const preTokens =
+          typeof preTokensRaw === "number" && Number.isFinite(preTokensRaw)
+            ? Math.max(0, Math.floor(preTokensRaw))
+            : undefined;
+        timeline.push({
+          type: "compact",
+          compact: {
+            trigger,
+            ...(preTokens !== undefined ? { preTokens } : {}),
+            ...(usedTokensAfterCompact !== undefined ? { postTokens: usedTokensAfterCompact } : {}),
+            ...(usedPercentAfterCompact !== undefined ? { usedPercentAfter: usedPercentAfterCompact } : {}),
+          },
+          text: trigger === "manual" ? "已手动压缩上下文" : "已自动压缩上下文",
+        });
         continue;
       }
       if (item.type === "tool_use" && typeof item.id === "string") {
@@ -1015,6 +1063,10 @@ export const composeTimelineItems = ({
   const next: TimelineItem[] = [];
 
   rawTimelineItems.forEach((item) => {
+    if (item.type === "compact") {
+      next.push({ ...item });
+      return;
+    }
     if (item.type === "agent") {
       next.push({ ...item });
       return;
@@ -1033,6 +1085,30 @@ export const composeTimelineItems = ({
     }
     next.push({ ...item });
   });
+
+  for (let i = 0; i < next.length; i += 1) {
+    const item = next[i];
+    if (item.type !== "compact" || !item.compact) continue;
+
+    const postTokens = item.compact.postTokens;
+    const preTokens = item.compact.preTokens;
+    const savedTokens =
+      typeof preTokens === "number" && typeof postTokens === "number" && preTokens >= postTokens
+        ? preTokens - postTokens
+        : undefined;
+    next[i] = {
+      ...item,
+      compact: {
+        ...item.compact,
+        ...(postTokens !== undefined ? { postTokens } : {}),
+        ...(savedTokens !== undefined ? { savedTokens } : {}),
+      },
+      text:
+        item.compact.trigger === "manual"
+          ? "已手动压缩上下文"
+          : "已自动压缩上下文",
+    };
+  }
 
   const normalizedReasoning = reasoningText.trim();
   const hasReasoningInTimeline = next.some(

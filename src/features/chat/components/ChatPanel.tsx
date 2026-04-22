@@ -1210,6 +1210,8 @@ const ChatPanel = ({
                 files?: unknown;
                 parent_agent_tool_use_id?: unknown;
                 is_error?: unknown;
+                trigger?: unknown;
+                pre_tokens?: unknown;
               };
               const subtype = typeof payload.subtype === "string" ? payload.subtype : "";
               if (subtype === "thinking_delta" && typeof payload.text === "string" && payload.text) {
@@ -1383,6 +1385,26 @@ const ChatPanel = ({
               if (subtype === "files_updated" && onFilesUpdated) {
                 const files = toUpdatedFilesMap(payload.files);
                 if (files) onFilesUpdated(files);
+                return;
+              }
+              if (subtype === "compact_boundary") {
+                const compactMeta = {
+                  trigger:
+                    typeof payload.trigger === "string" && payload.trigger.trim()
+                      ? payload.trigger.trim()
+                      : "auto",
+                  ...(typeof payload.pre_tokens === "number" && Number.isFinite(payload.pre_tokens)
+                    ? { preTokens: Math.max(0, Math.floor(payload.pre_tokens)) }
+                    : {}),
+                };
+                appendSdkBlock({
+                  type: "compact_boundary",
+                  compact_metadata: compactMeta,
+                });
+                updateAssistantMetadata((current) => ({
+                  ...current,
+                  compactEvent: compactMeta,
+                }));
                 return;
               }
               return;
@@ -1632,6 +1654,14 @@ const ChatPanel = ({
                 const incomingContent = Array.isArray(incomingPayload?.content)
                   ? (incomingPayload.content as unknown[])
                   : [];
+                const hasCompactBoundaryInCurrent = currentContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
+                const hasCompactBoundaryInIncoming = incomingContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
 
               if (incomingContent.length === 0) {
                 return {
@@ -1675,8 +1705,14 @@ const ChatPanel = ({
 
                 // Prefer the stream-assembled sdk blocks to avoid duplicated tool rows when
                 // both `stream_event` and final `message` include the same sequence.
-                const mergedContent =
-                  currentContent.length > 0 ? mergeToolInput(currentContent) : mergeToolInput(incomingContent);
+                const mergedContent = (() => {
+                  if (currentContent.length === 0) return mergeToolInput(incomingContent);
+                  // Keep stream-assembled compact boundaries when the final SDK message omits them.
+                  if (hasCompactBoundaryInCurrent && !hasCompactBoundaryInIncoming) {
+                    return mergeToolInput(currentContent);
+                  }
+                  return mergeToolInput(currentContent);
+                })();
 
                 return {
                   ...current,

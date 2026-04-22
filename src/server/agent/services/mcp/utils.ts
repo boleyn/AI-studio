@@ -265,7 +265,7 @@ export function describeMcpConfigFilePath(scope: ConfigScope): string {
     case 'user':
       return getGlobalClaudeFile()
     case 'project':
-      return join(getCwd(), '.mcp.json')
+      return join(getCwd(), 'config', 'mcp.json')
     case 'local':
       return `${getGlobalClaudeFile()} [project: ${getCwd()}]`
     case 'dynamic':
@@ -284,7 +284,7 @@ export function getScopeLabel(scope: ConfigScope): string {
     case 'local':
       return 'Local config (private to you in this project)'
     case 'project':
-      return 'Project config (shared via .mcp.json)'
+      return 'Project config (shared via config/mcp.json)'
     case 'user':
       return 'User config (available in all your projects)'
     case 'dynamic':
