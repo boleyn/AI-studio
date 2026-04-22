@@ -36,14 +36,28 @@ export const runQueryEngineShadowProbe = async (): Promise<QueryEngineShadowProb
   const warnings: string[] = [];
   const bunBundleFiles: string[] = [];
 
-  if (!(await exists(queryEngineFile))) reasons.push("missing:QueryEngine.ts");
-  if (!(await exists(queryFile))) reasons.push("missing:query.ts");
-  if (!(await exists(toolFile))) reasons.push("missing:Tool.ts");
+  const requireSourceProbe =
+    process.env.QUERY_ENGINE_REQUIRE_SOURCE_PROBE === "1" ||
+    process.env.NODE_ENV !== "production";
 
-  if ((await exists(queryEngineFile)) && !(await hasToken(queryEngineFile, "export class QueryEngine"))) {
+  const hasQueryEngineFile = await exists(queryEngineFile);
+  const hasQueryFile = await exists(queryFile);
+  const hasToolFile = await exists(toolFile);
+
+  if (requireSourceProbe) {
+    if (!hasQueryEngineFile) reasons.push("missing:QueryEngine.ts");
+    if (!hasQueryFile) reasons.push("missing:query.ts");
+    if (!hasToolFile) reasons.push("missing:Tool.ts");
+  } else {
+    if (!hasQueryEngineFile) warnings.push("runtime_warning:missing_source:QueryEngine.ts");
+    if (!hasQueryFile) warnings.push("runtime_warning:missing_source:query.ts");
+    if (!hasToolFile) warnings.push("runtime_warning:missing_source:Tool.ts");
+  }
+
+  if (hasQueryEngineFile && !(await hasToken(queryEngineFile, "export class QueryEngine"))) {
     reasons.push("invalid:QueryEngine_export");
   }
-  if ((await exists(queryFile)) && !(await hasToken(queryFile, "export async function* query"))) {
+  if (hasQueryFile && !(await hasToken(queryFile, "export async function* query"))) {
     reasons.push("invalid:query_export");
   }
   if (await hasToken(queryEngineFile, "from 'bun:bundle'")) {
