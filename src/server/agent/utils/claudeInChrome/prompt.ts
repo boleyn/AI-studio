@@ -80,4 +80,4 @@ export const CLAUDE_IN_CHROME_SKILL_HINT = `**Browser Automation**: Chrome brows
  * dev-loop tasks to WebBrowser and reserve the extension for the user's
  * authenticated Chrome (logged-in sites, OAuth, computer-use).
  */
-export const CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER = `**Browser Automation**: For project preview/debug, use WebBrowser + compile_project (Sandpack), not local dev server startup. Use claude-in-chrome only for the user's real Chrome (login/OAuth/computer-use), and invoke Skill(skill: "claude-in-chrome") before any mcp__claude-in-chrome__* tool.`
+export const CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER = `**Browser Automation**: For preview/debug, MUST use WebBrowser + compile_project (Sandpack). NEVER start local dev servers. Reserve claude-in-chrome ONLY for host Chrome (login/OAuth/desktop). Invoke Skill(skill: "claude-in-chrome") before using its tools.`

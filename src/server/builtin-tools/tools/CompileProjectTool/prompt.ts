@@ -3,12 +3,11 @@ export const COMPILE_PROJECT_TOOL_NAME = 'compile_project'
 export const DESCRIPTION =
   'Read normalized Sandpack compile status/errors for the current project with noise-filtered recent logs/events.'
 
-export const PROMPT = `Sandpack compile status/errors for the current project.
+export const PROMPT = `Returns current project compile diagnostics captured from Sandpack.
 
 Rules:
-- Runtime is virtual sandbox (not real host).
-- Frontend preview/compile diagnosis should use compile_project first.
-- During frontend preview/compile diagnosis, do not run npm/pnpm/yarn dev/start.
+- Runtime is VIRTUAL SANDBOX (not host machine).
+- For frontend preview/compile, MUST use compile_project. NEVER start dev servers via CLI.
 
 Parameters:
 - includeLogs (boolean, default true): include recent console logs.

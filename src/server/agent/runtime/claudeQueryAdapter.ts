@@ -688,10 +688,8 @@ const buildAppendSystemPrompt = (input: RunClaudeQueryAdapterInput): string | un
   const parts: string[] = [];
   parts.push(
     [
-      "Sandbox runtime only:",
-      "- This runs in a virtual sandbox, not the real host machine.",
-      "- For frontend preview/compile diagnosis, use compile_project (Sandpack).",
-      "- In frontend preview/compile diagnosis, do not run npm/pnpm/yarn dev/start.",
+      "Environment: VIRTUAL SANDBOX (not host machine).",
+      "For frontend preview/compile, MUST use compile_project in Sandpack. NEVER start dev servers via CLI.",
     ].join("\n")
   );
   const systemMessages = input.messages
