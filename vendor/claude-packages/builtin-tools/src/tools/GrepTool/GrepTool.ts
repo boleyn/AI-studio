@@ -330,19 +330,9 @@ export const GrepTool = buildTool({
     { abortController, getAppState },
   ) {
     const absolutePath = path ? expandPath(path) : getCwd()
-    const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
-    if (virtualProjectRoot) {
-      return {
-        data: {
-          mode: 'content' as const,
-          numFiles: 0,
-          filenames: [],
-          content:
-            'Search (ripgrep) is temporarily unavailable in virtual filesystem sessions. Please use Glob + Read for now.',
-          numLines: 1,
-        },
-      }
-    }
+    // In nextjs-ai-studio, the virtual project root is actually a materialized sandbox directory
+    // on the host disk (.aistudio/sandboxes/...), so native ripgrep can safely execute against it.
+    // We remove the virtualProjectRoot block here to enable GrepTool in the agent sandbox.
 
     const args = ['--hidden']
 
