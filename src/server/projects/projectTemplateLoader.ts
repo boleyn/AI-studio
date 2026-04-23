@@ -16,17 +16,20 @@ export type ProjectTemplateDefaults = {
 };
 
 const TEMPLATE_ROOT = path.join(process.cwd(), "data", "project-templates");
+const GLOBAL_SKILLS_ROOT = path.join(process.cwd(), "skills");
 
 const toPosixPath = (relativePath: string): string =>
   `/${relativePath.split(path.sep).join(path.posix.sep)}`;
 
-async function walkFiles(dir: string): Promise<string[]> {
+async function walkFiles(dir: string, ignorePatterns: RegExp[] = []): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
+    if (ignorePatterns.some(p => p.test(entry.name))) continue;
+
     const absPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      files.push(...(await walkFiles(absPath)));
+      files.push(...(await walkFiles(absPath, ignorePatterns)));
       continue;
     }
     files.push(absPath);
@@ -44,16 +47,38 @@ export async function loadProjectTemplateDefaults(
   const manifestRaw = await fs.readFile(manifestPath, "utf8");
   const manifest = JSON.parse(manifestRaw) as TemplateManifest;
 
-  const absFiles = await walkFiles(filesRoot);
   const files: Record<string, { code: string }> = {};
-  await Promise.all(
-    absFiles.map(async (absPath) => {
-      const relative = path.relative(filesRoot, absPath);
-      const filePath = toPosixPath(relative);
-      const code = await fs.readFile(absPath, "utf8");
-      files[filePath] = { code };
-    })
-  );
+
+  // 1. Load template files
+  try {
+    const absFiles = await walkFiles(filesRoot);
+    await Promise.all(
+      absFiles.map(async (absPath) => {
+        const relative = path.relative(filesRoot, absPath);
+        const filePath = toPosixPath(relative);
+        const code = await fs.readFile(absPath, "utf8");
+        files[filePath] = { code };
+      })
+    );
+  } catch (err) {
+    console.error(`Failed to load template files for ${template}:`, err);
+  }
+
+  // 2. Load global default skills and put them under .aistudio/skills/
+  try {
+    const ignorePatterns = [/^node_modules$/, /^\.git$/, /^\.DS_Store$/, /^__pycache__$/, /\.pyc$/];
+    const skillFiles = await walkFiles(GLOBAL_SKILLS_ROOT, ignorePatterns);
+    await Promise.all(
+      skillFiles.map(async (absPath) => {
+        const relative = path.relative(GLOBAL_SKILLS_ROOT, absPath);
+        const filePath = `/.aistudio/skills${toPosixPath(relative)}`;
+        const code = await fs.readFile(absPath, "utf8");
+        files[filePath] = { code };
+      })
+    );
+  } catch (err) {
+    console.error(`Failed to load global skills:`, err);
+  }
 
   return {
     files,
