@@ -225,7 +225,7 @@ describe("buildProjectMemfsOverlay virtual root boundary", () => {
   });
 
   test("uses a virtual .aistudio config home while running inside a virtual project", () => {
-    const virtualRoot = path.join(projectRoot, ".aistudio-virtual", "demo-token");
+    const virtualRoot = path.join(projectRoot, ".aistudio", "demo-token");
     const configHome = path.join(virtualRoot, ".aistudio");
 
     const result = runWithClaudeConfigHomeDir(configHome, () => getClaudeConfigHomeDir());

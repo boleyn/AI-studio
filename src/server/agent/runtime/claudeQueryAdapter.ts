@@ -1271,7 +1271,7 @@ const tryRunQueryEngine = async (
 
   const baseCwd = process.cwd();
   const hasVirtualProjectFiles = Boolean(input.projectFiles && Object.keys(input.projectFiles).length > 0);
-  const virtualProjectRoot = path.resolve(baseCwd, ".aistudio-virtual", input.token || "project");
+  const virtualProjectRoot = path.resolve(baseCwd, ".aistudio", input.token || "project");
   const systemSkillFiles = collectSystemSkillFiles(path.resolve(process.cwd(), "skills"));
   const scopedFs =
     hasVirtualProjectFiles && input.projectFiles

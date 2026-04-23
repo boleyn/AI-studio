@@ -96,9 +96,9 @@ export function getMemoryBaseDir(): string {
         return (join(stableRoot, '.aistudio') + sep).normalize('NFC')
       }
     }
-    const virtualMarker = '/.aistudio-virtual/'
+    const virtualMarker = '/.aistudio/'
     const markerIndex = normalized.indexOf(virtualMarker)
-    // AI Studio virtual-session paths include a volatile .aistudio-virtual/<sessionId>/ segment.
+    // AI Studio project-scoped paths may include a volatile .aistudio/<sessionId>/ segment.
     // Collapse to a stable project-local base so memory survives session restarts.
     if (markerIndex > 0) {
       const stableRoot = normalized.slice(0, markerIndex)

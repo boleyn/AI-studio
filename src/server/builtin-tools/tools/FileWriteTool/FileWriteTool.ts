@@ -118,7 +118,7 @@ function resolveWritePath(filePath: string): string {
     const inferredVirtualSkillPath =
       normalizedHostAbsolute.match(/\/(\.aistudio\/skills\/.+)$/)?.[1] ||
       normalizedHostAbsolute.match(/\/(skills\/.+)$/)?.[1] ||
-      normalizedHostAbsolute.match(/\/\.aistudio-virtual\/[^/]+\/(.+)$/)?.[1]
+      normalizedHostAbsolute.match(/\/\.aistudio\/runtime\/[^/]+\/(.+)$/)?.[1]
     if (inferredVirtualSkillPath) {
       return expandPath(inferredVirtualSkillPath, virtualRoot)
     }
