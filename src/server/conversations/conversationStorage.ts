@@ -227,11 +227,16 @@ const getLatestUsageContextWindow = (
       Number.isFinite(usageRecord.cache_read_input_tokens)
         ? usageRecord.cache_read_input_tokens
         : 0;
-    // OpenAI-compatible providers often report prompt_tokens (mapped to input_tokens)
-    // as an inclusive value that already contains cached prompt tokens.
-    // To avoid inflating context usage in UI, do not add cache_read_input_tokens again.
-    // Keep cache_creation_input_tokens additive (it's not represented in OpenAI usage).
-    const usedTokens = Math.max(0, inputTokens + cacheCreationInputTokens);
+    const outputTokens =
+      typeof usageRecord.output_tokens === "number" &&
+      Number.isFinite(usageRecord.output_tokens)
+        ? usageRecord.output_tokens
+        : 0;
+    // Match Claude Code's getTokenCountFromUsage: full context window is
+    // input_tokens + cache_creation + cache_read + output_tokens.
+    // The previous formula dropped cache_read and output, underestimating
+    // context usage by 30-50% and causing incorrect UI display.
+    const usedTokens = Math.max(0, inputTokens + cacheCreationInputTokens + cacheReadInputTokens + outputTokens);
     // Keep percentage strictly derived from the same usedTokens/maxContext pair
     // shown in UI, so ring/tooltip/counters always stay consistent.
     const usedPercent = Math.max(0, Math.min(100, Math.round((usedTokens / maxContext) * 100)));

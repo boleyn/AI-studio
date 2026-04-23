@@ -138,10 +138,19 @@ const toTokenBudgetFromUsage = ({
     Number.isFinite(record.cache_read_input_tokens)
       ? record.cache_read_input_tokens
       : 0;
-  void cacheReadInputTokens;
-  // Keep usage semantics aligned with conversationStorage/history recovery:
-  // treat input_tokens as inclusive prompt usage and only add cache_creation.
-  const usedTokens = Math.max(0, Math.floor(inputTokens + cacheCreationInputTokens));
+  const outputTokens =
+    typeof record.output_tokens === "number" &&
+    Number.isFinite(record.output_tokens)
+      ? record.output_tokens
+      : 0;
+  // Match Claude Code's getTokenCountFromUsage: the full context window size
+  // is input_tokens + cache_creation + cache_read + output_tokens.
+  // The previous implementation only counted input + cache_creation, which
+  // underestimated context usage by 30-50% and prevented autocompact from
+  // ever triggering.
+  const usedTokens = Math.max(0, Math.floor(
+    inputTokens + cacheCreationInputTokens + cacheReadInputTokens + outputTokens
+  ));
   const maxContext = Math.max(1, getContextWindowForModel(model));
   const usedPercent = Math.max(0, Math.min(100, (usedTokens / maxContext) * 100));
   return {
