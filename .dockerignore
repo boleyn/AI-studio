@@ -10,3 +10,6 @@ yarn-error.log*
 !.env.example
 README.md
 .DS_Store
+.aistudio
+data/sandboxes
+data/sandboxes/**
