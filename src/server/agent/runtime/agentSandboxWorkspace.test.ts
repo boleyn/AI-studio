@@ -106,4 +106,40 @@ describe('agentSandboxWorkspace S3 persistence', () => {
       fs.rmSync(baseCwd, { recursive: true, force: true })
     }
   })
+
+  test('does not persist ephemeral runtime directories to S3', async () => {
+    const baseCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aistudio-s3-ephemeral-'))
+    const workspaceIdentity = 'ephemeral-demo'
+
+    try {
+      const prepared = await prepareAgentSandboxWorkspace({
+        baseCwd,
+        workspaceIdentity,
+        hostProjectRoot: '/virtual/project',
+        projectFiles: {
+          '/src/keep.ts': { code: 'keep\n' },
+        },
+      })
+
+      prepared.scopedFs.mkdirSync('/virtual/project/.tmp', { recursive: true })
+      prepared.scopedFs.writeFileSync('/virtual/project/.tmp/runtime.tmp', 'tmp\n')
+      prepared.scopedFs.mkdirSync('/virtual/project/.cache', { recursive: true })
+      prepared.scopedFs.writeFileSync('/virtual/project/.cache/cache.bin', 'cache\n')
+      prepared.scopedFs.mkdirSync('/virtual/project/.state', { recursive: true })
+      prepared.scopedFs.writeFileSync('/virtual/project/.state/state.json', '{}\n')
+      prepared.scopedFs.mkdirSync('/virtual/project/.config', { recursive: true })
+      prepared.scopedFs.writeFileSync('/virtual/project/.config/tool.conf', 'x=1\n')
+
+      await prepared.persistToS3()
+
+      const objectKeys = [...s3MockState.objects.keys()]
+      expect(objectKeys.some(key => key.includes('/files/.tmp/'))).toBe(false)
+      expect(objectKeys.some(key => key.includes('/files/.cache/'))).toBe(false)
+      expect(objectKeys.some(key => key.includes('/files/.state/'))).toBe(false)
+      expect(objectKeys.some(key => key.includes('/files/.config/'))).toBe(false)
+      expect(objectKeys.some(key => key.endsWith('/files/src/keep.ts'))).toBe(true)
+    } finally {
+      fs.rmSync(baseCwd, { recursive: true, force: true })
+    }
+  })
 })

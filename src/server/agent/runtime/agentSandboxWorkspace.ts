@@ -26,6 +26,7 @@ const STORAGE_ENV_KEYS = [
 
 const S3_PREFIX =
   (process.env.AGENT_SANDBOX_S3_PREFIX || 'agent_sandbox_workspaces').trim()
+const EPHEMERAL_ROOT_DIRS = new Set(['.tmp', '.cache', '.state', '.config'])
 
 function isS3PersistenceEnabled(): boolean {
   const explicit = (process.env.AGENT_SANDBOX_S3_ENABLED || '').trim().toLowerCase()
@@ -112,6 +113,13 @@ function toRelativeFromS3ObjectKey(
   return relative
 }
 
+function shouldSkipPersistenceRelativePath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (!normalized) return false
+  const rootSegment = normalized.split('/')[0] || ''
+  return EPHEMERAL_ROOT_DIRS.has(rootSegment)
+}
+
 async function hydrateWorkspaceFromS3(
   workspaceRoot: string,
   workspaceKey: string,
@@ -129,6 +137,7 @@ async function hydrateWorkspaceFromS3(
   for (const key of keys) {
     const relativePath = toRelativeFromS3ObjectKey(workspaceKey, key)
     if (!relativePath) continue
+    if (shouldSkipPersistenceRelativePath(relativePath)) continue
     const destination = path.resolve(workspaceRoot, relativePath)
     if (!isPathInsideRoot(destination, workspaceRoot)) continue
     try {
@@ -168,6 +177,7 @@ async function persistWorkspaceToS3(
 
       const relative = path.relative(workspaceRoot, absolutePath).replace(/\\/g, '/')
       if (!relative || relative.includes('..')) continue
+      if (shouldSkipPersistenceRelativePath(relative)) continue
       const objectKey = toS3ObjectKey(workspaceKey, relative)
       currentObjectKeys.add(objectKey)
 

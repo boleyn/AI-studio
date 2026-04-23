@@ -206,6 +206,10 @@ const normalizeProjectFilePath = (filePath: string): string => {
 
 const isExportableRuntimeProjectPath = (filePath: string): boolean => {
   const normalized = normalizeProjectFilePath(filePath);
+  if (normalized === "/.tmp" || normalized.startsWith("/.tmp/")) return false;
+  if (normalized === "/.cache" || normalized.startsWith("/.cache/")) return false;
+  if (normalized === "/.state" || normalized.startsWith("/.state/")) return false;
+  if (normalized === "/.config" || normalized.startsWith("/.config/")) return false;
   if (normalized === "/.aistudio" || normalized.startsWith("/.aistudio/")) return false;
   if (normalized === "/.aistudio-home" || normalized.startsWith("/.aistudio-home/")) return false;
   // Uploaded/binary attachments mirrored under /.files should not be pushed to code editor updates.
