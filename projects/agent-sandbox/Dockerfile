@@ -3,7 +3,7 @@
 #
 # 构建：docker build -t fastgpt-agent-sandbox:latest .
 # 产物：fastgpt-agent-sandbox:latest
-FROM docker.m.daocloud.io/library/ubuntu:24.04
+FROM docker.1ms.run/library/ubuntu:24.04
 
 # Avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive

@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=docker.m.daocloud.io/library/node:20.14.0-alpine
+ARG NODE_IMAGE=docker.1ms.run/library/node:20.14.0-alpine
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ARG APK_MIRROR=mirrors.aliyun.com
