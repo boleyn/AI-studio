@@ -686,6 +686,14 @@ const toQueryEngineHistoryWithClaudeMapper = async (
 
 const buildAppendSystemPrompt = (input: RunClaudeQueryAdapterInput): string | undefined => {
   const parts: string[] = [];
+  parts.push(
+    [
+      "Sandbox runtime only:",
+      "- This runs in a virtual sandbox, not the real host machine.",
+      "- For frontend preview/compile diagnosis, use compile_project (Sandpack).",
+      "- In frontend preview/compile diagnosis, do not run npm/pnpm/yarn dev/start.",
+    ].join("\n")
+  );
   const systemMessages = input.messages
     .filter((item) => item.role === "system")
     .map((item) => normalizeMessageContent((item as { content?: unknown }).content).trim())
