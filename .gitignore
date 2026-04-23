@@ -86,3 +86,4 @@ tmp/docx/
 .next-dev/
 .idea/
 .aistudio-virtual/
+/data/sandboxes

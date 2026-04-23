@@ -1,20 +1,12 @@
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import { spawn } from 'child_process'
-import { randomUUID } from 'crypto'
 import {
   copyFile,
-  mkdtemp as fsMkdtemp,
   mkdir as fsMkdir,
-  readdir as fsReaddir,
-  readFile as fsReadFile,
-  rm as fsRm,
   stat as fsStat,
   truncate as fsTruncate,
-  writeFile as fsWriteFile,
   link,
 } from 'fs/promises'
-import * as nodeFs from 'fs'
 import * as React from 'react'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { AppState } from 'src/state/AppState.js'
@@ -65,6 +57,7 @@ import {
 import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import { truncate } from 'src/utils/format.js'
 import { getFsImplementation, getVirtualProjectRoot } from 'src/utils/fsOperations.js'
+import { prepareAgentSandboxWorkspace } from 'src/runtime/agentSandboxWorkspace.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { expandPath } from 'src/utils/path.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
@@ -199,52 +192,6 @@ const BASH_SILENT_COMMANDS = new Set([
   'wait',
 ])
 
-const VIRTUAL_BASH_ALLOWED_COMMANDS = new Set(['ls', 'pwd', 'cat', 'echo'])
-const parseLimitEnv = (value: string | undefined, fallback: number): number => {
-  const raw = (value || '').trim()
-  if (!raw) return fallback
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
-  return parsed
-}
-// Default to high limits for server deployments with sufficient resources.
-// Can still be overridden via env if operators need tighter bounds.
-const VIRTUAL_WASI_FILE_LIMIT = parseLimitEnv(
-  process.env.CLAUDE_CODE_VIRTUAL_WASI_FILE_LIMIT,
-  200_000,
-)
-const VIRTUAL_WASI_BYTE_LIMIT = parseLimitEnv(
-  process.env.CLAUDE_CODE_VIRTUAL_WASI_BYTE_LIMIT,
-  1024 * 1024 * 1024, // 1GB
-)
-const VIRTUAL_HOST_SESSION_TTL_MS = 15 * 60 * 1000
-
-type VirtualHostWorkspaceSession = {
-  virtualProjectRoot: string
-  stagingRoot: string
-  workspaceDir: string
-  lastUsedAt: number
-  ptyShell?: string
-  ptyProcess?: {
-    write: (data: string) => void
-    kill: (signal?: string) => void
-    onData: (cb: (data: string) => void) => { dispose: () => void }
-    onExit: (
-      cb: (event: { exitCode: number; signal?: number }) => void,
-    ) => { dispose: () => void }
-    cols: number
-    rows: number
-  }
-  ptyQueue: Promise<void>
-}
-
-const virtualHostWorkspaceSessions = new Map<string, VirtualHostWorkspaceSession>()
-let virtualHostWorkspaceJanitorStarted = false
-
-function getDirEntryName(entry: string | { name: string }): string {
-  return typeof entry === 'string' ? entry : entry.name
-}
-
 function tokenizeShellLike(command: string): string[] {
   const matches = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || []
   return matches.map(part => {
@@ -258,33 +205,6 @@ function tokenizeShellLike(command: string): string[] {
   })
 }
 
-function hasUnsupportedShellSyntax(command: string): boolean {
-  return /[|;&><`$]/.test(command)
-}
-
-function formatMode(mode: number, isDirectory: boolean): string {
-  const type = isDirectory ? 'd' : '-'
-  const perms = [
-    0o400, 0o200, 0o100, // user
-    0o040, 0o020, 0o010, // group
-    0o004, 0o002, 0o001, // other
-  ]
-  const chars = ['r', 'w', 'x', 'r', 'w', 'x', 'r', 'w', 'x']
-  let out = type
-  for (let i = 0; i < perms.length; i++) {
-    out += (mode & perms[i]!) !== 0 ? chars[i] : '-'
-  }
-  return out
-}
-
-function formatLsTime(value: Date): string {
-  const month = value.toLocaleString('en-US', { month: 'short' })
-  const day = String(value.getDate()).padStart(2, ' ')
-  const hour = String(value.getHours()).padStart(2, '0')
-  const minute = String(value.getMinutes()).padStart(2, '0')
-  return `${month} ${day} ${hour}:${minute}`
-}
-
 function isInsideVirtualRoot(candidatePath: string, rootPath: string): boolean {
   const resolvedRoot = path.resolve(rootPath)
   const resolvedCandidate = path.resolve(candidatePath)
@@ -296,42 +216,6 @@ function isInsideVirtualRoot(candidatePath: string, rootPath: string): boolean {
 
 function maskVirtualPathsInText(input: string): string {
   return maskAbsolutePathsInText(input, maskVirtualPathForDisplay)
-}
-
-function startVirtualHostWorkspaceJanitor(): void {
-  if (virtualHostWorkspaceJanitorStarted) return
-  virtualHostWorkspaceJanitorStarted = true
-  const timer = setInterval(() => {
-    const now = Date.now()
-    for (const [key, session] of virtualHostWorkspaceSessions.entries()) {
-      if (now - session.lastUsedAt <= VIRTUAL_HOST_SESSION_TTL_MS) continue
-      virtualHostWorkspaceSessions.delete(key)
-      try {
-        session.ptyProcess?.kill('SIGKILL')
-      } catch {
-        // ignore
-      }
-      void fsRm(session.stagingRoot, { recursive: true, force: true }).catch(() => {})
-    }
-  }, 60_000)
-  timer.unref()
-}
-
-function getVirtualWasiMap(): Record<string, string> {
-  const raw = process.env.CLAUDE_CODE_VIRTUAL_WASI_COMMAND_MAP
-  if (!raw?.trim()) return {}
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    const map: Record<string, string> = {}
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'string' && value.trim()) {
-        map[key.trim()] = value.trim()
-      }
-    }
-    return map
-  } catch {
-    return {}
-  }
 }
 
 function collectBashFilesystemRoots(context: Pick<ToolUseContext, 'getAppState'>): string[] {
@@ -352,149 +236,6 @@ function collectBashFilesystemRoots(context: Pick<ToolUseContext, 'getAppState'>
   return Array.from(roots)
 }
 
-async function materializeVirtualTreeToHost(
-  virtualFs: ReturnType<typeof getFsImplementation>,
-  virtualDir: string,
-  hostDir: string,
-): Promise<void> {
-  let fileCount = 0
-  let byteCount = 0
-
-  const walk = async (currentVirtual: string, currentHost: string) => {
-    await fsMkdir(currentHost, { recursive: true })
-    const entries = virtualFs.readdirSync(currentVirtual)
-    for (const entry of entries) {
-      const entryName = getDirEntryName(entry)
-      const source = path.join(currentVirtual, entryName)
-      const target = path.join(currentHost, entryName)
-      const stat = virtualFs.statSync(source)
-      if (stat.isDirectory()) {
-        await walk(source, target)
-        continue
-      }
-      if (!stat.isFile()) continue
-      fileCount += 1
-      byteCount += stat.size
-      if (fileCount > VIRTUAL_WASI_FILE_LIMIT || byteCount > VIRTUAL_WASI_BYTE_LIMIT) {
-        throw new Error(
-          `Virtual WASI staging exceeded limits (files>${VIRTUAL_WASI_FILE_LIMIT} or bytes>${VIRTUAL_WASI_BYTE_LIMIT}).`,
-        )
-      }
-      const bytes = virtualFs.readFileBytesSync(source)
-      await fsWriteFile(target, bytes)
-    }
-  }
-
-  await walk(virtualDir, hostDir)
-}
-
-async function runVirtualWasiCommand(
-  command: string,
-  tokens: string[],
-  virtualProjectRoot: string,
-  cwd: string,
-  fs: ReturnType<typeof getFsImplementation>,
-): Promise<{ code: number; stdout: string; stderr: string } | null> {
-  if (!isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_BASH || '')) {
-    return null
-  }
-
-  const wasiMap = getVirtualWasiMap()
-  const base = tokens[0] || ''
-  const wasmPath = wasiMap[base]
-  if (!wasmPath) return null
-
-  const strict = isEnvTruthy(process.env.CLAUDE_CODE_VIRTUAL_WASI_STRICT || 'false')
-
-  let WASIClass: any
-  try {
-    const wasiModule = await import('node:wasi')
-    WASIClass = wasiModule.WASI
-  } catch (error) {
-    if (!strict) return null
-    return {
-      code: 127,
-      stdout: '',
-      stderr:
-        error instanceof Error
-          ? `Virtual WASI runtime unavailable: ${maskVirtualPathsInText(error.message)}`
-          : 'Virtual WASI runtime unavailable.',
-    }
-  }
-
-  const relativeCwd = path.relative(virtualProjectRoot, cwd)
-  if (relativeCwd.startsWith('..')) {
-    return {
-      code: 1,
-      stdout: '',
-      stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
-    }
-  }
-
-  const os = await import('node:os')
-  const stagingRoot = await fsMkdtemp(path.join(os.tmpdir(), 'claude-virtual-wasi-'))
-  const workspaceDir = path.join(stagingRoot, 'workspace')
-  const stdoutPath = path.join(stagingRoot, 'stdout.log')
-  const stderrPath = path.join(stagingRoot, 'stderr.log')
-
-  try {
-    await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
-    const moduleBuffer = await fsReadFile(wasmPath)
-    const stdoutFd = nodeFs.openSync(stdoutPath, 'w+')
-    const stderrFd = nodeFs.openSync(stderrPath, 'w+')
-
-    let exitCode = 0
-    try {
-      const wasi = new WASIClass({
-        version: 'preview1',
-        args: tokens,
-        env: {
-          PWD: path.posix.join('/workspace', relativeCwd.replace(/\\/g, '/')),
-        },
-        preopens: {
-          '/workspace': workspaceDir,
-        },
-        stdout: stdoutFd,
-        stderr: stderrFd,
-        returnOnExit: true,
-      })
-      const module = await WebAssembly.compile(moduleBuffer)
-      const instance = await WebAssembly.instantiate(module, {
-        wasi_snapshot_preview1: wasi.wasiImport,
-        wasi_unstable: wasi.wasiImport,
-      } as Record<string, unknown>)
-      const result = wasi.start(instance as WebAssembly.Instance)
-      if (typeof result === 'number') exitCode = result
-    } catch (error) {
-      if (!strict) return null
-      return {
-        code: 126,
-        stdout: '',
-        stderr:
-          error instanceof Error
-            ? `Virtual WASI execution failed: ${maskVirtualPathsInText(error.message)}`
-            : 'Virtual WASI execution failed.',
-      }
-    } finally {
-      nodeFs.closeSync(stdoutFd)
-      nodeFs.closeSync(stderrFd)
-    }
-
-    const [stdout, stderr] = await Promise.all([
-      fsReadFile(stdoutPath, 'utf8').catch(() => ''),
-      fsReadFile(stderrPath, 'utf8').catch(() => ''),
-    ])
-
-    return { code: exitCode, stdout, stderr }
-  } finally {
-    await fsRm(stagingRoot, { recursive: true, force: true }).catch(() => {})
-  }
-}
-
-function normalizeRelativePathForSet(input: string): string {
-  return input.split(path.sep).join('/')
-}
-
 function isVirtualAbsolutePathToken(token: string): boolean {
   return (
     token === '/.files' ||
@@ -507,14 +248,11 @@ function isVirtualAbsolutePathToken(token: string): boolean {
 }
 
 function commandReferencesDisallowedPath(command: string): string | null {
-  // Block explicit absolute/home/parent-traversal paths at shell-token level.
-  // This avoids false positives for relative paths containing '/'.
   const tokens = tokenizeShellLike(command.trim())
   for (const token of tokens) {
     const t = token.trim()
     if (!t) continue
     if (t === '&&' || t === '||' || t === '|' || t === ';') continue
-
     if (
       t === '~' ||
       t.startsWith('~/') ||
@@ -523,11 +261,9 @@ function commandReferencesDisallowedPath(command: string): string | null {
     ) {
       return 'home-path "~"'
     }
-
     if (t === '..' || t.startsWith('../') || t.startsWith('..\\')) {
       return 'parent-traversal ".."'
     }
-
     if (t.startsWith('/') || t.startsWith('file:///')) {
       if (isVirtualAbsolutePathToken(t)) continue
       return 'absolute path'
@@ -542,46 +278,18 @@ function rewriteVirtualAbsolutePathsInCommand(
 ): string {
   const tokens = tokenizeShellLike(command.trim())
   if (tokens.length === 0) return command
-
   const toWorkspacePath = (virtualPath: string): string => {
     const relative = virtualPath.replace(/^\/+/, '')
     return path.join(workspaceRoot, relative)
   }
-
-  const rewritten = tokens.map(token => {
-    const t = token.trim()
-    if (!t) return token
-    // Rewrite virtual absolute paths to host absolute paths rooted at the staged workspace.
-    // This keeps absolute semantics even when current cwd is a subdirectory.
-    if (isVirtualAbsolutePathToken(t)) return toWorkspacePath(t)
-    return token
-  })
-
-  return rewritten.join(' ')
-}
-
-function collectVirtualFileSet(
-  fs: ReturnType<typeof getFsImplementation>,
-  virtualRoot: string,
-): Set<string> {
-  const out = new Set<string>()
-  const walk = (dir: string) => {
-    const entries = fs.readdirSync(dir)
-    for (const entry of entries) {
-      const entryName = getDirEntryName(entry)
-      const absPath = path.join(dir, entryName)
-      const stat = fs.statSync(absPath)
-      if (stat.isDirectory()) {
-        walk(absPath)
-        continue
-      }
-      if (!stat.isFile()) continue
-      const relPath = path.relative(virtualRoot, absPath)
-      out.add(normalizeRelativePathForSet(relPath))
-    }
-  }
-  walk(virtualRoot)
-  return out
+  return tokens
+    .map(token => {
+      const t = token.trim()
+      if (!t) return token
+      if (isVirtualAbsolutePathToken(t)) return toWorkspacePath(t)
+      return token
+    })
+    .join(' ')
 }
 
 async function executeInHostShellFromVirtualWorkspace(
@@ -589,422 +297,53 @@ async function executeInHostShellFromVirtualWorkspace(
   cwd: string,
   workspaceRoot: string,
   timeoutMs: number,
-  session?: VirtualHostWorkspaceSession,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const resolveHostShell = (): string => {
-    if (process.platform === 'win32') {
-      return process.env.ComSpec || 'cmd.exe'
-    }
-    const envShell = (process.env.SHELL || '').trim()
-    if (envShell && nodeFs.existsSync(envShell)) {
-      try {
-        nodeFs.accessSync(envShell, nodeFs.constants.X_OK)
-        return envShell
-      } catch {
-        // fall through
-      }
-    }
-    return '/bin/bash'
+  const sandboxExecUrl = (
+    process.env.AGENT_SANDBOX_EXEC_URL || 'http://agent-sandbox:8091/exec'
+  ).trim()
+  const sandboxExecToken = (process.env.AGENT_SANDBOX_EXEC_TOKEN || '').trim()
+  const workspaceKey = path.basename(path.resolve(workspaceRoot)) || 'project'
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
   }
-  const shell = resolveHostShell()
-  const safeCwd = (() => {
-    try {
-      const stat = nodeFs.statSync(cwd)
-      if (stat.isDirectory()) return cwd
-    } catch {
-      // ignore
-    }
-    return workspaceRoot
-  })()
-  const shellArgs =
-    process.platform === 'win32'
-      ? ['/d', '/s', '/c', command]
-      : ['-lc', command]
-
-  const tmpDir = path.join(workspaceRoot, '.tmp')
-  const cacheDir = path.join(workspaceRoot, '.cache')
-  const stateDir = path.join(workspaceRoot, '.state')
-  const configDir = path.join(workspaceRoot, '.config')
-  await fsMkdir(tmpDir, { recursive: true })
-  await fsMkdir(cacheDir, { recursive: true })
-  await fsMkdir(stateDir, { recursive: true })
-  await fsMkdir(configDir, { recursive: true })
-
-  const env = {
-    ...process.env,
-    HOME: workspaceRoot,
-    USERPROFILE: workspaceRoot,
-    TMPDIR: tmpDir,
-    TMP: tmpDir,
-    TEMP: tmpDir,
-    XDG_CACHE_HOME: cacheDir,
-    XDG_STATE_HOME: stateDir,
-    XDG_CONFIG_HOME: configDir,
+  if (sandboxExecToken) {
+    headers['x-fastgpt-exec-token'] = sandboxExecToken
   }
 
-  const runWithSpawn = async (): Promise<{ code: number; stdout: string; stderr: string }> =>
-    await new Promise(resolve => {
-      const child = spawn(shell, shellArgs, {
-        cwd: safeCwd,
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-
-      let stdout = ''
-      let stderr = ''
-      let timedOut = false
-      let timeoutHandle: NodeJS.Timeout | undefined
-      let hardKillHandle: NodeJS.Timeout | undefined
-
-      if (timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          timedOut = true
-          child.kill('SIGTERM')
-          hardKillHandle = setTimeout(() => child.kill('SIGKILL'), 2_000)
-        }, timeoutMs)
-      }
-
-      child.stdout.on('data', chunk => {
-        stdout += chunk.toString()
-      })
-      child.stderr.on('data', chunk => {
-        stderr += chunk.toString()
-      })
-
-      child.on('error', error => {
-        if (timeoutHandle) clearTimeout(timeoutHandle)
-        if (hardKillHandle) clearTimeout(hardKillHandle)
-        resolve({
-          code: 126,
-          stdout,
-          stderr:
-            stderr +
-            (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
-            `Virtual host shell failed: ${maskVirtualPathsInText(error.message)}`,
-        })
-      })
-
-      child.on('close', code => {
-        if (timeoutHandle) clearTimeout(timeoutHandle)
-        if (hardKillHandle) clearTimeout(hardKillHandle)
-        if (timedOut) {
-          resolve({
-            code: 124,
-            stdout,
-            stderr:
-              stderr +
-              (stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n') +
-              `Command timed out after ${timeoutMs}ms in virtual host shell.`,
-          })
-          return
-        }
-        resolve({
-          code: typeof code === 'number' ? code : 1,
-          stdout,
-          stderr,
-        })
-      })
-    })
-
-  // Prefer PTY for terminal-like behavior (ANSI/color, tool output parity).
-  // Fall back to plain spawn when node-pty is unavailable at runtime.
-  if (session) {
-    let ptyMod: Awaited<typeof import('node-pty')> | null = null
-    try {
-      ptyMod = await import('node-pty')
-    } catch {
-      ptyMod = null
-    }
-    if (!ptyMod) {
-      return await runWithSpawn()
-    }
-    const ptyShell = session.ptyShell || shell
-    if (!session.ptyProcess) {
-      try {
-        session.ptyShell = ptyShell
-        session.ptyProcess = ptyMod.spawn(ptyShell, [], {
-          name: 'xterm-256color',
-          cols: 120,
-          rows: 30,
-          cwd: workspaceRoot,
-          env,
-          encoding: 'utf8',
-        })
-        const disposeExit = session.ptyProcess.onExit(() => {
-          disposeExit.dispose()
-          session.ptyProcess = undefined
-        })
-      } catch {
-        session.ptyProcess = undefined
-        return await runWithSpawn()
-      }
-    }
-
-    const runWithPty = async () =>
-      await new Promise<{ code: number; stdout: string; stderr: string }>(
-        resolve => {
-          const p = session.ptyProcess
-          if (!p) {
-            resolve({
-              code: 126,
-              stdout: '',
-              stderr: 'Virtual PTY session unavailable.',
-            })
-            return
-          }
-
-          const markerId = randomUUID()
-          const marker = `__CLAUDE_VPTY_DONE_${markerId}__`
-          const quotedCwd = cwd.replace(/'/g, `'\\''`)
-          const quotedCommand = command.replace(/'/g, `'\\''`)
-          const wrapped =
-            process.platform === 'win32'
-              ? `cd /d "${cwd}" && (${command})\r`
-              : `cd '${quotedCwd}' && { ${quotedCommand}; }; __claude_code_rc=$?; printf "\\n${marker}:%s\\n" "$__claude_code_rc"\r`
-
-          let buffer = ''
-          let timeoutHandle: NodeJS.Timeout | undefined
-          let hardKillHandle: NodeJS.Timeout | undefined
-          let settled = false
-          const settle = (result: {
-            code: number
-            stdout: string
-            stderr: string
-          }) => {
-            if (settled) return
-            settled = true
-            if (timeoutHandle) clearTimeout(timeoutHandle)
-            if (hardKillHandle) clearTimeout(hardKillHandle)
-            dataDisp.dispose()
-            resolve(result)
-          }
-
-          const markerRegex = new RegExp(`${marker}:(-?\\d+)`)
-          const dataDisp = p.onData((data: string) => {
-            buffer += data
-            const m = markerRegex.exec(buffer)
-            if (!m) return
-            const exitCode = Number.parseInt(m[1] || '1', 10)
-            const content = buffer.slice(0, m.index).replace(/\r\n/g, '\n')
-            settle({
-              code: Number.isFinite(exitCode) ? exitCode : 1,
-              stdout: content,
-              stderr: '',
-            })
-          })
-
-          if (timeoutMs > 0) {
-            timeoutHandle = setTimeout(() => {
-              p.write('\u0003')
-              hardKillHandle = setTimeout(() => {
-                try {
-                  p.kill('SIGKILL')
-                } catch {
-                  // ignore
-                }
-                settle({
-                  code: 124,
-                  stdout: buffer,
-                  stderr: `Command timed out after ${timeoutMs}ms in virtual PTY shell.`,
-                })
-              }, 2_000)
-            }, timeoutMs)
-          }
-
-          p.write(wrapped)
-        },
-      )
-
-    const queued = session.ptyQueue.then(runWithPty, runWithPty)
-    session.ptyQueue = queued.then(
-      () => undefined,
-      () => undefined,
-    )
-    return await queued
-  }
-
-  return await runWithSpawn()
-}
-
-async function syncHostWorkspaceBackToVirtualFs(
-  fs: ReturnType<typeof getFsImplementation>,
-  hostWorkspaceRoot: string,
-  virtualProjectRoot: string,
-  beforeFiles: Set<string>,
-): Promise<void> {
-  const afterFiles = new Set<string>()
-
-  const walkHost = async (dir: string) => {
-    const entries = await fsReaddir(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const hostAbsPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await walkHost(hostAbsPath)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      const relPath = normalizeRelativePathForSet(
-        path.relative(hostWorkspaceRoot, hostAbsPath),
-      )
-      afterFiles.add(relPath)
-
-      const virtualAbsPath = path.join(virtualProjectRoot, relPath)
-      fs.mkdirSync(path.dirname(virtualAbsPath))
-      const bytes = await fsReadFile(hostAbsPath)
-      fs.writeFileSync(virtualAbsPath, bytes)
-    }
-  }
-
-  await walkHost(hostWorkspaceRoot)
-
-  for (const relPath of beforeFiles) {
-    if (afterFiles.has(relPath)) continue
-    const virtualAbsPath = path.join(virtualProjectRoot, relPath)
-    if (fs.existsSync(virtualAbsPath)) {
-      fs.rmSync(virtualAbsPath, { force: true })
-    }
-  }
-}
-
-async function syncVirtualFsIntoHostWorkspace(
-  fs: ReturnType<typeof getFsImplementation>,
-  virtualProjectRoot: string,
-  hostWorkspaceRoot: string,
-): Promise<void> {
-  const virtualFiles = collectVirtualFileSet(fs, virtualProjectRoot)
-  const hostFiles = new Set<string>()
-
-  const walkVirtual = async (virtualDir: string) => {
-    const entries = fs.readdirSync(virtualDir)
-    for (const entry of entries) {
-      const entryName = getDirEntryName(entry)
-      const virtualAbsPath = path.join(virtualDir, entryName)
-      const relPath = normalizeRelativePathForSet(
-        path.relative(virtualProjectRoot, virtualAbsPath),
-      )
-      const hostAbsPath = path.join(hostWorkspaceRoot, relPath)
-
-      const stat = fs.statSync(virtualAbsPath)
-      if (stat.isDirectory()) {
-        await fsMkdir(hostAbsPath, { recursive: true })
-        await walkVirtual(virtualAbsPath)
-        continue
-      }
-      if (!stat.isFile()) continue
-
-      hostFiles.add(relPath)
-      await fsMkdir(path.dirname(hostAbsPath), { recursive: true })
-      const bytes = fs.readFileBytesSync(virtualAbsPath)
-      await fsWriteFile(hostAbsPath, bytes)
-    }
-  }
-
-  const walkHost = async (hostDir: string) => {
-    const entries = await fsReaddir(hostDir, { withFileTypes: true })
-    for (const entry of entries) {
-      const hostAbsPath = path.join(hostDir, entry.name)
-      const relPath = normalizeRelativePathForSet(
-        path.relative(hostWorkspaceRoot, hostAbsPath),
-      )
-      if (entry.isDirectory()) {
-        await walkHost(hostAbsPath)
-        continue
-      }
-      if (!entry.isFile()) continue
-      hostFiles.add(relPath)
-    }
-  }
-
-  await walkVirtual(virtualProjectRoot)
-  await walkHost(hostWorkspaceRoot)
-
-  for (const relPath of hostFiles) {
-    if (virtualFiles.has(relPath)) continue
-    const hostAbsPath = path.join(hostWorkspaceRoot, relPath)
-    await fsRm(hostAbsPath, { force: true }).catch(() => {})
-  }
-}
-
-async function getOrCreateVirtualHostWorkspaceSession(
-  fs: ReturnType<typeof getFsImplementation>,
-  virtualProjectRoot: string,
-): Promise<VirtualHostWorkspaceSession> {
-  startVirtualHostWorkspaceJanitor()
-  const key = path.resolve(virtualProjectRoot)
-  const existing = virtualHostWorkspaceSessions.get(key)
-  if (existing) {
-    existing.lastUsedAt = Date.now()
-    await syncVirtualFsIntoHostWorkspace(fs, virtualProjectRoot, existing.workspaceDir)
-    return existing
-  }
-
-  const os = await import('node:os')
-  const stagingRoot = await fsMkdtemp(
-    path.join(os.tmpdir(), 'claude-virtual-shell-session-'),
-  )
-  const workspaceDir = path.join(stagingRoot, 'workspace')
-  await materializeVirtualTreeToHost(fs, virtualProjectRoot, workspaceDir)
-  const session: VirtualHostWorkspaceSession = {
-    virtualProjectRoot: key,
-    stagingRoot,
-    workspaceDir,
-    lastUsedAt: Date.now(),
-    ptyQueue: Promise.resolve(),
-  }
-  virtualHostWorkspaceSessions.set(key, session)
-  return session
-}
-
-async function runVirtualHostShellCommand(
-  command: string,
-  virtualProjectRoot: string,
-  cwd: string,
-  fs: ReturnType<typeof getFsImplementation>,
-  timeoutMs: number,
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  const disallowed = commandReferencesDisallowedPath(command)
-  if (disallowed) {
-    return {
-      code: 2,
-      stdout: '',
-      stderr: `Virtual host shell blocked: detected ${disallowed}. Use paths relative to the virtual workspace only.`,
-    }
-  }
-
-  const session = await getOrCreateVirtualHostWorkspaceSession(fs, virtualProjectRoot)
-  const rewrittenCommand = rewriteVirtualAbsolutePathsInCommand(command, session.workspaceDir)
-  try {
-    const beforeFiles = collectVirtualFileSet(fs, virtualProjectRoot)
-
-    const relativeCwd = path.relative(virtualProjectRoot, cwd)
-    if (relativeCwd.startsWith('..')) {
-      return {
-        code: 1,
-        stdout: '',
-        stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
-      }
-    }
-    const hostCwd = path.resolve(session.workspaceDir, relativeCwd || '.')
-
-    const result = await executeInHostShellFromVirtualWorkspace(
-      rewrittenCommand,
-      hostCwd,
-      session.workspaceDir,
+  const response = await fetch(sandboxExecUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      command,
+      cwd,
+      workspaceKey,
       timeoutMs,
-      session,
-    )
+    }),
+  })
 
-    await syncHostWorkspaceBackToVirtualFs(
-      fs,
-      session.workspaceDir,
-      virtualProjectRoot,
-      beforeFiles,
-    )
-    session.lastUsedAt = Date.now()
-    return result
-  } finally {
-    session.lastUsedAt = Date.now()
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    return {
+      code: 126,
+      stdout: '',
+      stderr:
+        text.trim() ||
+        `Sandbox exec request failed with status ${response.status}.`,
+    }
+  }
+
+  const data = (await response.json().catch(() => ({}))) as {
+    code?: unknown
+    stdout?: unknown
+    stderr?: unknown
+  }
+  return {
+    code:
+      typeof data.code === 'number' && Number.isFinite(data.code)
+        ? data.code
+        : 1,
+    stdout: typeof data.stdout === 'string' ? data.stdout : '',
+    stderr: typeof data.stderr === 'string' ? data.stderr : '',
   }
 }
 
@@ -1014,11 +353,6 @@ async function runVirtualBashCommand(
   workingPath?: string,
   timeoutMs = getDefaultTimeoutMs(),
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const tokens = tokenizeShellLike(command.trim())
-  if (tokens.length === 0) {
-    return { code: 0, stdout: '', stderr: '' }
-  }
-  const base = tokens[0] || ''
   const fs = getFsImplementation()
   let cwd = fs.cwd()
   if (workingPath && workingPath.trim()) {
@@ -1054,136 +388,64 @@ async function runVirtualBashCommand(
       }
     }
   }
-  const resolvePath = (input: string) =>
-    path.isAbsolute(input) ? input : path.resolve(cwd, input)
 
-  const wasiResult = await runVirtualWasiCommand(
-    command,
-    tokens,
-    virtualProjectRoot,
-    cwd,
-    fs,
-  )
-  if (wasiResult) return wasiResult
+  try {
+    const workspaceIdentity =
+      path.basename(path.resolve(virtualProjectRoot)) || 'project'
+    const prepared = await prepareAgentSandboxWorkspace({
+      baseCwd: process.cwd(),
+      workspaceIdentity,
+      hostProjectRoot: process.cwd(),
+    })
 
-  const canUseBuiltinVirtual =
-    !hasUnsupportedShellSyntax(command) && VIRTUAL_BASH_ALLOWED_COMMANDS.has(base)
-  if (!canUseBuiltinVirtual) {
-    return await runVirtualHostShellCommand(
+    const relativeCwd = path.relative(virtualProjectRoot, cwd)
+    if (relativeCwd.startsWith('..')) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: `Working directory "${maskVirtualPathForDisplay(cwd)}" is outside the project sandbox.`,
+      }
+    }
+
+    const hostCwd = path.resolve(prepared.workspaceRoot, relativeCwd || '.')
+    const disallowed = commandReferencesDisallowedPath(command)
+    if (disallowed) {
+      return {
+        code: 2,
+        stdout: '',
+        stderr: `Sandbox shell blocked: detected ${disallowed}. Use paths relative to the virtual workspace only.`,
+      }
+    }
+
+    const rewrittenCommand = rewriteVirtualAbsolutePathsInCommand(
       command,
-      virtualProjectRoot,
-      cwd,
-      fs,
+      path.posix.join('/workspace', workspaceIdentity),
+    )
+    const remoteCwd = path.posix.join(
+      '/workspace',
+      workspaceIdentity,
+      path.relative(prepared.workspaceRoot, hostCwd).replace(/\\/g, '/') || '.',
+    )
+    const result = await executeInHostShellFromVirtualWorkspace(
+      rewrittenCommand,
+      remoteCwd,
+      prepared.workspaceRoot,
       timeoutMs,
     )
-  }
-
-  if (base === 'pwd') {
-    return { code: 0, stdout: `${maskVirtualPathForDisplay(cwd)}\n`, stderr: '' }
-  }
-
-  if (base === 'echo') {
-    return { code: 0, stdout: `${tokens.slice(1).join(' ')}\n`, stderr: '' }
-  }
-
-  if (base === 'ls') {
-    const args = tokens.slice(1)
-    const options = args.filter(arg => arg.startsWith('-'))
-    const showAll = options.some(opt => opt.includes('a'))
-    const longFormat = options.some(opt => opt.includes('l'))
-    const targets = args.filter(arg => !arg.startsWith('-'))
-    const paths = targets.length > 0 ? targets : ['.']
-    const chunks: string[] = []
-
-    const formatLongLine = (absPath: string, displayName: string): string => {
-      const stat = fs.statSync(absPath)
-      const mode = formatMode(stat.mode, stat.isDirectory())
-      const nlink = String(stat.nlink ?? 1).padStart(2, ' ')
-      const uid = String((stat as unknown as { uid?: number }).uid ?? 0).padStart(4, ' ')
-      const gid = String((stat as unknown as { gid?: number }).gid ?? 0).padStart(4, ' ')
-      const size = String(stat.size).padStart(8, ' ')
-      const mtime = formatLsTime(stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime))
-      return `${mode} ${nlink} ${uid} ${gid} ${size} ${mtime} ${displayName}`
+    await prepared.persistToS3().catch(() => undefined)
+    return result
+  } catch (error) {
+    return {
+      code: 126,
+      stdout: '',
+      stderr:
+        error instanceof Error
+          ? maskVirtualPathsInText(error.message)
+          : 'Virtual sandbox command failed.',
     }
-
-    for (const target of paths) {
-      const abs = resolvePath(target)
-      try {
-        const stat = fs.statSync(abs)
-        if (stat.isDirectory()) {
-          const names = fs
-            .readdirStringSync(abs)
-            .filter(name => showAll || !name.startsWith('.'))
-            .sort((a, b) => a.localeCompare(b))
-
-          if (showAll) {
-            names.unshift('..')
-            names.unshift('.')
-          }
-
-          if (longFormat) {
-            const rows = names.map(name => {
-              if (name === '.') return formatLongLine(abs, '.')
-              if (name === '..') return formatLongLine(path.resolve(abs, '..'), '..')
-              return formatLongLine(path.join(abs, name), name)
-            })
-            chunks.push(rows.join('\n'))
-          } else {
-            chunks.push(names.join('\n'))
-          }
-        } else {
-          if (longFormat) {
-            chunks.push(formatLongLine(abs, path.basename(abs)))
-          } else {
-            chunks.push(path.basename(abs))
-          }
-        }
-      } catch (error) {
-        return {
-          code: 1,
-          stdout: '',
-          stderr:
-            error instanceof Error
-              ? maskVirtualPathsInText(error.message)
-              : `ls: cannot access '${target}'`,
-        }
-      }
-    }
-    const stdout = chunks.filter(Boolean).join('\n') + '\n'
-    return { code: 0, stdout, stderr: '' }
-  }
-
-  if (base === 'cat') {
-    const files = tokens.slice(1).filter(arg => !arg.startsWith('-'))
-    if (files.length === 0) {
-      return { code: 1, stdout: '', stderr: 'cat: missing file operand' }
-    }
-    const parts: string[] = []
-    for (const file of files) {
-      const abs = resolvePath(file)
-      try {
-        const text = fs.readFileSync(abs, { encoding: 'utf8' })
-        parts.push(text)
-      } catch (error) {
-        return {
-          code: 1,
-          stdout: '',
-          stderr:
-            error instanceof Error
-              ? maskVirtualPathsInText(error.message)
-              : `cat: ${file}: unable to read`,
-        }
-      }
-    }
-    return { code: 0, stdout: parts.join(''), stderr: '' }
-  }
-
-  return {
-    code: 2,
-    stdout: '',
-    stderr: `Virtual Bash command "${base}" is not implemented.`,
   }
 }
+
 
 /**
  * Checks if a bash command is a search or read operation.

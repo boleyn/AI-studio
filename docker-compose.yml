@@ -1,4 +1,21 @@
 services:
+  agent-sandbox:
+    container_name: agent-sandbox
+    build:
+      context: ./projects/agent-sandbox
+      dockerfile: Dockerfile
+    environment:
+      FASTGPT_ENABLE_CODE_SERVER: "false"
+      FASTGPT_WORKDIR: /workspace
+      FASTGPT_EXEC_PORT: "8091"
+      FASTGPT_EXEC_TOKEN: sandbox-exec-token
+    volumes:
+      - ./data/sandboxes:/workspace
+    ports:
+      - 18080:8080
+      - 18091:8091
+    restart: unless-stopped
+
   nextjs-ai-studio:
     container_name: nextjs-ai-studio
     build:
@@ -6,7 +23,7 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: https://registry.npmmirror.com
-        NODE_IMAGE: docker.io/library/node:20.14.0-alpine
+        NODE_IMAGE: docker.m.daocloud.io/library/node:20.14.0-alpine
         PIP_INDEX_URL: https://pypi.mirrors.ustc.edu.cn/simple
         PIP_TRUSTED_HOST: pypi.mirrors.ustc.edu.cn
     ports:
@@ -47,6 +64,11 @@ services:
       STORAGE_S3_ENDPOINT: https://aisrv-minio.asiainfo.tech
       STORAGE_S3_FORCE_PATH_STYLE: "true"
       STORAGE_S3_MAX_RETRIES: "3"
+      AGENT_SANDBOX_S3_ENABLED: "true"
+      AGENT_SANDBOX_S3_PREFIX: agent_sandbox_workspaces
+      AGENT_SANDBOX_URL: http://agent-sandbox:8080
+      AGENT_SANDBOX_EXEC_URL: http://agent-sandbox:8091/exec
+      AGENT_SANDBOX_EXEC_TOKEN: sandbox-exec-token
 
       SKILL_HUB: https://claw.asiainfo.tech
       # ClawHub one-click edit key validation
@@ -57,5 +79,9 @@ services:
       - ./config:/app/config:ro
       - ./data/project-templates:/app/data/project-templates:ro
       - ./data/projects:/app/data/projects
+      - ./data/sandboxes:/app/.aistudio/sandboxes
+
+    depends_on:
+      - agent-sandbox
 
     restart: unless-stopped

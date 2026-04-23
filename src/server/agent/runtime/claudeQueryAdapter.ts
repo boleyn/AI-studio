@@ -7,9 +7,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { Volume, createFsFromVolume } from "memfs";
 import type { FsOperations } from "../utils/fsOperations";
 import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsOperations";
+import { prepareAgentSandboxWorkspace } from "./agentSandboxWorkspace";
 import { runWithClaudeConfigHomeDir } from "../utils/envUtils";
 import type { RuntimeStrategy } from "./runtimeStrategy";
 import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
@@ -88,10 +88,6 @@ type PendingInteractionDecision = {
 };
 
 type ProjectFilesInput = Record<string, { code?: string }>;
-type BuildProjectMemfsOverlayOptions = {
-  systemSkillsRoot?: string;
-  includeSystemSkills?: boolean;
-};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -202,36 +198,6 @@ const resolveVirtualToolFilePath = (virtualRoot: string, filePath: string): stri
   return path.resolve(virtualRoot, normalized);
 };
 
-const isPathInsideRoot = (targetPath: string, rootPath: string): boolean => {
-  const normalizedTarget = path.resolve(targetPath);
-  const normalizedRoot = path.resolve(rootPath);
-  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`);
-};
-
-const toVirtualPathFromHostProjectPath = (
-  targetPath: string,
-  hostProjectRoot: string,
-  virtualProjectRoot: string
-): string | null => {
-  const normalizedTarget = path.resolve(targetPath);
-  const normalizedHostRoot = path.resolve(hostProjectRoot);
-  if (!isPathInsideRoot(normalizedTarget, normalizedHostRoot)) {
-    return null;
-  }
-  const relative =
-    normalizedTarget === normalizedHostRoot
-      ? ""
-      : path.relative(normalizedHostRoot, normalizedTarget);
-  return relative ? path.resolve(virtualProjectRoot, relative) : path.resolve(virtualProjectRoot);
-};
-
-const toVirtualAbsoluteFilePath = (projectRoot: string, filePath: string): string => {
-  const normalized = filePath.replace(/\\/g, "/").trim();
-  if (!normalized) return projectRoot;
-  const relative = normalized.startsWith("/") ? normalized.slice(1) : normalized;
-  return path.resolve(projectRoot, relative);
-};
-
 const normalizeProjectFilePath = (filePath: string): string => {
   const normalized = filePath.replace(/\\/g, "/").trim();
   if (!normalized) return "/";
@@ -273,34 +239,6 @@ const diffProjectFiles = (
     changed[normalizedPath] = { code: nextCode };
   }
   return changed;
-};
-
-const HOST_ABSOLUTE_PREFIXES = [
-  "/Users/",
-  "/home/",
-  "/private/",
-  "/var/",
-  "/tmp/",
-  "/etc/",
-  "/opt/",
-  "/Applications/",
-  "/Library/",
-  "/System/",
-  "/Volumes/",
-  "/bin/",
-  "/sbin/",
-  "/usr/",
-  "/dev/",
-];
-
-const toAistudioSkillPath = (filePath: string): string | null => {
-  const normalized = normalizeProjectFilePath(filePath);
-  const matched = normalized.match(/^\/skills\/([^/]+)\/(.+)$/i);
-  if (!matched) return null;
-  const skillName = matched[1];
-  const rest = matched[2];
-  if (!skillName || !rest) return null;
-  return `/.aistudio/skills/${skillName}/${rest}`;
 };
 
 const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput => {
@@ -345,283 +283,32 @@ const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput =>
   return files;
 };
 
-const expandProjectFilesForRuntime = (projectFiles: ProjectFilesInput): ProjectFilesInput => {
-  const expanded: ProjectFilesInput = {};
-  for (const [rawPath, file] of Object.entries(projectFiles || {})) {
-    const normalizedPath = normalizeProjectFilePath(rawPath);
-    expanded[normalizedPath] = file;
-  }
-  for (const [normalizedPath, file] of Object.entries(expanded)) {
-    const mappedAistudio = toAistudioSkillPath(normalizedPath);
-    if (mappedAistudio && !(mappedAistudio in expanded)) {
-      expanded[mappedAistudio] = file;
-    }
-  }
-  return expanded;
-};
 
-const decodeDataUrlToBuffer = (value: string): Buffer | null => {
-  const trimmed = (value || "").trim();
-  const matched = trimmed.match(/^data:([^;,]+)?;base64,(.+)$/is);
-  if (!matched || !matched[2]) return null;
-  try {
-    return Buffer.from(matched[2], "base64");
-  } catch {
-    return null;
-  }
-};
-
-export const buildProjectMemfsOverlay = (
-  projectRoot: string,
-  projectFiles: ProjectFilesInput,
-  options?: BuildProjectMemfsOverlayOptions
-): FsOperations => {
-  const volume = new Volume();
-  const memfs = createFsFromVolume(volume) as unknown as {
-    promises: Record<string, (...args: any[]) => Promise<any>>;
-    existsSync: (p: string) => boolean;
-    statSync: (p: string) => any;
-    lstatSync: (p: string) => any;
-    readFileSync: (p: string, opts?: any) => any;
-    readdirSync: (p: string, opts?: any) => any;
-    unlinkSync: (p: string) => void;
-    renameSync: (oldPath: string, newPath: string) => void;
-    linkSync: (target: string, p: string) => void;
-    symlinkSync: (target: string, p: string, type?: "dir" | "file" | "junction") => void;
-    readlinkSync: (p: string) => string;
-    realpathSync: (p: string) => string;
-    writeFileSync: (p: string, data: string | Buffer) => void;
-    mkdirSync: (p: string, opts?: any) => void;
-    rmdirSync: (p: string) => void;
-    rmSync: (p: string, opts?: any) => void;
-    appendFileSync: (p: string, data: string) => void;
-    copyFileSync: (src: string, dest: string) => void;
-    createWriteStream: (p: string) => any;
-    openSync: (p: string, flags: string) => number;
-    readSync: (
-      fd: number,
-      buffer: Buffer,
-      offset: number,
-      length: number,
-      position: number | null
-    ) => number;
-    closeSync: (fd: number) => void;
-  };
-
-  const includeSystemSkills = options?.includeSystemSkills !== false;
-  const systemSkillsRoot = options?.systemSkillsRoot
-    ? path.resolve(options.systemSkillsRoot)
-    : path.resolve(process.cwd(), "skills");
-  const mergedProjectFiles = includeSystemSkills
-    ? {
-        ...collectSystemSkillFiles(systemSkillsRoot),
-        ...(projectFiles || {}),
-      }
-    : (projectFiles || {});
-  const projectEntries = Object.entries(expandProjectFilesForRuntime(mergedProjectFiles));
-  for (const [filePath, file] of projectEntries) {
-    const absolutePath = toVirtualAbsoluteFilePath(projectRoot, filePath);
-    const dirPath = path.dirname(absolutePath);
-    memfs.mkdirSync(dirPath, { recursive: true });
-    const rawCode = typeof file?.code === "string" ? file.code : "";
-    const binary = decodeDataUrlToBuffer(rawCode);
-    memfs.writeFileSync(absolutePath, binary ?? rawCode);
-  }
-  memfs.mkdirSync(projectRoot, { recursive: true });
-  const hostProjectRoot = path.resolve(process.cwd());
-  const hostHomeRoot = path.resolve(homedir());
-  const virtualHomeRoot = path.resolve(projectRoot, ".aistudio-home");
-  memfs.mkdirSync(virtualHomeRoot, { recursive: true });
-
-  const resolveForRouting = (targetPath: string): string => {
-    const normalizedTarget = targetPath.replace(/\\/g, "/").trim();
-    if (!normalizedTarget) return projectRoot;
-    if (!path.isAbsolute(normalizedTarget)) {
-      return path.resolve(projectRoot, normalizedTarget);
-    }
-    const absolute = path.normalize(normalizedTarget);
-    if (isPathInsideRoot(absolute, projectRoot)) {
-      return absolute;
-    }
-    const remappedHostProjectPath = toVirtualPathFromHostProjectPath(
-      absolute,
-      hostProjectRoot,
-      projectRoot
-    );
-    if (remappedHostProjectPath) {
-      return remappedHostProjectPath;
-    }
-    const remappedHostHomePath = toVirtualPathFromHostProjectPath(
-      absolute,
-      hostHomeRoot,
-      virtualHomeRoot
-    );
-    if (remappedHostHomePath) {
-      return remappedHostHomePath;
-    }
-    if (HOST_ABSOLUTE_PREFIXES.some((prefix) => absolute.startsWith(prefix))) {
-      return absolute;
-    }
-    // Treat absolute virtual paths (e.g. "/styles.css") as project-root relative.
-    return path.resolve(projectRoot, `.${absolute}`);
-  };
-
-  const createENOENTError = (resolvedPath: string): Error & { code: string } => {
-    const error = new Error(`ENOENT: no such file or directory, path '${resolvedPath}'`) as Error & { code: string };
-    error.code = "ENOENT";
-    return error;
-  };
-
-  const routePath = (targetPath: string): string => {
-    const resolvedPath = resolveForRouting(targetPath);
-    if (!isPathInsideRoot(resolvedPath, projectRoot)) {
-      console.log("[skill-debug][routePath-denied]", {
-        targetPath,
-        resolvedPath,
-        hostProjectRoot,
-        projectRoot,
-      });
-      throw new Error(
-        `Access denied: path "<masked-outside-path>" is outside the project sandbox.`,
-      );
-    }
-    return resolvedPath;
-  };
-
-  const routePathForRead = (targetPath: string): string => {
-    const resolvedPath = resolveForRouting(targetPath);
-    if (!isPathInsideRoot(resolvedPath, projectRoot)) {
-      throw createENOENTError(resolvedPath);
-    }
-    return resolvedPath;
-  };
-
-  const readSyncFrom = (
-    impl: typeof memfs,
-    fsPath: string,
-    options: { length: number }
-  ): { buffer: Buffer; bytesRead: number } => {
-    const fd = (impl as any).openSync(fsPath, "r");
-    try {
-      const buffer = Buffer.alloc(options.length);
-      const bytesRead = (impl as any).readSync(fd, buffer, 0, options.length, 0);
-      return { buffer, bytesRead };
-    } finally {
-      (impl as any).closeSync(fd);
-    }
-  };
-
+const buildProjectSandboxOverlay = async ({
+  baseCwd,
+  workspaceIdentity,
+  hostProjectRoot,
+  projectFiles,
+}: {
+  baseCwd: string;
+  workspaceIdentity: string;
+  hostProjectRoot: string;
+  projectFiles?: ProjectFilesInput;
+}): Promise<{ workspaceRoot: string; scopedFs: FsOperations; persistToS3: () => Promise<void> }> => {
+  const prepared = await prepareAgentSandboxWorkspace({
+    baseCwd,
+    workspaceIdentity,
+    hostProjectRoot,
+    projectFiles,
+  });
   return {
-    cwd() {
-      return projectRoot;
-    },
-    existsSync(fsPath) {
-      try {
-        return memfs.existsSync(routePathForRead(fsPath));
-      } catch {
-        return false;
-      }
-    },
-    async stat(fsPath) {
-      return (await memfs.promises.stat(routePathForRead(fsPath))) as any;
-    },
-    async readdir(fsPath) {
-      return (await memfs.promises.readdir(routePathForRead(fsPath), { withFileTypes: true })) as any;
-    },
-    async unlink(fsPath) {
-      await memfs.promises.unlink(routePath(fsPath));
-    },
-    async rmdir(fsPath) {
-      await memfs.promises.rmdir(routePath(fsPath));
-    },
-    async rm(fsPath, options) {
-      await memfs.promises.rm(routePath(fsPath), options);
-    },
-    async mkdir(fsPath, options) {
-      await memfs.promises.mkdir(routePath(fsPath), { recursive: true, ...options });
-    },
-    async readFile(fsPath, options) {
-      return (await memfs.promises.readFile(routePathForRead(fsPath), { encoding: options.encoding })) as string;
-    },
-    async rename(oldPath, newPath) {
-      await memfs.promises.rename(routePath(oldPath), routePath(newPath));
-    },
-    statSync(fsPath) {
-      return memfs.statSync(routePathForRead(fsPath)) as any;
-    },
-    lstatSync(fsPath) {
-      return memfs.lstatSync(routePathForRead(fsPath)) as any;
-    },
-    readFileSync(fsPath, options) {
-      return memfs.readFileSync(routePathForRead(fsPath), { encoding: options.encoding }) as string;
-    },
-    readFileBytesSync(fsPath) {
-      return memfs.readFileSync(routePathForRead(fsPath)) as Buffer;
-    },
-    readSync(fsPath, options) {
-      return readSyncFrom(memfs, routePathForRead(fsPath), options);
-    },
-    appendFileSync(fsPath, data, _options) {
-      const routed = routePath(fsPath);
-      memfs.appendFileSync(routed, data);
-    },
-    writeFileSync(fsPath, data, options) {
-      void options;
-      memfs.writeFileSync(routePath(fsPath), data as any);
-    },
-    copyFileSync(src, dest) {
-      memfs.copyFileSync(routePath(src), routePath(dest));
-    },
-    unlinkSync(fsPath) {
-      memfs.unlinkSync(routePath(fsPath));
-    },
-    renameSync(oldPath, newPath) {
-      memfs.renameSync(routePath(oldPath), routePath(newPath));
-    },
-    linkSync(target, fsPath) {
-      memfs.linkSync(routePath(target), routePath(fsPath));
-    },
-    symlinkSync(target, fsPath, type) {
-      memfs.symlinkSync(target, routePath(fsPath), type);
-    },
-    readlinkSync(fsPath) {
-      return memfs.readlinkSync(routePathForRead(fsPath));
-    },
-    realpathSync(fsPath) {
-      return memfs.realpathSync(routePathForRead(fsPath));
-    },
-    mkdirSync(fsPath, options) {
-      memfs.mkdirSync(routePath(fsPath), { recursive: true, ...options });
-    },
-    readdirSync(fsPath) {
-      return memfs.readdirSync(routePathForRead(fsPath), { withFileTypes: true }) as any;
-    },
-    readdirStringSync(fsPath) {
-      return memfs.readdirSync(routePathForRead(fsPath)) as string[];
-    },
-    isDirEmptySync(fsPath) {
-      const files = memfs.readdirSync(routePathForRead(fsPath), { withFileTypes: true }) as unknown[];
-      return files.length === 0;
-    },
-    rmdirSync(fsPath) {
-      memfs.rmdirSync(routePath(fsPath));
-    },
-    rmSync(fsPath, options) {
-      memfs.rmSync(routePath(fsPath), options);
-    },
-    createWriteStream(fsPath) {
-      return memfs.createWriteStream(routePath(fsPath)) as any;
-    },
-    async readFileBytes(fsPath, maxBytes) {
-      const buffer = (await memfs.promises.readFile(routePathForRead(fsPath))) as Buffer;
-      if (maxBytes === undefined) return buffer;
-      const readSize = Math.min(buffer.length, maxBytes);
-      return readSize < buffer.length ? buffer.subarray(0, readSize) : buffer;
-    },
+    workspaceRoot: prepared.workspaceRoot,
+    scopedFs: prepared.scopedFs,
+    persistToS3: prepared.persistToS3,
   };
 };
 
-export const exportProjectFilesFromFs = (
+const exportProjectFilesFromFs = (
   fs: FsOperations,
   projectRoot: string
 ): Record<string, { code: string }> => {
@@ -649,7 +336,6 @@ export const exportProjectFilesFromFs = (
           code: fs.readFileSync(absolutePath, { encoding: "utf8" }),
         };
       } catch {
-        // Non-text files in this runtime are ignored; project binary assets are handled elsewhere.
       }
     }
   };
@@ -1271,12 +957,15 @@ const tryRunQueryEngine = async (
 
   const baseCwd = process.cwd();
   const hasVirtualProjectFiles = Boolean(input.projectFiles && Object.keys(input.projectFiles).length > 0);
-  const virtualProjectRoot = path.resolve(baseCwd, ".aistudio", input.token || "project");
+  const virtualProjectRoot = path.resolve(baseCwd, ".aistudio", "sandboxes", input.token || "project");
   const systemSkillFiles = collectSystemSkillFiles(path.resolve(process.cwd(), "skills"));
-  const scopedFs =
-    hasVirtualProjectFiles && input.projectFiles
-      ? buildProjectMemfsOverlay(virtualProjectRoot, input.projectFiles)
-      : undefined;
+  const sandboxWorkspace = await buildProjectSandboxOverlay({
+    baseCwd,
+    workspaceIdentity: input.token || "project",
+    hostProjectRoot: path.resolve(process.cwd()),
+    projectFiles: input.projectFiles,
+  });
+  const scopedFs = sandboxWorkspace.scopedFs;
 
   const runCore = async (): Promise<QueryEngineExecutionAttempt> => {
     let assistantText = "";
@@ -1293,7 +982,7 @@ const tryRunQueryEngine = async (
         enableConfigs();
       }
 
-      const cwd = hasVirtualProjectFiles ? virtualProjectRoot : baseCwd;
+      const cwd = virtualProjectRoot;
 
       const toVirtualDisplayPath = (candidate: string): string => {
         const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -1666,21 +1355,16 @@ const tryRunQueryEngine = async (
             ...(record.is_error === true ? { is_error: true } : {}),
           });
 
-          // In virtual filesystem sessions, FileWrite/FileEdit mutate memfs only.
+          // In sandbox workspace sessions, FileWrite/FileEdit mutate scoped workspace files.
           // Emit an explicit files_updated event so frontend can reflect latest code immediately.
-          if (
-            hasVirtualProjectFiles &&
-            virtualProjectRoot &&
-            toolState?.lastInput &&
-            (toolState.name === "Write" || toolState.name === "Edit")
-          ) {
+          if (toolState?.lastInput && (toolState.name === "Write" || toolState.name === "Edit")) {
             const inputPayload = toolState.lastInput as Record<string, unknown>;
             const rawToolPath =
               typeof inputPayload.file_path === "string" ? inputPayload.file_path : "";
             if (rawToolPath) {
               const absoluteFilePath = resolveVirtualToolFilePath(virtualProjectRoot, rawToolPath);
               try {
-                const latestCode = scopedFs?.readFileSync(absoluteFilePath, { encoding: "utf8" });
+                const latestCode = scopedFs.readFileSync(absoluteFilePath, { encoding: "utf8" });
                 if (typeof latestCode === "string") {
                   const displayPath = toVirtualDisplayFilePath(virtualProjectRoot, absoluteFilePath);
                   if (!isExportableRuntimeProjectPath(displayPath)) {
@@ -1830,8 +1514,9 @@ const tryRunQueryEngine = async (
     }
   };
 
-  const attachUpdatedFiles = (attempt: QueryEngineExecutionAttempt): QueryEngineExecutionAttempt => {
-    if (!hasVirtualProjectFiles || !scopedFs) return attempt;
+  const attachUpdatedFiles = async (attempt: QueryEngineExecutionAttempt): Promise<QueryEngineExecutionAttempt> => {
+    await sandboxWorkspace.persistToS3().catch(() => undefined);
+    if (!hasVirtualProjectFiles) return attempt;
     const snapshot = exportProjectFilesFromFs(scopedFs, virtualProjectRoot);
     const updatedFiles = diffProjectFiles(input.projectFiles, snapshot, systemSkillFiles);
     if (Object.keys(updatedFiles).length === 0) return attempt;
@@ -1845,9 +1530,6 @@ const tryRunQueryEngine = async (
     };
   };
 
-  if (!scopedFs) {
-    return attachUpdatedFiles(await runCore());
-  }
   const attempt = await runWithVirtualProjectRoot(
     virtualProjectRoot,
     () =>
@@ -1855,7 +1537,7 @@ const tryRunQueryEngine = async (
         runWithFsImplementation(scopedFs, runCore),
       ),
   );
-  return attachUpdatedFiles(attempt);
+  return await attachUpdatedFiles(attempt);
 };
 
 export const runClaudeQueryAdapter = async (

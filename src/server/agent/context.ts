@@ -35,7 +35,7 @@ export function setSystemPromptInjection(value: string | null): void {
 }
 
 export const getGitStatus = memoize(async (): Promise<string | null> => {
-  // In virtualized runtime (WASI+memfs), do not leak host git context.
+  // In sandboxed runtime, do not leak host git context.
   if (getVirtualProjectRoot()) {
     return null
   }
