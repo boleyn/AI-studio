@@ -14,6 +14,7 @@ import {
   isImageFile,
   type MessageFile,
 } from "../utils/chatItemParsers";
+import { getPlanProgressFromMessage } from "../utils/planModeDisplay";
 
 const useTypewriterText = (value: string, enabled: boolean) => {
   const normalizedValue = value || "";
@@ -150,6 +151,7 @@ export const useChatItemViewModel = ({
   );
   const toolDetails = useMemo(() => getToolDetails(message), [message]);
   const reasoningText = useMemo(() => getReasoningText(message), [message]);
+  const planProgress = useMemo(() => getPlanProgressFromMessage(message), [message]);
   const rawTimelineItems = useMemo(() => getTimelineItems(message), [message]);
   const timelineItems = useMemo(
     () =>
@@ -335,6 +337,7 @@ export const useChatItemViewModel = ({
     expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
+    planProgress,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,

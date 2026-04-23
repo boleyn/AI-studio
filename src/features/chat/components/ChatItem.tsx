@@ -51,6 +51,7 @@ const ChatItem = ({
     expandedTimelineAgentKeys,
     detailModalData,
     isDetailModalOpen,
+    planProgress,
     timelineHasAnswer,
     hasAnswerText,
     latestAnswerIndex,
@@ -150,6 +151,44 @@ const ChatItem = ({
           <Text color="myGray.500" fontSize="xs">{content}</Text>
         ) : (
           <Flex direction="column" gap={2}>
+            {planProgress ? (
+              <Box bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="10px" p={3}>
+                <Flex align="center" gap={2} mb={2}>
+                  <Box bg="purple.500" borderRadius="full" h="7px" w="7px" />
+                  <Text color="purple.700" fontSize="12px" fontWeight="600">执行计划</Text>
+                </Flex>
+                {planProgress.explanation ? (
+                  <Text color="purple.600" fontSize="12px" mb={3}>{planProgress.explanation}</Text>
+                ) : null}
+                <Flex direction="column" gap={2}>
+                  {planProgress.plan.map((item, index) => (
+                    <Flex key={index} align="flex-start" gap={2}>
+                      <Box mt="2px">
+                        {item.status === "completed" ? (
+                          <Icon viewBox="0 0 24 24" color="green.500" boxSize="14px" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                          </Icon>
+                        ) : item.status === "in_progress" ? (
+                          <Spinner color="purple.500" size="xs" speed="0.7s" thickness="2px" />
+                        ) : (
+                          <Icon viewBox="0 0 24 24" color="myGray.400" boxSize="14px" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/>
+                          </Icon>
+                        )}
+                      </Box>
+                      <Text
+                        color={item.status === "completed" ? "myGray.500" : "myGray.700"}
+                        fontSize="12px"
+                        textDecoration={item.status === "completed" ? "line-through" : "none"}
+                      >
+                        {item.step}
+                      </Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
+            ) : null}
+
             {timelineItems.length > 0 ? (
               <Box>
                 <Flex direction="column" gap={2}>
