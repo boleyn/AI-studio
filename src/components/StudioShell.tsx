@@ -144,6 +144,13 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
   Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
 
+const isRuntimeHiddenPath = (filePath: string): boolean => {
+  const normalizedPath = (filePath || "").trim().replace(/\\/g, "/");
+  if (!normalizedPath.startsWith("/")) return false;
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.some((segment) => segment.startsWith("."));
+};
+
 const resolveWorkspaceFilePath = (inputPath: string, knownPaths: string[]): string | null => {
   const normalizedInput = (inputPath || "").trim().replace(/\\/g, "/");
   if (!normalizedInput) return null;
@@ -232,7 +239,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     preview: "",
   });
   const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
-    toSortedFilePaths(initialNormalizedFiles)
+    toSortedFilePaths(initialNormalizedFiles).filter((path) => !isRuntimeHiddenPath(path))
   );
   const { agentFilesSyncPayload, queueAgentFileSync } = useAgentFileUpdates();
 
@@ -274,7 +281,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
       setTemplate(normalizedTemplate);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
-      setChatFileOptions(toSortedFilePaths(nextFiles));
+      setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
       setDependencies(nextDependencies as Record<string, string>);
       setProjectName(nextName);
       setStatus("ready");
@@ -311,7 +318,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     return paths;
   }, [hasRealFiles]);
   const shouldShowPath = useCallback(
-    (filePath: string) => !runtimeTransientPaths.includes(filePath),
+    (filePath: string) => !runtimeTransientPaths.includes(filePath) && !isRuntimeHiddenPath(filePath),
     [runtimeTransientPaths]
   );
   const providerFiles = useMemo<SandpackFiles>(
@@ -546,7 +553,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
   const handleFilesChange = useCallback((nextFiles: SandpackFiles) => {
     latestFilesRef.current = nextFiles;
-    setChatFileOptions(toSortedFilePaths(nextFiles));
+    setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
     const prevHasReal = hasUserVisibleFiles(files);
     const nextHasReal = hasUserVisibleFiles(nextFiles);
     // Avoid SandpackProvider remount loops: only sync state when empty/non-empty mode changes.
@@ -563,7 +570,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
       ...normalizedUpdated,
     };
     latestFilesRef.current = merged;
-    setChatFileOptions(toSortedFilePaths(merged));
+    setChatFileOptions(toSortedFilePaths(merged).filter((path) => !isRuntimeHiddenPath(path)));
     setFiles(merged);
     queueAgentFileSync(normalizedUpdated);
   }, [files, queueAgentFileSync]);
