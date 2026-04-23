@@ -30,7 +30,7 @@ const ChatInteractionSurface = ({
   }
 
   return (
-    <InteractionShell title="计划问题" tone="blue">
+    <InteractionShell title="计划问题" tone="purple">
       <PlanQuestionsCard interaction={interaction} pending={pending} />
     </InteractionShell>
   );

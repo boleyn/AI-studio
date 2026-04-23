@@ -37,7 +37,8 @@ const PlanApprovalCard = ({
         批准
       </Button>
       <Button
-        colorScheme="orange"
+        borderColor="red.300"
+        color="red.700"
         h="30px"
         isDisabled={Boolean(interaction.planModeApprovalSubmitting || !interaction.onPlanModeApprovalSelect)}
         onClick={() => {
@@ -49,6 +50,7 @@ const PlanApprovalCard = ({
         }}
         size="sm"
         variant="outline"
+        _hover={{ bg: "red.50", borderColor: "red.400" }}
       >
         拒绝
       </Button>

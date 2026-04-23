@@ -41,7 +41,8 @@ const PermissionApprovalCard = ({
         允许
       </Button>
       <Button
-        colorScheme="orange"
+        borderColor="red.300"
+        color="red.700"
         h="30px"
         isDisabled={Boolean(interaction.permissionApprovalSubmitting || !interaction.onPermissionApprovalSelect)}
         onClick={() =>
@@ -54,6 +55,7 @@ const PermissionApprovalCard = ({
         }
         size="sm"
         variant="outline"
+        _hover={{ bg: "red.50", borderColor: "red.400" }}
       >
         拒绝
       </Button>

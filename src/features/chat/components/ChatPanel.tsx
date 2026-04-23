@@ -228,9 +228,73 @@ const getPendingInteractionKey = (interaction: PendingChatInteraction) => {
   return interaction.requestId.trim().toLowerCase();
 };
 
+const collectResolvedInteractionKeys = (messages: ConversationMessage[]) => {
+  const resolvedRequestIds = new Set<string>();
+  const resolvedPermissionKeys = new Set<string>();
+
+  for (const message of messages) {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object"
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs) continue;
+
+    const planQuestionResponse =
+      kwargs.planQuestionResponse &&
+      typeof kwargs.planQuestionResponse === "object" &&
+      !Array.isArray(kwargs.planQuestionResponse)
+        ? (kwargs.planQuestionResponse as Record<string, unknown>)
+        : null;
+    const planQuestionRequestId =
+      typeof planQuestionResponse?.requestId === "string" ? planQuestionResponse.requestId.trim().toLowerCase() : "";
+    if (planQuestionRequestId) resolvedRequestIds.add(planQuestionRequestId);
+
+    const planModeApprovalResponse =
+      kwargs.planModeApprovalResponse &&
+      typeof kwargs.planModeApprovalResponse === "object" &&
+      !Array.isArray(kwargs.planModeApprovalResponse)
+        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
+        : null;
+    const planModeApprovalRequestId =
+      typeof planModeApprovalResponse?.requestId === "string"
+        ? planModeApprovalResponse.requestId.trim().toLowerCase()
+        : "";
+    if (planModeApprovalRequestId) resolvedRequestIds.add(planModeApprovalRequestId);
+
+    const permissionApprovalResponse =
+      kwargs.permissionApprovalResponse &&
+      typeof kwargs.permissionApprovalResponse === "object" &&
+      !Array.isArray(kwargs.permissionApprovalResponse)
+        ? (kwargs.permissionApprovalResponse as Record<string, unknown>)
+        : null;
+    const permissionRequestId =
+      typeof permissionApprovalResponse?.requestId === "string"
+        ? permissionApprovalResponse.requestId.trim().toLowerCase()
+        : "";
+    const permissionToolUseId =
+      typeof permissionApprovalResponse?.toolUseId === "string"
+        ? permissionApprovalResponse.toolUseId.trim().toLowerCase()
+        : "";
+    const permissionToolName =
+      typeof permissionApprovalResponse?.toolName === "string"
+        ? permissionApprovalResponse.toolName.trim().toLowerCase()
+        : "";
+    if (permissionRequestId) resolvedRequestIds.add(permissionRequestId);
+    if (permissionToolUseId) resolvedPermissionKeys.add(permissionToolUseId);
+    if (permissionToolName) resolvedPermissionKeys.add(permissionToolName);
+  }
+
+  return {
+    resolvedRequestIds,
+    resolvedPermissionKeys,
+  };
+};
+
 const buildPendingInteractionsFromMessages = (
   messages: ConversationMessage[]
 ): PendingChatInteraction[] => {
+  const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messages);
+
   const pending: PendingChatInteraction[] = [];
   for (const message of messages) {
     if (message.role !== "assistant") continue;
@@ -240,6 +304,15 @@ const buildPendingInteractionsFromMessages = (
     const permission = getPermissionApproval(message);
     const permissionDecision = getPermissionApprovalDecision(message);
     if (permission && !permissionDecision) {
+      const permissionRequestId = (permission.toolUseId || "").trim().toLowerCase();
+      const permissionToolKey = permission.toolName.trim().toLowerCase();
+      if (
+        (permissionRequestId && resolvedRequestIds.has(permissionRequestId)) ||
+        (permissionRequestId && resolvedPermissionKeys.has(permissionRequestId)) ||
+        (permissionToolKey && resolvedPermissionKeys.has(permissionToolKey))
+      ) {
+        continue;
+      }
       pending.push({
         type: "permission",
         requestId: permission.toolUseId,
@@ -255,6 +328,8 @@ const buildPendingInteractionsFromMessages = (
     const approval = getPlanModeApprovalFromMessage(message);
     const approvalPending = getPlanModeApprovalPending(message);
     if (approval && approvalPending && approval.requestId) {
+      const requestId = approval.requestId.trim().toLowerCase();
+      if (requestId && resolvedRequestIds.has(requestId)) continue;
       pending.push({
         type: "plan_approval",
         requestId: approval.requestId,
@@ -272,6 +347,8 @@ const buildPendingInteractionsFromMessages = (
     if (questions.length > 0) {
       const requestId = (questions[0]?.requestId || "").trim();
       if (requestId) {
+        const normalizedRequestId = requestId.toLowerCase();
+        if (resolvedRequestIds.has(normalizedRequestId)) continue;
         pending.push({
           type: "plan_questions",
           requestId,
@@ -677,8 +754,24 @@ const ChatPanel = ({
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || !payload || !Array.isArray(payload.interactions)) return;
+        const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messagesRef.current);
         const recovered = payload.interactions
           .map((item: unknown) => toPendingInteractionFromApi(item, assistantMessageId))
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => {
+            if (!item) return false;
+            if (item.type === "permission") {
+              const requestKey = (item.requestId || item.permission.toolUseId || "").trim().toLowerCase();
+              const toolNameKey = item.permission.toolName.trim().toLowerCase();
+              if (requestKey && (resolvedRequestIds.has(requestKey) || resolvedPermissionKeys.has(requestKey))) {
+                return false;
+              }
+              if (toolNameKey && resolvedPermissionKeys.has(toolNameKey)) return false;
+              return true;
+            }
+            const requestKey = item.requestId.trim().toLowerCase();
+            if (requestKey && resolvedRequestIds.has(requestKey)) return false;
+            return true;
+          })
           .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => Boolean(item));
         if (recovered.length === 0) return;
         setPendingInteractions((current) => {

@@ -61,7 +61,7 @@ const PlanQuestionsCard = ({
                 return (
                   <Box
                     key={`${pending.requestId}-${question.id}-dot-${idx}`}
-                    bg={active ? "blue.400" : answered ? "blue.200" : "myGray.200"}
+                    bg={active ? "primary.500" : answered ? "primary.200" : "myGray.200"}
                     borderRadius="999px"
                     h="4px"
                     transition="all 0.2s ease"
@@ -75,8 +75,8 @@ const PlanQuestionsCard = ({
             key={`${pending.requestId}-${currentQuestion.id}-${safeStep}`}
             bg="myWhite.100"
             border="1px solid"
-            borderColor="myGray.200"
-            borderRadius="8px"
+            borderColor="myGray.250"
+            borderRadius="12px"
             p={2.5}
           >
             <Text color="myGray.500" fontSize="11px" fontWeight={600} mb={1}>
@@ -92,9 +92,9 @@ const PlanQuestionsCard = ({
                   <Button
                     key={`${currentQuestion.id}-option-${oIndex}`}
                     alignItems="flex-start"
-                    bg={isSelected ? "blue.600" : "myWhite.100"}
+                    bg={isSelected ? "primary.600" : "myWhite.100"}
                     border="1px solid"
-                    borderColor={isSelected ? "blue.600" : "myGray.250"}
+                    borderColor={isSelected ? "primary.600" : "myGray.250"}
                     color={isSelected ? "white" : "myGray.800"}
                     h="auto"
                     justifyContent="flex-start"
@@ -110,8 +110,8 @@ const PlanQuestionsCard = ({
                     variant="unstyled"
                     w="full"
                     _hover={{
-                      bg: isSelected ? "blue.700" : "myGray.50",
-                      borderColor: isSelected ? "blue.700" : "myGray.350",
+                      bg: isSelected ? "primary.700" : "myGray.50",
+                      borderColor: isSelected ? "primary.700" : "myGray.350",
                     }}
                   >
                     <Flex align="center" justify="space-between" w="full">
