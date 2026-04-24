@@ -582,7 +582,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const streamedUpdatedFiles: Record<string, { code: string }> = {};
-    const bufferedToolResultEvents: Array<{ event: SdkStreamEventName; data: Record<string, unknown> }> = [];
+
     const runtimeStatusLog = (event: SdkStreamEventName, data: Record<string, unknown>) => {
       if (
         event === SdkStreamEventEnum.status &&
@@ -619,17 +619,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,
       onEvent: (event, data) => {
-        if (
-          event === SdkStreamEventEnum.streamEvent &&
-          (data.subtype === "tool_result" || data.subtype === "agent_tool_result")
-        ) {
-          bufferedToolResultEvents.push({ event, data });
-          return;
-        }
         if (event === SdkStreamEventEnum.streamEvent && data.subtype === "files_updated") {
           const normalized = normalizeUpdatedFiles(data.files);
           Object.assign(streamedUpdatedFiles, normalized);
-          return;
+          // Do not return early, allow the event to be sent immediately
         }
         runtimeStatusLog(event, data);
         streamEvent(res, event, data);
@@ -678,11 +671,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Return buffered write-related tool results only after both runtime sandbox
-    // persistence and project/skill storage writes are finished.
-    for (const item of bufferedToolResultEvents) {
-      streamEvent(res, item.event, item.data);
-    }
+    // (Events are no longer buffered)
 
     if (selectedSkills.length > 0) {
       streamEvent(res, SdkStreamEventEnum.status, {
