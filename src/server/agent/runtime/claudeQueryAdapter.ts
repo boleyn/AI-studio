@@ -315,6 +315,34 @@ const buildProjectSandboxOverlay = async ({
   };
 };
 
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const persistSandboxWorkspaceWithRetry = async (
+  persistToS3: () => Promise<void>,
+  options?: { maxAttempts?: number; baseDelayMs?: number },
+): Promise<void> => {
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 3);
+  const baseDelayMs = Math.max(0, options?.baseDelayMs ?? 150);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await persistToS3();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts) break;
+      await delay(baseDelayMs * attempt);
+    }
+  }
+
+  throw new Error(
+    `agent_sandbox_persist_failed_after_${maxAttempts}_attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError ?? "unknown_error")
+    }`,
+  );
+};
+
 const exportProjectFilesFromFs = (
   fs: FsOperations,
   projectRoot: string
@@ -1528,7 +1556,7 @@ const tryRunQueryEngine = async (
   };
 
   const attachUpdatedFiles = async (attempt: QueryEngineExecutionAttempt): Promise<QueryEngineExecutionAttempt> => {
-    await sandboxWorkspace.persistToS3().catch(() => undefined);
+    await persistSandboxWorkspaceWithRetry(sandboxWorkspace.persistToS3);
     if (!hasVirtualProjectFiles) return attempt;
     const snapshot = exportProjectFilesFromFs(scopedFs, virtualProjectRoot);
     const updatedFiles = diffProjectFiles(input.projectFiles, snapshot, systemSkillFiles);
