@@ -9,9 +9,7 @@ import {
   Box,
   Button,
   Flex,
-  HStack,
-  Collapse,
-  useDisclosure
+  HStack
 } from '@chakra-ui/react';
 import { ChatItemValueTypeEnum } from '@/global/core/chat/constants';
 import type {
@@ -19,7 +17,7 @@ import type {
   ToolModuleResponseItemType,
   UserChatItemValueItemType
 } from '@/global/core/chat/type';
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import MyIcon from '@/components/common/MyIcon';
 import Avatar from '@/components/common/MyAvatar';
 import type {
@@ -42,6 +40,16 @@ import { WorkflowRuntimeContext } from '../ChatContainer/context/workflowRuntime
 import OutlineInteractive from './Interactive/OutlineInteractive';
 import OutlineStreamingCard from './Interactive/OutlineStreamingCard';
 import { removeDatasetCiteText } from '@/global/core/ai/llm/utils';
+
+type OutlineInteractivePayload = InteractiveBasicType & {
+  type: 'outlineInteractive';
+  params: {
+    outlineText: string;
+    action?: string;
+    regeneratePrompt?: string;
+    confirmPrompt?: string;
+  };
+};
 
 const accordionButtonStyle = {
   w: 'auto',
@@ -118,7 +126,9 @@ const RenderText = React.memo(function RenderText({
   }, [text, isShowCite]);
 
   const chatAuthData = useCreation(() => {
-    return { appId, chatId, chatItemDataId, ...outLinkAuthData };
+    const safeOutLinkAuthData =
+      outLinkAuthData && typeof outLinkAuthData === 'object' ? outLinkAuthData : {};
+    return { appId, chatId, chatItemDataId, ...safeOutLinkAuthData };
   }, [appId, chatId, chatItemDataId, outLinkAuthData]);
 
   return (
@@ -154,7 +164,7 @@ const RenderTool = React.memo(
             }
           };
 
-          const toolParams = formatJson(tool.params);
+          const toolParams = formatJson(tool.params || '');
           const hasParams = toolParams && toolParams !== '{}';
           const hasResponse = tool.response && tool.response.trim();
           const isThinking = showAnimation && !hasResponse;
@@ -170,14 +180,23 @@ const RenderTool = React.memo(
                 return { content: response, isTruncated: true };
               }
 
-              const parsed = JSON.parse(response);
-              if (parsed.content && Array.isArray(parsed.content)) {
+              const parsed: unknown = JSON.parse(response);
+              const parsedObj =
+                parsed && typeof parsed === 'object' ? (parsed as { content?: unknown }) : undefined;
+              if (parsedObj?.content && Array.isArray(parsedObj.content)) {
                 // 提取所有type为text的内容
-                const textItems = parsed.content.filter((item: any) => item.type === 'text');
-                if (textItems.length > 0) {
+                const textItems = parsedObj.content.filter(
+                  (item): item is { type?: unknown; text?: unknown } =>
+                    Boolean(item && typeof item === 'object' && !Array.isArray(item))
+                );
+                const textContent = textItems
+                  .filter((item) => item.type === 'text')
+                  .map((item) => (typeof item.text === 'string' ? item.text : ''))
+                  .filter(Boolean);
+                if (textContent.length > 0) {
                   // 合并所有text内容
                   return {
-                    content: textItems.map((item: any) => item.text || '').join('\n\n'),
+                    content: textContent.join('\n\n'),
                     isTruncated: false
                   };
                 }
@@ -190,7 +209,7 @@ const RenderTool = React.memo(
           };
 
           const responseData = hasResponse
-            ? parseToolResponse(tool.response)
+            ? parseToolResponse(tool.response || '')
             : { content: '', isTruncated: false };
           const responseContent = responseData.content;
           const isTruncated = responseData.isTruncated;
@@ -523,7 +542,7 @@ const RenderUserFormInteractive = React.memo(function RenderFormInput({
 
   const defaultValues = useMemo(() => {
     if (interactive.type === 'userInput') {
-      return interactive.params.inputForm?.reduce((acc: Record<string, any>, item) => {
+      return interactive.params.inputForm?.reduce((acc: Record<string, unknown>, item) => {
         // 使用 ?? 运算符，只有 undefined 或 null 时才使用 defaultValue
         acc[item.key] = item.value ?? item.defaultValue;
         return acc;
@@ -533,8 +552,8 @@ const RenderUserFormInteractive = React.memo(function RenderFormInput({
   }, [interactive]);
 
   const handleFormSubmit = useCallback(
-    (data: Record<string, any>) => {
-      const finalData: Record<string, any> = {};
+    (data: Record<string, unknown>) => {
+      const finalData: Record<string, unknown> = {};
       interactive.params.inputForm?.forEach((item) => {
         if (item.key in data) {
           finalData[item.key] = data[item.key];
@@ -588,7 +607,11 @@ const RenderPaymentPauseInteractive = React.memo(function RenderPaymentPauseInte
     <Box>{t('chat:task_has_continued')}</Box>
   ) : (
     <>
-      <Box color={'myGray.500'}>{t(interactive.params.description)}</Box>
+      <Box color={'myGray.500'}>
+        {typeof interactive.params.description === 'string'
+          ? t(interactive.params.description)
+          : ''}
+      </Box>
       <Button
         maxW={'250px'}
         onClick={() => {
@@ -619,9 +642,6 @@ const AIResponseBox = ({
   isChatting: boolean;
   onOpenCiteModal?: (e?: OnOpenCiteModalProps) => void;
 }) => {
-  const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v?.chatId);
-  const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v?.outLinkAuthData);
-  const contextId = undefined;
   const showRunningStatus = true;
   const workspaceEnabled = false;
 
@@ -645,10 +665,8 @@ const AIResponseBox = ({
         disabled={!workspaceEnabled}
       />
     );
-  }, [chatId, contextId, outLinkAuthData?.outLinkUid, value, workspaceEnabled]);
+  }, [value, workspaceEnabled]);
 
-  // console.log('🚀🚀🚀 [AIResponseBox] COMPONENT CALLED! Value type:', value.type);
-  // console.log('🚀🚀🚀 [AIResponseBox] Value data:', value);
   if (value.type === ChatItemValueTypeEnum.text && value.text) {
     if (workspaceCard) return workspaceCard;
 
@@ -661,7 +679,7 @@ const AIResponseBox = ({
       />
     );
   }
-  if (value.type === ChatItemValueTypeEnum.reasoning && value.reasoning) {
+  if (value.type === ChatItemValueTypeEnum.reasoning && 'reasoning' in value && value.reasoning) {
     return (
       <RenderResoningContent
         isChatting={isChatting}
@@ -670,12 +688,12 @@ const AIResponseBox = ({
       />
     );
   }
-  if (value.type === ChatItemValueTypeEnum.tool && value.tools && showRunningStatus) {
+  if (value.type === ChatItemValueTypeEnum.tool && 'tools' in value && value.tools && showRunningStatus) {
     return <RenderTool showAnimation={isChatting} tools={value.tools} />;
   }
 
   // 新增：流式大纲展示（当 value 为 outline 时即时渲染）
-  if (value.type === ChatItemValueTypeEnum.outline && value.outline) {
+  if (value.type === ChatItemValueTypeEnum.outline && 'outline' in value && value.outline) {
     return (
       <OutlineStreamingCard
         text={value.outline.text}
@@ -696,7 +714,7 @@ const AIResponseBox = ({
       return <RenderPaymentPauseInteractive interactive={finalInteractive} />;
     }
     if (finalInteractive.type === 'outlineInteractive') {
-      return <OutlineInteractive interactive={finalInteractive as any} />;
+      return <OutlineInteractive interactive={finalInteractive as OutlineInteractivePayload} />;
     }
   }
   return null;

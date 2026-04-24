@@ -23,7 +23,7 @@ const ChatItem = ({
   requestMessage,
   requestContent,
   isLatestRun,
-  hideInteractiveCards,
+  hideInteractiveCards: _hideInteractiveCards,
   onOpenWorkspaceFile,
 }: {
   message: ConversationMessage;
@@ -374,6 +374,5 @@ export default React.memo(
     prevProps.executionSummary?.durationSeconds === nextProps.executionSummary?.durationSeconds &&
     prevProps.requestContent === nextProps.requestContent &&
     prevProps.isLatestRun === nextProps.isLatestRun &&
-    prevProps.hideInteractiveCards === nextProps.hideInteractiveCards &&
     prevProps.onOpenWorkspaceFile === nextProps.onOpenWorkspaceFile
 );

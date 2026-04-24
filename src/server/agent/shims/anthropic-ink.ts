@@ -1,6 +1,7 @@
 export type RenderOptions = Record<string, unknown>;
 export type Instance = unknown;
 export type Root = {
+  render?: (...args: unknown[]) => void;
   unmount?: () => void;
   waitUntilExit?: () => Promise<void>;
 };
@@ -35,7 +36,9 @@ export type ButtonState = unknown;
 export type ButtonProps = Record<string, unknown>;
 export type TabStatusKind = string;
 export type TerminalNotification = unknown;
-export type ScrollBoxHandle = unknown;
+export type ScrollBoxHandle = {
+  scrollBy?: (...args: unknown[]) => void;
+};
 export type ColorType = string;
 export type KeybindingSetupProps = Record<string, unknown>;
 export type ParsedBinding = unknown;
@@ -58,9 +61,13 @@ export type KeyboardEvent = unknown;
 export type FocusEvent = unknown;
 export type ThemeSetting = { value?: string };
 
+import type { ReactNode } from "react";
+
+type AnyProps = Record<string, unknown> & { children?: ReactNode };
+
 const noop = () => undefined;
 const noopAsync = async () => undefined;
-const nullComp = () => null;
+const nullComp = (_props?: AnyProps) => null;
 
 export const wrappedRender = () => ({
   unmount: noop,

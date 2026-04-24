@@ -5,7 +5,7 @@ import MyIcon from '@/components/common/MyIcon';
 import MyTooltip from '@/components/common/MyTooltip';
 import MyModal from '@/components/common/MyModal';
 import PlantUMLEditor from './PlantUMLEditor';
-import { exportSvgToJpg, downloadBlob } from './utils';
+import { exportSvgToJpg } from './utils';
 import { useSystem } from '@/hooks/useSystem';
 import MyPhotoView from '@/components/common/Image/PhotoView';
 
@@ -88,7 +88,7 @@ function extractCompleteCodeHelper(plantumlCode: string): string | null {
   return trimmedCode.substring(0, endumlIndex + '@enduml'.length);
 }
 
-const PlantUMLBlock: React.FC<PlantUMLBlockProps> = ({ code, onCodeChange, dataId }) => {
+const PlantUMLBlock: React.FC<PlantUMLBlockProps> = ({ code, onCodeChange, dataId: _dataId }) => {
   const { isPc } = useSystem();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -289,14 +289,6 @@ const PlantUMLBlock: React.FC<PlantUMLBlockProps> = ({ code, onCodeChange, dataI
     if (!svgHtml) return;
     exportSvgToJpg(svgHtml, 'plantuml');
   }, []);
-  const exportSvg = useCallback(() => {
-    const svgEl = ref.current?.children[0];
-    if (!svgEl) return;
-    const svgHtml = ref.current?.innerHTML || '';
-    const blob = new Blob([svgHtml], { type: 'image/svg+xml;charset=utf-8' });
-    downloadBlob(`plantuml-${Date.now()}.svg`, blob);
-  }, [downloadBlob]);
-
   const handleCodeChange = (newCode: string) => {
     setCurrentCode(newCode);
     if (onCodeChange) {

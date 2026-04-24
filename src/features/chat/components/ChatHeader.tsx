@@ -58,7 +58,7 @@ const ChatHeader = ({
   onRewindLatestTurn,
   onReset,
   onNewConversation,
-  onOpenSkills,
+  onOpenSkills: _onOpenSkills,
   contextUsage,
   contextStatus = "idle",
 }: ChatHeaderProps) => {

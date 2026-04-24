@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, useDisclosure } from '@chakra-ui/react';
+import { Box } from '@chakra-ui/react';
 import mermaid from 'mermaid';
 import MyIcon from '@/components/common/MyIcon';
 import MyTooltip from '@/components/common/MyTooltip';
@@ -37,14 +37,7 @@ const MermaidBlock: React.FC<MermaidBlockProps> = ({ code, onCodeChange }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [svg, setSvg] = useState('');
-  const [editingText, setEditingText] = useState('');
-  const [editingElement, setEditingElement] = useState<SVGElement | null>(null);
   const [currentCode, setCurrentCode] = useState(code); // 新增：内部状态管理当前代码
-  const {
-    isOpen: isTextEditOpen,
-    onOpen: onTextEditOpen,
-    onClose: onTextEditClose
-  } = useDisclosure();
 
   // 使用内部状态的代码而不是props中的code
   useEffect(() => {
@@ -74,49 +67,6 @@ const MermaidBlock: React.FC<MermaidBlockProps> = ({ code, onCodeChange }) => {
     setCurrentCode(code);
   }, [code]);
 
-  // 添加点击事件监听器，使文本可编辑
-  useEffect(() => {
-    if (!ref.current || !onCodeChange) return;
-
-    const svgElement = ref.current.querySelector('svg');
-    if (!svgElement) return;
-
-    const handleTextClick = (event: Event) => {
-      const target = event.target as SVGElement;
-
-      // 查找文本元素
-      let textElement: SVGElement | null = null;
-      if (target.tagName === 'text') {
-        textElement = target;
-      } else if (target.tagName === 'tspan') {
-        textElement = target.parentElement as unknown as SVGElement;
-      } else if (target.parentElement?.tagName === 'text') {
-        textElement = target.parentElement as unknown as SVGElement;
-      }
-
-      if (textElement && textElement.tagName === 'text') {
-        event.stopPropagation();
-        const currentText = textElement.textContent || '';
-        setEditingText(currentText);
-        setEditingElement(textElement);
-        onTextEditOpen();
-      }
-    };
-
-    // 为所有文本元素添加点击事件
-    const textElements = svgElement.querySelectorAll('text');
-    textElements.forEach((element) => {
-      element.style.cursor = 'pointer';
-      element.addEventListener('click', handleTextClick);
-    });
-
-    return () => {
-      textElements.forEach((element) => {
-        element.removeEventListener('click', handleTextClick);
-      });
-    };
-  }, [svg, onCodeChange, onTextEditOpen]);
-
   // 移除旧的导出实现（PNG/SVG），统一使用下方的 JPG 实现
 
   const handleCodeChange = (newCode: string) => {
@@ -124,35 +74,6 @@ const MermaidBlock: React.FC<MermaidBlockProps> = ({ code, onCodeChange }) => {
     if (onCodeChange) {
       onCodeChange(newCode);
     }
-  };
-
-  const handleTextSave = () => {
-    if (!editingElement) return;
-
-    // 更新 SVG 中的文本
-    if (editingElement.textContent !== editingText) {
-      editingElement.textContent = editingText;
-
-      // 尝试更新原始代码
-      const oldText = editingElement.textContent || '';
-      const newCode = currentCode.replace(oldText, editingText);
-
-      // 更新内部状态
-      setCurrentCode(newCode);
-
-      // 如果有外部回调，也调用它
-      if (onCodeChange && newCode !== currentCode) {
-        onCodeChange(newCode);
-      }
-    }
-
-    onTextEditClose();
-    setEditingElement(null);
-  };
-
-  const handleTextCancel = () => {
-    onTextEditClose();
-    setEditingElement(null);
   };
 
   // 导出 JPG（高分辨率）

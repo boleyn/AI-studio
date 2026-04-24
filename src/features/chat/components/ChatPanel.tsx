@@ -3,7 +3,6 @@ import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import {
   isPlanInteractionEnvelope,
-  type PlanInteractionEnvelope,
   type PlanProgressInteractionPayload,
 } from "@shared/chat/planInteraction";
 import { streamFetch } from "@shared/network/streamFetch";
@@ -28,12 +27,10 @@ import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
-import { getExecutionSummary } from "../utils/executionSummary";
 import {
   derivePlanModeFromMessages,
   getPlanModeApprovalFromMessage,
   parseToolPayload,
-  type PlanModeApprovalPayload,
 } from "../utils/planModeDisplay";
 
 import ChatPanelView from "./ChatPanelView";
@@ -42,7 +39,6 @@ import type { MessageRating } from "./message/MessageActionBar";
 import type { ConversationMessage } from "@/types/conversation";
 
 import {
-  SKILL_TAG_MARKER_PREFIX,
   buildConversationTitle,
   buildUserBubbleContent,
   getLatestContextUsageFromMessages,
@@ -494,7 +490,7 @@ const ChatPanel = ({
   defaultHeaderTitle = "代码助手",
   emptyStateTitle,
   emptyStateDescription,
-  roundTop = true,
+  roundTop: _roundTop = true,
   defaultSelectedSkill,
   fileOptions = [],
   skillsProjectToken,
@@ -630,7 +626,7 @@ const ChatPanel = ({
 
   const activePendingInteraction = pendingInteractions.length > 0 ? pendingInteractions[0] : null;
 
-  const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
+  const { scrollRef, shouldAutoScrollRef } = useChatAutoScroll(messages);
   const {
     streamingTextRef,
     streamingReasoningRef,
@@ -2031,12 +2027,7 @@ const ChatPanel = ({
       });
   }, [activeConversation?.id, token]);
 
-  const {
-    handlePlanQuestionsSubmit,
-    handlePlanModeApprovalSelect,
-    handlePermissionApprovalSelect,
-    chatInteractionContextValue,
-  } = useChatPlanInteractions({
+  const { chatInteractionContextValue } = useChatPlanInteractions({
     token,
     conversationId: activeConversation?.id,
     pendingInteraction: activePendingInteraction,

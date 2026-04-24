@@ -10,7 +10,7 @@
  * 此组件会将 SQLBot JSON 转换为 Codechart 格式，然后渲染图表
  */
 
-import React, { useMemo, useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Box, Skeleton } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
 import { MarkdownCtx } from '../context';

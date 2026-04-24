@@ -1,10 +1,4 @@
-import { createChatId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
-import {
-  buildDownloadUrl,
-  buildPreviewUrl,
-  getPresignedChatFileGetUrl,
-} from "../services/files";
 import type { ChatInputFile } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
@@ -68,15 +62,18 @@ export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessag
       const rawPlan = Array.isArray(payload.plan) ? payload.plan : [];
       const plan = rawPlan
         .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
-        .map((item) => ({
-          step: typeof item.step === "string" ? item.step.trim() : "",
-          status:
+        .map((item): { step: string; status: "pending" | "in_progress" | "completed" } => {
+          const status: "pending" | "in_progress" | "completed" =
             item.status === "completed"
               ? "completed"
               : item.status === "in_progress"
               ? "in_progress"
-              : "pending",
-        }))
+              : "pending";
+          return {
+            step: typeof item.step === "string" ? item.step.trim() : "",
+            status,
+          };
+        })
         .filter((item) => item.step.length > 0);
       if (plan.length === 0) continue;
       return {

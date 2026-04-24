@@ -178,7 +178,7 @@ export const uploadChatFiles = async ({
     await uploadFileByPresignedUrl({
       file: matched.file,
       upload: uploadItem.upload,
-      onProgress: (loaded, total) => {
+      onProgress: (loaded) => {
         if (!onProgress || totalBytes <= 0) return;
         const uploaded = Math.min(totalBytes, finishedBytes + loaded);
         const percent = Math.min(70, Math.round((uploaded / totalBytes) * 70));

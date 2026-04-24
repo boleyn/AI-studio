@@ -116,8 +116,7 @@ const IframeHtmlCodeBlock = ({
   className,
   codeBlock,
   match,
-  showAnimation,
-  dataId
+  showAnimation
 }: {
   children: React.ReactNode & React.ReactNode[];
   className?: string;

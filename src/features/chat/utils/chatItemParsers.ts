@@ -1150,7 +1150,6 @@ export const composeTimelineItems = ({
 
   toolDetails.forEach((tool) => {
     const toolId = typeof tool.id === "string" && tool.id ? tool.id : undefined;
-    const normalizedToolName = (tool.toolName || "").trim().toLowerCase();
     if (toolId) {
       const agentIndex = timelineAgentIndexById.get(toolId);
       if (agentIndex !== undefined) {
