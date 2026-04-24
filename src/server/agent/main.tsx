@@ -3319,11 +3319,15 @@ async function run(): Promise<CommanderCommand> {
 				getInitialSettings().defaultView === "chat"
 			) {
 				/* eslint-disable @typescript-eslint/no-require-imports */
-				const { isBriefEntitled } =
-					require("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js") as typeof import("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js");
-				/* eslint-enable @typescript-eslint/no-require-imports */
-				if (isBriefEntitled()) {
-					setUserMsgOptIn(true);
+				try {
+					const briefMod =
+						require("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js") as typeof import("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js");
+					/* eslint-enable @typescript-eslint/no-require-imports */
+					if (typeof briefMod?.isBriefEntitled === 'function' && briefMod.isBriefEntitled()) {
+						setUserMsgOptIn(true);
+					}
+				} catch {
+					// BriefTool module failed to load — skip entitlement check
 				}
 			}
 			// Coordinator mode has its own system prompt and filters out Sleep, so
@@ -3336,14 +3340,19 @@ async function run(): Promise<CommanderCommand> {
 				!coordinatorModeModule?.isCoordinatorMode()
 			) {
 				/* eslint-disable @typescript-eslint/no-require-imports */
-				const briefVisibility =
-					feature("KAIROS") || feature("KAIROS_BRIEF")
-						? (
-								require("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js") as typeof import("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js")
-							).isBriefEnabled()
-							? "Call SendUserMessage at checkpoints to mark where things stand."
-							: "The user will see any text you output."
-						: "The user will see any text you output.";
+				let briefVisibilityEnabled = false;
+				if (feature("KAIROS") || feature("KAIROS_BRIEF")) {
+					try {
+						const briefMod =
+							require("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js") as typeof import("@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js");
+						briefVisibilityEnabled = typeof briefMod?.isBriefEnabled === 'function' && briefMod.isBriefEnabled();
+					} catch {
+						// BriefTool module failed to load — fall through to default
+					}
+				}
+				const briefVisibility = briefVisibilityEnabled
+					? "Call SendUserMessage at checkpoints to mark where things stand."
+					: "The user will see any text you output.";
 				/* eslint-enable @typescript-eslint/no-require-imports */
 				const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
 				appendSystemPrompt = appendSystemPrompt
