@@ -8,7 +8,7 @@ import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { FsOperations } from "../utils/fsOperations";
-import { runWithFsImplementation, runWithVirtualProjectRoot } from "../utils/fsOperations";
+import { runWithFsImplementation, runWithVirtualProjectRoot, runWithPersistToS3 } from "../utils/fsOperations";
 import { prepareAgentSandboxWorkspace } from "./agentSandboxWorkspace";
 import { runWithClaudeConfigHomeDir } from "../utils/envUtils";
 import type { RuntimeStrategy } from "./runtimeStrategy";
@@ -1574,8 +1574,10 @@ const tryRunQueryEngine = async (
   const attempt = await runWithVirtualProjectRoot(
     virtualProjectRoot,
     () =>
-      runWithClaudeConfigHomeDir(path.join(virtualProjectRoot, ".aistudio"), () =>
-        runWithFsImplementation(scopedFs, runCore),
+      runWithPersistToS3(() => persistSandboxWorkspaceWithRetry(sandboxWorkspace.persistToS3), () =>
+        runWithClaudeConfigHomeDir(path.join(virtualProjectRoot, ".aistudio"), () =>
+          runWithFsImplementation(scopedFs, runCore),
+        )
       ),
   );
   return await attachUpdatedFiles(attempt);

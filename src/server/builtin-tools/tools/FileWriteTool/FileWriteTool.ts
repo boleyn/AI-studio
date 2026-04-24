@@ -27,8 +27,7 @@ import {
 } from 'src/utils/fileHistory.js'
 import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
-import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
+import { getFsImplementation, getVirtualProjectRoot, getPersistToS3 } from 'src/utils/fsOperations.js'
 import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import {
   fetchSingleFileGitDiff,
@@ -415,6 +414,18 @@ export const FileWriteTool = buildTool({
       offset: undefined,
       limit: undefined,
     })
+
+    const persistToS3 = getPersistToS3()
+    if (persistToS3) {
+      try {
+        await persistToS3()
+      } catch (error) {
+        // We log instead of throwing so we don't completely break local writing
+        // if S3 is down, but normally S3 is important for consistency.
+        const msg = error instanceof Error ? error.message : String(error)
+        console.warn('[FileWriteTool] persistToS3 failed:', msg)
+      }
+    }
 
     // Log when writing to CLAUDE.md
     if (fullFilePath.endsWith(`${sep}CLAUDE.md`)) {

@@ -618,6 +618,7 @@ export const NodeFsOperations: FsOperations = {
 let activeFs: FsOperations = NodeFsOperations
 const fsOverrideStorage = new AsyncLocalStorage<FsOperations>()
 const virtualProjectRootStorage = new AsyncLocalStorage<string | null>()
+const persistToS3Storage = new AsyncLocalStorage<() => Promise<void>>()
 
 /**
  * Run a function with a scoped filesystem implementation for the current async context.
@@ -646,6 +647,23 @@ export function runWithVirtualProjectRoot<T>(
  */
 export function getVirtualProjectRoot(): string | null {
   return virtualProjectRootStorage.getStore() ?? null
+}
+
+/**
+ * Run a function with a scoped persistToS3 implementation for the current async context.
+ */
+export function runWithPersistToS3<T>(
+  persistToS3: () => Promise<void>,
+  fn: () => T,
+): T {
+  return persistToS3Storage.run(persistToS3, fn)
+}
+
+/**
+ * Get the scoped persistToS3 implementation for the current async context.
+ */
+export function getPersistToS3(): (() => Promise<void>) | undefined {
+  return persistToS3Storage.getStore()
 }
 
 /**

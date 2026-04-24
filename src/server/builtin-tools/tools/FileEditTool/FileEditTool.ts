@@ -36,8 +36,7 @@ import {
   readFileSyncWithMetadata,
 } from 'src/utils/fileRead.js'
 import { formatFileSize } from 'src/utils/format.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
-import { getVirtualProjectRoot } from 'src/utils/fsOperations.js'
+import { getFsImplementation, getVirtualProjectRoot, getPersistToS3 } from 'src/utils/fsOperations.js'
 import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
@@ -600,6 +599,15 @@ export const FileEditTool = buildTool({
       offset: undefined,
       limit: undefined,
     })
+
+    const persistToS3 = getPersistToS3()
+    if (persistToS3) {
+      try {
+        await persistToS3()
+      } catch (error) {
+        logError(sanitizeErrorForDisplay(error))
+      }
+    }
 
     // 7. Log events
     if (absoluteFilePath.endsWith(`${sep}CLAUDE.md`)) {

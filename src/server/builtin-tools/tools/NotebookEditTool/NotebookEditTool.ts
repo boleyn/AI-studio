@@ -11,6 +11,7 @@ import { getCwd } from 'src/utils/cwd.js'
 import { isENOENT } from 'src/utils/errors.js'
 import { getFileModificationTime, writeTextContent } from 'src/utils/file.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
+import { getPersistToS3 } from 'src/utils/fsOperations.js'
 import { safeParseJSON } from 'src/utils/json.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { parseCellId } from 'src/utils/notebook.js'
@@ -440,6 +441,17 @@ export const NotebookEditTool = buildTool({
         offset: undefined,
         limit: undefined,
       })
+
+      const persistToS3 = getPersistToS3()
+      if (persistToS3) {
+        try {
+          await persistToS3()
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          console.warn('[NotebookEditTool] persistToS3 failed:', msg)
+        }
+      }
+
       const data = {
         new_source,
         cell_type: cell_type ?? 'code',
