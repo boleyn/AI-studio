@@ -60,6 +60,57 @@ const toPreviewLines = (value: string): string[] =>
     .split("\n")
     .slice(0, 80);
 
+type TodoState = "pending" | "in_progress" | "completed";
+
+type TodoItem = {
+  id?: string;
+  content: string;
+  status: TodoState;
+  activeForm?: string;
+};
+
+const normalizeTodoState = (value: unknown): TodoState => {
+  if (value === "completed") return "completed";
+  if (value === "in_progress") return "in_progress";
+  return "pending";
+};
+
+const isTodoItemLike = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value) && typeof (value as { content?: unknown }).content === "string");
+
+const normalizeTodoItems = (value: unknown): TodoItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isTodoItemLike)
+    .map((todo) => ({
+      id: typeof todo.id === "string" ? todo.id : undefined,
+      content: String(todo.content || "").trim(),
+      status: normalizeTodoState(todo.status),
+      activeForm: typeof todo.activeForm === "string" ? todo.activeForm : undefined,
+    }))
+    .filter((todo) => Boolean(todo.content));
+};
+
+const getTodoItems = (paramsRaw?: string, responseRaw?: string): TodoItem[] => {
+  const paramsObj = parseJsonObject(paramsRaw);
+  const todosFromParams = normalizeTodoItems(paramsObj.todos);
+  if (todosFromParams.length > 0) return todosFromParams;
+
+  const responseObj = parseJsonObject(responseRaw);
+  const candidates = [
+    responseObj.todos,
+    responseObj.newTodos,
+    responseObj.data,
+    responseObj.items,
+    responseObj.content,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeTodoItems(candidate);
+    if (normalized.length > 0) return normalized;
+  }
+  return [];
+};
+
 const HEADER_BTN_SX = {
   borderRadius: "6px",
   _hover: { bg: "myGray.100" },
@@ -92,6 +143,7 @@ const ToolTimelineCard = ({
   const fileName = getFileName(filePath);
   const isReadTool = normalizedToolName === "read";
   const isGlobTool = normalizedToolName === "glob";
+  const isTodoTool = normalizedToolName === "todowrite" || normalizedToolName === "todoread";
   const isEditTool = normalizedToolName === "edit" || normalizedToolName === "apply_patch" || normalizedToolName === "applypatch";
   const isWriteTool = normalizedToolName === "write";
   const leftBorderColor = "myGray.300";
@@ -113,6 +165,107 @@ const ToolTimelineCard = ({
   const workspaceFilePath = normalizeWorkspaceFilePath(filePath);
   const truncatedResponse = truncateDetailText(item.response);
   const responseTruncated = isDetailTruncated(item.response);
+
+  if (isTodoTool) {
+    const todos = getTodoItems(item.params, item.response);
+    const completedCount = todos.filter((todo) => todo.status === "completed").length;
+    const inProgressCount = todos.filter((todo) => todo.status === "in_progress").length;
+    const pendingCount = Math.max(0, todos.length - completedCount - inProgressCount);
+    const todoLabel = normalizedToolName === "todowrite" ? "TodoWrite" : "TodoRead";
+    const subtitle =
+      todos.length > 0
+        ? `${completedCount} completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ""}${pendingCount > 0 ? `, ${pendingCount} pending` : ""}`
+        : "No todo items";
+
+    return (
+      <Box
+        key={`tool-todo-${item.id || index}`}
+        border="1px solid"
+        borderColor="myGray.200"
+        borderRadius="10px"
+        bg="myGray.25"
+        px={3}
+        py={2}
+      >
+        <Flex align="center" gap={2}>
+          <Text color="myGray.800" fontSize="12px" fontWeight={600}>
+            {todoLabel}
+          </Text>
+          <Text color="myGray.350" fontSize="11px">
+            /
+          </Text>
+          <Text color="myGray.500" fontSize="11px" noOfLines={1}>
+            {todos.length > 0 ? `${todos.length} item${todos.length > 1 ? "s" : ""}` : "list update"}
+          </Text>
+          <Box ml="auto">
+            {shouldShowStatusPill ? <TimelineStatusPill status={status} /> : null}
+          </Box>
+          <IconButton
+            aria-label={isExpanded ? "收起待办详情" : "展开待办详情"}
+            icon={
+              <Icon
+                as={ChevronDownIcon}
+                boxSize="14px"
+                color="myGray.500"
+                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                transition="transform 0.2s ease"
+              />
+            }
+            h="22px"
+            minW="22px"
+            onClick={onToggle}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          />
+        </Flex>
+
+        <Collapse animateOpacity in={isExpanded}>
+          <Box borderTop="1px dashed" borderColor="myGray.250" mt={2} pt={2}>
+            <Text color="myGray.500" fontSize="11px" mb={2}>
+              {subtitle}
+            </Text>
+            {todos.length > 0 ? (
+              <Flex direction="column" gap={1}>
+                {todos.map((todo, todoIndex) => {
+                  const dotColor =
+                    todo.status === "completed" ? "green.500" : todo.status === "in_progress" ? "blue.500" : "myGray.400";
+                  const statusLabel =
+                    todo.status === "completed" ? "completed" : todo.status === "in_progress" ? "in progress" : "pending";
+                  return (
+                    <Flex align="flex-start" gap={2} key={todo.id || `${todo.content}-${todoIndex}`}>
+                      <Box bg={dotColor} borderRadius="full" flexShrink={0} h="7px" mt="6px" w="7px" />
+                      <Box flex="1" minW={0}>
+                        <Text color="myGray.800" fontSize="12px" fontWeight={todo.status === "in_progress" ? 600 : 500}>
+                          {todo.content}
+                        </Text>
+                        <Text color="myGray.500" fontSize="10px">
+                          {statusLabel}
+                          {todo.activeForm ? ` · ${todo.activeForm}` : ""}
+                        </Text>
+                      </Box>
+                    </Flex>
+                  );
+                })}
+              </Flex>
+            ) : truncatedResponse ? (
+              <Box bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+              </Box>
+            ) : isRunning ? (
+              <Text color="myGray.500" fontSize="12px">
+                执行中...
+              </Text>
+            ) : (
+              <Text color="myGray.400" fontSize="12px">
+                暂无待办内容
+              </Text>
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }
 
   if (isReadTool) {
     return (
