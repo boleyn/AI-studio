@@ -49,7 +49,24 @@ import { isReplModeEnabled } from '@claude-code-best/builtin-tools/tools/REPLToo
 import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { shouldUseGlobalCacheScope } from '../utils/betas.js'
-import { isForkSubagentEnabled } from '@claude-code-best/builtin-tools/tools/AgentTool/forkSubagent.js'
+// Safe wrapper for isForkSubagentEnabled — the module depends on
+// coordinatorMode.js which may fail to export properly in webpack builds.
+let _isForkSubagentEnabled: (() => boolean) | null = null
+try {
+  const mod = require('@claude-code-best/builtin-tools/tools/AgentTool/forkSubagent.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/forkSubagent.js')
+  if (typeof mod?.isForkSubagentEnabled === 'function') {
+    _isForkSubagentEnabled = mod.isForkSubagentEnabled
+  }
+} catch {
+  // Module failed to load — isForkSubagentEnabled stays null
+}
+const isForkSubagentEnabled = (): boolean => {
+  try {
+    return _isForkSubagentEnabled?.() ?? false
+  } catch {
+    return false
+  }
+}
 import {
   systemPromptSection,
   DANGEROUS_uncachedSystemPromptSection,

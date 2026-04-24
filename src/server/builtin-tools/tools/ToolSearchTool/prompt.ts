@@ -79,10 +79,14 @@ export function isDeferredTool(tool: Tool): boolean {
   // Lazy require: static import of forkSubagent → coordinatorMode creates a cycle
   // through constants/tools.ts at module init.
   if (feature('FORK_SUBAGENT') && tool.name === AGENT_TOOL_NAME) {
-    type ForkMod = typeof import('../AgentTool/forkSubagent.js')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const m = require('../AgentTool/forkSubagent.js') as ForkMod
-    if (m.isForkSubagentEnabled()) return false
+    try {
+      type ForkMod = typeof import('../AgentTool/forkSubagent.js')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const m = require('../AgentTool/forkSubagent.js') as ForkMod
+      if (typeof m?.isForkSubagentEnabled === 'function' && m.isForkSubagentEnabled()) return false
+    } catch {
+      // Module failed to load — treat as not enabled
+    }
   }
 
   // Brief is the primary communication channel whenever the tool is present.

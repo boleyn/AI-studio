@@ -18,10 +18,10 @@
  *   BUILTIN_EXPLORE_PLAN_AGENTS — Explore/Plan sub-agents
  *   ULTRATHINK                  — Extended thinking support
  *   EXTRACT_MEMORIES            — Memory extraction
- *   FORK_SUBAGENT               — Parallel sub-agent execution
  *
  * ❌ Dangerous flags (crash in webpack build — DO NOT enable):
  *   KAIROS, KAIROS_BRIEF        — BriefTool: isBriefEnabled() breaks
+ *   FORK_SUBAGENT               — depends on coordinatorMode.js: deep chain
  *   VOICE_MODE, BUDDY           — Native audio/companion: missing deps
  *   CHICAGO_MCP                 — Computer-use MCP: native bindings
  *   PROACTIVE                   — Autonomous mode: requires KAIROS
