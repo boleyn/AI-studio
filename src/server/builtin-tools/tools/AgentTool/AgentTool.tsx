@@ -113,6 +113,8 @@ import {
   isForkSubagentEnabled,
   isInForkChild,
 } from './forkSubagent.js'
+import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
+import { PLAN_AGENT } from './built-in/planAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 import {
   filterAgentsByMcpRequirements,
@@ -172,6 +174,34 @@ const normalizeLegacySubagentType = (value?: string): string | undefined => {
     return GENERAL_PURPOSE_AGENT.agentType
   }
   return normalized
+}
+
+const PLAN_MODE_SCOPED_BUILTIN_AGENTS: ReadonlyArray<AgentDefinition> = [
+  EXPLORE_AGENT,
+  PLAN_AGENT,
+]
+
+const isPlanModeScopedAgentType = (agentType: string): boolean =>
+  agentType === EXPLORE_AGENT.agentType || agentType === PLAN_AGENT.agentType
+
+function applyPlanModeAgentAvailability(
+  agents: AgentDefinition[],
+  permissionMode: string,
+): AgentDefinition[] {
+  if (permissionMode !== 'plan') {
+    return agents.filter(agent => !isPlanModeScopedAgentType(agent.agentType))
+  }
+
+  const byType = new Map<string, AgentDefinition>()
+  for (const agent of agents) {
+    byType.set(agent.agentType, agent)
+  }
+  for (const builtIn of PLAN_MODE_SCOPED_BUILTIN_AGENTS) {
+    if (!byType.has(builtIn.agentType)) {
+      byType.set(builtIn.agentType, builtIn)
+    }
+  }
+  return Array.from(byType.values())
 }
 
 // Base input schema without multi-agent parameters
@@ -370,8 +400,12 @@ export const AgentTool = buildTool({
       agents,
       mcpServersWithTools,
     )
-    const filteredAgents = filterDeniedAgents(
+    const modeAwareAgents = applyPlanModeAgentAvailability(
       agentsWithMcpRequirementsMet,
+      toolPermissionContext.mode,
+    )
+    const filteredAgents = filterDeniedAgents(
+      modeAwareAgents,
       toolPermissionContext,
       AGENT_TOOL_NAME,
     )
@@ -517,7 +551,10 @@ export const AgentTool = buildTool({
       selectedAgent = FORK_AGENT
     } else {
       // Filter agents to exclude those denied via Agent(AgentName) syntax
-      const allAgents = toolUseContext.options.agentDefinitions.activeAgents
+      const allAgents = applyPlanModeAgentAvailability(
+        toolUseContext.options.agentDefinitions.activeAgents,
+        permissionMode,
+      )
       const { allowedAgentTypes } = toolUseContext.options.agentDefinitions
       const agents = filterDeniedAgents(
         // When allowedAgentTypes is set (from Agent(x,y) tool spec), restrict to those types

@@ -1,5 +1,6 @@
 import { requireAuth } from "@server/auth/session";
 import { resolvePendingConversationInteraction } from "@server/chat/activeRuns";
+import { getConversation, updateConversationMessageAdditionalKwargs } from "@server/conversations/conversationStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 const getToken = (req: NextApiRequest): string | null => {
@@ -67,6 +68,73 @@ export default async function handler(
       ...(req.body?.updatedInput !== undefined ? { updatedInput: req.body.updatedInput } : {}),
     },
   });
+
+  if (resolved) {
+    try {
+      const conversation = await getConversation(token, chatId);
+      const messages = Array.isArray(conversation?.messages) ? conversation!.messages : [];
+      const targetRequestId = requestId.trim().toLowerCase();
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || message.role !== "assistant" || !message.id) continue;
+        const kwargs =
+          message.additional_kwargs &&
+          typeof message.additional_kwargs === "object" &&
+          !Array.isArray(message.additional_kwargs)
+            ? ({ ...message.additional_kwargs } as Record<string, unknown>)
+            : {};
+
+        const planState =
+          kwargs.planModeInteractionState &&
+          typeof kwargs.planModeInteractionState === "object" &&
+          !Array.isArray(kwargs.planModeInteractionState)
+            ? ({ ...(kwargs.planModeInteractionState as Record<string, unknown>) } as Record<string, unknown>)
+            : null;
+
+        const permissionState =
+          kwargs.permissionApprovalState &&
+          typeof kwargs.permissionApprovalState === "object" &&
+          !Array.isArray(kwargs.permissionApprovalState)
+            ? ({ ...(kwargs.permissionApprovalState as Record<string, unknown>) } as Record<string, unknown>)
+            : null;
+
+        let touched = false;
+        if (planState && planState[targetRequestId] && typeof planState[targetRequestId] === "object") {
+          planState[targetRequestId] = {
+            ...(planState[targetRequestId] as Record<string, unknown>),
+            status: "submitted",
+            decision,
+          };
+          kwargs.planModeInteractionState = planState;
+          touched = true;
+        }
+        if (
+          permissionState &&
+          permissionState[targetRequestId] &&
+          typeof permissionState[targetRequestId] === "object"
+        ) {
+          permissionState[targetRequestId] = {
+            ...(permissionState[targetRequestId] as Record<string, unknown>),
+            status: "submitted",
+            decision,
+          };
+          kwargs.permissionApprovalState = permissionState;
+          touched = true;
+        }
+
+        if (!touched) continue;
+        await updateConversationMessageAdditionalKwargs({
+          token,
+          chatId,
+          messageId: message.id,
+          additionalKwargs: kwargs,
+        });
+        break;
+      }
+    } catch {
+      // Ignore persistence errors - interaction is already resolved in-memory.
+    }
+  }
 
   res.status(200).json({ success: true, resolved });
 }

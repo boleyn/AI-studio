@@ -44,4 +44,3 @@ export const feature = (name: string): boolean => {
   );
   return enabled.has(normalized);
 };
-

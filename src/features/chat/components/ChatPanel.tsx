@@ -291,9 +291,13 @@ const collectResolvedInteractionKeys = (messages: ConversationMessage[]) => {
 };
 
 const buildPendingInteractionsFromMessages = (
-  messages: ConversationMessage[]
+  messages: ConversationMessage[],
+  options?: {
+    isPlanModeActive?: boolean;
+  }
 ): PendingChatInteraction[] => {
   const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messages);
+  const isPlanModeActive = options?.isPlanModeActive === true;
 
   const pending: PendingChatInteraction[] = [];
   for (const message of messages) {
@@ -328,6 +332,7 @@ const buildPendingInteractionsFromMessages = (
     const approval = getPlanModeApprovalFromMessage(message);
     const approvalPending = getPlanModeApprovalPending(message);
     if (approval && approvalPending && approval.requestId) {
+      if (!isPlanModeActive) continue;
       const requestId = approval.requestId.trim().toLowerCase();
       if (requestId && resolvedRequestIds.has(requestId)) continue;
       pending.push({
@@ -345,6 +350,7 @@ const buildPendingInteractionsFromMessages = (
 
     const questions = getPlanQuestions(message);
     if (questions.length > 0) {
+      if (!isPlanModeActive) continue;
       const requestId = (questions[0]?.requestId || "").trim();
       if (requestId) {
         const normalizedRequestId = requestId.toLowerCase();
@@ -717,8 +723,13 @@ const ChatPanel = ({
       }
     }
     setMessages(normalizedHydratedMessages);
-    setPendingInteractions(buildPendingInteractionsFromMessages(normalizedHydratedMessages));
-    setChatMode(derivePlanModeFromMessages(normalizedHydratedMessages));
+    const nextChatMode = derivePlanModeFromMessages(normalizedHydratedMessages);
+    setChatMode(nextChatMode);
+    setPendingInteractions(
+      buildPendingInteractionsFromMessages(normalizedHydratedMessages, {
+        isPlanModeActive: nextChatMode === "plan",
+      })
+    );
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
       for (const message of normalizedHydratedMessages) {

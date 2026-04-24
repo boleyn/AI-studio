@@ -900,3 +900,47 @@ export async function updateConversationMessageFeedback({
 
   return false;
 }
+
+export async function updateConversationMessageAdditionalKwargs({
+  token,
+  chatId,
+  messageId,
+  additionalKwargs,
+}: {
+  token: string;
+  chatId: string;
+  messageId: string;
+  additionalKwargs: Record<string, unknown>;
+}): Promise<boolean> {
+  const meta = await getMetaByChatId(token, chatId);
+  if (!meta?.chatId) return false;
+  if (!messageId || typeof messageId !== "string") return false;
+  if (!additionalKwargs || typeof additionalKwargs !== "object" || Array.isArray(additionalKwargs)) {
+    return false;
+  }
+
+  const itemCol = await getItemCollection();
+  const result = await itemCol.updateOne(
+    { token, chatId, dataId: messageId },
+    {
+      $set: {
+        additional_kwargs: additionalKwargs,
+      },
+    }
+  );
+
+  if ((result.modifiedCount ?? 0) > 0) {
+    const metaCol = await getMetaCollection();
+    await metaCol.updateOne(
+      { token, chatId },
+      {
+        $set: {
+          updateTime: new Date(),
+        },
+      }
+    );
+    return true;
+  }
+
+  return false;
+}

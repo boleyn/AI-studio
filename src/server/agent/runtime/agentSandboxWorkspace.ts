@@ -85,6 +85,15 @@ async function writeProjectFilesToWorkspace(
     const normalizedPath = normalizeProjectFilePath(rawPath)
     const absolutePath = toVirtualAbsoluteFilePath(workspaceRoot, normalizedPath)
     if (!isPathInsideRoot(absolutePath, workspaceRoot)) continue
+    try {
+      const existing = await fsStat(absolutePath)
+      if (existing.isFile()) {
+        // Preserve latest sandbox/S3 state across turns; projectFiles are initial seed input.
+        continue
+      }
+    } catch {
+      // File does not exist yet; proceed to seed it.
+    }
     await ensureDir(path.dirname(absolutePath))
     const rawCode = typeof file?.code === 'string' ? file.code : ''
     const binary = decodeDataUrlToBuffer(rawCode)
