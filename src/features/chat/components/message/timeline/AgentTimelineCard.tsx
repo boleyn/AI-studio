@@ -1,8 +1,8 @@
 import { Box, Button, Collapse, Flex, Icon, IconButton, Text } from "@chakra-ui/react";
 import { ChevronDownIcon } from "@/components/common/Icon";
+import Markdown from "@/components/Markdown";
 import type { TimelineItem } from "@/features/chat/utils/chatItemParsers";
 import { isDetailTruncated, truncateDetailText } from "@/features/chat/utils/chatItemParsers";
-import { ToolStreamText } from "@/features/chat/hooks/useChatItemViewModel";
 import TimelineStatusPill, { type TimelineStatus } from "./TimelineStatusPill";
 
 const HEADER_BTN_SX = {
@@ -74,8 +74,6 @@ const AgentTimelineCard = ({
   const currentTool = children.find(
     (child) => child.type === "tool" && (child.progressStatus === "in_progress" || child.progressStatus === "pending")
   );
-  const promptPreview = truncateDetailText(item.prompt);
-  const promptTruncated = isDetailTruncated(item.prompt);
   const responsePreview = truncateDetailText(item.response);
   const responseTruncated = isDetailTruncated(item.response);
 
@@ -148,21 +146,8 @@ const AgentTimelineCard = ({
                 <Text color="purple.700" fontSize="10px" fontWeight="700">
                   Prompt
                 </Text>
-                {promptTruncated ? (
-                  <Button
-                    colorScheme="purple"
-                    h="20px"
-                    minW="auto"
-                    onClick={() => onOpenToolDetailModal(`Subagent · Prompt`, item.prompt)}
-                    px={2}
-                    size="xs"
-                    variant="ghost"
-                  >
-                    查看完整
-                  </Button>
-                ) : null}
               </Flex>
-              <ToolStreamText color="myGray.700" fontSize="12px" isStreaming={isStreaming} value={promptPreview} />
+              <Markdown source={item.prompt} />
             </Box>
           ) : null}
 
@@ -211,7 +196,7 @@ const AgentTimelineCard = ({
                   </Button>
                 ) : null}
               </Flex>
-              <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={responsePreview} />
+              <Markdown source={responsePreview} />
             </Box>
           ) : null}
         </Flex>

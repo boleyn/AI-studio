@@ -158,7 +158,9 @@ const ChatItem = ({
                   <Text color="purple.700" fontSize="12px" fontWeight="600">执行计划</Text>
                 </Flex>
                 {planProgress.explanation ? (
-                  <Text color="purple.600" fontSize="12px" mb={3}>{planProgress.explanation}</Text>
+                  <Box mb={3}>
+                    <Markdown source={planProgress.explanation} />
+                  </Box>
                 ) : null}
                 <Flex direction="column" gap={2}>
                   {planProgress.plan.map((item, index) => (
@@ -176,13 +178,13 @@ const ChatItem = ({
                           </Icon>
                         )}
                       </Box>
-                      <Text
+                      <Box
                         color={item.status === "completed" ? "myGray.500" : "myGray.700"}
                         fontSize="12px"
                         textDecoration={item.status === "completed" ? "line-through" : "none"}
                       >
-                        {item.step}
-                      </Text>
+                        <Markdown source={item.step} />
+                      </Box>
                     </Flex>
                   ))}
                 </Flex>
@@ -355,7 +357,7 @@ const ChatItem = ({
               </Button>
             </Flex>
             <Box bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="8px" maxH="60vh" overflow="auto" p={3}>
-              <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={detailModalData?.content || ""} />
+              <Markdown source={detailModalData?.content || ""} />
             </Box>
           </ModalBody>
         </ModalContent>

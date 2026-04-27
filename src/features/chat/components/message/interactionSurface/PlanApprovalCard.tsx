@@ -1,4 +1,5 @@
 import { Button, Flex, Text } from "@chakra-ui/react";
+import Markdown from "@/components/Markdown";
 import type { InteractionContext, PendingInteraction } from "./types";
 
 type PlanApprovalInteraction = Extract<PendingInteraction, { type: "plan_approval" }>;
@@ -12,9 +13,9 @@ const PlanApprovalCard = ({
 }) => (
   <>
     {pending.approval.description ? (
-      <Text color="myGray.700" fontSize="12px" mt={1} whiteSpace="pre-wrap">
-        {pending.approval.description}
-      </Text>
+      <Flex mt={1}>
+        <Markdown source={pending.approval.description} />
+      </Flex>
     ) : null}
     <Text color="myGray.500" fontSize="11px" mt={2}>
       批准后将继续当前流程，拒绝会中断当前计划步骤。
