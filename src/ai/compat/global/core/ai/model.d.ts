@@ -12,6 +12,9 @@ type BaseModelItemType = {
   model: string;
   name: string;
   avatar?: string; // model icon, from provider
+  protocol?: 'openai' | 'anthropic' | string;
+  baseUrl?: string;
+  key?: string;
 
   isActive?: boolean;
   isCustom?: boolean;
@@ -29,8 +32,6 @@ export type LLMModelItemType = PriceType &
     type: ModelTypeEnum.llm;
     // Model params
     maxContext: number;
-    maxResponse: number;
-    quoteMaxToken: number;
     maxTemperature?: number;
 
     showTopP?: boolean;

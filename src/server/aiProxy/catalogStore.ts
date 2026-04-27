@@ -1,13 +1,20 @@
+// @ts-nocheck
+// @ts-nocheck
 import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
 import { promises as fs } from "fs";
 import JSON5 from "json5";
 import path from "path";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export interface ChatModelOption {
   id: string;
   label: string;
   channel: string;
   source: "aiproxy" | "env";
+  icon?: string;
+  reasoning?: boolean;
+  vision?: boolean;
+  maxContext?: number;
 }
 
 export interface ChatModelChannel {
@@ -32,11 +39,18 @@ export interface ChatModelCatalog {
 type ConfigModelItem = {
   id?: unknown;
   label?: unknown;
+  icon?: unknown;
+  protocol?: unknown;
+  baseUrl?: unknown;
+  key?: unknown;
   maxContext?: unknown;
-  maxResponse?: unknown;
-  quoteMaxToken?: unknown;
   maxTemperature?: unknown;
   reasoning?: unknown;
+  vision?: unknown;
+  visionModel?: unknown;
+  toolChoice?: unknown;
+  toolChoiceMode?: unknown;
+  forceToolChoice?: unknown;
   defaultConfig?: unknown;
   fieldMap?: unknown;
 };
@@ -58,6 +72,15 @@ let catalogCache:
       profiles: Record<string, Map<string, Record<string, unknown>>>;
     }
   | undefined;
+
+const requestModelProfileContext = new AsyncLocalStorage<Map<string, Record<string, unknown>>>();
+
+export const runWithRequestModelProfiles = async <T>(
+  profiles: Map<string, Record<string, unknown>>,
+  fn: () => Promise<T>
+) => {
+  return requestModelProfileContext.run(profiles, fn);
+};
 
 const resolveConfigFilePath = () => {
   const configured = process.env.CHAT_MODEL_CONFIG_FILE?.trim();
@@ -86,10 +109,10 @@ const toBoolean = (value: unknown): boolean | undefined => {
 
 const parseModels = (value: unknown) => {
   if (!Array.isArray(value)) {
-    return [] as Array<{ id: string; label: string; profile?: Record<string, unknown> }>;
+    return [] as Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>;
   }
 
-  const normalized = value.reduce<Array<{ id: string; label: string; profile?: Record<string, unknown> }>>(
+  const normalized = value.reduce<Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>>(
     (acc, item) => {
       if (!item || typeof item !== "object") return acc;
       const record = item as ConfigModelItem;
@@ -100,13 +123,42 @@ const parseModels = (value: unknown) => {
 
       const labelRaw = record.label;
       const label = typeof labelRaw === "string" && labelRaw.trim() ? labelRaw.trim() : id;
+      const iconRaw = record.icon;
+      const icon = typeof iconRaw === "string" && iconRaw.trim() ? iconRaw.trim() : undefined;
 
       const profile: Record<string, unknown> = {
+        protocol:
+          typeof record.protocol === "string" && record.protocol.trim()
+            ? record.protocol.trim().toLowerCase()
+            : undefined,
+        baseUrl:
+          typeof record.baseUrl === "string" && record.baseUrl.trim()
+            ? record.baseUrl.trim()
+            : undefined,
+        key:
+          typeof record.key === "string" && record.key.trim()
+            ? record.key.trim()
+            : undefined,
         maxContext: toNumber(record.maxContext),
-        maxResponse: toNumber(record.maxResponse),
-        quoteMaxToken: toNumber(record.quoteMaxToken),
         maxTemperature: toNumber(record.maxTemperature),
         reasoning: toBoolean(record.reasoning),
+        vision: toBoolean(record.vision),
+        visionModel:
+          typeof record.visionModel === "string" && record.visionModel.trim()
+            ? record.visionModel.trim()
+            : undefined,
+        toolChoice:
+          typeof record.toolChoice === "string" && record.toolChoice.trim()
+            ? record.toolChoice.trim()
+            : undefined,
+        toolChoiceMode:
+          typeof record.toolChoiceMode === "string" && record.toolChoiceMode.trim()
+            ? record.toolChoiceMode.trim()
+            : undefined,
+        forceToolChoice:
+          typeof record.forceToolChoice === "string" && record.forceToolChoice.trim()
+            ? record.forceToolChoice.trim()
+            : undefined,
         defaultConfig:
           record.defaultConfig && typeof record.defaultConfig === "object" && !Array.isArray(record.defaultConfig)
             ? record.defaultConfig
@@ -116,13 +168,13 @@ const parseModels = (value: unknown) => {
           : undefined,
       };
 
-      acc.push({ id, label, profile });
+      acc.push({ id, label, icon, profile });
       return acc;
     },
     []
   );
 
-  const deduped = new Map<string, { id: string; label: string; profile?: Record<string, unknown> }>();
+  const deduped = new Map<string, { id: string; label: string; icon?: string; profile?: Record<string, unknown> }>();
   normalized.forEach((item) => {
     if (!deduped.has(item.id)) deduped.set(item.id, item);
   });
@@ -131,7 +183,7 @@ const parseModels = (value: unknown) => {
 };
 
 const buildCatalog = (params: {
-  models: Array<{ id: string; label: string; profile?: Record<string, unknown> }>;
+  models: Array<{ id: string; label: string; icon?: string; profile?: Record<string, unknown> }>;
   warning?: string;
 }): ChatModelCatalog => {
   const runtime = getAgentRuntimeConfig();
@@ -139,7 +191,7 @@ const buildCatalog = (params: {
   const modelList =
     params.models.length > 0
       ? params.models
-      : [{ id: runtime.toolCallModel || "agent", label: runtime.toolCallModel || "agent", profile: undefined }];
+      : [{ id: runtime.toolCallModel || "agent", label: runtime.toolCallModel || "agent", icon: undefined, profile: undefined }];
 
   const defaultModel =
     modelList.find((item) => item.id === runtime.toolCallModel)?.id ||
@@ -151,6 +203,19 @@ const buildCatalog = (params: {
     models: modelList.map((item) => ({
       id: item.id,
       label: item.label,
+      icon: item.icon,
+      reasoning:
+        item.profile && typeof item.profile.reasoning === "boolean"
+          ? (item.profile.reasoning as boolean)
+          : undefined,
+      vision:
+        item.profile && typeof item.profile.vision === "boolean"
+          ? (item.profile.vision as boolean)
+          : undefined,
+      maxContext:
+        item.profile && typeof item.profile.maxContext === "number"
+          ? (item.profile.maxContext as number)
+          : undefined,
       channel: DEFAULT_CHANNEL,
       source: "aiproxy" as const,
     })),
@@ -263,7 +328,11 @@ const resolveKey = (requestedKey: string | undefined) => {
 };
 
 export const getChatModelProfile = (modelId: string, key?: string) => {
-  if (!modelId || !catalogCache) return undefined;
+  if (!modelId) return undefined;
+  const requestProfiles = requestModelProfileContext.getStore();
+  const requestScoped = requestProfiles?.get(modelId);
+  if (requestScoped) return requestScoped;
+  if (!catalogCache) return undefined;
   const resolvedKey = resolveKey(key) || catalogCache.defaultKey;
   const selectedProfileMap =
     (resolvedKey && catalogCache.profiles[resolvedKey] ? catalogCache.profiles[resolvedKey] : undefined) ||

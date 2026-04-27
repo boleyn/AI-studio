@@ -4,14 +4,22 @@ export interface ChatModelCatalog {
   channels: Array<{
     id: string;
     label: string;
-    source: "aiproxy" | "env";
+    source: "aiproxy" | "env" | "user";
+  }>;
+  groups?: Array<{
+    id: "user" | "system";
+    label: string;
+    models: string[];
   }>;
   defaultChannel: string;
   models: Array<{
     id: string;
     label: string;
     channel: string;
-    source: "aiproxy" | "env";
+    source: "aiproxy" | "env" | "user";
+    scope?: "user" | "system";
+    icon?: string;
+    reasoning?: boolean;
   }>;
   defaultModel: string;
   toolCallModel: string;
@@ -32,4 +40,19 @@ export const getChatModels = async (forceRefresh = false): Promise<ChatModelCata
   }
 
   return response.json();
+};
+
+export const updatePrimaryModel = async (primaryModel: string): Promise<void> => {
+  const response = await fetch("/api/auth/primary-model", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...withAuthHeaders(),
+    },
+    body: JSON.stringify({ primaryModel }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`主模型保存失败: ${response.status}`);
+  }
 };

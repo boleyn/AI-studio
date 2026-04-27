@@ -9,6 +9,7 @@ const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
 
 const payloadSchema = z.object({
   code: z.string().min(1, "缺少 code"),
+  returnTo: z.string().optional(),
 });
 
 const maskValue = (value: unknown) => {
@@ -22,6 +23,8 @@ const debugLog = (label: string, data: Record<string, unknown>) => {
   console.info(`[feishu-login] ${label}`, data);
 };
 
+const normalizeId = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
 const getFeishuConfig = () => ({
   appId: process.env.FEISHU_APP_ID,
   appSecret: process.env.FEISHU_APP_SECRET,
@@ -29,35 +32,72 @@ const getFeishuConfig = () => ({
   defaultPassword: process.env.FEISHU_DEFAULT_PASSWORD || "Feishu@123456",
 });
 
-const requestPassportToken = async (appId: string, appSecret: string, code: string) => {
+const normalizeReturnTo = (value: unknown) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  return raw;
+};
+
+const buildRedirectUriWithReturnTo = (baseRedirectUri: string, returnTo: string) => {
+  const normalized = baseRedirectUri.trim();
+  if (!normalized) return "";
+  try {
+    const callback = new URL(normalized);
+    callback.searchParams.set("returnTo", normalizeReturnTo(returnTo));
+    return callback.toString();
+  } catch {
+    return normalized;
+  }
+};
+
+const requestPassportToken = async (appId: string, appSecret: string, code: string, redirectUri?: string) => {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: appId,
     client_secret: appSecret,
     code,
   });
+  if (redirectUri) params.set("redirect_uri", redirectUri);
   const response = await fetch(
     `https://passport.feishu.cn/suite/passport/oauth/token?${params.toString()}`,
     { method: "POST" }
   );
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const failed = (await response.json().catch(() => null)) as any;
+    const detail = String(failed?.msg || failed?.message || failed?.error || "").trim();
+    throw new Error(detail || `passport token 失败（HTTP ${response.status}）`);
+  }
   const data = (await response.json().catch(() => null)) as any;
+  if (Number(data?.code) !== 0 && !data?.access_token && !data?.data?.access_token) {
+    const detail = String(data?.msg || data?.message || data?.error || "").trim();
+    throw new Error(detail || "passport token 失败");
+  }
   return data?.access_token || data?.data?.access_token || null;
 };
 
-const requestOpenApiToken = async (appId: string, appSecret: string, code: string) => {
+const requestOpenApiToken = async (appId: string, appSecret: string, code: string, redirectUri?: string) => {
+  const payload: Record<string, string> = {
+    grant_type: "authorization_code",
+    code,
+    client_id: appId,
+    client_secret: appSecret,
+  };
+  if (redirectUri) payload.redirect_uri = redirectUri;
   const response = await fetch("https://open.feishu.cn/open-apis/authen/v2/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      code,
-      client_id: appId,
-      client_secret: appSecret,
-    }),
+    body: JSON.stringify(payload),
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const failed = (await response.json().catch(() => null)) as any;
+    const detail = String(failed?.msg || failed?.message || failed?.error || "").trim();
+    throw new Error(detail || `飞书授权失败（HTTP ${response.status}）`);
+  }
   const data = (await response.json().catch(() => null)) as any;
+  if (Number(data?.code) !== 0 && !data?.access_token && !data?.data?.access_token) {
+    const detail = String(data?.msg || data?.message || data?.error || "").trim();
+    throw new Error(detail || "飞书授权失败");
+  }
   return data?.access_token || data?.data?.access_token || null;
 };
 
@@ -83,24 +123,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const { appId, appSecret, defaultPassword } = getFeishuConfig();
+  const { appId, appSecret, redirectUri, defaultPassword } = getFeishuConfig();
   if (!appId || !appSecret) {
     res.status(500).json({ error: "未配置飞书登录参数" });
     return;
   }
 
-  const { code } = parseResult.data;
+  const { code, returnTo } = parseResult.data;
   debugLog("received_callback_code", {
     hasCode: Boolean(code),
     codePreview: maskValue(code),
   });
 
-  const accessToken =
-    (await requestPassportToken(appId, appSecret, code)) ||
-    (await requestOpenApiToken(appId, appSecret, code));
+  const tokenRedirectUri = buildRedirectUriWithReturnTo(redirectUri || "", returnTo || "/");
+  let accessToken: string | null = null;
+  let passportError = "";
+  let openapiError = "";
+  try {
+    accessToken = await requestPassportToken(appId, appSecret, code, tokenRedirectUri);
+  } catch (err) {
+    passportError = err instanceof Error ? err.message : "passport token 失败";
+  }
+  if (!accessToken) {
+    try {
+      accessToken = await requestOpenApiToken(appId, appSecret, code, tokenRedirectUri);
+    } catch (err) {
+      openapiError = err instanceof Error ? err.message : "openapi token 失败";
+    }
+  }
 
   if (!accessToken) {
-    res.status(500).json({ error: "飞书授权失败" });
+    const detail = [passportError ? `passport: ${passportError}` : "", openapiError ? `openapi: ${openapiError}` : ""]
+      .filter(Boolean)
+      .join(" | ");
+    res.status(500).json({ error: detail || "飞书授权失败" });
     return;
   }
 
@@ -126,6 +182,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const displayName: string = feishuUser.name || feishuUser.en_name || "";
   const email: string = feishuUser.email || feishuUser.enterprise_email || "";
+  const feishuOpenId: string = typeof feishuUser.open_id === "string" ? feishuUser.open_id.trim() : "";
+  const feishuUnionId: string = typeof feishuUser.union_id === "string" ? feishuUser.union_id.trim() : "";
   const phoneRaw: string = feishuUser.mobile || "";
   const avatarFromFeishu: string =
     feishuUser.avatar_url || feishuUser.avatar_big_url || feishuUser.avatar_thumb || "";
@@ -165,6 +223,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuOpenId: feishuOpenId || undefined,
+      feishuUnionId: feishuUnionId || undefined,
     });
     user = {
       _id: userId,
@@ -174,6 +234,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuOpenId: feishuOpenId || undefined,
+      feishuUnionId: feishuUnionId || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -181,17 +243,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shouldPatchDisplayName = !user.displayName && Boolean(nextDisplayName);
     const shouldPatchContact = !user.contact && Boolean(nextContact);
     const shouldPatchAvatar = !user.avatar && Boolean(nextAvatar);
-    if (shouldPatchDisplayName || shouldPatchContact || shouldPatchAvatar) {
+    const currentFeishuOpenId = normalizeId(user.feishuOpenId);
+    const currentFeishuUnionId = normalizeId(user.feishuUnionId);
+    // Always sync the latest Feishu IDs when they differ, to avoid stale/mismatched binding.
+    const shouldPatchFeishuOpenId = Boolean(feishuOpenId) && feishuOpenId !== currentFeishuOpenId;
+    const shouldPatchFeishuUnionId = Boolean(feishuUnionId) && feishuUnionId !== currentFeishuUnionId;
+    if (
+      shouldPatchDisplayName ||
+      shouldPatchContact ||
+      shouldPatchAvatar ||
+      shouldPatchFeishuOpenId ||
+      shouldPatchFeishuUnionId
+    ) {
       await updateUserProfile(String(user._id), {
         displayName: shouldPatchDisplayName ? nextDisplayName : undefined,
         contact: shouldPatchContact ? nextContact : undefined,
         avatar: shouldPatchAvatar ? nextAvatar : undefined,
+        feishuOpenId: shouldPatchFeishuOpenId ? feishuOpenId : undefined,
+        feishuUnionId: shouldPatchFeishuUnionId ? feishuUnionId : undefined,
       });
       user = {
         ...user,
         displayName: shouldPatchDisplayName ? nextDisplayName : user.displayName,
         contact: shouldPatchContact ? nextContact : user.contact,
         avatar: shouldPatchAvatar ? nextAvatar : user.avatar,
+        feishuOpenId: shouldPatchFeishuOpenId ? feishuOpenId : user.feishuOpenId,
+        feishuUnionId: shouldPatchFeishuUnionId ? feishuUnionId : user.feishuUnionId,
       };
     }
   }
@@ -207,6 +284,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       displayName: user.displayName || user.username,
       contact: user.contact,
       avatar: user.avatar || DEFAULT_AVATAR,
+      primaryModel: user.primaryModel,
       provider: user.provider ?? "feishu",
     },
   });

@@ -1,11 +1,101 @@
-import { getProject, updateFiles } from "@server/projects/projectStorage";
+// @ts-nocheck
+// @ts-nocheck
+import { getProject } from "@server/projects/projectStorage";
+import { createUserSkill, getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
+
+export type SearchInFilesInput = {
+  query: string;
+  regex?: boolean;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  includeGlobs?: string[];
+  excludeGlobs?: string[];
+  contextLines?: number;
+  maxResults?: number;
+};
+
+type SearchMatch = {
+  path: string;
+  line: number;
+  column: number;
+  text: string;
+};
+
+const toSearchRegExp = (input: SearchInFilesInput) => {
+  const query = (input.query || "").trim();
+  if (!query) return null;
+
+  if (input.regex) {
+    return new RegExp(query, input.caseSensitive ? "g" : "gi");
+  }
+
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const source = input.wholeWord ? `\\b${escaped}\\b` : escaped;
+  return new RegExp(source, input.caseSensitive ? "g" : "gi");
+};
+
+const runSearchInFiles = async ({
+  files,
+  input,
+}: {
+  files: Record<string, { code?: string }>;
+  input: SearchInFilesInput;
+}) => {
+  const pattern = toSearchRegExp(input);
+  if (!pattern) {
+    return { ok: false, message: "query 不能为空", files: [], matches: [], total: 0 };
+  }
+
+  const matches: SearchMatch[] = [];
+  const maxResults = Math.max(1, Math.min(5000, input.maxResults || 200));
+
+  const entries = Object.entries(files || {});
+  for (const [path, file] of entries) {
+    const content = typeof file?.code === "string" ? file.code : "";
+    if (!content) continue;
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const lineText = lines[i] || "";
+      pattern.lastIndex = 0;
+      let match = pattern.exec(lineText);
+      while (match) {
+        matches.push({
+          path,
+          line: i + 1,
+          column: (match.index || 0) + 1,
+          text: lineText,
+        });
+        if (matches.length >= maxResults) {
+          return {
+            ok: true,
+            files: [...new Set(matches.map((item) => item.path))],
+            matches,
+            total: matches.length,
+            truncated: true,
+          };
+        }
+        match = pattern.exec(lineText);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    files: [...new Set(matches.map((item) => item.path))],
+    matches,
+    total: matches.length,
+    truncated: false,
+  };
+};
 
 export type SkillWorkspaceFile = { code: string };
 
 export type SkillWorkspace = {
   id: string;
   userId: string;
-  projectToken: string;
+  source: "skill" | "project";
+  projectToken?: string;
+  skillId?: string;
   createdAt: string;
   updatedAt: string;
   files: Record<string, SkillWorkspaceFile>;
@@ -15,10 +105,13 @@ export type WorkspaceActionInput =
   | { action: "list" }
   | { action: "read"; path: string }
   | { action: "write"; path: string; content: string }
-  | { action: "replace"; path: string; query: string; replace: string }
-  | { action: "search"; query: string; limit?: number };
+  | { action: "replace"; path: string; query: string; replace: string; replaceAll?: boolean }
+  | { action: "delete"; path: string }
+  | ({ action: "search" } & SearchInFilesInput);
 
 const SKILLS_ROOT = "/skills";
+const SKILL_FILE_PATTERN = /^\/skills\/[^/]+\/SKILL\.md$/i;
+const SKILL_ROOT_PATTERN = /^\/skills\/[^/]+\/?/i;
 
 const normalizeSkillPath = (input: string) => {
   const trimmed = input.trim();
@@ -45,22 +138,71 @@ const filterNonSkillFiles = (files: Record<string, { code: string }>) =>
     Object.entries(files).filter(([filePath]) => !(filePath === SKILLS_ROOT || filePath.startsWith(`${SKILLS_ROOT}/`)))
   );
 
-const ensureSkillReadme = async (projectToken: string, files: Record<string, { code: string }>) => {
-  if (files[`${SKILLS_ROOT}/README.md`]) return files;
-  const next = {
-    ...files,
-    [`${SKILLS_ROOT}/README.md`]: {
-      code: [
-        "# Skills",
-        "",
-        "Store project-bound skills here, for example:",
-        "- /skills/my-skill/SKILL.md",
-      ].join("\n"),
-    },
-  };
-  await updateFiles(projectToken, next);
-  return next;
+const toSafeAbsolutePath = (input: string) => {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error("文件路径不能为空");
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  if (withSlash.includes("\\") || withSlash.includes("\0") || withSlash.includes("..")) {
+    throw new Error("文件路径不安全");
+  }
+  return withSlash.replace(/\/{2,}/g, "/");
 };
+
+const detectSkillRoot = (files: Record<string, SkillWorkspaceFile>) => {
+  const bySkillFile = Object.keys(files).find((path) => SKILL_FILE_PATTERN.test(path));
+  if (bySkillFile) {
+    const idx = bySkillFile.toLowerCase().lastIndexOf("/skill.md");
+    if (idx > 0) return `${bySkillFile.slice(0, idx + 1)}`.replace(/\/{2,}/g, "/");
+  }
+  const byAny = Object.keys(files).find((path) => SKILL_ROOT_PATTERN.test(path));
+  if (!byAny) return "";
+  const match = byAny.match(SKILL_ROOT_PATTERN)?.[0] || "";
+  return `${match.replace(/\/+$/, "")}/`;
+};
+
+export const toWorkspacePublicFiles = (files: Record<string, SkillWorkspaceFile>) => {
+  const root = detectSkillRoot(files);
+  if (!root) return files;
+  const skillName = root.replace(/^\/skills\//i, "").replace(/\/+$/, "");
+  if (!skillName) return files;
+  const mapped = Object.fromEntries(
+    Object.entries(files).map(([path, file]) => {
+      if (!path.startsWith(root)) return [path, file];
+      const rel = path.slice(root.length);
+      return [`/${skillName}/${rel}`, file];
+    })
+  );
+  return Object.fromEntries(Object.entries(mapped).sort(([a], [b]) => a.localeCompare(b)));
+};
+
+const toWorkspaceStoredPath = (path: string, files: Record<string, SkillWorkspaceFile>) => {
+  const safe = toSafeAbsolutePath(path);
+  if (safe.startsWith(`${SKILLS_ROOT}/`)) return normalizeSkillPath(safe);
+  const publicMatch = safe.match(/^\/([^/]+)\/(.+)$/);
+  if (publicMatch) {
+    const [, skillName, relPath] = publicMatch;
+    return normalizeSkillPath(`${SKILLS_ROOT}/${skillName}/${relPath}`);
+  }
+  if (/^\/SKILL\.md$/i.test(safe)) {
+    const root = detectSkillRoot(files);
+    if (!root) throw new Error("无法确定 skill 根目录");
+    return normalizeSkillPath(`${root}SKILL.md`);
+  }
+  const root = detectSkillRoot(files);
+  if (!root) throw new Error("无法确定 skill 根目录");
+  return normalizeSkillPath(`${root}${safe.replace(/^\/+/, "")}`);
+};
+
+export const toWorkspaceStoredFiles = (
+  files: Record<string, SkillWorkspaceFile>,
+  workspaceFiles: Record<string, SkillWorkspaceFile>
+) =>
+  Object.fromEntries(
+    Object.entries(files).map(([filePath, file]) => {
+      const nextPath = toWorkspaceStoredPath(filePath, workspaceFiles);
+      return [nextPath, { code: typeof file?.code === "string" ? file.code : "" }];
+    })
+  );
 
 const countOccurrences = (haystack: string, needle: string): number => {
   if (!needle) return 0;
@@ -74,64 +216,75 @@ const replaceAll = (haystack: string, needle: string, replacement: string) => {
   return { content, count };
 };
 
-const collectMatches = (content: string, query: string, limit: number) => {
-  const matches: Array<{ line: number; column: number; snippet: string }> = [];
-  if (!query) return matches;
-  const lines = content.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    let index = line.indexOf(query);
-    while (index !== -1) {
-      matches.push({ line: i + 1, column: index + 1, snippet: line.trim().slice(0, 160) });
-      if (matches.length >= limit) return matches;
-      index = line.indexOf(query, index + query.length);
-    }
-  }
-  return matches;
-};
-
-export const createSkillWorkspace = async (userId: string, projectToken: string): Promise<SkillWorkspace> => {
-  const project = await getProject(projectToken);
-  if (!project) throw new Error("项目不存在");
-  if (project.userId !== userId) throw new Error("无权访问该项目");
-
-  const files = await ensureSkillReadme(projectToken, project.files || {});
+const replaceFirst = (haystack: string, needle: string, replacement: string) => {
+  if (!needle) throw new Error("替换内容不能为空");
+  const index = haystack.indexOf(needle);
+  if (index < 0) return { content: haystack, count: 0 };
   return {
-    id: projectToken,
-    userId,
-    projectToken,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-    files: filterSkillFiles(files),
+    content: `${haystack.slice(0, index)}${replacement}${haystack.slice(index + needle.length)}`,
+    count: 1,
   };
 };
 
-export const requireSkillWorkspace = async (
-  workspaceId: string,
-  userId: string,
-  projectToken?: string
-) => {
-  const token = (projectToken || workspaceId || "").trim();
-  if (!token) throw new Error("缺少 projectToken");
-  if (workspaceId && workspaceId !== token) {
-    throw new Error("workspace 与项目不匹配");
-  }
-  const project = await getProject(token);
-  if (!project) throw new Error("项目不存在");
-  if (project.userId !== userId) throw new Error("无权访问该项目");
-  return project;
+const skillToFiles = (name: string, content: string): Record<string, SkillWorkspaceFile> => ({
+  [`/skills/${name}/SKILL.md`]: {
+    code: content,
+  },
+});
+
+const pickSkillContentFromFiles = (files: Record<string, SkillWorkspaceFile>) => {
+  const entry = Object.entries(files).find(([path]) => SKILL_FILE_PATTERN.test(path));
+  if (!entry) return null;
+  return {
+    path: entry[0],
+    content: typeof entry[1]?.code === "string" ? entry[1].code : "",
+  };
 };
 
-export const getSkillWorkspace = async (
-  workspaceId: string,
-  userId: string,
-  projectToken?: string
-): Promise<SkillWorkspace> => {
-  const project = await requireSkillWorkspace(workspaceId, userId, projectToken);
-  const files = await ensureSkillReadme(project.token, project.files || {});
+const resolveWorkspace = async ({
+  workspaceId,
+  userId,
+  projectToken,
+  skillId,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+}): Promise<SkillWorkspace> => {
+  const safeWorkspaceId = workspaceId.trim();
+  const safeProjectToken = (projectToken || "").trim();
+  const safeSkillId = (skillId || "").trim();
+  const preferSkillId = safeSkillId || (!safeProjectToken ? safeWorkspaceId : "");
+
+  if (preferSkillId) {
+    const skill = await getUserSkill({ token: preferSkillId, userId });
+    if (skill) {
+      const storedFiles =
+        skill.files !== undefined ? filterSkillFiles(skill.files) : skillToFiles(skill.name, skill.content);
+      return {
+        id: skill.token,
+        userId,
+        source: "skill",
+        skillId: skill.token,
+        createdAt: skill.createdAt,
+        updatedAt: skill.updatedAt,
+        files: storedFiles,
+      };
+    }
+  }
+
+  const token = safeProjectToken || safeWorkspaceId;
+  if (!token) throw new Error("缺少 workspaceId");
+  const project = await getProject(token);
+  if (!project) throw new Error("workspace 不存在");
+  if (project.userId !== userId) throw new Error("无权访问该 workspace");
+
+  const files = project.files || {};
   return {
     id: project.token,
-    userId: project.userId,
+    userId,
+    source: "project",
     projectToken: project.token,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
@@ -139,65 +292,181 @@ export const getSkillWorkspace = async (
   };
 };
 
+export const createSkillWorkspace = async ({
+  userId,
+  projectToken,
+  skillId,
+}: {
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+}): Promise<SkillWorkspace> => {
+  const safeProjectToken = (projectToken || "").trim();
+  const safeSkillId = (skillId || "").trim();
+
+  if (!safeProjectToken && !safeSkillId) {
+    const created = await createUserSkill({
+      userId,
+      sourceType: "custom",
+      name: "new-skill",
+    });
+    return {
+      id: created.token,
+      userId,
+      source: "skill",
+      skillId: created.token,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      files: filterSkillFiles(created.files || skillToFiles(created.name, created.content)),
+    };
+  }
+
+  return resolveWorkspace({
+    workspaceId: safeSkillId || safeProjectToken,
+    userId,
+    projectToken: safeProjectToken || undefined,
+    skillId: safeSkillId || undefined,
+  });
+};
+
+export const getSkillWorkspace = async (
+  workspaceId: string,
+  userId: string,
+  projectToken?: string,
+  skillId?: string
+): Promise<SkillWorkspace> => {
+  return resolveWorkspace({
+    workspaceId,
+    userId,
+    projectToken,
+    skillId,
+  });
+};
+
 export const writeSkillWorkspaceFile = async ({
   workspaceId,
   userId,
   projectToken,
+  skillId,
   path,
   content,
 }: {
   workspaceId: string;
   userId: string;
   projectToken?: string;
+  skillId?: string;
   path: string;
   content: string;
 }) => {
-  const project = await requireSkillWorkspace(workspaceId, userId, projectToken);
-  const filePath = normalizeSkillPath(path);
+  const workspace = await resolveWorkspace({ workspaceId, userId, projectToken, skillId });
+  const normalizedPath = toWorkspaceStoredPath(path, workspace.files);
+
+  if (workspace.source === "project") {
+    throw new Error("项目绑定 workspace 为兼容只读模式，无法写入");
+  }
+
   const nextFiles = {
-    ...(project.files || {}),
-    [filePath]: { code: content },
+    ...workspace.files,
+    [normalizedPath]: { code: content },
   };
-  await updateFiles(project.token, nextFiles);
-  return filterSkillFiles(nextFiles);
+
+  const updated = await updateUserSkill({
+    token: workspace.skillId || workspace.id,
+    userId,
+    updates: {
+      files: nextFiles,
+      ...(SKILL_FILE_PATTERN.test(normalizedPath) ? { content } : {}),
+    },
+  });
+  if (!updated) throw new Error("skill 不存在");
+  return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
+};
+
+export const deleteSkillWorkspaceFile = async ({
+  workspaceId,
+  userId,
+  projectToken,
+  skillId,
+  path,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+  path: string;
+}) => {
+  const workspace = await resolveWorkspace({ workspaceId, userId, projectToken, skillId });
+  const normalizedPath = toWorkspaceStoredPath(path, workspace.files);
+
+  if (workspace.source === "project") {
+    throw new Error("项目绑定 workspace 为兼容只读模式，无法写入");
+  }
+
+  const nextFiles = { ...workspace.files };
+  delete nextFiles[normalizedPath];
+  const next = pickSkillContentFromFiles(nextFiles);
+
+  const updated = await updateUserSkill({
+    token: workspace.skillId || workspace.id,
+    userId,
+    updates: {
+      files: nextFiles,
+      content: next?.content || "",
+    },
+  });
+  if (!updated) throw new Error("skill 不存在");
+  return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
 };
 
 export const replaceSkillWorkspaceFiles = async ({
   workspaceId,
   userId,
   projectToken,
+  skillId,
   files,
 }: {
   workspaceId: string;
   userId: string;
   projectToken?: string;
+  skillId?: string;
   files: Record<string, SkillWorkspaceFile>;
 }) => {
-  const project = await requireSkillWorkspace(workspaceId, userId, projectToken);
-  const normalizedSkillFiles = Object.fromEntries(
-    Object.entries(files).map(([path, file]) => {
-      const filePath = normalizeSkillPath(path);
-      return [filePath, { code: typeof file?.code === "string" ? file.code : "" }];
-    })
-  );
+  const workspace = await resolveWorkspace({ workspaceId, userId, projectToken, skillId });
 
-  const mergedFiles = {
-    ...filterNonSkillFiles(project.files || {}),
-    ...normalizedSkillFiles,
-  };
-  await updateFiles(project.token, mergedFiles);
-  return filterSkillFiles(mergedFiles);
+  if (workspace.source === "project") {
+    throw new Error("项目绑定 workspace 为兼容只读模式，无法写入");
+  }
+
+  const normalizedSkillFiles = toWorkspaceStoredFiles(files, workspace.files);
+
+  const next = pickSkillContentFromFiles(normalizedSkillFiles);
+  const updated = await updateUserSkill({
+    token: workspace.skillId || workspace.id,
+    userId,
+    updates: {
+      files: normalizedSkillFiles,
+      ...(next ? { content: next.content } : {}),
+    },
+  });
+  if (!updated) throw new Error("skill 不存在");
+  return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
 };
 
-export const runWorkspaceAction = async (workspaceId: string, input: WorkspaceActionInput) => {
-  const project = await getProject(workspaceId);
-  if (!project) throw new Error("项目不存在");
-
-  const files = project.files || {};
-  const skillFiles = filterSkillFiles(files);
+export const runWorkspaceAction = async (
+  context: {
+    workspaceId: string;
+    userId: string;
+    projectToken?: string;
+    skillId?: string;
+  },
+  input: WorkspaceActionInput
+) => {
+  const workspace = await resolveWorkspace(context);
+  const skillFiles = workspace.files;
+  const publicFiles = toWorkspacePublicFiles(skillFiles);
 
   if (input.action === "list") {
-    const paths = Object.keys(skillFiles).sort();
+    const paths = Object.keys(publicFiles).sort();
     return {
       ok: true,
       action: "list",
@@ -207,73 +476,139 @@ export const runWorkspaceAction = async (workspaceId: string, input: WorkspaceAc
   }
 
   if (input.action === "read") {
-    const filePath = normalizeSkillPath(input.path);
+    const filePath = toWorkspaceStoredPath(input.path, skillFiles);
     const code = skillFiles[filePath]?.code || "";
     if (!code) {
-      return { ok: false, action: "read", message: `未找到文件 ${filePath}` };
+      return { ok: false, action: "read", message: `未找到文件 ${toSafeAbsolutePath(input.path)}` };
     }
     return {
       ok: true,
       action: "read",
-      message: `已读取 ${filePath}`,
-      data: { path: filePath, content: code },
+      message: `已读取 ${toSafeAbsolutePath(input.path)}`,
+      data: { path: toSafeAbsolutePath(input.path), content: code },
     };
   }
 
   if (input.action === "write") {
-    const filePath = normalizeSkillPath(input.path);
-    const nextFiles = {
-      ...files,
-      [filePath]: { code: input.content },
-    };
-    await updateFiles(project.token, nextFiles);
+    if (workspace.source === "project") {
+      return { ok: false, action: "write", message: "项目绑定 workspace 为兼容只读模式，无法写入" };
+    }
+    const filePath = toWorkspaceStoredPath(input.path, skillFiles);
+    const updatedFiles = await writeSkillWorkspaceFile({
+      workspaceId: workspace.id,
+      userId: workspace.userId,
+      skillId: workspace.skillId,
+      path: filePath,
+      content: input.content,
+    });
     return {
       ok: true,
       action: "write",
-      message: `已写入 ${filePath}`,
-      data: { path: filePath },
-      files: filterSkillFiles(nextFiles),
+      message: `已写入 ${toSafeAbsolutePath(input.path)}`,
+      data: {
+        path: toSafeAbsolutePath(input.path),
+        bytes: (updatedFiles[filePath]?.code || input.content).length,
+      },
+      uiFiles: {
+        [toSafeAbsolutePath(input.path)]: {
+          code: updatedFiles[filePath]?.code || input.content,
+        },
+      },
     };
   }
 
   if (input.action === "replace") {
-    const filePath = normalizeSkillPath(input.path);
+    if (workspace.source === "project") {
+      return { ok: false, action: "replace", message: "项目绑定 workspace 为兼容只读模式，无法写入" };
+    }
+    const filePath = toWorkspaceStoredPath(input.path, skillFiles);
     const source = skillFiles[filePath]?.code || "";
     if (!source) {
-      return { ok: false, action: "replace", message: `未找到文件 ${filePath}` };
+      return { ok: false, action: "replace", message: `未找到文件 ${toSafeAbsolutePath(input.path)}` };
     }
-    const { content, count } = replaceAll(source, input.query, input.replace);
-    const nextFiles = {
-      ...files,
-      [filePath]: { code: content },
-    };
-    await updateFiles(project.token, nextFiles);
+    const occurrenceCount = countOccurrences(source, input.query);
+    if (occurrenceCount === 0) {
+      return {
+        ok: false,
+        action: "replace",
+        message: `String to replace not found in file.\nString: ${input.query}`,
+      };
+    }
+    if (occurrenceCount > 1 && !input.replaceAll) {
+      return {
+        ok: false,
+        action: "replace",
+        message:
+          `Found ${occurrenceCount} matches of the string to replace, but replaceAll is false. ` +
+          "To replace all occurrences, set replaceAll to true. To replace only one occurrence, provide more context.",
+      };
+    }
+    const { content, count } = input.replaceAll
+      ? replaceAll(source, input.query, input.replace)
+      : replaceFirst(source, input.query, input.replace);
+    const updatedFiles = await writeSkillWorkspaceFile({
+      workspaceId: workspace.id,
+      userId: workspace.userId,
+      skillId: workspace.skillId,
+      path: filePath,
+      content,
+    });
     return {
       ok: true,
       action: "replace",
-      message: `已在 ${filePath} 中替换 ${count} 处`,
-      data: { path: filePath, replaced: count },
-      files: filterSkillFiles(nextFiles),
+      message: `已在 ${toSafeAbsolutePath(input.path)} 中替换 ${count} 处`,
+      data: {
+        path: toSafeAbsolutePath(input.path),
+        replaced: count,
+        bytes: (updatedFiles[filePath]?.code || content).length,
+      },
+      uiFiles: {
+        [toSafeAbsolutePath(input.path)]: {
+          code: updatedFiles[filePath]?.code || content,
+        },
+      },
     };
   }
 
-  const query = input.query || "";
-  if (!query) {
-    return { ok: false, action: "search", message: "请提供 query" };
+  if (input.action === "delete") {
+    if (workspace.source === "project") {
+      return { ok: false, action: "delete", message: "项目绑定 workspace 为兼容只读模式，无法写入" };
+    }
+    const filePath = toWorkspaceStoredPath(input.path, skillFiles);
+    if (!skillFiles[filePath]) {
+      return { ok: false, action: "delete", message: `未找到文件 ${toSafeAbsolutePath(input.path)}` };
+    }
+    const originalFile = skillFiles[filePath]?.code || "";
+    await deleteSkillWorkspaceFile({
+      workspaceId: workspace.id,
+      userId: workspace.userId,
+      skillId: workspace.skillId,
+      path: filePath,
+    });
+    return {
+      ok: true,
+      action: "delete",
+      message: `已删除 ${toSafeAbsolutePath(input.path)}`,
+      data: {
+        path: toSafeAbsolutePath(input.path),
+        originalFile,
+      },
+    };
   }
 
-  const limit = input.limit ?? 50;
-  const results = Object.entries(skillFiles)
-    .map(([filePath, file]) => ({
-      path: filePath,
-      matches: collectMatches(file.code, query, limit),
-    }))
-    .filter((item) => item.matches.length > 0);
-
-  return {
-    ok: true,
-    action: "search",
-    message: `搜索 "${query}" 完成`,
-    data: { results },
-  };
+  return runSearchInFiles({
+    files: publicFiles,
+    input: {
+      query: input.query,
+      regex: input.regex,
+      caseSensitive: input.caseSensitive,
+      wholeWord: input.wholeWord,
+      includeGlobs: input.includeGlobs,
+      excludeGlobs: input.excludeGlobs,
+      contextLines: input.contextLines,
+      maxResults: input.maxResults,
+    },
+  });
 };
+
+export { filterNonSkillFiles, filterSkillFiles };

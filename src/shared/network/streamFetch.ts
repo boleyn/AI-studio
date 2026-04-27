@@ -1,28 +1,12 @@
 import { fetchEventSource, EventStreamContentType } from "@fortaine/fetch-event-source";
-import { SseResponseEventEnum } from "@shared/network/sseEvents";
-export { SseResponseEventEnum };
+import { SdkStreamEventEnum, type SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 
-export type SseEventName = typeof SseResponseEventEnum[keyof typeof SseResponseEventEnum];
+export { SdkStreamEventEnum };
 
-export type StreamQueueItem =
-  | {
-      event: typeof SseResponseEventEnum.answer;
-      text?: string;
-      reasoningText?: string;
-    }
-  | {
-      event:
-        | typeof SseResponseEventEnum.toolCall
-        | typeof SseResponseEventEnum.toolParams
-        | typeof SseResponseEventEnum.toolResponse
-        | typeof SseResponseEventEnum.flowNodeResponse
-        | typeof SseResponseEventEnum.workflowDuration;
-      [key: string]: any;
-    }
-  | {
-      event: typeof SseResponseEventEnum.error;
-      [key: string]: any;
-    };
+export type StreamQueueItem = {
+  event: SdkStreamEventName;
+  [key: string]: unknown;
+};
 
 type StreamFetchProps = {
   url: string;
@@ -64,21 +48,27 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
     let finished = false;
 
     const finish = () => resolve({ responseText });
+    const flushQueuedItems = () => {
+      if (responseQueue.length === 0) return;
+      const queue = responseQueue;
+      responseQueue = [];
+      queue.forEach((item) => {
+        onMessage(item);
+        if (item.event === SdkStreamEventEnum.streamEvent && typeof item.text === "string") {
+          responseText += item.text;
+        }
+      });
+    };
     const failedFinish = (err?: any) => {
+      if (finished) return;
       finished = true;
+      flushQueuedItems();
       reject(err);
     };
 
-    const isAnswerEvent = (event: SseEventName) => event === SseResponseEventEnum.answer;
-
     const animateResponseText = () => {
       if (abortCtrl.signal.aborted) {
-        responseQueue.forEach((item) => {
-          onMessage(item);
-          if (isAnswerEvent(item.event) && item.text) {
-            responseText += item.text;
-          }
-        });
+        flushQueuedItems();
         return finish();
       }
 
@@ -87,7 +77,7 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
         for (let i = 0; i < fetchCount; i++) {
           const item = responseQueue[i];
           onMessage(item);
-          if (isAnswerEvent(item.event) && item.text) {
+          if (item.event === SdkStreamEventEnum.streamEvent && typeof item.text === "string") {
             responseText += item.text;
           }
         }
@@ -119,11 +109,7 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
         async onopen(res) {
           clearTimeout(timeoutId);
           const contentType = res.headers.get("content-type");
-          if (
-            !res.ok ||
-            !contentType?.startsWith(EventStreamContentType) ||
-            res.status !== 200
-          ) {
+          if (!res.ok || !contentType?.startsWith(EventStreamContentType) || res.status !== 200) {
             const errText = await res.clone().text();
             failedFinish(new Error(errText || "stream failed"));
           }
@@ -134,39 +120,28 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
             return;
           }
 
-          let parseJson: any = undefined;
+          const normalizedEvent = (
+            event === SdkStreamEventEnum.message ||
+            event === SdkStreamEventEnum.streamEvent ||
+            event === SdkStreamEventEnum.status ||
+            event === SdkStreamEventEnum.control ||
+            event === SdkStreamEventEnum.done ||
+            event === SdkStreamEventEnum.error
+              ? event
+              : SdkStreamEventEnum.status
+          ) as SdkStreamEventName;
+
+          let parseJson: unknown = undefined;
           try {
             parseJson = JSON.parse(data);
           } catch {
             parseJson = undefined;
           }
 
-          if (event === SseResponseEventEnum.answer) {
-            const text = parseJson?.choices?.[0]?.delta?.content || "";
-            const reasoningText = parseJson?.choices?.[0]?.delta?.reasoning_content || "";
-            if (reasoningText) {
-              pushDataToQueue({ event: SseResponseEventEnum.answer, reasoningText });
-            }
-            for (const ch of text) {
-              pushDataToQueue({ event: SseResponseEventEnum.answer, text: ch });
-            }
-          } else if (event === SseResponseEventEnum.reasoning) {
-            const text = typeof parseJson?.text === "string" ? parseJson.text : "";
-            if (text) {
-              pushDataToQueue({ event: SseResponseEventEnum.answer, reasoningText: text });
-            }
-          } else if (
-            event === SseResponseEventEnum.toolCall ||
-            event === SseResponseEventEnum.toolParams ||
-            event === SseResponseEventEnum.toolResponse ||
-            event === SseResponseEventEnum.flowNodeResponse ||
-            event === SseResponseEventEnum.workflowDuration
-          ) {
-            if (typeof parseJson === "object") {
-              onMessage({ event: event as any, ...parseJson });
-            }
-          } else if (event === SseResponseEventEnum.error) {
-            onMessage({ event: SseResponseEventEnum.error, ...parseJson });
+          if (parseJson && typeof parseJson === "object") {
+            pushDataToQueue({ event: normalizedEvent, ...(parseJson as Record<string, unknown>) });
+          } else {
+            pushDataToQueue({ event: normalizedEvent, data: parseJson ?? data });
           }
         },
         onclose() {

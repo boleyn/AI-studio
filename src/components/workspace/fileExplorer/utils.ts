@@ -37,6 +37,30 @@ export const getParentPath = (path: string): string => {
 
 export const buildInitialFileCode = (filePath: string): string => {
   const lowerPath = filePath.toLowerCase();
+  if (lowerPath.endsWith("/skill.md")) {
+    return [
+      "---",
+      "name: frontend-design",
+      "description: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, or applications. Generates creative, polished code that avoids generic AI aesthetics.",
+      "license: Complete terms in LICENSE.txt",
+      "---",
+      "",
+      "## Purpose",
+      "- What this skill does.",
+      "",
+      "## Trigger Rules",
+      "- Use when ...",
+      "- Do not use when ...",
+      "",
+      "## Workflow",
+      "1. ...",
+      "2. ...",
+      "",
+      "## Output",
+      "- Expected output format and quality bar.",
+      "",
+    ].join("\n");
+  }
   if (lowerPath.endsWith(".tsx") || lowerPath.endsWith(".jsx")) {
     return `export default function Component() {\n  return <div>New component</div>;\n}\n`;
   }

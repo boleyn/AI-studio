@@ -7,16 +7,20 @@ export type AgentRuntimeConfig = {
   maxContext?: number;
   apiKey?: string;
   baseUrl?: string;
+  memoryEnabled: boolean;
+  memoryAutoExtractEnabled: boolean;
 };
 
 const DEFAULT_TOOL_CALL_MODEL = "";
 const DEFAULT_NORMAL_MODEL = "";
-const DEFAULT_RECURSION_LIMIT = 100;
+const DEFAULT_RECURSION_LIMIT = 20;
 
 export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
   const provider = "openai";
   const aiproxyEndpoint = process.env.AIPROXY_API_ENDPOINT;
-  const baseUrl = aiproxyEndpoint ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1` : process.env.OPENAI_BASE_URL;
+  const baseUrl = aiproxyEndpoint
+    ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1`
+    : process.env.OPENAI_BASE_URL;
   const apiKey = process.env.AIPROXY_API_TOKEN || process.env.CHAT_API_KEY;
 
   const toolCallModel = process.env.TOOL_CALL_MODEL || DEFAULT_TOOL_CALL_MODEL;
@@ -34,11 +38,14 @@ export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
     toolCallModel,
     normalModel,
     temperature: Number.parseFloat(process.env.AI_TEMPERATURE || "0.2"),
-    recursionLimit: Number.isFinite(parsedRecursionLimit)
-      ? parsedRecursionLimit
-      : DEFAULT_RECURSION_LIMIT,
+    recursionLimit:
+      Number.isFinite(parsedRecursionLimit) && (parsedRecursionLimit as number) > 0
+        ? parsedRecursionLimit
+        : DEFAULT_RECURSION_LIMIT,
     maxContext: Number.isFinite(parsedMaxContext) ? parsedMaxContext : undefined,
     apiKey,
     baseUrl,
+    memoryEnabled: process.env.AI_MEMORY_ENABLED !== "0",
+    memoryAutoExtractEnabled: process.env.AI_MEMORY_AUTO_EXTRACT_ENABLED !== "0",
   };
 };

@@ -1,4 +1,5 @@
 import type { Conversation, ConversationMessage, ConversationSummary } from "@/types/conversation";
+import type { ContextWindowUsage } from "./contextWindow";
 
 export interface ChatHistoryItemType {
   id?: string;
@@ -49,6 +50,18 @@ export interface UpdateHistoryResponseType {
   history?: Conversation;
 }
 
+export interface UpdateHistoryMessageActionBodyType {
+  token?: string;
+  appId?: string;
+  shareId?: string;
+  outLinkUid?: string;
+  teamId?: string;
+  teamToken?: string;
+  chatId: string;
+  messageId: string;
+  afterMessageId?: string;
+}
+
 export interface DelChatHistoryType {
   token?: string;
   appId?: string;
@@ -91,6 +104,7 @@ export interface InitChatResponseType {
 export interface GetChatRecordsV2BodyType {
   token: string;
   chatId: string;
+  model?: string;
   pageSize?: number;
   initialId?: string;
   prevId?: string;
@@ -103,6 +117,7 @@ export interface GetChatRecordsV2ResponseType {
   total?: number;
   hasMorePrev?: boolean;
   hasMoreNext?: boolean;
+  contextWindow?: ContextWindowUsage;
 }
 
 export interface StopConversationBodyType {

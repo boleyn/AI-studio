@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
-import { Box } from "@chakra-ui/react";
+import { Box, Button, Text } from "@chakra-ui/react";
 import { useToast } from "@chakra-ui/react";
 import { LoginPageTypeEnum } from "./constants";
 import FormLayout from "./FormLayout";
 import { getFeishuRuntimeConfig } from "@features/auth/client/feishuConfigClient";
+import { motion } from "framer-motion";
 
 const FEISHU_SDK_URL =
   "https://lf-package-cn.feishucdn.com/obj/feishu-static/lark/passport/qrcode/LarkSSOSDKWebQRCode-1.0.3.js";
+const FEISHU_QR_SIZE = 340;
 
 const getLastRoute = (raw: string | null) => {
   if (!raw) return "/";
@@ -67,11 +69,20 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
       const QRLoginObj = (window as any).QRLogin({
         id: "feishu_login_container",
         goto,
-        width: 300,
-        height: 300,
+        width: FEISHU_QR_SIZE,
+        height: FEISHU_QR_SIZE,
         style: "border:none",
       });
       qrInstRef.current = QRLoginObj;
+      setTimeout(() => {
+        const root = containerRef.current;
+        if (!root) return;
+        const targets = root.querySelectorAll("iframe, img, canvas");
+        targets.forEach((el) => {
+          (el as HTMLElement).style.width = `${FEISHU_QR_SIZE}px`;
+          (el as HTMLElement).style.height = `${FEISHU_QR_SIZE}px`;
+        });
+      }, 0);
 
       window.addEventListener("message", handleMessage);
     };
@@ -113,14 +124,44 @@ const FeishuForm = ({ setPageType, lastRoute }: FeishuFormProps) => {
 
   return (
     <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.feishu}>
-      <Box>
-        <Box w="full" textAlign="center" pt={6} fontWeight="medium">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: "easeOut" }}>
+      <Box mt={4}>
+        <Box w="full" textAlign="center" pt={2} fontWeight="600" color="myGray.700">
           使用飞书扫码，快速进入工作台
         </Box>
-        <Box p={5} display="flex" w="full" justifyContent="center">
-          <div ref={containerRef} id="feishu_login_container" style={{ width: "300px", height: "300px" }} />
+        <Text mt={1} textAlign="center" fontSize="mini" color="myGray.500">
+          扫码后将自动完成身份验证并返回当前页面
+        </Text>
+        <Box mt={3} display="flex" justifyContent="center">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              const safeLastRoute = getLastRoute(lastRoute);
+              window.location.href = `/auth/feishu/login?lastRoute=${encodeURIComponent(safeLastRoute)}`;
+            }}
+          >
+            使用飞书登录
+          </Button>
+        </Box>
+        <Box
+          mt={3}
+          p={1}
+          borderRadius="12px"
+          border="1px solid rgba(148,163,184,0.24)"
+          bg="rgba(255,255,255,0.94)"
+          display="flex"
+          alignSelf="center"
+          justifyContent="center"
+        >
+          <div
+            ref={containerRef}
+            id="feishu_login_container"
+            style={{ width: `${FEISHU_QR_SIZE}px`, height: `${FEISHU_QR_SIZE}px` }}
+          />
         </Box>
       </Box>
+      </motion.div>
     </FormLayout>
   );
 };

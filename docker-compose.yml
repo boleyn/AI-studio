@@ -1,4 +1,21 @@
 services:
+  agent-sandbox:
+    container_name: agent-sandbox
+    build:
+      context: ./projects/agent-sandbox
+      dockerfile: Dockerfile
+    environment:
+      FASTGPT_ENABLE_CODE_SERVER: "false"
+      FASTGPT_WORKDIR: /workspace
+      FASTGPT_EXEC_PORT: "8091"
+      FASTGPT_EXEC_TOKEN: sandbox-exec-token
+    volumes:
+      - ./data/sandboxes:/workspace
+    ports:
+      - 18080:8080
+      - 18091:8091
+    restart: unless-stopped
+
   nextjs-ai-studio:
     container_name: nextjs-ai-studio
     build:
@@ -6,13 +23,21 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: https://registry.npmmirror.com
+        NODE_IMAGE: docker.1ms.run/library/node:20.14.0-alpine
+        PIP_INDEX_URL: https://pypi.mirrors.ustc.edu.cn/simple
+        PIP_TRUSTED_HOST: pypi.mirrors.ustc.edu.cn
     ports:
-      - 3000:3000
+      - 18367:3000
     env_file:
       - .env
     environment:
       NODE_ENV: production
       PORT: 3000
+      RIPGREP_PATH: /usr/bin/rg
+      NPM_REGISTRY: https://registry.npmmirror.com
+      NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
+      PIP_INDEX_URL: https://pypi.mirrors.ustc.edu.cn/simple
+      PIP_TRUSTED_HOST: pypi.mirrors.ustc.edu.cn
       CHAT_MODEL_CONFIG_FILE: config/config.json
 
       MONGODB_URI: mongodb://myusername:mypassword@10.21.8.6:37017/nextjs_ai_studio?authSource=admin&directConnection=true
@@ -22,12 +47,11 @@ services:
       AIPROXY_API_ENDPOINT: http://10.21.8.6:33006
       AIPROXY_API_TOKEN: aichat-token
 
-      MCP_SERVER_URLS: '[{"name":"mcp-gitlab-kb","url":"http://10.21.8.6:8008/sse"}]'
       AGENT_SKILL_FILE: skills/aistudio-mcp-code-workflow/SKILL.md
-
-      FEISHU_APP_ID: cli_a92cf83a1a741cb5
-      FEISHU_REDIRECT_URI: http://aistudio.asiainfo.tech/auth/feishu/callback
-      FEISHU_APP_SECRET: wNrVRvzr4rYf5FQNgeZgefxDFNHzOOD1
+      FEISHU_APP_ID: cli_a9283dab3d4cdcb2
+      FEISHU_REDIRECT_URI: https://aistudio.asiainfo.tech/auth/feishu/callback
+      
+      FEISHU_APP_SECRET: HxxPdVdgN7ILDwY78VlYmfscDmehzqLs
       FEISHU_DEFAULT_PASSWORD: Feishu@123456
 
       STORAGE_VENDOR: minio
@@ -36,13 +60,32 @@ services:
       STORAGE_SECRET_ACCESS_KEY: M!n10S3cur32024!XyZ9@Kp7
       STORAGE_PUBLIC_BUCKET: aichat-public
       STORAGE_PRIVATE_BUCKET: aichat-private
-      STORAGE_EXTERNAL_ENDPOINT: http://10.21.8.6:39000
-      STORAGE_S3_ENDPOINT: http://10.21.8.6:39000
+      STORAGE_EXTERNAL_ENDPOINT: https://aisrv-minio.asiainfo.tech
+      STORAGE_S3_ENDPOINT: https://aisrv-minio.asiainfo.tech
       STORAGE_S3_FORCE_PATH_STYLE: "true"
       STORAGE_S3_MAX_RETRIES: "3"
+      AGENT_SANDBOX_S3_ENABLED: "true"
+      AGENT_SANDBOX_S3_PREFIX: agent_sandbox_workspaces
+      AGENT_SANDBOX_URL: http://agent-sandbox:8080
+      AGENT_SANDBOX_EXEC_URL: http://agent-sandbox:8091/exec
+      AGENT_SANDBOX_EXEC_TOKEN: sandbox-exec-token
+
+      SKILL_HUB: https://claw.asiainfo.tech
+      # ClawHub one-click edit key validation
+      AI_STUDIO_KEY: d0a88f10bc8e4069020c78c74a1176a7f9f3bb5c90f3f02880cf564234f6e299
+      SKILL_HUB_PROXY_SECRET: ch_81547e7a828f846d80511c4d5ac4a4eefd3f99b1597b293d
+
+      
+      # 自动压缩阈值覆盖（默认为根据模型动态计算，设置为 80 可以在使用 80% 上下文时主动触发压缩）
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "80"
 
     volumes:
       - ./config:/app/config:ro
+      - ./data/project-templates:/app/data/project-templates:ro
       - ./data/projects:/app/data/projects
+      - ./data/sandboxes:/app/.aistudio/sandboxes
+
+    depends_on:
+      - agent-sandbox
 
     restart: unless-stopped

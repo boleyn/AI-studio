@@ -1,10 +1,21 @@
 import {
+  deleteSkillWorkspaceFile,
   getSkillWorkspace,
   replaceSkillWorkspaceFiles,
+  toWorkspacePublicFiles,
+  toWorkspaceStoredFiles,
   writeSkillWorkspaceFile,
 } from "@server/skills/workspaceStorage";
 import { requireAuth } from "@server/auth/session";
 import type { NextApiRequest, NextApiResponse } from "next";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "20mb",
+    },
+  },
+};
 
 const getWorkspaceId = (req: NextApiRequest) => {
   const value = req.query.workspaceId;
@@ -13,6 +24,11 @@ const getWorkspaceId = (req: NextApiRequest) => {
 };
 const getProjectToken = (req: NextApiRequest) => {
   const value = req.query.projectToken;
+  if (Array.isArray(value)) return value[0] || "";
+  return typeof value === "string" ? value : "";
+};
+const getSkillId = (req: NextApiRequest) => {
+  const value = req.query.skillId;
   if (Array.isArray(value)) return value[0] || "";
   return typeof value === "string" ? value : "";
 };
@@ -34,6 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const workspaceId = getWorkspaceId(req).trim();
   const projectToken = getProjectToken(req).trim();
+  const skillId = getSkillId(req).trim();
   if (!workspaceId) {
     res.status(400).json({ error: "缺少 workspaceId" });
     return;
@@ -42,6 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "PUT") {
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const bodyProjectToken = typeof body.projectToken === "string" ? body.projectToken.trim() : "";
+    const bodySkillId = typeof body.skillId === "string" ? body.skillId.trim() : "";
     const nextFiles =
       body.files && typeof body.files === "object" && !Array.isArray(body.files)
         ? (body.files as Record<string, { code: string }>)
@@ -49,15 +67,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (nextFiles) {
       try {
+        const workspace = await getSkillWorkspace(
+          workspaceId,
+          userId,
+          bodyProjectToken || projectToken || undefined,
+          bodySkillId || skillId || undefined
+        );
         const files = await replaceSkillWorkspaceFiles({
           workspaceId,
           userId,
           projectToken: bodyProjectToken || projectToken || undefined,
-          files: nextFiles,
+          skillId: bodySkillId || skillId || undefined,
+          files: toWorkspaceStoredFiles(nextFiles, workspace.files),
         });
         res.status(200).json({
           workspaceId,
-          files,
+          files: toWorkspacePublicFiles(files),
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "覆盖 workspace 文件失败";
@@ -67,23 +92,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const path = typeof body.path === "string" ? body.path.trim() : "";
+    const shouldDelete = Boolean(body.delete);
     const content = typeof body.content === "string" ? body.content : "";
     if (!path) {
       res.status(400).json({ error: "缺少 path" });
       return;
     }
     try {
-      const files = await writeSkillWorkspaceFile({
-        workspaceId,
-        userId,
-        projectToken: bodyProjectToken || projectToken || undefined,
-        path,
-        content,
-      });
+      const files = shouldDelete
+        ? await deleteSkillWorkspaceFile({
+            workspaceId,
+            userId,
+            projectToken: bodyProjectToken || projectToken || undefined,
+            skillId: bodySkillId || skillId || undefined,
+            path,
+          })
+        : await writeSkillWorkspaceFile({
+            workspaceId,
+            userId,
+            projectToken: bodyProjectToken || projectToken || undefined,
+            skillId: bodySkillId || skillId || undefined,
+            path,
+            content,
+          });
       res.status(200).json({
         workspaceId,
-        files,
+        files: toWorkspacePublicFiles(files),
         updatedPath: path,
+        deleted: shouldDelete,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存 workspace 文件失败";
@@ -93,12 +129,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const workspace = await getSkillWorkspace(workspaceId, userId, projectToken || undefined);
+    const workspace = await getSkillWorkspace(
+      workspaceId,
+      userId,
+      projectToken || undefined,
+      skillId || undefined
+    );
     res.status(200).json({
       workspaceId: workspace.id,
       projectToken: workspace.projectToken,
+      skillId: workspace.skillId,
+      source: workspace.source,
       updatedAt: workspace.updatedAt,
-      files: workspace.files,
+      files: toWorkspacePublicFiles(workspace.files),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "获取 workspace 文件失败";

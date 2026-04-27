@@ -1,5 +1,6 @@
 
 import { requireAuth } from "@server/auth/session";
+import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getConversationRecordsV2 } from "@server/conversations/conversationStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -30,6 +31,15 @@ export default async function handler(
     res.status(400).json({ error: "缺少 token 参数" });
     return;
   }
+  const access = await getChatTokenAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目或技能不存在" });
+    return;
+  }
+  if (access === "forbidden") {
+    res.status(403).json({ error: "无权访问该项目或技能" });
+    return;
+  }
 
   const chatId = typeof req.body?.chatId === "string" ? req.body.chatId : null;
   if (!chatId) {
@@ -42,6 +52,7 @@ export default async function handler(
   const prevId = typeof req.body?.prevId === "string" ? req.body.prevId : undefined;
   const nextId = typeof req.body?.nextId === "string" ? req.body.nextId : undefined;
   const includeDeleted = req.body?.includeDeleted === true;
+  const model = typeof req.body?.model === "string" ? req.body.model : undefined;
 
   const result = await getConversationRecordsV2({
     token,
@@ -51,6 +62,7 @@ export default async function handler(
     prevId,
     nextId,
     includeDeleted,
+    model,
   });
 
   res.setHeader("Cache-Control", "no-store");
@@ -59,5 +71,6 @@ export default async function handler(
     total: result.total,
     hasMorePrev: result.hasMorePrev,
     hasMoreNext: result.hasMoreNext,
+    ...(result.contextWindow ? { contextWindow: result.contextWindow } : {}),
   });
 }

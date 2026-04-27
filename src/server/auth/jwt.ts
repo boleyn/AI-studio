@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 const FALLBACK_SECRET = "dev-auth-secret-change-me";

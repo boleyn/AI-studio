@@ -1,8 +1,8 @@
 import React, { useRef, useCallback } from 'react';
 import { Box } from '@chakra-ui/react';
-import Icon from '@/components/common/MyIcon';
 import MyTooltip from '@/components/common/MyTooltip';
 import { useCopyData } from '@/hooks/useCopyData';
+import { CopyIcon, DownloadIcon } from '@/components/common/Icon';
 
 interface TableProps {
   children: React.ReactNode;
@@ -106,8 +106,8 @@ const Table = ({ children, className, ...props }: TableProps) => {
   }, [extractTableDataCSV]);
 
   return (
-    <Box position={'relative'} my={4} className="table-wrapper">
-      <Box position={'absolute'} top={'-36px'} right={0} zIndex={10} display={'flex'} gap={1}>
+    <Box mt={4} mb={4} className="table-wrapper">
+      <Box display={'flex'} justifyContent={'flex-end'} mb={2} gap={1}>
         <MyTooltip label={'复制'}>
           <Box
             cursor={'pointer'}
@@ -118,8 +118,9 @@ const Table = ({ children, className, ...props }: TableProps) => {
             p={2}
             borderRadius={'md'}
             _hover={{ bg: 'gray.50' }}
+            lineHeight={0}
           >
-            <Icon name={'copy'} w={'16px'} h={'16px'} />
+            <Box as={CopyIcon} w={'16px'} h={'16px'} />
           </Box>
         </MyTooltip>
         <MyTooltip label="下载 CSV">
@@ -132,8 +133,9 @@ const Table = ({ children, className, ...props }: TableProps) => {
             p={2}
             borderRadius={'md'}
             _hover={{ bg: 'gray.50' }}
+            lineHeight={0}
           >
-            <Icon name={'common/download'} w={'16px'} h={'16px'} />
+            <Box as={DownloadIcon} w={'16px'} h={'16px'} />
           </Box>
         </MyTooltip>
       </Box>

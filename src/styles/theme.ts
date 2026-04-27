@@ -5,40 +5,113 @@ export const theme = extendTheme({
     initialColorMode: "light",
     useSystemColorMode: false,
   },
+  styles: {
+    global: {
+      "html, body, #__next": {
+        height: "100%",
+      },
+      body: {
+        color: "myGray.800",
+        letterSpacing: "-0.01em",
+      },
+      "::selection": {
+        background: "rgba(51, 112, 255, 0.2)",
+      },
+    },
+  },
   components: {
     Input: {
       baseStyle: {
         field: {
+          bg: "rgba(255,255,255,0.78)",
+          borderColor: "myGray.250",
+          borderRadius: "12px",
+          transitionProperty: "common",
+          transitionDuration: "normal",
           _placeholder: {
             fontSize: "sm",
             color: "myGray.400",
           },
+          _hover: {
+            borderColor: "myGray.300",
+          },
+          _focusVisible: {
+            borderColor: "primary.400",
+            boxShadow: "0 0 0 3px rgba(51,112,255,0.15)",
+          },
         },
       },
     },
+    Card: {
+      baseStyle: {
+        container: {
+          borderRadius: "18px",
+          border: "1px solid",
+          borderColor: "rgba(255,255,255,0.7)",
+          bg: "rgba(255,255,255,0.8)",
+          backdropFilter: "blur(16px)",
+          boxShadow: "0 22px 42px -28px rgba(15, 23, 42, 0.35)",
+        },
+      },
+    },
+    Modal: {
+      baseStyle: {
+        dialog: {
+          borderRadius: "18px",
+          border: "1px solid rgba(255,255,255,0.72)",
+          bg: "rgba(255,255,255,0.92)",
+          backdropFilter: "blur(18px)",
+          boxShadow: "0 28px 50px -30px rgba(15,23,42,0.42)",
+        },
+      },
+    },
+    IconButton: {
+      baseStyle: {
+        borderRadius: "12px",
+        transitionProperty: "common",
+        transitionDuration: "normal",
+        _hover: {
+          bg: "myGray.100",
+        },
+      },
+    },
+    Badge: {
+      baseStyle: {
+        borderRadius: "999px",
+        fontWeight: "700",
+      },
+    },
     Button: {
+      baseStyle: {
+        borderRadius: "12px",
+        fontWeight: "600",
+        lineHeight: "1.1",
+        minH: "unset",
+        transitionProperty: "common",
+        transitionDuration: "normal",
+      },
       variants: {
         primary: {
           bg: "primary.600",
           color: "white",
           border: "none",
-          boxShadow:
-            "0px 0px 1px 0px rgba(19, 51, 107, 0.08), 0px 1px 2px 0px rgba(19, 51, 107, 0.05)",
-          _hover: { filter: "brightness(120%)" },
+          boxShadow: "0 10px 22px -12px rgba(37, 99, 235, 0.62)",
+          _hover: {
+            bg: "primary.700",
+          },
           _disabled: { bg: "primary.7 !important" },
         },
         whitePrimary: {
           color: "myGray.600",
           border: "1px solid",
           borderColor: "myGray.250",
-          bg: "white",
-          transition: "background 0.1s",
-          boxShadow:
-            "0px 0px 1px 0px rgba(19, 51, 107, 0.08), 0px 1px 2px 0px rgba(19, 51, 107, 0.05)",
+          bg: "rgba(255,255,255,0.94)",
+          boxShadow: "0 10px 24px -20px rgba(15, 23, 42, 0.4)",
           _hover: {
             color: "primary.600",
-            background: "primary.1",
+            background: "rgba(240, 244, 255, 0.92)",
             borderColor: "primary.300",
+            transform: "translateY(-1px)",
           },
           _active: { color: "primary.600" },
           _disabled: { color: "myGray.600 !important" },
@@ -81,22 +154,22 @@ export const theme = extendTheme({
       900: "#111824",
     },
     primary: {
-      1: "rgba(51, 112, 255, 0.1)",
-      "015": "rgba(51, 112, 255, 0.15)",
-      3: "rgba(51, 112, 255, 0.3)",
-      5: "rgba(51, 112, 255, 0.5)",
-      7: "rgba(51, 112, 255, 0.7)",
-      9: "rgba(51, 112, 255, 0.9)",
-      50: "#F0F4FF",
-      100: "#E1EAFF",
-      200: "#C5D7FF",
-      300: "#94B5FF",
-      400: "#5E8FFF",
-      500: "#487FFF",
-      600: "#3370FF",
-      700: "#2B5FD9",
-      800: "#2450B5",
-      900: "#1D4091",
+      1: "rgba(100, 218, 122, 0.1)",
+      "015": "rgba(100, 218, 122, 0.15)",
+      3: "rgba(100, 218, 122, 0.3)",
+      5: "rgba(100, 218, 122, 0.5)",
+      7: "rgba(100, 218, 122, 0.7)",
+      9: "rgba(100, 218, 122, 0.9)",
+      50: "#f2fbf4",
+      100: "#ddf7e5",
+      200: "#baeecd",
+      300: "#8ee2a8",
+      400: "#64da7a",
+      500: "#44c65e",
+      600: "#32a549",
+      700: "#28823b",
+      800: "#236733",
+      900: "#1e552c",
     },
     blue: {
       1: "rgba(51, 112, 255, 0.1)",
@@ -179,7 +252,10 @@ export const theme = extendTheme({
     },
   },
   fonts: {
-    body: 'PingFang,Noto Sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol"',
+    heading:
+      '"Manrope","PingFang SC","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif',
+    body: '"Manrope","PingFang SC","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif',
+    mono: '"IBM Plex Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace',
   },
   fontSizes: {
     mini: "0.75rem",
@@ -245,11 +321,11 @@ export const theme = extendTheme({
       },
       viewButton: {
         borderColor: "myGray.200",
-        activeBorderColor: "blue.300",
+        activeBorderColor: "primary.300",
         bg: "rgba(255,255,255,0.92)",
-        activeBg: "linear-gradient(135deg, rgba(51,112,255,0.14) 0%, rgba(14,165,233,0.12) 100%)",
+        activeBg: "linear-gradient(135deg, rgba(100,218,122,0.16) 0%, rgba(186,238,205,0.22) 100%)",
         color: "myGray.800",
-        activeColor: "blue.700",
+        activeColor: "primary.700",
         fontSize: "xs",
         fontWeight: "700",
         px: "12px",
@@ -265,6 +341,7 @@ export const theme = extendTheme({
       panel: {
         minW: "220px",
         maxW: "360px",
+        w: "272px",
         bg: "white",
         borderColor: "myGray.200",
       },

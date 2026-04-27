@@ -6,5 +6,6 @@
     "codex-project-manager.milestoneCellsMigrationCompleted": true,
     "codex-project-manager.paratextReorderMigrationCompleted": true,
     "codex-project-manager.globalReferencesMigrationCompleted": true,
-    "codex-project-manager.cellIdsToUuidMigrationCompleted": true
+    "codex-project-manager.cellIdsToUuidMigrationCompleted": true,
+    "npm.packageManager": "bun"
 }

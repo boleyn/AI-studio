@@ -1,10 +1,16 @@
 import { getAgentRuntimeConfig } from '@aistudio/server/agent/runtimeConfig';
-import { getChatModelProfile } from '@aistudio/server/aiProxy/catalogStore';
+import {
+  getChatModelProfile,
+} from '@aistudio/server/aiProxy/catalogStore';
 
 import type { LLMModelItemType } from './compat/global/core/ai/model.d';
 
-const DEFAULT_MAX_RESPONSE = 8192;
-const DEFAULT_QUOTE_MAX_TOKEN = 2000;
+const FALLBACK_MAX_CONTEXT = 192000;
+const normalizeString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
 
 const resolveModelId = (input: string | LLMModelItemType | undefined, fallback: string): string => {
   if (typeof input === 'string' && input.trim()) return input.trim();
@@ -24,28 +30,23 @@ export const getLLMModel = (input: string | LLMModelItemType): LLMModelItemType 
       ? profile.maxContext
       : undefined) ||
     config.maxContext ||
-    16000;
+    FALLBACK_MAX_CONTEXT;
 
-  const maxResponse =
-    (typeof profile?.maxResponse === 'number' && Number.isFinite(profile.maxResponse)
-      ? profile.maxResponse
-      : undefined) ||
-    DEFAULT_MAX_RESPONSE;
-
-  const quoteMaxToken =
-    (typeof profile?.quoteMaxToken === 'number' && Number.isFinite(profile.quoteMaxToken)
-      ? profile.quoteMaxToken
-      : undefined) ||
-    DEFAULT_QUOTE_MAX_TOKEN;
+  const profileProtocol = normalizeString(profile?.protocol)?.toLowerCase();
+  const protocol =
+    !profileProtocol || profileProtocol === "openai" ? "openai" : profileProtocol;
+  const baseUrl = normalizeString(profile?.baseUrl);
+  const key = normalizeString(profile?.key);
 
   return {
     provider: config.provider,
     model,
     name: model,
+    protocol,
+    baseUrl,
+    key,
     type: 'llm',
     maxContext,
-    maxResponse,
-    quoteMaxToken,
     maxTemperature:
       typeof profile?.maxTemperature === 'number' && Number.isFinite(profile.maxTemperature)
         ? profile.maxTemperature
@@ -62,4 +63,22 @@ export const getLLMModel = (input: string | LLMModelItemType): LLMModelItemType 
         ? (profile.fieldMap as Record<string, string>)
         : undefined
   } as LLMModelItemType;
+};
+
+export const getModelToolChoiceMode = (
+  input: string | LLMModelItemType | undefined
+): "auto" | "required" | "none" | undefined => {
+  const config = getAgentRuntimeConfig();
+  const model = resolveModelId(input, config.toolCallModel);
+  const profile = getChatModelProfile(model) as Record<string, unknown> | undefined;
+  const modeRaw =
+    normalizeString(profile?.toolChoiceMode) ||
+    normalizeString(profile?.toolChoice) ||
+    normalizeString(profile?.forceToolChoice);
+  if (!modeRaw) return undefined;
+  const normalized = modeRaw.toLowerCase();
+  if (normalized === "auto" || normalized === "required" || normalized === "none") {
+    return normalized;
+  }
+  return undefined;
 };

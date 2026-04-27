@@ -1,8 +1,9 @@
-import { AbsoluteCenter, Box, Button, Flex } from "@chakra-ui/react";
+import { AbsoluteCenter, Box, Flex } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 import { LoginPageTypeEnum } from "./constants";
-import Avatar from "./Avatar";
 import { getFeishuRuntimeConfig } from "@features/auth/client/feishuConfigClient";
+import { motion } from "framer-motion";
+import AuthModeSwitcher from "./AuthModeSwitcher";
 
 const FormLayout = ({
   children,
@@ -56,32 +57,25 @@ const FormLayout = ({
     <Flex flexDirection="column" h="100%">
       {children}
       {showOauth && (
-        <>
-          <Box flex={1} />
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+        >
           <Box position="relative" mt={6}>
-            <Box h="1px" bg="myGray.250" />
-            <AbsoluteCenter bg="white" px={3} color="myGray.500" fontSize="mini">
+            <Box h="1px" bg="rgba(148,163,184,0.32)" />
+            <AbsoluteCenter bg="rgba(255,255,255,0.88)" px={3} color="myGray.500" fontSize="mini">
               或
             </AbsoluteCenter>
           </Box>
           <Box mt={4}>
-            {oAuthList.map((item) => (
-              <Box key={item.label} _notFirst={{ mt: 4 }}>
-                <Button
-                  variant="whitePrimary"
-                  w="100%"
-                  h="40px"
-                  borderRadius="sm"
-                  fontWeight="medium"
-                  leftIcon={<Avatar src={item.icon} w="20px" />}
-                  onClick={() => setPageType(item.pageType)}
-                >
-                  {item.label}
-                </Button>
-              </Box>
-            ))}
+            <AuthModeSwitcher
+              options={oAuthList}
+              currentPageType={pageType}
+              onChange={setPageType}
+            />
           </Box>
-        </>
+        </motion.div>
       )}
     </Flex>
   );

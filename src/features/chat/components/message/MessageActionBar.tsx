@@ -1,19 +1,22 @@
-import { Box, Flex, Tooltip } from "@chakra-ui/react";
+import { Box, Flex, IconButton } from "@chakra-ui/react";
 import {
-  CopyIcon,
   DeleteIcon,
   RefreshIcon,
   ThumbDownIcon,
   ThumbUpIcon,
 } from "@/components/common/Icon";
+import MyTooltip from "@/components/ui/MyTooltip";
+import MessageCopyControl from "./MessageCopyControl";
 
 type MessageRating = "up" | "down";
 
 interface MessageActionBarProps {
   canRegenerate?: boolean;
   canDelete?: boolean;
+  showRating?: boolean;
   rating?: MessageRating;
-  onCopy: () => void;
+  copyContent: string;
+  messageType: "user" | "assistant";
   onRegenerate?: () => void;
   onDelete?: () => void;
   onRate?: (rating: MessageRating) => void;
@@ -27,8 +30,10 @@ const iconProps = {
 const MessageActionBar = ({
   canRegenerate,
   canDelete,
+  showRating = true,
   rating,
-  onCopy,
+  copyContent,
+  messageType,
   onRegenerate,
   onDelete,
   onRate,
@@ -36,85 +41,91 @@ const MessageActionBar = ({
   return (
     <Flex
       align="center"
-      bg="white"
+      bg="myWhite.100"
       border="1px solid"
-      borderColor="gray.200"
-      borderRadius="sm"
-      color="gray.500"
+      borderColor="myGray.250"
+      borderRadius="10px"
+      color="myGray.500"
+      boxShadow="sm"
       sx={{
         "& > *:last-child": {
           borderRight: "none",
         },
       }}
     >
-      <Tooltip label="复制">
-        <Box
-          _hover={{ color: "primary.600" }}
-          borderRight="1px solid"
-          borderRightColor="gray.200"
-          cursor="pointer"
-          onClick={onCopy}
-          p="5px"
-        >
-          <CopyIcon {...iconProps} />
-        </Box>
-      </Tooltip>
+      <Box borderRight="1px solid" borderRightColor="myGray.200" px="2px" py="2px">
+        <MessageCopyControl content={copyContent} messageType={messageType} />
+      </Box>
 
       {canRegenerate ? (
-        <Tooltip label="重新生成">
-          <Box
-            _hover={{ color: "green.500" }}
+        <MyTooltip label="重新生成">
+          <IconButton
+            _hover={{ color: "primary.600" }}
+            aria-label="重新生成"
             borderRight="1px solid"
-            borderRightColor="gray.200"
-            cursor="pointer"
+            borderRightColor="myGray.200"
+            h="26px"
+            icon={<RefreshIcon {...iconProps} />}
+            minW="26px"
             onClick={onRegenerate}
-            p="5px"
-          >
-            <RefreshIcon {...iconProps} />
-          </Box>
-        </Tooltip>
+            size="xs"
+            variant="ghost"
+          />
+        </MyTooltip>
       ) : null}
 
       {canDelete ? (
-        <Tooltip label="删除">
-          <Box
+        <MyTooltip label="删除">
+          <IconButton
             _hover={{ color: "red.600" }}
+            aria-label="删除"
             borderRight="1px solid"
-            borderRightColor="gray.200"
-            cursor="pointer"
+            borderRightColor="myGray.200"
+            h="26px"
+            icon={<DeleteIcon {...iconProps} />}
+            minW="26px"
             onClick={onDelete}
-            p="5px"
-          >
-            <DeleteIcon {...iconProps} />
-          </Box>
-        </Tooltip>
+            size="xs"
+            variant="ghost"
+          />
+        </MyTooltip>
       ) : null}
 
-      <Tooltip label="赞">
-        <Box
-          _hover={{ color: "green.600" }}
-          borderRight="1px solid"
-          borderRightColor="gray.200"
-          color={rating === "up" ? "green.500" : undefined}
-          cursor="pointer"
-          onClick={() => onRate?.("up")}
-          p="5px"
-        >
-          <ThumbUpIcon {...iconProps} />
-        </Box>
-      </Tooltip>
+      {showRating ? (
+        <>
+          <MyTooltip label="赞">
+            <IconButton
+              _hover={{ color: "primary.600", bg: "primary.50" }}
+              aria-label="赞"
+              borderRight="1px solid"
+              borderRightColor="myGray.200"
+              bg={rating === "up" ? "primary.50" : "transparent"}
+              color={rating === "up" ? "primary.600" : "myGray.500"}
+              h="26px"
+              icon={<ThumbUpIcon {...iconProps} />}
+              minW="26px"
+              onClick={() => onRate?.("up")}
+              size="xs"
+              variant="ghost"
+            />
+          </MyTooltip>
 
-      <Tooltip label="踩">
-        <Box
-          _hover={{ color: "yellow.500" }}
-          color={rating === "down" ? "yellow.500" : undefined}
-          cursor="pointer"
-          onClick={() => onRate?.("down")}
-          p="5px"
-        >
-          <ThumbDownIcon {...iconProps} />
-        </Box>
-      </Tooltip>
+          <MyTooltip label="踩">
+            <IconButton
+              _hover={{ color: "orange.600", bg: "orange.50" }}
+              aria-label="踩"
+              bg={rating === "down" ? "orange.50" : "transparent"}
+              color={rating === "down" ? "orange.600" : "myGray.500"}
+              h="26px"
+              icon={<ThumbDownIcon {...iconProps} />}
+              minW="26px"
+              onClick={() => onRate?.("down")}
+              size="xs"
+              variant="ghost"
+            />
+          </MyTooltip>
+        </>
+      ) : null}
     </Flex>
   );
 };

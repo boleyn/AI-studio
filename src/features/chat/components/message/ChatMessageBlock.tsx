@@ -1,8 +1,9 @@
 import { Box, Flex } from "@chakra-ui/react";
 import { extractText } from "@shared/chat/messages";
 import React from "react";
-import { useCopyData } from "@/hooks/useCopyData";
 import type { ConversationMessage } from "@/types/conversation";
+import { useChatInteractionContext } from "../../context/ChatInteractionContext";
+import type { MessageExecutionSummary } from "../../utils/executionSummary";
 import ChatItem from "../ChatItem";
 import MessageActionBar, { type MessageRating } from "./MessageActionBar";
 
@@ -10,33 +11,45 @@ interface ChatMessageBlockProps {
   message: ConversationMessage;
   messageId: string;
   isStreaming?: boolean;
+  summary?: MessageExecutionSummary | null;
+  requestMessage?: ConversationMessage;
+  requestContent?: string;
+  isLatestRun?: boolean;
   rating?: MessageRating;
   canRegenerate?: boolean;
-  onRegenerate?: () => void;
-  onDelete?: () => void;
-  onRate?: (rating: MessageRating) => void;
+  onRegenerate?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
+  onRate?: (messageId: string, rating: MessageRating) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }
 
 const ChatMessageBlock = ({
   message,
   messageId,
   isStreaming,
+  summary,
+  requestMessage,
+  requestContent,
+  isLatestRun,
   rating,
   canRegenerate,
   onRegenerate,
   onDelete,
   onRate,
+  onOpenWorkspaceFile,
 }: ChatMessageBlockProps) => {
-  const { copyData } = useCopyData();
+  const { hideInteractiveCards } = useChatInteractionContext();
+  const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
-  const canShowActions = isAssistant && !isStreaming;
+  const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
 
   return (
     <Flex
-      align={message.role === "user" ? "flex-end" : "flex-start"}
+      align={isUser ? "flex-end" : "flex-start"}
       direction="column"
       position="relative"
       w="full"
+      zIndex={1}
       sx={{
         ".message-action-anchor": {
           opacity: 0,
@@ -46,30 +59,46 @@ const ChatMessageBlock = ({
         "&:hover .message-action-anchor, .message-action-anchor:hover": {
           opacity: 1,
         },
+        "&:hover": {
+          zIndex: 40,
+        },
       }}
     >
       {canShowActions ? (
         <Box
           className="message-action-anchor"
-          left={0}
           position="absolute"
+          left={isUser ? "auto" : 0}
+          right={isUser ? 0 : "auto"}
           top={0}
-          transform="translateY(calc(-100% - 2px))"
-          zIndex={3}
+          transform="translateY(calc(-100% - 6px))"
+          zIndex={60}
         >
           <MessageActionBar
-            canDelete
-            canRegenerate={canRegenerate}
-            onCopy={() => copyData(extractText(message.content))}
-            onDelete={onDelete}
-            onRate={onRate}
-            onRegenerate={onRegenerate}
+            canDelete={isUser || isAssistant}
+            canRegenerate={isAssistant && canRegenerate}
+            copyContent={extractText(message.content)}
+            messageType={isUser ? "user" : "assistant"}
+            onDelete={isUser || isAssistant ? () => onDelete?.(messageId) : undefined}
+            onRate={isUser ? undefined : (rating) => onRate?.(messageId, rating)}
+            onRegenerate={isAssistant ? () => onRegenerate?.(messageId) : undefined}
             rating={rating}
+            showRating={!isUser}
           />
         </Box>
       ) : null}
 
-      <ChatItem isStreaming={isStreaming} message={message} messageId={messageId} />
+      <ChatItem
+        executionSummary={summary}
+        isLatestRun={isLatestRun}
+        isStreaming={isStreaming}
+        message={message}
+        messageId={messageId}
+        requestMessage={requestMessage}
+        requestContent={requestContent}
+        hideInteractiveCards={hideInteractiveCards}
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
+      />
     </Flex>
   );
 };
@@ -80,6 +109,15 @@ export default React.memo(
     prevProps.message === nextProps.message &&
     prevProps.messageId === nextProps.messageId &&
     prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.summary?.nodeCount === nextProps.summary?.nodeCount &&
+    prevProps.summary?.durationSeconds === nextProps.summary?.durationSeconds &&
+    prevProps.requestMessage === nextProps.requestMessage &&
+    prevProps.requestContent === nextProps.requestContent &&
+    prevProps.isLatestRun === nextProps.isLatestRun &&
     prevProps.rating === nextProps.rating &&
-    prevProps.canRegenerate === nextProps.canRegenerate
+    prevProps.canRegenerate === nextProps.canRegenerate &&
+    prevProps.onRegenerate === nextProps.onRegenerate &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onRate === nextProps.onRate &&
+    prevProps.onOpenWorkspaceFile === nextProps.onOpenWorkspaceFile
 );

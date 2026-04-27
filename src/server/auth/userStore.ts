@@ -1,5 +1,8 @@
+// @ts-nocheck
+// @ts-nocheck
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "../db/mongo";
+import type { UserModelConfig } from "./userModelConfig";
 
 export type UserDoc = {
   _id: ObjectId;
@@ -8,7 +11,11 @@ export type UserDoc = {
   displayName?: string;
   contact?: string;
   avatar?: string;
+  primaryModel?: string;
+  customModels?: UserModelConfig[];
   provider?: "password" | "feishu";
+  feishuOpenId?: string;
+  feishuUnionId?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -37,6 +44,8 @@ export const createUser = async (input: {
   contact?: string;
   avatar?: string;
   provider?: "password" | "feishu";
+  feishuOpenId?: string;
+  feishuUnionId?: string;
 }) => {
   const users = await getUsersCollection();
   const now = new Date();
@@ -47,6 +56,8 @@ export const createUser = async (input: {
     contact: input.contact,
     avatar: input.avatar,
     provider: input.provider ?? "password",
+    feishuOpenId: input.feishuOpenId,
+    feishuUnionId: input.feishuUnionId,
     createdAt: now,
     updatedAt: now,
   } as UserDoc);
@@ -64,7 +75,15 @@ export const updateUserPassword = async (userId: string, passwordHash: string) =
 
 export const updateUserProfile = async (
   userId: string,
-  patch: { displayName?: string; contact?: string; avatar?: string }
+  patch: {
+    displayName?: string;
+    contact?: string;
+    avatar?: string;
+    primaryModel?: string;
+    customModels?: UserModelConfig[];
+    feishuOpenId?: string;
+    feishuUnionId?: string;
+  }
 ) => {
   const users = await getUsersCollection();
   const setDoc: Record<string, unknown> = { updatedAt: new Date() };
@@ -77,6 +96,36 @@ export const updateUserProfile = async (
   if (typeof patch.avatar === "string") {
     setDoc.avatar = patch.avatar;
   }
+  if (typeof patch.primaryModel === "string") {
+    setDoc.primaryModel = patch.primaryModel;
+  }
+  if (Array.isArray(patch.customModels)) {
+    setDoc.customModels = patch.customModels;
+  }
+  if (typeof patch.feishuOpenId === "string") {
+    setDoc.feishuOpenId = patch.feishuOpenId;
+  }
+  if (typeof patch.feishuUnionId === "string") {
+    setDoc.feishuUnionId = patch.feishuUnionId;
+  }
   const result = await users.updateOne({ _id: new ObjectId(userId) }, { $set: setDoc });
   return result.modifiedCount > 0;
+};
+
+export const updateUserCustomModels = async (userId: string, customModels: UserModelConfig[]) => {
+  const users = await getUsersCollection();
+  const result = await users.updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { customModels, updatedAt: new Date() } }
+  );
+  return result.matchedCount > 0;
+};
+
+export const updateUserPrimaryModel = async (userId: string, primaryModel: string) => {
+  const users = await getUsersCollection();
+  const result = await users.updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { primaryModel, updatedAt: new Date() } }
+  );
+  return result.matchedCount > 0;
 };

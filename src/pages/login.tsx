@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { Box, Flex, Grid, GridItem, Heading, Text, VStack, Link } from "@chakra-ui/react";
+import { AnimatePresence, motion } from "framer-motion";
 import VectorBackground from "../components/auth/VectorBackground";
 import AsiaInfoLogo from "../components/auth/AsiaInfoLogo";
 import FloatingGraph from "../components/auth/FloatingGraph";
@@ -10,13 +11,40 @@ import RegisterForm from "../components/auth/RegisterForm";
 import FeishuForm from "../components/auth/FeishuForm";
 import ForgetPasswordForm from "../components/auth/ForgetPasswordForm";
 import { LoginPageTypeEnum } from "../components/auth/constants";
-import { getAuthToken, setAuthToken } from "@features/auth/client/authClient";
+import { clearAuthToken, getAuthToken, setAuthToken, withAuthHeaders } from "@features/auth/client/authClient";
 
 const getLastRoute = (value: string | string[] | undefined) => {
   if (!value) return "";
   const raw = Array.isArray(value) ? value[0] : value;
   return raw.includes("?lastRoute=") ? raw.split("?lastRoute=")[0] : raw;
 };
+
+const pageMetaMap: Record<
+  LoginPageTypeEnum,
+  {
+    title: string;
+    description: (productName: string) => string;
+  }
+> = {
+  [LoginPageTypeEnum.password]: {
+    title: "继续你的创作",
+    description: (productName: string) => `登录 ${productName}，回到你的工作台`,
+  },
+  [LoginPageTypeEnum.register]: {
+    title: "创建新账号",
+    description: (productName: string) => `注册 ${productName} 账号，开启你的实验室`,
+  },
+  [LoginPageTypeEnum.feishu]: {
+    title: "飞书快捷登录",
+    description: (productName: string) => `使用飞书扫码登录 ${productName}`,
+  },
+  [LoginPageTypeEnum.forgot]: {
+    title: "找回账号",
+    description: () => "需要帮助？我们会尽快为你找回账号",
+  },
+};
+
+const bottomLinks = ["功能概览", "安全与合规", "获取支持"];
 
 const Login = () => {
   const router = useRouter();
@@ -25,13 +53,43 @@ const Login = () => {
   const productName = "AI Studio";
   const brandTitle = "AI Studio";
   const brandSubtitle = "MODEL LAB";
+  const redirectWithReload = useCallback(
+    (target: string) => {
+      if (typeof window !== "undefined") {
+        window.location.replace(target);
+        return;
+      }
+      void router.replace(target);
+    },
+    [router]
+  );
 
   useEffect(() => {
     const token = getAuthToken();
-    if (token) {
-      router.replace(getLastRoute(lastRoute) || "/");
-    }
-  }, [lastRoute, router]);
+    if (!token) return;
+
+    let cancelled = false;
+    const verifyAndRedirect = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { headers: withAuthHeaders() });
+        if (!response.ok) {
+          clearAuthToken();
+          return;
+        }
+        if (!cancelled) {
+          redirectWithReload(getLastRoute(lastRoute) || "/");
+        }
+      } catch {
+        clearAuthToken();
+      }
+    };
+
+    void verifyAndRedirect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lastRoute, redirectWithReload]);
 
   const loginSuccess = useCallback(
     (res: AuthSuccessPayload) => {
@@ -39,10 +97,12 @@ const Login = () => {
         setAuthToken(res.token);
       }
       const target = getLastRoute(lastRoute) || "/";
-      router.replace(target);
+      redirectWithReload(target);
     },
-    [lastRoute, router]
+    [lastRoute, redirectWithReload]
   );
+
+  const currentMeta = pageMetaMap[pageType] || pageMetaMap[LoginPageTypeEnum.password];
 
   const DynamicComponent = useMemo(() => {
     if (pageType === LoginPageTypeEnum.register) {
@@ -64,141 +124,208 @@ const Login = () => {
       <Flex
         alignItems="center"
         justifyContent="center"
-        h="100vh"
+        minH="100vh"
         position="relative"
         zIndex={1}
         overflow="hidden"
-        p={[4, 6]}
-        fontFamily="sans-serif"
+        px={[4, 6]}
+        py={[6, 8]}
       >
-        <Box w="100%" maxW="1200px" h="85vh" maxH="800px" zIndex={10}>
-          <Box
-            w="full"
-            h="full"
-            borderRadius="2rem"
-            overflow="hidden"
-            boxShadow="0 25px 50px -12px rgba(0,0,0,0.1)"
-            border="1px solid rgba(255,255,255,0.5)"
-            bg="rgba(255,255,255,0.6)"
-            backdropFilter="blur(24px)"
-            position="relative"
-          >
-            <Grid templateColumns={['1fr', '1fr', 'repeat(12, 1fr)']} h="full">
-              <GridItem
-                colSpan={[12, 12, 7]}
-                display={['none', 'none', 'flex']}
-                flexDirection="column"
-                p={12}
-                position="relative"
-                bg="transparent"
-              >
-                <Flex direction="column" h="full" justify="space-between">
-                  <VStack align="start" spacing={8} w="full">
-                    <Box>
-                      <AsiaInfoLogo width="48px" height="48px" showText={true} titleText={brandTitle} subtitleText={brandSubtitle} />
-                    </Box>
+        <motion.div
+          initial={{ opacity: 0, y: 24, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.56, ease: [0.22, 1, 0.36, 1] }}
+          style={{ width: "100%", maxWidth: "1220px" }}
+        >
+          <Box w="100%" h={["auto", "auto", "85vh"]} minH={["720px", "740px", "unset"]} maxH="820px" zIndex={10}>
+            <Box
+              w="full"
+              h="full"
+              borderRadius="2rem"
+              overflow="hidden"
+              boxShadow="0 28px 64px -36px rgba(15, 23, 42, 0.42)"
+              border="1px solid rgba(148,163,184,0.28)"
+              bg="rgba(255,255,255,0.62)"
+              backdropFilter="blur(28px)"
+              position="relative"
+            >
+              <Box
+                position="absolute"
+                top="-100px"
+                left="-80px"
+                w="280px"
+                h="280px"
+                borderRadius="full"
+                bg="radial-gradient(circle at center, rgba(51,112,255,0.25), rgba(51,112,255,0))"
+                pointerEvents="none"
+              />
+              <Box
+                position="absolute"
+                bottom="-120px"
+                right="-100px"
+                w="320px"
+                h="320px"
+                borderRadius="full"
+                bg="radial-gradient(circle at center, rgba(18,183,106,0.2), rgba(18,183,106,0))"
+                pointerEvents="none"
+              />
+              <Grid templateColumns={["1fr", "1fr", "repeat(12, 1fr)"]} h="full">
+                <GridItem
+                  colSpan={[12, 12, 7]}
+                  display={["none", "none", "flex"]}
+                  flexDirection="column"
+                  p={12}
+                  position="relative"
+                  bg="rgba(255,255,255,0.25)"
+                >
+                  <Flex direction="column" h="full" justify="space-between">
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.44, delay: 0.14, ease: "easeOut" }}
+                    >
+                      <VStack align="start" spacing={8} w="full">
+                        <Box>
+                          <AsiaInfoLogo width="48px" height="48px" showText={true} titleText={brandTitle} subtitleText={brandSubtitle} />
+                        </Box>
+
+                        <Box>
+                          <Text
+                            display="inline-flex"
+                            px={3}
+                            py={1}
+                            mb={4}
+                            borderRadius="full"
+                            bg="rgba(255,255,255,0.6)"
+                            border="1px solid rgba(148,163,184,0.35)"
+                            color="blue.700"
+                            fontSize="xs"
+                            fontWeight="700"
+                            letterSpacing="0.08em"
+                            textTransform="uppercase"
+                          >
+                            Creative Engineering Console
+                          </Text>
+                          <Heading
+                            size="2xl"
+                            fontWeight="extrabold"
+                            lineHeight="1.2"
+                            mb={4}
+                            color="slate.900"
+                            letterSpacing="tight"
+                            display="flex"
+                            alignItems="center"
+                            gap={3}
+                            flexWrap="nowrap"
+                          >
+                            <Box as="span" bgClip="text" bgGradient="linear(to-r, blue.600, green.500)" color="transparent">
+                              灵感到原型
+                            </Box>
+                            <Box as="span" color="myGray.800">
+                              一步到位
+                            </Box>
+                          </Heading>
+                          <Text color="myGray.600" fontSize="lg" fontWeight="medium" lineHeight="1.6" maxW="xlg">
+                            统一管理模型、提示词与评测，把试验、协作和发布放在同一处完成。
+                          </Text>
+                        </Box>
+                      </VStack>
+                    </motion.div>
+
+                    <Flex flex={1} alignItems="center" justifyContent="center">
+                      <FloatingGraph />
+                    </Flex>
 
                     <Box>
-                      <Heading
-                        size="2xl"
-                        fontWeight="extrabold"
-                        lineHeight="1.2"
-                        mb={4}
-                        color="slate.900"
-                        letterSpacing="tight"
-                        display="flex"
-                        alignItems="center"
-                        gap={3}
-                        flexWrap="nowrap"
+                      <FeatureFooter />
+                    </Box>
+                  </Flex>
+                </GridItem>
+
+                <GridItem
+                  colSpan={[12, 12, 5]}
+                  position="relative"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  bg="rgba(255,255,255,0.78)"
+                  backdropFilter="blur(40px)"
+                  borderLeft={["none", "none", "1px solid rgba(148,163,184,0.26)"]}
+                  boxShadow={["none", "none", "-12px 0 40px rgba(15,23,42,0.06)"]}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, x: 18 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: 0.12, ease: "easeOut" }}
+                    style={{ width: "100%" }}
+                  >
+                    <Box position="absolute" top={8} left={8} display={["block", "block", "none"]}>
+                      <AsiaInfoLogo width="120px" height="30px" titleText={brandTitle} subtitleText={brandSubtitle} />
+                    </Box>
+
+                    <Box w="full" maxW="md" px={6} pt={[16, 14, 0]}>
+                      <motion.div
+                        key={pageType}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.32, ease: "easeOut" }}
                       >
-                        <Box as="span" bgClip="text" bgGradient="linear(to-r, blue.600, green.500)" color="transparent">
-                          灵感到原型
+                        <Box mb={8} textAlign="left">
+                          <Heading size="lg" mb={2} color="myGray.800">
+                            {currentMeta.title}
+                          </Heading>
+                          <Text color="myGray.500" fontSize="sm">
+                            {currentMeta.description(productName)}
+                          </Text>
                         </Box>
-                        <Box as="span" color="myGray.800">
-                          一步到位
-                        </Box>
-                      </Heading>
-                      <Text color="myGray.600" fontSize="lg" fontWeight="medium" lineHeight="1.6" maxW="xlg">
-                        统一管理模型、提示词与评测，把试验、协作和发布放在同一处完成。
-                      </Text>
+                      </motion.div>
+
+                      <Box w="100%">
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={pageType}
+                            initial={{ opacity: 0, y: 14 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.28, ease: "easeOut" }}
+                          >
+                            {DynamicComponent}
+                          </motion.div>
+                        </AnimatePresence>
+                      </Box>
                     </Box>
-                  </VStack>
 
-                  <Flex flex={1} alignItems="center" justifyContent="center">
-                    <FloatingGraph />
-                  </Flex>
-
-                  <Box>
-                    <FeatureFooter />
-                  </Box>
-                </Flex>
-              </GridItem>
-
-              <GridItem
-                colSpan={[12, 12, 5]}
-                position="relative"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                bg="rgba(255,255,255,0.7)"
-                backdropFilter="blur(40px)"
-                borderLeft="1px solid rgba(255,255,255,0.6)"
-                boxShadow="-10px 0 30px rgba(0,0,0,0.02)"
-              >
-                <Box position="absolute" top={8} left={8} display={['block', 'block', 'none']}>
-                  <AsiaInfoLogo width="120px" height="30px" titleText={brandTitle} subtitleText={brandSubtitle} />
-                </Box>
-
-                <Box w="full" maxW="md" px={6}>
-                  <Box mb={8} textAlign="left">
-                    <Heading size="lg" mb={2} color="myGray.800">
-                      {pageType === LoginPageTypeEnum.register
-                        ? "创建新账号"
-                        : pageType === LoginPageTypeEnum.feishu
-                        ? "飞书快捷登录"
-                        : pageType === LoginPageTypeEnum.forgot
-                        ? "找回账号"
-                        : "继续你的创作"}
-                    </Heading>
-                    <Text color="myGray.500" fontSize="sm">
-                      {pageType === LoginPageTypeEnum.register
-                        ? `注册 ${productName} 账号，开启你的实验室`
-                        : pageType === LoginPageTypeEnum.feishu
-                        ? `使用飞书扫码登录 ${productName}`
-                        : pageType === LoginPageTypeEnum.forgot
-                        ? `需要帮助？我们会尽快为你找回账号`
-                        : `登录 ${productName}，回到你的工作台`}
-                    </Text>
-                  </Box>
-                  <Box w="100%">{DynamicComponent}</Box>
-                </Box>
-
-                <Box position="absolute" bottom={6} w="full" textAlign="center">
-                  <Flex justify="center" gap={4} fontSize="xs" color="#94a3b8" fontWeight="medium" mb={2}>
-                    <Link _hover={{ color: "primary.500", textDecoration: "underline" }} cursor="pointer">
-                      功能概览
-                    </Link>
-                    <Box as="span" color="myGray.250">
-                      |
-                    </Box>
-                    <Link _hover={{ color: "primary.500", textDecoration: "underline" }} cursor="pointer">
-                      安全与合规
-                    </Link>
-                    <Box as="span" color="myGray.250">
-                      |
-                    </Box>
-                    <Link _hover={{ color: "primary.500", textDecoration: "underline" }} cursor="pointer">
-                      获取支持
-                    </Link>
-                  </Flex>
-                  <Text fontSize="10px" color="myGray.300" fontFamily="mono" textTransform="uppercase" letterSpacing="wider">
-                    © {new Date().getFullYear()} AI Studio
-                  </Text>
-                </Box>
-              </GridItem>
-            </Grid>
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.35, delay: 0.28, ease: "easeOut" }}
+                    >
+                      <Box position="absolute" bottom={6} w="full" textAlign="center">
+                        <Flex justify="center" gap={4} fontSize="xs" color="#94a3b8" fontWeight="medium" mb={2}>
+                          {bottomLinks.map((item, index) => (
+                            <Box key={item} display="inline-flex" alignItems="center" gap={4}>
+                              {index > 0 ? (
+                                <Box as="span" color="myGray.250">
+                                  |
+                                </Box>
+                              ) : null}
+                              <Link _hover={{ color: "primary.500", textDecoration: "underline" }} cursor="pointer">
+                                {item}
+                              </Link>
+                            </Box>
+                          ))}
+                        </Flex>
+                        <Text fontSize="10px" color="myGray.300" fontFamily="mono" textTransform="uppercase" letterSpacing="wider">
+                          © {new Date().getFullYear()} AI Studio
+                        </Text>
+                      </Box>
+                    </motion.div>
+                  </motion.div>
+                </GridItem>
+              </Grid>
+            </Box>
           </Box>
-        </Box>
+        </motion.div>
       </Flex>
     </>
   );

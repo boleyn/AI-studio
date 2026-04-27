@@ -7,6 +7,7 @@ const MyTooltip = ({ children, shouldWrapChildren = true, ...props }: Props) => 
   return (
     <Tooltip
       className="chakra-tooltip"
+      zIndex={1800}
       bg="white"
       arrowShadowColor="rgba(0,0,0,0.05)"
       hasArrow

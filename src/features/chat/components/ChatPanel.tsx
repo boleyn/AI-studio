@@ -1,262 +1,488 @@
-import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
-import { createId } from "@shared/chat/messages";
-import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
+import {
+  isPlanInteractionEnvelope,
+  type PlanProgressInteractionPayload,
+} from "@shared/chat/planInteraction";
+import { streamFetch } from "@shared/network/streamFetch";
+import { SdkStreamEventEnum } from "@shared/network/sdkStreamEvents";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { ChatPanelViewProvider } from "../context/ChatPanelViewContext";
 import { useConversations } from "../hooks/useConversations";
 import {
   buildDownloadUrl,
   buildPreviewUrl,
-  fetchMarkdownContent,
-  fetchMarkdownContentByUrl,
-  parseChatFiles,
+  getPresignedChatFileGetUrl,
   uploadChatFiles,
 } from "../services/files";
-import { updateMessageFeedback } from "../services/feedback";
-import { getChatModels } from "../services/models";
-import type { ChatModelCatalog } from "../services/models";
-import { listSkills } from "../services/skills";
+import {
+  getConversation as getConversationById,
+  replaceConversationMessages,
+} from "../services/conversations";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
+import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import { getExecutionSummary } from "../utils/executionSummary";
-import { type FlowNodeResponsePayload } from "../utils/flowNodeMessages";
+import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
+import {
+  derivePlanModeFromMessages,
+  getPlanModeApprovalFromMessage,
+  parseToolPayload,
+} from "../utils/planModeDisplay";
 
-import ChatHeader from "./ChatHeader";
-import ChatInput from "./ChatInput";
-import SkillsManagerModal from "./SkillsManagerModal";
-import ChatMessageBlock from "./message/ChatMessageBlock";
+import ChatPanelView from "./ChatPanelView";
 import type { MessageRating } from "./message/MessageActionBar";
-import ExecutionSummaryRow from "./ExecutionSummaryRow";
 
 import type { ConversationMessage } from "@/types/conversation";
 
-const TEXT_FILE_EXTENSIONS = [
-  ".txt",
-  ".md",
-  ".json",
-  ".js",
-  ".ts",
-  ".tsx",
-  ".jsx",
-  ".py",
-  ".java",
-  ".go",
-  ".rs",
-  ".css",
-  ".html",
-  ".xml",
-  ".yml",
-  ".yaml",
-  ".log",
-  ".csv",
-] as const;
-const MAX_TEXT_FILE_SIZE = 200 * 1024;
-const MAX_TEXT_FILE_PREVIEW = 3000;
+import {
+  buildConversationTitle,
+  buildUserBubbleContent,
+  getLatestContextUsageFromMessages,
+  getMessageFeedback,
+  hydrateHistoryUserMessage,
+  normalizeProjectFiles,
+  normalizeAttachmentWorkspacePath,
+  toFileArtifacts,
+  toSelectedPathArtifacts,
+  getImageInputParts,
+  toUpdatedFilesMap,
+  normalizeHistoryMessagesForTimeline,
+} from "../utils/chatPanelUtils";
+import { useChatModels } from "../hooks/useChatModels";
+import { useChatMessageActions } from "../hooks/useChatMessageActions";
+import { useChatPlanInteractions } from "../hooks/useChatPlanInteractions";
+import { useChatSkills } from "../hooks/useChatSkills";
+import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
+import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { updatePrimaryModel } from "../services/models";
+import { mergeSdkBlock } from "../utils/sdkBlockMerge";
+import type { PendingChatInteraction, PendingPlanQuestion } from "../context/ChatInteractionContext";
+import {
+  getPermissionApproval,
+  getPermissionApprovalDecision,
+  getPlanModeApprovalPending,
+  getPlanQuestions,
+} from "../utils/chatItemParsers";
 
-interface ToolStreamPayload {
-  id?: string;
-  toolName?: string;
-  params?: string;
-  response?: string;
-}
+const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
+  `${conversationId}::${modelId}`;
+const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
 
-interface ReasoningStreamPayload {
-  reasoningText?: string;
-}
-
-interface WorkflowDurationPayload {
-  durationSeconds?: number;
-}
-const FILE_TAG_MARKER_PREFIX = "FILETAG:";
-const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
-
-const getMessageFeedback = (message: ConversationMessage): MessageRating | undefined => {
-  if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return undefined;
-  const value = (message.additional_kwargs as { userFeedback?: unknown }).userFeedback;
-  return value === "up" || value === "down" ? value : undefined;
+const readThinkingEnabled = () => {
+  if (typeof window === "undefined") return true;
+  try {
+    const value = window.localStorage.getItem(THINKING_ENABLED_STORAGE_KEY);
+    if (value === "0") return false;
+    if (value === "1") return true;
+  } catch {
+    // ignore
+  }
+  return true;
 };
 
-const buildConversationTitle = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  return trimmed.length > 40 ? `${trimmed.slice(0, 40)}...` : trimmed;
+const persistThinkingEnabled = (enabled: boolean) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THINKING_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // ignore
+  }
 };
 
-const isTextLikeFile = (file: File) => {
-  if (file.type.startsWith("text/")) return true;
-  const lowerName = file.name.toLowerCase();
-  return TEXT_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-};
-
-const buildFilePrompt = async (files: ChatInputFile[]) => {
-  if (files.length === 0) return "";
-
-  const sections: string[] = [];
-
-  for (const item of files) {
-    const file = item.file;
-    const header = `文件: ${file.name} (${file.type || "unknown"}, ${file.size} bytes)`;
-
-    if (!isTextLikeFile(file) || file.size > MAX_TEXT_FILE_SIZE) {
-      sections.push(`${header}\n该文件为二进制或过大文件，仅提供元信息。`);
-      continue;
-    }
-
-    try {
-      const raw = await file.text();
-      const preview = raw.slice(0, MAX_TEXT_FILE_PREVIEW);
-      sections.push(
-        `${header}\n\n\`\`\`\n${preview}${raw.length > MAX_TEXT_FILE_PREVIEW ? "\n... [truncated]" : ""}\n\`\`\``
-      );
-    } catch {
-      sections.push(`${header}\n无法读取文件内容，仅提供元信息。`);
-    }
+const hasPendingInteractionState = (kwargs: unknown): boolean => {
+  if (!kwargs || typeof kwargs !== "object" || Array.isArray(kwargs)) return false;
+  const record = kwargs as Record<string, unknown>;
+  const planState =
+    record.planModeInteractionState &&
+    typeof record.planModeInteractionState === "object" &&
+    !Array.isArray(record.planModeInteractionState)
+      ? (record.planModeInteractionState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(planState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
   }
 
-  return sections.join("\n\n");
+  const permissionState =
+    record.permissionApprovalState &&
+    typeof record.permissionApprovalState === "object" &&
+    !Array.isArray(record.permissionApprovalState)
+      ? (record.permissionApprovalState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(permissionState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
+  }
+
+  return Boolean(record.planModeApproval || record.permissionApproval);
 };
 
-const buildFilePromptFromArtifacts = (files: UploadedFileArtifact[]) => {
-  if (!files.length) return "";
-
-  const sections = files.map((file) => {
-    const header = `### 文件: ${file.name}`;
-    const markdown = typeof file.parse?.markdown === "string" ? file.parse.markdown.trim() : "";
-
-    if ((file.type || "").startsWith("image/") && file.previewUrl) {
-      return [header, `![${file.name}](${file.previewUrl})`].join("\n\n");
-    }
-
-    if (markdown) {
-      return [header, markdown].join("\n\n");
-    }
-
-    return `${header}\n\n该文件当前无可解析正文，仅提供元信息。`;
-  });
-
-  return sections.join("\n\n");
+const isSdkLikeMessage = (value: unknown): value is {
+  type: "user" | "assistant" | "system" | "progress";
+  uuid?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    content?: unknown;
+  };
+  meta?: Record<string, unknown>;
+} => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "";
+  return type === "user" || type === "assistant" || type === "system" || type === "progress";
 };
 
-const buildUserBubbleContent = ({
+const sdkContentToText = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const block = item as Record<string, unknown>;
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      // Only assistant "text" blocks should become the final visible answer body.
+      // thinking/tool_result are intermediate protocol artifacts and must stay in timeline metadata.
+      return "";
+    })
+    .join("");
+};
+
+const toUserMessageContentBlocks = ({
   text,
-  files,
-  selectedSkills,
-  selectedFilePaths,
+  artifacts,
 }: {
   text: string;
-  files: UploadedFileArtifact[];
-  selectedSkills?: string[];
-  selectedFilePaths?: string[];
-}) => {
-  const trimmedText = text.trim();
-  const skillTagsMarkdown =
-    selectedSkills && selectedSkills.length > 0
-      ? selectedSkills
-          .map((skill) => `[${skill}](${SKILL_TAG_MARKER_PREFIX}${encodeURIComponent(skill)})`)
-          .join(" ")
-      : "";
-  const fileTagsMarkdown =
-    selectedFilePaths && selectedFilePaths.length > 0
-      ? selectedFilePaths
-          .map((path) => `[${path}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
-          .join(" ")
-      : "";
-  const imageMarkdown = files
-    .filter((file) => (file.type || "").startsWith("image/") && file.previewUrl)
-    .map((file) => `![${file.name || "image"}](${file.previewUrl})`)
-    .join("\n\n");
+  artifacts: UploadedFileArtifact[];
+}): Array<Record<string, unknown>> => {
+  const toSafeFileName = (value: string): string => {
+    const base = (value || "file")
+      .split("/")
+      .pop()
+      ?.split("\\")
+      .pop()
+      ?.trim() || "file";
+    const withoutControlChars = base.replace(/[\u0000-\u001f\u007f]/g, "");
+    const sanitized = withoutControlChars
+      .replace(/[\\/:"*?<>|]/g, "_")
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalized = sanitized.replace(/^\.+/, "").slice(0, 180);
+    return normalized || "file";
+  };
+  const toRuntimeAttachmentPath = (file: UploadedFileArtifact): string => {
+    const raw = typeof file.storagePath === "string" ? file.storagePath.trim() : "";
+    if (!raw) {
+      return `/.files/${toSafeFileName(file.name || "file")}`;
+    }
+    const normalized = raw.replace(/\\/g, "/");
+    if (normalized === ".files" || normalized === "/.files") return "/.files";
+    if (normalized.startsWith(".files/")) return `/${normalized}`;
+    if (normalized.startsWith("/.files/")) return normalized;
+    if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
+      return `/.files/${toSafeFileName(file.name || normalized)}`;
+    }
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  };
 
-  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText, imageMarkdown].filter(Boolean).join("\n\n");
+  const blocks: Array<Record<string, unknown>> = [];
+  if (text.trim()) {
+    blocks.push({
+      type: "text",
+      text,
+    });
+  }
+  artifacts.forEach((file) => {
+    const storagePath = toRuntimeAttachmentPath(file);
+    if (!storagePath) return;
+    blocks.push({
+      type: "attachment",
+      name: file.name || "",
+      mime_type: file.type || "application/octet-stream",
+      storage_path: storagePath,
+      ...(typeof file.storagePath === "string" && file.storagePath.trim()
+        ? { source_storage_path: file.storagePath.trim() }
+        : {}),
+      ...(file.previewUrl ? { preview_url: file.previewUrl } : {}),
+      ...(file.downloadUrl ? { download_url: file.downloadUrl } : {}),
+    });
+  });
+  return blocks;
 };
 
-const hydrateArtifactsMarkdown = async (files: UploadedFileArtifact[]) => {
-  const hydrated = await Promise.all(
-    files.map(async (file) => {
-      const markdown = file.markdownPublicUrl
-        ? await fetchMarkdownContentByUrl(file.markdownPublicUrl).catch(() => "")
-        : file.markdownStoragePath
-        ? await fetchMarkdownContent(file.markdownStoragePath).catch(() => "")
+const getPendingInteractionKey = (interaction: PendingChatInteraction) => {
+  if (interaction.type === "permission") {
+    return (interaction.permission.toolUseId || interaction.requestId || interaction.permission.toolName || "")
+      .toString()
+      .trim()
+      .toLowerCase();
+  }
+  return interaction.requestId.trim().toLowerCase();
+};
+
+const collectResolvedInteractionKeys = (messages: ConversationMessage[]) => {
+  const resolvedRequestIds = new Set<string>();
+  const resolvedPermissionKeys = new Set<string>();
+
+  for (const message of messages) {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object"
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs) continue;
+
+    const planQuestionResponse =
+      kwargs.planQuestionResponse &&
+      typeof kwargs.planQuestionResponse === "object" &&
+      !Array.isArray(kwargs.planQuestionResponse)
+        ? (kwargs.planQuestionResponse as Record<string, unknown>)
+        : null;
+    const planQuestionRequestId =
+      typeof planQuestionResponse?.requestId === "string" ? planQuestionResponse.requestId.trim().toLowerCase() : "";
+    if (planQuestionRequestId) resolvedRequestIds.add(planQuestionRequestId);
+
+    const planModeApprovalResponse =
+      kwargs.planModeApprovalResponse &&
+      typeof kwargs.planModeApprovalResponse === "object" &&
+      !Array.isArray(kwargs.planModeApprovalResponse)
+        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
+        : null;
+    const planModeApprovalRequestId =
+      typeof planModeApprovalResponse?.requestId === "string"
+        ? planModeApprovalResponse.requestId.trim().toLowerCase()
         : "";
-      if (!markdown) return file;
-      return {
-        ...file,
-        parse: {
-          ...(file.parse || {
-            status: "success" as const,
-            progress: 100,
-            parser: "text" as const,
-          }),
-          markdown,
+    if (planModeApprovalRequestId) resolvedRequestIds.add(planModeApprovalRequestId);
+
+    const permissionApprovalResponse =
+      kwargs.permissionApprovalResponse &&
+      typeof kwargs.permissionApprovalResponse === "object" &&
+      !Array.isArray(kwargs.permissionApprovalResponse)
+        ? (kwargs.permissionApprovalResponse as Record<string, unknown>)
+        : null;
+    const permissionRequestId =
+      typeof permissionApprovalResponse?.requestId === "string"
+        ? permissionApprovalResponse.requestId.trim().toLowerCase()
+        : "";
+    const permissionToolUseId =
+      typeof permissionApprovalResponse?.toolUseId === "string"
+        ? permissionApprovalResponse.toolUseId.trim().toLowerCase()
+        : "";
+    const permissionToolName =
+      typeof permissionApprovalResponse?.toolName === "string"
+        ? permissionApprovalResponse.toolName.trim().toLowerCase()
+        : "";
+    if (permissionRequestId) resolvedRequestIds.add(permissionRequestId);
+    if (permissionToolUseId) resolvedPermissionKeys.add(permissionToolUseId);
+    if (permissionToolName) resolvedPermissionKeys.add(permissionToolName);
+  }
+
+  return {
+    resolvedRequestIds,
+    resolvedPermissionKeys,
+  };
+};
+
+const buildPendingInteractionsFromMessages = (
+  messages: ConversationMessage[],
+  options?: {
+    isPlanModeActive?: boolean;
+  }
+): PendingChatInteraction[] => {
+  const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messages);
+  const isPlanModeActive = options?.isPlanModeActive === true;
+
+  const pending: PendingChatInteraction[] = [];
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    const assistantMessageId = (message.id || "").trim();
+    if (!assistantMessageId) continue;
+
+    const permission = getPermissionApproval(message);
+    const permissionDecision = getPermissionApprovalDecision(message);
+    if (permission && !permissionDecision) {
+      const permissionRequestId = (permission.toolUseId || "").trim().toLowerCase();
+      const permissionToolKey = permission.toolName.trim().toLowerCase();
+      if (
+        (permissionRequestId && resolvedRequestIds.has(permissionRequestId)) ||
+        (permissionRequestId && resolvedPermissionKeys.has(permissionRequestId)) ||
+        (permissionToolKey && resolvedPermissionKeys.has(permissionToolKey))
+      ) {
+        continue;
+      }
+      pending.push({
+        type: "permission",
+        requestId: permission.toolUseId,
+        assistantMessageId,
+        permission: {
+          toolName: permission.toolName,
+          ...(permission.toolUseId ? { toolUseId: permission.toolUseId } : {}),
+          ...(permission.reason ? { reason: permission.reason } : {}),
         },
-      };
-    })
-  );
+      });
+    }
 
-  return hydrated;
+    const approval = getPlanModeApprovalFromMessage(message);
+    const approvalPending = getPlanModeApprovalPending(message);
+    if (approval && approvalPending && approval.requestId) {
+      if (!isPlanModeActive) continue;
+      const requestId = approval.requestId.trim().toLowerCase();
+      if (requestId && resolvedRequestIds.has(requestId)) continue;
+      pending.push({
+        type: "plan_approval",
+        requestId: approval.requestId,
+        assistantMessageId,
+        approval: {
+          requestId: approval.requestId,
+          action: approval.action,
+          ...(approval.title ? { title: approval.title } : {}),
+          ...(approval.description ? { description: approval.description } : {}),
+        },
+      });
+    }
+
+    const questions = getPlanQuestions(message);
+    if (questions.length > 0) {
+      if (!isPlanModeActive) continue;
+      const requestId = (questions[0]?.requestId || "").trim();
+      if (requestId) {
+        const normalizedRequestId = requestId.toLowerCase();
+        if (resolvedRequestIds.has(normalizedRequestId)) continue;
+        pending.push({
+          type: "plan_questions",
+          requestId,
+          assistantMessageId,
+          questions: questions.map((question) => ({
+            header: question.header,
+            id: question.id,
+            question: question.question,
+            options: question.options,
+          })),
+        });
+      }
+    }
+  }
+  return pending;
 };
 
-const toFileArtifacts = (files: ChatInputFile[]) =>
-  files.map((item) => ({
-    id: item.id,
-    name: item.file.name,
-    size: item.file.size,
-    type: item.file.type,
-    lastModified: item.file.lastModified,
-    parse: {
-      status: "pending" as const,
-      progress: 0,
-      parser: "metadata" as const,
-      markdown: "",
-    },
-  }));
-
-const getImageInputParts = async (files: UploadedFileArtifact[]) => {
-  const imageFiles = files
-    .filter((item) => (item.type || "").startsWith("image/") && item.storagePath)
-    .slice(0, 4);
-
-  return imageFiles
-    .filter((item) => (item.size || 0) <= 4 * 1024 * 1024)
-    .map((item) => ({
-      type: "image_url" as const,
-      image_url: {
-        url: item.previewUrl || item.publicUrl || "",
-      },
-      key: item.storagePath,
+const normalizePendingPlanQuestionPayload = (
+  input: unknown
+): { questions: PendingPlanQuestion[] } | null => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const questionsRaw = Array.isArray((input as { questions?: unknown }).questions)
+    ? ((input as { questions: unknown[] }).questions ?? [])
+    : [];
+  const questions = questionsRaw
+    .filter((question): question is Record<string, unknown> => Boolean(question && typeof question === "object" && !Array.isArray(question)))
+    .map((question) => ({
+      ...(typeof question.header === "string" && question.header.trim() ? { header: question.header.trim() } : {}),
+      id: typeof question.id === "string" ? question.id.trim() : "",
+      question: typeof question.question === "string" ? question.question.trim() : "",
+      options: Array.isArray(question.options)
+        ? question.options
+            .filter(
+              (option): option is Record<string, unknown> =>
+                Boolean(option && typeof option === "object" && !Array.isArray(option) && typeof option.label === "string")
+            )
+            .map((option) => ({
+              label: String(option.label).trim(),
+              ...(typeof option.description === "string" && option.description.trim()
+                ? { description: option.description.trim() }
+                : {}),
+            }))
+            .filter((option) => option.label.length > 0)
+        : [],
     }))
-    .filter((item) => item.image_url.url || item.key);
+    .filter((question) => question.id.length > 0 && question.question.length > 0);
+  if (questions.length === 0) return null;
+  return { questions };
 };
 
-const toUpdatedFilesMap = (value: unknown): Record<string, { code: string }> | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
+const normalizePendingPlanApprovalPayload = (
+  input: unknown
+): { action: "enter" | "exit"; title?: string; description?: string } => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      action: "exit",
+      title: "计划已完成，是否进入执行？",
+    };
   }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return null;
-
-  const normalized: Record<string, { code: string }> = {};
-  for (const [path, file] of entries) {
-    if (!path || typeof path !== "string") return null;
-    if (!file || typeof file !== "object" || Array.isArray(file)) return null;
-
-    const code = (file as { code?: unknown }).code;
-    if (typeof code !== "string") return null;
-
-    normalized[path] = { code };
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
+  const record = input as Record<string, unknown>;
+  return {
+    action: record.action === "enter" ? "enter" : "exit",
+    ...(typeof record.title === "string" && record.title.trim() ? { title: record.title.trim() } : {}),
+    ...(typeof record.description === "string" && record.description.trim()
+      ? { description: record.description.trim() }
+      : {}),
+  };
 };
+
+const toPendingInteractionFromApi = (
+  item: unknown,
+  assistantMessageId: string
+): PendingChatInteraction | null => {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const record = item as Record<string, unknown>;
+  const requestId = typeof record.requestId === "string" ? record.requestId.trim() : "";
+  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
+  if (!requestId || !assistantMessageId) return null;
+
+  if (kind === "plan_question") {
+    const inputValue =
+      record.input && typeof record.input === "object" && !Array.isArray(record.input) ? record.input : undefined;
+    const payload = normalizePendingPlanQuestionPayload(inputValue);
+    if (!payload || payload.questions.length === 0) return null;
+    return {
+      type: "plan_questions",
+      requestId,
+      assistantMessageId,
+      questions: payload.questions,
+    };
+  }
+
+  if (kind === "plan_approval") {
+    const payload = normalizePendingPlanApprovalPayload(record.input);
+    return {
+      type: "plan_approval",
+      requestId,
+      assistantMessageId,
+      approval: {
+        requestId,
+        action: payload.action,
+        ...(payload.title ? { title: payload.title } : {}),
+        ...(payload.description ? { description: payload.description } : {}),
+      },
+    };
+  }
+
+  if (kind === "permission") {
+    const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
+    if (!toolName) return null;
+    const toolUseId =
+      typeof record.toolUseId === "string" && record.toolUseId.trim() ? record.toolUseId.trim() : requestId;
+    return {
+      type: "permission",
+      requestId,
+      assistantMessageId,
+      permission: {
+        toolName,
+        ...(toolUseId ? { toolUseId } : {}),
+      },
+    };
+  }
+
+  return null;
+};
+
 
 const ChatPanel = ({
   token,
   onFilesUpdated,
   height = "100%",
-  completionsPath = "/api/chat/completions",
+  completionsPath = "/api/v2/chat/completions",
   completionsStream = true,
   completionsExtraBody,
   hideSkillsManager = false,
@@ -264,10 +490,14 @@ const ChatPanel = ({
   defaultHeaderTitle = "代码助手",
   emptyStateTitle,
   emptyStateDescription,
-  roundTop = true,
+  roundTop: _roundTop = true,
   defaultSelectedSkill,
   fileOptions = [],
   skillsProjectToken,
+  openSkillsSignal = 0,
+  thinkingTooltipEnabled,
+  thinkingTooltipDisabled,
+  onOpenWorkspaceFile,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -284,9 +514,14 @@ const ChatPanel = ({
   defaultSelectedSkill?: string;
   fileOptions?: string[];
   skillsProjectToken?: string;
+  openSkillsSignal?: number;
+  thinkingTooltipEnabled?: string;
+  thinkingTooltipDisabled?: string;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
+  const { user } = useAuth();
   const {
     conversations,
     activeConversation,
@@ -303,101 +538,197 @@ const ChatPanel = ({
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [thinkingEnabled, setThinkingEnabled] = useState(true);
+  const [chatMode, setChatMode] = useState<"default" | "plan">("default");
+  const [pendingInteractions, setPendingInteractions] = useState<PendingChatInteraction[]>([]);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
-  const [modelLoading, setModelLoading] = useState(false);
-  const [channel, setChannel] = useState("aiproxy");
-  const [model, setModel] = useState("agent");
-  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    defaultSelectedSkill ? [defaultSelectedSkill] : []
+  const messagesRef = useRef<ConversationMessage[]>([]);
+  const { model, setModel, channel, modelOptions, modelGroups, modelLoading, modelCatalog } = useChatModels(
+    user?.primaryModel
   );
-  const [skillOptions, setSkillOptions] = useState<Array<{ name: string; description?: string }>>([]);
-  const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string; channel: string; icon?: string }>>([
-    { value: "agent", label: "agent", channel: "aiproxy" },
-  ]);
-  const [modelCatalog, setModelCatalog] = useState<ChatModelCatalog | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
-  const scrollRafRef = useRef<number | null>(null);
+  
+  const {
+    isSkillsOpen,
+    setIsSkillsOpen,
+    selectedSkills,
+    setSelectedSkills,
+    skillOptions,
+  } = useChatSkills({
+    token,
+    defaultSelectedSkill,
+    hideSkillsManager,
+    openSkillsSignal,
+    skillsProjectToken,
+    fileOptions,
+  });
+
+  const [contextUsage, setContextUsage] = useState<ContextWindowUsage | null>(null);
+  const [contextStatus, setContextStatus] = useState<"idle" | "pending" | "ready">("idle");
+  const contextUsageRef = useRef<ContextWindowUsage | null>(null);
+  const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
-  const streamingTextRef = useRef("");
-  const streamingReasoningRef = useRef("");
-  const streamFlushFrameRef = useRef<number | null>(null);
-  const reasoningFlushFrameRef = useRef<number | null>(null);
-  const skillListRefreshKey = useMemo(
-    () =>
-      fileOptions
-        .filter((item) => /\/SKILL\.md$/i.test(item))
-        .sort((a, b) => a.localeCompare(b))
-        .join("|"),
-    [fileOptions]
-  );
+  const streamingMessageIdRef = useRef<string | null>(null);
 
-  const flushAssistantReasoning = useCallback((assistantMessageId: string, reasoningText: string) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== assistantMessageId) return msg;
-        const currentKwargs =
-          msg.additional_kwargs && typeof msg.additional_kwargs === "object"
-            ? msg.additional_kwargs
-            : {};
-        return {
-          ...msg,
-          additional_kwargs: {
-            ...currentKwargs,
-            reasoning_text: reasoningText,
-          },
-        };
+  const handleChangeModel = useCallback(
+    (nextModel: string) => {
+      if (nextModel === model) return;
+      setModel(nextModel);
+      updatePrimaryModel(nextModel).catch(() => {
+        // Ignore persistence failures to keep the chat interaction smooth.
+      });
+    },
+    [model, setModel]
+  );
+  useEffect(() => {
+    setThinkingEnabled(readThinkingEnabled());
+  }, []);
+  const handleChangeThinkingEnabled = useCallback((enabled: boolean) => {
+    setThinkingEnabled(enabled);
+    persistThinkingEnabled(enabled);
+  }, []);
+  const selectedModelSupportsReasoning = useMemo(() => {
+    const selected = modelCatalog?.models?.find((item) => item.id === model);
+    return selected?.reasoning === true;
+  }, [model, modelCatalog]);
+
+  const upsertPendingInteraction = useCallback((interaction: PendingChatInteraction) => {
+    const nextKey = getPendingInteractionKey(interaction);
+    if (!nextKey) return;
+    setPendingInteractions((current) => {
+      const filtered = current.filter((item) => getPendingInteractionKey(item) !== nextKey);
+      return [...filtered, interaction];
+    });
+  }, []);
+
+  const clearPendingInteraction = useCallback((input: {
+    requestId?: string;
+    toolUseId?: string;
+    toolName?: string;
+  }) => {
+    const requestId = (input.requestId || "").trim().toLowerCase();
+    const toolUseId = (input.toolUseId || "").trim().toLowerCase();
+    const toolName = (input.toolName || "").trim().toLowerCase();
+    setPendingInteractions((current) =>
+      current.filter((item) => {
+        const itemKey = getPendingInteractionKey(item);
+        if (requestId && item.requestId?.trim().toLowerCase() === requestId) return false;
+        if (toolUseId && itemKey === toolUseId) return false;
+        if (toolName && item.type === "permission" && item.permission.toolName.trim().toLowerCase() === toolName) {
+          return false;
+        }
+        return true;
       })
     );
   }, []);
 
-  const flushAssistantText = useCallback((assistantMessageId: string, content: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === assistantMessageId
-          ? {
-              ...msg,
-              content,
-            }
-          : msg
-      )
-    );
+  const activePendingInteraction = pendingInteractions.length > 0 ? pendingInteractions[0] : null;
+
+  const { scrollRef, shouldAutoScrollRef } = useChatAutoScroll(messages);
+  const {
+    streamingTextRef,
+    streamingReasoningRef,
+    cancelPendingFlushes,
+    scheduleAssistantTextFlush,
+    scheduleAssistantReasoningFlush,
+    flushAssistantText,
+    flushAssistantReasoning,
+  } = useChatStreamFlusher(setMessages);
+
+  const setContextUsageSnapshot = useCallback(
+    (next: ContextWindowUsage | null, conversationId?: string | null, modelId?: string | null) => {
+      contextUsageRef.current = next;
+      setContextUsage(next);
+      if (next) {
+        const cacheModelId = (modelId || next.model || "").trim();
+        if (conversationId && cacheModelId) {
+          contextUsageCacheRef.current[buildContextUsageCacheKey(conversationId, cacheModelId)] = next;
+        }
+        setContextStatus("ready");
+        return;
+      }
+      setContextStatus("idle");
+    },
+    []
+  );
+
+  const getCachedContextUsage = useCallback((conversationId?: string | null, modelId?: string | null) => {
+    const safeConversationId = (conversationId || "").trim();
+    const safeModelId = (modelId || "").trim();
+    if (!safeConversationId || !safeModelId) return null;
+    return contextUsageCacheRef.current[buildContextUsageCacheKey(safeConversationId, safeModelId)] || null;
   }, []);
 
-  const scheduleAssistantTextFlush = useCallback(
-    (assistantMessageId: string) => {
-      if (streamFlushFrameRef.current !== null) return;
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
-      streamFlushFrameRef.current = window.requestAnimationFrame(() => {
-        streamFlushFrameRef.current = null;
-        flushAssistantText(assistantMessageId, streamingTextRef.current);
-      });
-    },
-    [flushAssistantText]
-  );
+  useEffect(() => {
+    if (isSending) return;
+    setPendingInteractions((current) =>
+      current.filter((interaction) => {
+        const assistantId = interaction.assistantMessageId.trim();
+        if (!assistantId) return false;
+        return messagesRef.current.some(
+          (message) => message.role === "assistant" && message.id === assistantId
+        );
+      })
+    );
+  }, [isSending, messages]);
 
-  const scheduleAssistantReasoningFlush = useCallback(
-    (assistantMessageId: string) => {
-      if (reasoningFlushFrameRef.current !== null) return;
-
-      reasoningFlushFrameRef.current = window.requestAnimationFrame(() => {
-        reasoningFlushFrameRef.current = null;
-        flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
-      });
-    },
-    [flushAssistantReasoning]
-  );
+  useEffect(() => {
+    streamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
 
   useEffect(() => {
     const nextMessages = activeConversation?.messages ?? [];
-    setMessages(nextMessages);
+    const chatId = activeConversation?.id || "";
+    const hydratedMessages =
+      chatId && nextMessages.length > 0
+        ? nextMessages.map((message) =>
+            hydrateHistoryUserMessage({
+              message,
+              token,
+              chatId,
+            })
+          )
+        : nextMessages;
+    const normalizedHydratedMessages = normalizeHistoryMessagesForTimeline(hydratedMessages);
+    const isStreamingCurrentConversation =
+      Boolean(streamAbortRef.current) &&
+      Boolean(chatId) &&
+      streamingConversationIdRef.current === chatId;
+    if (isStreamingCurrentConversation) {
+      const localMessages = messagesRef.current;
+      const localCount = localMessages.length;
+      const hydratedCount = normalizedHydratedMessages.length;
+      const activeStreamingId = (streamingMessageIdRef.current || "").trim();
+      const localHasStreamingMessage = activeStreamingId
+        ? localMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      const hydratedHasStreamingMessage = activeStreamingId
+        ? normalizedHydratedMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      if (
+        hydratedCount < localCount ||
+        (localHasStreamingMessage && !hydratedHasStreamingMessage)
+      ) {
+        return;
+      }
+    }
+    setMessages(normalizedHydratedMessages);
+    const nextChatMode = derivePlanModeFromMessages(normalizedHydratedMessages);
+    setChatMode(nextChatMode);
+    setPendingInteractions(
+      buildPendingInteractionsFromMessages(normalizedHydratedMessages, {
+        isPlanModeActive: nextChatMode === "plan",
+      })
+    );
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
-      for (const message of nextMessages) {
+      for (const message of normalizedHydratedMessages) {
         if (!message.id) continue;
         const feedback = getMessageFeedback(message);
         if (feedback) {
@@ -407,173 +738,152 @@ const ChatPanel = ({
       return next;
     });
     shouldAutoScrollRef.current = true;
-  }, [activeConversation?.id, activeConversation?.messages]);
-
-  useEffect(() => {
-    let active = true;
-    setModelLoading(true);
-    getChatModels()
-      .then((catalog) => {
-        if (!active) return;
-        setModelCatalog(catalog);
-
-        const options = catalog.models.length
-          ? catalog.models.map((item) => {
-              return {
-                value: item.id,
-                label: item.label || item.id,
-                channel: item.channel,
-              };
-            })
-          : [
-              {
-                value: catalog.defaultModel || catalog.toolCallModel || "agent",
-                label: catalog.defaultModel || catalog.toolCallModel || "agent",
-                channel: catalog.defaultChannel || "aiproxy",
-              },
-            ];
-        setModelOptions(options);
-        const nextModel = (() => {
-          const prevMatch = options.find((item) => item.value === model);
-          if (prevMatch) return prevMatch.value;
-          return catalog.defaultModel || catalog.toolCallModel || options[0]?.value || "agent";
-        })();
-
-        setModel(nextModel);
-        const selectedModel = options.find((item) => item.value === nextModel);
-        setChannel(selectedModel?.channel || catalog.defaultChannel || "aiproxy");
-      })
-      .catch(() => {
-        if (!active) return;
-        setModelCatalog(null);
-        setChannel("aiproxy");
-        setModelOptions([{ value: "agent", label: "agent", channel: "aiproxy" }]);
-      })
-      .finally(() => {
-        if (active) setModelLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!modelCatalog) return;
-    const selected = modelCatalog.models.find((item) => item.id === model);
-    if (!selected) return;
-    if (selected.channel !== channel) {
-      setChannel(selected.channel);
-    }
-  }, [channel, model, modelCatalog]);
-
-  useEffect(() => {
-    let active = true;
-    const tokenForSkills =
-      (skillsProjectToken && skillsProjectToken.trim()) ||
-      (token.startsWith("skill-studio:") ? "" : token);
-    listSkills(tokenForSkills)
-      .then((result) => {
-        if (!active) return;
-        const next = (result.skills || [])
-          .filter((item) => item.isLoadable && typeof item.name === "string" && item.name.length > 0)
-          .map((item) => ({
-            name: item.name as string,
-            description: item.description,
-          }));
-        setSkillOptions(next);
-        if (
-          defaultSelectedSkill &&
-          selectedSkills.length === 0 &&
-          next.some((item) => item.name === defaultSelectedSkill)
-        ) {
-          setSelectedSkills([defaultSelectedSkill]);
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setSkillOptions([]);
-      });
-    return () => {
-      active = false;
-    };
   }, [
-    defaultSelectedSkill,
-    isSkillsOpen,
-    selectedSkills.length,
-    skillsProjectToken,
+    activeConversation?.id,
+    activeConversation?.messages,
     token,
-    skillListRefreshKey,
   ]);
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    if (!shouldAutoScrollRef.current) return;
-    if (scrollRafRef.current !== null) {
-      window.cancelAnimationFrame(scrollRafRef.current);
-    }
-    scrollRafRef.current = window.requestAnimationFrame(() => {
-      const target = scrollRef.current;
-      if (!target) return;
-      target.scrollTop = target.scrollHeight;
-      scrollRafRef.current = null;
-    });
-  }, [messages]);
+    const conversationId = (activeConversation?.id || "").trim();
+    if (!conversationId) return;
+    const assistantMessageId = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.id)?.id;
+    if (!assistantMessageId) return;
+    let cancelled = false;
+    void fetch(
+      `/api/v2/chat/pending-interactions?token=${encodeURIComponent(token)}&chatId=${encodeURIComponent(conversationId)}`,
+      {
+        headers: withAuthHeaders(),
+      }
+    )
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload || !Array.isArray(payload.interactions)) return;
+        const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messagesRef.current);
+        const recovered = payload.interactions
+          .map((item: unknown) => toPendingInteractionFromApi(item, assistantMessageId))
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => {
+            if (!item) return false;
+            if (item.type === "permission") {
+              const requestKey = (item.requestId || item.permission.toolUseId || "").trim().toLowerCase();
+              const toolNameKey = item.permission.toolName.trim().toLowerCase();
+              if (requestKey && (resolvedRequestIds.has(requestKey) || resolvedPermissionKeys.has(requestKey))) {
+                return false;
+              }
+              if (toolNameKey && resolvedPermissionKeys.has(toolNameKey)) return false;
+              return true;
+            }
+            const requestKey = item.requestId.trim().toLowerCase();
+            if (requestKey && resolvedRequestIds.has(requestKey)) return false;
+            return true;
+          })
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => Boolean(item));
+        if (recovered.length === 0) return;
+        setPendingInteractions((current) => {
+          const next = [...current];
+          for (const interaction of recovered) {
+            const key = getPendingInteractionKey(interaction);
+            if (!key) continue;
+            const withoutExisting = next.filter((item) => getPendingInteractionKey(item) !== key);
+            withoutExisting.push(interaction);
+            next.splice(0, next.length, ...withoutExisting);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Ignore pending interaction recovery failures and keep local state.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation?.id, token]);
 
   useEffect(() => {
-    return () => {
-      if (scrollRafRef.current !== null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-        scrollRafRef.current = null;
-      }
-      if (streamFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(streamFlushFrameRef.current);
-        streamFlushFrameRef.current = null;
-      }
-      if (reasoningFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-        reasoningFlushFrameRef.current = null;
-      }
-    };
-  }, []);
+    const activeId = activeConversation?.id || "";
+    if (!activeId) {
+      setContextUsageSnapshot(null);
+      return;
+    }
+    const activeMessages = activeConversation?.messages ?? [];
+    if (activeMessages.length === 0) {
+      // New/empty conversation should always start from a clean context usage state.
+      setContextUsageSnapshot(null, activeId, model);
+      return;
+    }
+    const cachedUsage = getCachedContextUsage(activeId, model);
+    if (cachedUsage) {
+      setContextUsageSnapshot(cachedUsage, activeId, model);
+      return;
+    }
+    // Recover from the active conversation source of truth instead of local ref,
+    // to avoid stale ref timing causing context usage to appear missing on history switch.
+    const recoveredUsage = getLatestContextUsageFromMessages(activeMessages, model);
+    setContextUsageSnapshot(recoveredUsage || null, activeId, model);
+  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot]);
+
+
+
+
 
   const prepareUploadFiles = useCallback(
     async (pickedFiles: ChatInputFile[]) => {
       if (pickedFiles.length === 0) return [] as UploadedFileArtifact[];
 
       const conversation = await ensureConversation();
-      const uploadChatId = conversation?.id ?? activeConversation?.id ?? createId();
+      const uploadChatId = conversation?.id ?? activeConversation?.id ?? createChatId();
 
       const uploadedFiles = await uploadChatFiles({
         token,
         chatId: uploadChatId,
         files: pickedFiles,
       });
-      const parsedFiles =
-        uploadedFiles.length > 0
-          ? await parseChatFiles({
-              files: uploadedFiles,
-            }).catch(() => uploadedFiles)
-          : uploadedFiles;
 
-      const withPreviewUrls = parsedFiles.map((file) => ({
-        ...file,
-        previewUrl: file.publicUrl
-          ? buildPreviewUrl({
-              publicUrl: file.publicUrl,
-            })
-          : undefined,
-        downloadUrl: file.storagePath
-          ? buildDownloadUrl({
-              storagePath: file.storagePath,
-            })
-          : undefined,
-      }));
+      const withPreviewUrls = await Promise.all(
+        uploadedFiles.map(async (file) => {
+          const signedPreviewUrl = file.storagePath
+            ? await getPresignedChatFileGetUrl({
+                token,
+                key: file.storagePath,
+              }).catch(() => "")
+            : "";
+          return {
+            ...file,
+            previewUrl:
+              signedPreviewUrl ||
+              (file.publicUrl
+                ? buildPreviewUrl({
+                    publicUrl: file.publicUrl,
+                  })
+                : undefined),
+            downloadUrl: file.storagePath
+              ? buildDownloadUrl({
+                  storagePath: file.storagePath,
+                  token,
+                  chatId: uploadChatId,
+                })
+              : undefined,
+          };
+        })
+      );
 
-      return withPreviewUrls.length > 0 ? await hydrateArtifactsMarkdown(withPreviewUrls) : withPreviewUrls;
+      if (onFilesUpdated) {
+        const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
+          headers: withAuthHeaders(),
+        }).catch(() => null);
+        if (response?.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { files?: unknown };
+          const normalized = normalizeProjectFiles(payload.files);
+          if (normalized) onFilesUpdated(normalized);
+        }
+      }
+
+      return withPreviewUrls;
     },
-    [activeConversation?.id, ensureConversation, token]
+    [activeConversation?.id, ensureConversation, onFilesUpdated, token]
   );
 
   const handleSend = useCallback(
@@ -581,35 +891,83 @@ const ChatPanel = ({
       payload: ChatInputSubmitPayload,
       options?: {
         echoUserMessage?: boolean;
+        persistIncomingMessages?: boolean;
+        continueAssistantMessageId?: string;
       }
     ) => {
       const text = payload.text.trim();
-      if ((text.length === 0 && payload.files.length === 0 && !payload.selectedFilePaths?.length) || isSending)
-        return;
+      const fallbackArtifacts = toFileArtifacts(payload.files);
+      const uploadedArtifacts =
+        payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
+      const selectedPathArtifacts = toSelectedPathArtifacts({
+        paths: payload.selectedFilePaths || [],
+        token,
+        chatId: activeConversation?.id || undefined,
+      });
+      const dedupeKey = (file: UploadedFileArtifact) => {
+        if (file.storagePath) return `path:${normalizeAttachmentWorkspacePath(file.storagePath)}`;
+        if (file.publicUrl) return `url:${file.publicUrl}`;
+        if (file.id) return `id:${file.id}`;
+        return `name:${file.name}`;
+      };
+      const seenArtifactKeys = new Set<string>();
+      const finalArtifacts: UploadedFileArtifact[] = [];
+      [...selectedPathArtifacts, ...uploadedArtifacts].forEach((file) => {
+        const key = dedupeKey(file);
+        if (seenArtifactKeys.has(key)) return;
+        seenArtifactKeys.add(key);
+        finalArtifacts.push(file);
+      });
+      const hasArtifacts = finalArtifacts.length > 0;
+      if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
+      const persistIncomingMessages = options?.persistIncomingMessages ?? true;
+      const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
+
+      if (payload.planQuestionResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planQuestionResponse.requestId });
+      }
+      if (payload.planModeApprovalResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planModeApprovalResponse.requestId });
+      }
+      if (payload.permissionApprovalResponse) {
+        clearPendingInteraction({
+          requestId: payload.permissionApprovalResponse.requestId,
+          toolUseId: payload.permissionApprovalResponse.toolUseId,
+          toolName: payload.permissionApprovalResponse.toolName,
+        });
+      }
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
+      const effectiveMode: "default" | "plan" =
+        payload.planModeApprovalResponse?.decision === "approve"
+          ? payload.planModeApprovalResponse.action === "enter"
+            ? "plan"
+            : "default"
+          : chatMode;
 
       const displayText =
         text ||
         (payload.selectedFilePaths?.length ? `已选择 ${payload.selectedFilePaths.length} 个文件` : "") ||
-        `已上传 ${payload.files.length} 个文件`;
+        `已上传 ${finalArtifacts.length} 个文件`;
       const nextConversationTitle = buildConversationTitle(text);
+      const userCreatedAt = new Date().toISOString();
 
-      const userMessageId = createId();
-      const fallbackArtifacts = toFileArtifacts(payload.files);
-      const finalArtifacts =
-        payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
+      const userMessageId = createDataId();
       if (echoUserMessage) {
+        shouldAutoScrollRef.current = true;
         setMessages((prev) => [
           ...prev,
           {
+            type: "user",
             role: "user",
             content: displayText,
             id: userMessageId,
+            time: userCreatedAt,
+            subtype: effectiveMode === "plan" ? "plan_user" : "user",
             artifact:
-              payload.files.length > 0
+              hasArtifacts
                 ? {
                     files: finalArtifacts,
                   }
@@ -618,14 +976,10 @@ const ChatPanel = ({
         ]);
       }
 
-      const filePrompt =
-        payload.uploadedFiles.length > 0
-          ? buildFilePromptFromArtifacts(payload.uploadedFiles)
-          : await buildFilePrompt(payload.files);
       const imageInputParts = await getImageInputParts(finalArtifacts);
 
-      if (echoUserMessage && conversationId && nextConversationTitle) {
-        updateConversationTitle(conversationId, nextConversationTitle);
+      if (echoUserMessage && conversationId) {
+        updateConversationTitle(conversationId, nextConversationTitle || "历史记录");
       }
 
       const userBubbleContent = buildUserBubbleContent({
@@ -634,20 +988,32 @@ const ChatPanel = ({
         selectedSkills: payload.selectedSkills || (payload.selectedSkill ? [payload.selectedSkill] : undefined),
         selectedFilePaths: payload.selectedFilePaths,
       });
+      const userContentBlocks = toUserMessageContentBlocks({
+        text: userBubbleContent || displayText,
+        artifacts: finalArtifacts,
+      });
 
       const userMessage: ConversationMessage = {
+        type: "user",
+        subtype: effectiveMode === "plan" ? "plan_user" : "user",
         role: "user",
-        content: userBubbleContent || displayText,
+        content: userContentBlocks.length > 0 ? userContentBlocks : userBubbleContent || displayText,
         id: userMessageId,
-        artifact: payload.files.length > 0 ? { files: finalArtifacts } : undefined,
-        additional_kwargs: filePrompt
-          ? {
-              filePrompt,
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
-            }
-          : payload.selectedFilePaths
-          ? { selectedFilePaths: payload.selectedFilePaths }
-          : undefined,
+        time: userCreatedAt,
+        artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
+        additional_kwargs: {
+          ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+            : {}),
+        },
       };
 
       if (echoUserMessage) {
@@ -659,6 +1025,7 @@ const ChatPanel = ({
         );
       }
       setIsSending(true);
+      setContextStatus("pending");
 
       const requestMessage: ConversationMessage = {
         ...userMessage,
@@ -667,157 +1034,177 @@ const ChatPanel = ({
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-          ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+            : {}),
         },
       };
+      const continuedAssistantMessage = continueAssistantMessageId
+        ? messagesRef.current.find(
+            (item) => item.id === continueAssistantMessageId && item.role === "assistant"
+          ) || null
+        : null;
+      const isInteractionContinuation = Boolean(
+        payload.planQuestionResponse || payload.planModeApprovalResponse || payload.permissionApprovalResponse
+      );
+      const assistantMessageId = continuedAssistantMessage?.id || createDataId();
+      const assistantCreatedAt = continuedAssistantMessage?.time || new Date().toISOString();
+      const existingAssistantContent = continuedAssistantMessage
+        ? extractText(continuedAssistantMessage.content)
+        : "";
+      const existingAssistantKwargs =
+        continuedAssistantMessage?.additional_kwargs &&
+        typeof continuedAssistantMessage.additional_kwargs === "object"
+          ? (continuedAssistantMessage.additional_kwargs as Record<string, unknown>)
+          : {};
+      const existingAssistantReasoning =
+        !isInteractionContinuation && typeof existingAssistantKwargs.reasoning_text === "string"
+          ? existingAssistantKwargs.reasoning_text
+          : "";
 
-      const assistantMessageId = createId();
-      streamingTextRef.current = "";
-      streamingReasoningRef.current = "";
-      if (streamFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(streamFlushFrameRef.current);
-        streamFlushFrameRef.current = null;
+      const requestMessagesForApi = [requestMessage];
+      console.log("[skill-debug][chatpanel-send]", {
+        selectedSkillsState: selectedSkills,
+        payloadSelectedSkill: payload.selectedSkill || null,
+        payloadSelectedSkills: payload.selectedSkills || [],
+        requestMessageSelectedSkill:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkill" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkill
+            : null,
+        requestMessageSelectedSkills:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkills" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkills
+            : [],
+      });
+      if (continuedAssistantMessage && isInteractionContinuation) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMessageId) return msg;
+            const kwargs =
+              msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                ? (msg.additional_kwargs as Record<string, unknown>)
+                : {};
+            const sdkMessage =
+              kwargs.sdkMessage && typeof kwargs.sdkMessage === "object"
+                ? (kwargs.sdkMessage as Record<string, unknown>)
+                : null;
+            const sdkPayload =
+              sdkMessage?.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : null;
+            const content = Array.isArray(sdkPayload?.content)
+              ? (sdkPayload?.content as unknown[]).filter(
+                  (item) =>
+                    !(
+                      item &&
+                      typeof item === "object" &&
+                      (item as Record<string, unknown>).type === "thinking"
+                    )
+                )
+              : [];
+            return {
+              ...msg,
+              additional_kwargs: {
+                ...kwargs,
+                reasoning_text: "",
+                reasoning_content: "",
+                ...(sdkMessage
+                  ? {
+                      sdkMessage: {
+                        ...sdkMessage,
+                        message: {
+                          ...(sdkPayload || {}),
+                          role: (sdkPayload?.role as string) || "assistant",
+                          content,
+                        },
+                      },
+                    }
+                  : {}),
+              },
+            };
+          })
+        );
       }
-      if (reasoningFlushFrameRef.current !== null) {
-        window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-        reasoningFlushFrameRef.current = null;
-      }
+      let assistantFailureText: string | null = null;
+      streamingTextRef.current = existingAssistantContent;
+      streamingReasoningRef.current = existingAssistantReasoning;
+      cancelPendingFlushes();
+      shouldAutoScrollRef.current = true;
       setStreamingMessageId(assistantMessageId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "",
-          id: assistantMessageId,
-        },
-      ]);
+      if (!continuedAssistantMessage) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "assistant",
+            subtype: effectiveMode === "plan" ? "plan_result" : "result",
+            role: "assistant",
+            content: "",
+            id: assistantMessageId,
+            time: assistantCreatedAt,
+          },
+        ]);
+      }
 
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
       streamingConversationIdRef.current = conversationId ?? null;
+      const updateAssistantMetadata = (
+        updater: (current: Record<string, unknown>) => Record<string, unknown>
+      ) => {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMessageId) return msg;
+            const current =
+              msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                ? msg.additional_kwargs
+                : {};
+            return {
+              ...msg,
+              additional_kwargs: updater(current),
+            };
+          })
+        );
+      };
       try {
-        const updateAssistantMetadata = (
-          updater: (current: Record<string, unknown>) => Record<string, unknown>
-        ) => {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== assistantMessageId) return msg;
-              const current =
-                msg.additional_kwargs && typeof msg.additional_kwargs === "object"
-                  ? msg.additional_kwargs
-                  : {};
-              return {
-                ...msg,
-                additional_kwargs: updater(current),
-              };
-            })
-          );
-        };
-
-        const upsertToolMessage = (
-          id: string,
-          nextPartial: { toolName?: string; params?: string; response?: string }
-        ) => {
+        const appendSdkBlock = (block: Record<string, unknown>) => {
           updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.toolDetails)
-              ? (current.toolDetails as Array<{
-                  id?: string;
-                  toolName?: string;
-                  params?: string;
-                  response?: string;
-                }>)
+            const sdkMessage =
+              current.sdkMessage && typeof current.sdkMessage === "object"
+                ? (current.sdkMessage as Record<string, unknown>)
+                : { type: "assistant", message: { role: "assistant", content: [] as unknown[] } };
+            const sdkPayload =
+              sdkMessage.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : { role: "assistant", content: [] as unknown[] };
+            const content = Array.isArray(sdkPayload.content)
+              ? (sdkPayload.content as unknown[])
               : [];
-            const index = list.findIndex((item) => item.id === id);
-            const base = index >= 0 ? list[index] : { id, params: "", response: "" };
-            const merged = {
-              ...base,
-              id,
-              toolName: nextPartial.toolName ?? base.toolName,
-              params: `${base.params || ""}${nextPartial.params || ""}`,
-              response: nextPartial.response ?? base.response,
-            };
-            const next = [...list];
-            if (index >= 0) {
-              next[index] = merged;
-            } else {
-              next.push(merged);
-            }
             return {
               ...current,
-              toolDetails: next,
-            };
-          });
-        };
-        const appendTimelineText = (type: "reasoning" | "answer", text: string) => {
-          if (!text) return;
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const last = list[list.length - 1];
-            if (last && last.type === type && typeof last.text === "string") {
-              const next = [...list];
-              next[next.length - 1] = {
-                ...last,
-                text: `${last.text}${text}`,
-              };
-              return { ...current, timeline: next };
-            }
-            return {
-              ...current,
-              timeline: [...list, { type, text }],
-            };
-          });
-        };
-        const upsertTimelineTool = (nextPartial: {
-          id?: string;
-          toolName?: string;
-          params?: string;
-          response?: string;
-        }) => {
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const toolId = typeof nextPartial.id === "string" ? nextPartial.id : "";
-            if (toolId) {
-              const index = list.findIndex((item) => item.type === "tool" && item.id === toolId);
-              if (index >= 0) {
-                const target = list[index];
-                const next = [...list];
-                next[index] = {
-                  ...target,
-                  id: toolId,
-                  toolName:
-                    typeof nextPartial.toolName === "string" ? nextPartial.toolName : target.toolName,
-                  params: typeof nextPartial.params === "string" ? nextPartial.params : target.params,
-                  response:
-                    typeof nextPartial.response === "string" ? nextPartial.response : target.response,
-                };
-                return { ...current, timeline: next };
-              }
-            }
-            return {
-              ...current,
-              timeline: [
-                ...list,
-                {
-                  type: "tool",
-                  id: toolId || undefined,
-                  toolName: nextPartial.toolName || "",
-                  params: nextPartial.params || "",
-                  response: nextPartial.response || "",
+              sdkMessage: {
+                ...sdkMessage,
+                message: {
+                  ...sdkPayload,
+                  role: sdkPayload.role || "assistant",
+                  content: mergeSdkBlock(content, block),
                 },
-              ],
+              },
             };
           });
         };
 
         if (!completionsStream) {
-          const historyMessages = [...messages, requestMessage].map((message) => ({
-            role: message.role,
-            content: extractText(message.content),
-          }));
           const response = await fetch(completionsPath, {
             method: "POST",
             headers: {
@@ -827,13 +1214,18 @@ const ChatPanel = ({
             signal: abortCtrl.signal,
             body: JSON.stringify({
               token,
-              messages: historyMessages,
+              messages: [requestMessage],
+              permissionMode: effectiveMode,
+              persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
+              ...(model.toLowerCase().includes("kimi")
+                ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
+                : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             }),
           });
@@ -841,6 +1233,33 @@ const ChatPanel = ({
           if (!response.ok) {
             throw new Error(
               typeof responsePayload?.error === "string" ? responsePayload.error : "请求失败"
+            );
+          }
+          const contextWindowPayload =
+            responsePayload?.contextWindow && typeof responsePayload.contextWindow === "object"
+              ? (responsePayload.contextWindow as ContextWindowUsage)
+              : null;
+          if (contextWindowPayload) {
+            setContextUsageSnapshot(
+              contextWindowPayload,
+              conversationId || null,
+              typeof contextWindowPayload.model === "string" ? contextWindowPayload.model : model
+            );
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id !== assistantMessageId) return msg;
+                const kwargs =
+                  msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                    ? msg.additional_kwargs
+                    : {};
+                return {
+                  ...msg,
+                  additional_kwargs: {
+                    ...kwargs,
+                    contextWindow: contextWindowPayload,
+                  },
+                };
+              })
             );
           }
           const assistantText =
@@ -853,128 +1272,602 @@ const ChatPanel = ({
               : "";
           streamingTextRef.current = assistantText;
           streamingReasoningRef.current = assistantReasoning;
+          if (assistantText || assistantReasoning) {
+            shouldAutoScrollRef.current = true;
+          }
 
           if (onFilesUpdated) {
             const files = toUpdatedFilesMap(responsePayload?.files);
             if (files) onFilesUpdated(files);
           }
         } else {
+          const streamEventQueue: unknown[] = [];
+          let isDrainingStreamQueue = false;
+          const processSseEventInOrder = (item: unknown) => {
+            if (abortCtrl.signal.aborted) return;
+            if (!item || typeof item !== "object") return;
+            const event = (item as { event?: unknown }).event;
+            const flushPendingAssistantStreams = () => {
+              if (streamingTextRef.current) {
+                flushAssistantText(assistantMessageId, streamingTextRef.current);
+              }
+              if (streamingReasoningRef.current) {
+                flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
+              }
+            };
+
+            if (event === SdkStreamEventEnum.streamEvent) {
+              const payload = item as {
+                subtype?: unknown;
+                text?: unknown;
+                id?: unknown;
+                name?: unknown;
+                agent_type?: unknown;
+                description?: unknown;
+                prompt?: unknown;
+                input?: unknown;
+                content?: unknown;
+                files?: unknown;
+                parent_agent_tool_use_id?: unknown;
+                is_error?: unknown;
+                trigger?: unknown;
+                pre_tokens?: unknown;
+              };
+              const subtype = typeof payload.subtype === "string" ? payload.subtype : "";
+              if (subtype === "thinking_delta" && typeof payload.text === "string" && payload.text) {
+                shouldAutoScrollRef.current = true;
+                streamingReasoningRef.current = `${streamingReasoningRef.current}${payload.text}`;
+                scheduleAssistantReasoningFlush(assistantMessageId);
+                appendSdkBlock({ type: "thinking", thinking: payload.text });
+                return;
+              }
+              if (subtype === "text_delta" && typeof payload.text === "string" && payload.text) {
+                shouldAutoScrollRef.current = true;
+                streamingTextRef.current = `${streamingTextRef.current}${payload.text}`;
+                scheduleAssistantTextFlush(assistantMessageId);
+                appendSdkBlock({ type: "text", text: payload.text });
+                return;
+              }
+              if (
+                (subtype === "tool_use_start" || subtype === "agent_tool_use_start") &&
+                typeof payload.id === "string"
+              ) {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
+                });
+                return;
+              }
+              if (subtype === "agent_start" && typeof payload.id === "string") {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "agent_start",
+                  id: payload.id,
+                  ...(typeof payload.agent_type === "string" ? { agent_type: payload.agent_type } : {}),
+                  ...(typeof payload.description === "string" ? { description: payload.description } : {}),
+                  ...(typeof payload.prompt === "string" ? { prompt: payload.prompt } : {}),
+                });
+                return;
+              }
+              if (
+                subtype === "agent_error" &&
+                typeof payload.id === "string"
+              ) {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content:
+                    typeof payload.content === "string"
+                      ? payload.content
+                      : typeof payload.text === "string"
+                      ? payload.text
+                      : "Agent execution failed",
+                  is_error: true,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+                });
+                return;
+              }
+              if (
+                (subtype === "tool_use_delta" || subtype === "agent_tool_use_delta") &&
+                typeof payload.id === "string"
+              ) {
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
+                });
+                return;
+              }
+              if (
+                (subtype === "tool_result" || subtype === "agent_tool_result") &&
+                typeof payload.id === "string"
+              ) {
+                const responseText =
+                  typeof payload.content === "string"
+                    ? payload.content
+                    : JSON.stringify(payload.content ?? "", null, 2);
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content: responseText,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
+                  ...(payload.is_error === true ? { is_error: true } : {}),
+                });
+                const parsedPayload = parseToolPayload(responseText, responseText);
+                if (parsedPayload) {
+                  const parsed = parsedPayload as {
+                    requiresPermissionApproval?: boolean;
+                    permission?: PermissionApprovalPayload;
+                  };
+                  const permission = parsed.permission;
+                  if (
+                    parsed.requiresPermissionApproval === true &&
+                    permission &&
+                    typeof permission === "object" &&
+                    typeof permission.toolName === "string"
+                  ) {
+                    const toolUseId =
+                      typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : "";
+                    upsertPendingInteraction({
+                      type: "permission",
+                      requestId: toolUseId || undefined,
+                      assistantMessageId,
+                      permission: {
+                        requestId: toolUseId || undefined,
+                        toolName: permission.toolName,
+                        ...(toolUseId ? { toolUseId } : {}),
+                        ...(typeof permission.reason === "string"
+                          ? { reason: permission.reason }
+                          : {}),
+                      },
+                    });
+                    updateAssistantMetadata((current) => {
+                      const interactionKey = toolUseId || permission.toolName.trim().toLowerCase();
+                      const currentPermissionState =
+                        current.permissionApprovalState &&
+                        typeof current.permissionApprovalState === "object" &&
+                        !Array.isArray(current.permissionApprovalState)
+                          ? (current.permissionApprovalState as Record<string, unknown>)
+                          : {};
+
+                      const nextPermissionState: Record<string, unknown> = {};
+                      for (const [key, value] of Object.entries(currentPermissionState)) {
+                        if (!value || typeof value !== "object" || Array.isArray(value)) {
+                          nextPermissionState[key] = value;
+                          continue;
+                        }
+                        const record = value as Record<string, unknown>;
+                        if (record.status === "pending") {
+                          nextPermissionState[key] = { ...record, status: "superseded" };
+                        } else {
+                          nextPermissionState[key] = record;
+                        }
+                      }
+                      if (interactionKey) {
+                        nextPermissionState[interactionKey] = {
+                          toolName: permission.toolName,
+                          status: "pending",
+                          ...(toolUseId ? { toolUseId } : {}),
+                        };
+                      }
+
+                      return {
+                        ...current,
+                        permissionApproval: {
+                          toolName: permission.toolName,
+                          ...(toolUseId ? { toolUseId } : {}),
+                          reason:
+                            typeof permission.reason === "string"
+                              ? permission.reason
+                              : undefined,
+                        },
+                        permissionApprovalState: nextPermissionState,
+                      };
+                    });
+                  }
+                }
+              }
+              if (subtype === "files_updated" && onFilesUpdated) {
+                const files = toUpdatedFilesMap(payload.files);
+                if (files) onFilesUpdated(files);
+                return;
+              }
+              if (subtype === "compact_boundary") {
+                const compactMeta = {
+                  trigger:
+                    typeof payload.trigger === "string" && payload.trigger.trim()
+                      ? payload.trigger.trim()
+                      : "auto",
+                  ...(typeof payload.pre_tokens === "number" && Number.isFinite(payload.pre_tokens)
+                    ? { preTokens: Math.max(0, Math.floor(payload.pre_tokens)) }
+                    : {}),
+                };
+                appendSdkBlock({
+                  type: "compact_boundary",
+                  compact_metadata: compactMeta,
+                });
+                updateAssistantMetadata((current) => ({
+                  ...current,
+                  compactEvent: compactMeta,
+                }));
+                return;
+              }
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.control) {
+              const payload = item as { interaction?: unknown };
+              const interaction = isPlanInteractionEnvelope(payload.interaction)
+                ? payload.interaction
+                : undefined;
+              if (!interaction) return;
+              if (interaction.type === "plan_question") {
+                const questionPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as { questions?: unknown }).questions
+                    : undefined;
+                const questions = Array.isArray(questionPayload)
+                  ? questionPayload
+                      .filter((question): question is {
+                        header?: string;
+                        id: string;
+                        question: string;
+                        options?: Array<{ label: string; description?: string }>;
+                      } => {
+                        if (!question || typeof question !== "object" || Array.isArray(question)) {
+                          return false;
+                        }
+                        const record = question as Record<string, unknown>;
+                        return (
+                          typeof record.id === "string" &&
+                          Boolean(record.id.trim()) &&
+                          typeof record.question === "string" &&
+                          Boolean(record.question.trim())
+                        );
+                      })
+                      .map((question) => ({
+                        header: question.header,
+                        id: question.id,
+                        question: question.question,
+                        options: Array.isArray(question.options)
+                          ? question.options
+                              .filter(
+                                (option): option is { label: string; description?: string } =>
+                                  Boolean(
+                                    option &&
+                                      typeof option === "object" &&
+                                      !Array.isArray(option) &&
+                                      typeof (option as { label?: unknown }).label === "string"
+                                  )
+                              )
+                              .map((option) => ({
+                                label: option.label,
+                                ...(typeof option.description === "string"
+                                  ? { description: option.description }
+                                  : {}),
+                              }))
+                          : [],
+                      }))
+                  : [];
+                if (questions.length > 0) {
+                  upsertPendingInteraction({
+                    type: "plan_questions",
+                    requestId: interaction.requestId,
+                    assistantMessageId,
+                    questions,
+                  });
+                }
+              }
+              if (interaction.type === "plan_approval") {
+                const approvalPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as Record<string, unknown>)
+                    : {};
+                upsertPendingInteraction({
+                  type: "plan_approval",
+                  requestId: interaction.requestId,
+                  assistantMessageId,
+                  approval: {
+                    requestId: interaction.requestId,
+                    action: approvalPayload.action === "enter" ? "enter" : "exit",
+                    ...(typeof approvalPayload.title === "string"
+                      ? { title: approvalPayload.title }
+                      : {}),
+                    ...(typeof approvalPayload.description === "string"
+                      ? { description: approvalPayload.description }
+                      : {}),
+                  },
+                });
+              }
+              updateAssistantMetadata((current) => {
+                const controlEventsBase = Array.isArray(current.controlEvents)
+                  ? (current.controlEvents as unknown[])
+                  : [];
+                const controlEvents = [
+                  ...controlEventsBase.filter((entry) => {
+                    if (!isPlanInteractionEnvelope(entry)) return true;
+                    return !(entry.type === interaction.type && entry.requestId === interaction.requestId);
+                  }),
+                  interaction,
+                ];
+                const currentInteractionState =
+                  current.planModeInteractionState &&
+                  typeof current.planModeInteractionState === "object" &&
+                  !Array.isArray(current.planModeInteractionState)
+                    ? (current.planModeInteractionState as Record<string, unknown>)
+                    : {};
+                const nextInteractionState: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(currentInteractionState)) {
+                  if (!value || typeof value !== "object" || Array.isArray(value)) {
+                    nextInteractionState[key] = value;
+                    continue;
+                  }
+                  const record = value as Record<string, unknown>;
+                  if (record.type === interaction.type && record.status === "pending") {
+                    nextInteractionState[key] = { ...record, status: "superseded" };
+                  } else {
+                    nextInteractionState[key] = record;
+                  }
+                }
+                const next: Record<string, unknown> = {
+                  ...current,
+                  controlEvents,
+                  planModeProtocolVersion: 2,
+                  planModeInteractionState: {
+                    ...nextInteractionState,
+                    [interaction.requestId]: {
+                      type: interaction.type,
+                      status: "pending",
+                    },
+                  },
+                };
+                if (interaction.type === "plan_progress") {
+                  const content = interaction.payload as PlanProgressInteractionPayload;
+                  next.planProgress = {
+                    explanation: content.explanation,
+                    plan: content.plan,
+                  };
+                }
+                if (interaction.type === "plan_approval") {
+                  next.planModeApproval = {
+                    requestId: interaction.requestId,
+                    ...(interaction.payload as Record<string, unknown>),
+                  };
+                }
+                return next;
+              });
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.status) {
+              const payload = item as {
+                phase?: unknown;
+                toolName?: unknown;
+                text?: unknown;
+                tokenBudget?: unknown;
+              };
+              if (payload.phase === "tool_error") {
+                appendSdkBlock({
+                  type: "text",
+                  text: `\n[tool-error] ${typeof payload.toolName === "string" ? payload.toolName : "tool"}\n`,
+                });
+              }
+              if (payload.text === "token_budget" && payload.tokenBudget) {
+                const budget = payload.tokenBudget;
+                if (budget && typeof budget === "object" && !Array.isArray(budget)) {
+                  const record = budget as Record<string, unknown>;
+                  const usedTokens = record.usedTokens;
+                  const maxContext = record.maxContext;
+                  const remainingTokens = record.remainingTokens;
+                  const usedPercent = record.usedPercent;
+                  if (
+                    typeof usedTokens === "number" &&
+                    Number.isFinite(usedTokens) &&
+                    typeof maxContext === "number" &&
+                    Number.isFinite(maxContext) &&
+                    typeof remainingTokens === "number" &&
+                    Number.isFinite(remainingTokens) &&
+                    typeof usedPercent === "number" &&
+                    Number.isFinite(usedPercent)
+                  ) {
+                    const contextWindowPayload: ContextWindowUsage = {
+                      model:
+                        typeof record.model === "string" && record.model.trim()
+                          ? record.model.trim()
+                          : model,
+                      usedTokens,
+                      maxContext,
+                      remainingTokens,
+                      usedPercent,
+                      totalPromptTokens:
+                        typeof record.totalPromptTokens === "number" &&
+                        Number.isFinite(record.totalPromptTokens)
+                          ? record.totalPromptTokens
+                          : undefined,
+                      currentInputTokens:
+                        typeof record.currentInputTokens === "number" &&
+                        Number.isFinite(record.currentInputTokens)
+                          ? record.currentInputTokens
+                          : undefined,
+                    };
+                    setContextUsageSnapshot(
+                      contextWindowPayload,
+                      conversationId || activeConversation?.id || null,
+                      contextWindowPayload.model
+                    );
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      contextWindow: contextWindowPayload,
+                    }));
+                  }
+                }
+              }
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.message) {
+              const payload = item as { message?: unknown };
+              if (!isSdkLikeMessage(payload.message)) return;
+              const sdkMessage = payload.message;
+              if ((sdkMessage.message?.role || "assistant") !== "assistant") return;
+              const contentText = sdkContentToText(sdkMessage.message?.content);
+              // In streaming mode, delta text is the source of truth for visible content.
+              // Some backends may serialize final content with escaped newlines in `event: message`,
+              // which can collapse formatting if we overwrite the already-streamed body.
+              if (contentText && !streamingTextRef.current) {
+                shouldAutoScrollRef.current = true;
+                streamingTextRef.current = contentText;
+                flushAssistantText(assistantMessageId, contentText);
+              }
+              updateAssistantMetadata((current) => {
+                const currentSdkMessage =
+                  current.sdkMessage && typeof current.sdkMessage === "object"
+                    ? (current.sdkMessage as Record<string, unknown>)
+                    : null;
+                const currentPayload =
+                  currentSdkMessage?.message && typeof currentSdkMessage.message === "object"
+                    ? (currentSdkMessage.message as Record<string, unknown>)
+                    : null;
+                const currentContent = Array.isArray(currentPayload?.content)
+                  ? (currentPayload.content as unknown[])
+                  : [];
+
+                const incomingPayload =
+                  sdkMessage.message && typeof sdkMessage.message === "object"
+                    ? (sdkMessage.message as Record<string, unknown>)
+                    : null;
+                const incomingContent = Array.isArray(incomingPayload?.content)
+                  ? (incomingPayload.content as unknown[])
+                  : [];
+                const hasCompactBoundaryInCurrent = currentContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
+                const hasCompactBoundaryInIncoming = incomingContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
+
+              if (incomingContent.length === 0) {
+                return {
+                  ...current,
+                  sdkMessage:
+                    currentContent.length > 0
+                      ? {
+                          ...sdkMessage,
+                          message: {
+                            ...(incomingPayload || {}),
+                            role: (incomingPayload?.role as string) || "assistant",
+                            content: currentContent,
+                          },
+                        }
+                      : sdkMessage,
+                };
+              }
+
+                const toolInputById = new Map<string, unknown>();
+                for (const block of currentContent) {
+                  if (!block || typeof block !== "object") continue;
+                  const record = block as Record<string, unknown>;
+                  if (record.type !== "tool_use" || typeof record.id !== "string") continue;
+                  if (record.input !== undefined) {
+                    toolInputById.set(record.id, record.input);
+                  }
+                }
+
+                const mergeToolInput = (blocks: unknown[]) =>
+                  blocks.map((block) => {
+                    if (!block || typeof block !== "object") return block;
+                    const record = block as Record<string, unknown>;
+                    if (record.type !== "tool_use" || typeof record.id !== "string") return block;
+                    if (record.input !== undefined) return block;
+                    if (!toolInputById.has(record.id)) return block;
+                    return {
+                      ...record,
+                      input: toolInputById.get(record.id),
+                    };
+                  });
+
+                // Prefer the stream-assembled sdk blocks to avoid duplicated tool rows when
+                // both `stream_event` and final `message` include the same sequence.
+                const mergedContent = (() => {
+                  if (currentContent.length === 0) return mergeToolInput(incomingContent);
+                  // Keep stream-assembled compact boundaries when the final SDK message omits them.
+                  if (hasCompactBoundaryInCurrent && !hasCompactBoundaryInIncoming) {
+                    return mergeToolInput(currentContent);
+                  }
+                  return mergeToolInput(currentContent);
+                })();
+
+                return {
+                  ...current,
+                  sdkMessage: {
+                    ...sdkMessage,
+                    message: {
+                      ...(incomingPayload || {}),
+                      role: (incomingPayload?.role as string) || "assistant",
+                      content: mergedContent,
+                    },
+                  },
+                };
+              });
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.done) return;
+            if (event === SdkStreamEventEnum.error) return;
+          };
+          const enqueueSseEvent = (item: unknown) => {
+            streamEventQueue.push(item);
+            if (isDrainingStreamQueue) return;
+            isDrainingStreamQueue = true;
+            try {
+              while (streamEventQueue.length > 0) {
+                const next = streamEventQueue.shift();
+                processSseEventInOrder(next);
+              }
+            } finally {
+              isDrainingStreamQueue = false;
+            }
+          };
           await streamFetch({
             url: completionsPath,
             data: {
               token,
-              messages: [requestMessage],
+              messages: requestMessagesForApi,
               stream: true,
+              permissionMode: effectiveMode,
+              persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
+              ...(model.toLowerCase().includes("kimi")
+                ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
+                : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             },
             headers: withAuthHeaders(),
             abortCtrl,
             onMessage: (item) => {
-              if (abortCtrl.signal.aborted) return;
-              if (item.event === SseResponseEventEnum.answer) {
-                const answerPayload = item as { text?: string; reasoningText?: string };
-                if (answerPayload.reasoningText) {
-                  const reasoningText = answerPayload.reasoningText;
-                  streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
-                  scheduleAssistantReasoningFlush(assistantMessageId);
-                  appendTimelineText("reasoning", reasoningText);
-                }
-                if (answerPayload.text) {
-                  streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
-                  scheduleAssistantTextFlush(assistantMessageId);
-                  appendTimelineText("answer", answerPayload.text);
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolCall) {
-                const streamPayload = item as ToolStreamPayload;
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    params: "",
-                    response: "",
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                  });
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolParams) {
-                const streamPayload = item as ToolStreamPayload;
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                  });
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.toolResponse) {
-                const streamPayload = item as ToolStreamPayload;
-                if (streamPayload.id) {
-                  upsertToolMessage(streamPayload.id, {
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                    response: streamPayload.response || "",
-                  });
-                  upsertTimelineTool({
-                    id: streamPayload.id,
-                    toolName: streamPayload.toolName,
-                    params: streamPayload.params || "",
-                    response: streamPayload.response || "",
-                  });
-                }
-
-                if (streamPayload.response && onFilesUpdated) {
-                  try {
-                    const parsed = JSON.parse(streamPayload.response);
-                    const filesCandidate =
-                      (parsed as { files?: Record<string, { code: string }> }).files ||
-                      (parsed as { data?: { files?: Record<string, { code: string }> } }).data?.files;
-                    const files = toUpdatedFilesMap(filesCandidate);
-                    if (files && typeof files === "object") {
-                      onFilesUpdated(files);
-                    }
-                  } catch {
-                    return;
-                  }
-                }
-                return;
-              }
-              if (item.event === SseResponseEventEnum.flowNodeResponse) {
-                const streamPayload = item as FlowNodeResponsePayload;
-                updateAssistantMetadata((current) => {
-                  const currentResponseData = Array.isArray(current.responseData)
-                    ? current.responseData
-                    : [];
-                  return {
-                    ...current,
-                    responseData: [...currentResponseData, streamPayload],
-                  };
-                });
-                return;
-              }
-              if (item.event === SseResponseEventEnum.workflowDuration) {
-                const streamPayload = item as WorkflowDurationPayload;
-                if (typeof streamPayload.durationSeconds !== "number") return;
-                updateAssistantMetadata((current) => ({
-                  ...current,
-                  durationSeconds: streamPayload.durationSeconds,
-                }));
-              }
+              enqueueSseEvent(item);
             },
           });
         }
@@ -982,38 +1875,114 @@ const ChatPanel = ({
         if (abortCtrl.signal.aborted) {
           return;
         }
+        assistantFailureText = `请求失败: ${error instanceof Error ? error.message : "未知错误"}`;
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, content: `请求失败: ${error instanceof Error ? error.message : "未知错误"}` }
+              ? {
+                  ...msg,
+                  content: assistantFailureText,
+                  status: "error",
+                }
               : msg
           )
         );
       } finally {
-        if (streamFlushFrameRef.current !== null) {
-          window.cancelAnimationFrame(streamFlushFrameRef.current);
-          streamFlushFrameRef.current = null;
-        }
-        if (reasoningFlushFrameRef.current !== null) {
-          window.cancelAnimationFrame(reasoningFlushFrameRef.current);
-          reasoningFlushFrameRef.current = null;
-        }
+        cancelPendingFlushes();
         if (streamingTextRef.current) {
           flushAssistantText(assistantMessageId, streamingTextRef.current);
         }
         if (streamingReasoningRef.current) {
           flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
         }
+        // Do not synthesize client-side fake tool results.
+        // Missing tool closures must be emitted by backend protocol events.
+        if (conversationId) {
+          const persistedMessages = (() => {
+            const snapshot = messagesRef.current.map((item) => ({ ...item }));
+            if (!snapshot.some((item) => item.id === userMessage.id)) {
+              snapshot.push(userMessage);
+            }
+            const assistantIndex = snapshot.findIndex((item) => item.id === assistantMessageId);
+            const finalAssistantText = streamingTextRef.current.trim();
+            const finalReasoningText = streamingReasoningRef.current.trim();
+
+            if (assistantIndex >= 0) {
+              const assistant = snapshot[assistantIndex];
+              const kwargs =
+                assistant.additional_kwargs && typeof assistant.additional_kwargs === "object"
+                  ? assistant.additional_kwargs
+                  : {};
+              const hasPendingInteraction = hasPendingInteractionState(kwargs);
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
+              snapshot[assistantIndex] = {
+                ...assistant,
+                content:
+                  finalAssistantText ||
+                  extractText(assistant.content) ||
+                  assistantFailureText ||
+                  (hasPendingInteraction ? "" : "[已中断]"),
+                ...(assistantFailureText ? { status: "error" as const } : {}),
+                additional_kwargs: {
+                  ...kwargs,
+                  ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                  ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
+                },
+              };
+            } else if (finalAssistantText || finalReasoningText || assistantFailureText) {
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
+              snapshot.push({
+                role: "assistant",
+                id: assistantMessageId,
+                time: assistantCreatedAt,
+                content: finalAssistantText || assistantFailureText || "[已中断]",
+                ...(assistantFailureText ? { status: "error" as const } : {}),
+                additional_kwargs:
+                  finalReasoningText || recoveredContextUsage
+                    ? {
+                        ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                        ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
+                      }
+                    : undefined,
+              });
+            }
+
+            return snapshot;
+          })();
+          if (persistedMessages.length > 0) {
+            await replaceConversationMessages(token, conversationId, persistedMessages).catch(() => false);
+          }
+        }
         if (streamAbortRef.current === abortCtrl) {
           streamAbortRef.current = null;
           streamingConversationIdRef.current = null;
         }
+        if (conversationId && !contextUsageRef.current) {
+          const latestConversation = await getConversationById(token, conversationId, { model }).catch(() => null);
+          const recoveredUsage = latestConversation
+            ? getLatestContextUsageFromMessages(latestConversation.messages || [], model)
+            : null;
+          if (recoveredUsage) {
+            setContextUsageSnapshot(
+              recoveredUsage,
+              conversationId,
+              typeof recoveredUsage.model === "string" ? recoveredUsage.model : model
+            );
+          }
+        }
         setStreamingMessageId(null);
         setIsSending(false);
+        setContextStatus((prev) => {
+          if (prev !== "pending") return prev;
+          return contextUsageRef.current ? "ready" : "idle";
+        });
       }
     },
     [
       activeConversation?.id,
+      chatMode,
       ensureConversation,
       isSending,
       model,
@@ -1025,19 +1994,18 @@ const ChatPanel = ({
       token,
       updateConversationTitle,
       scheduleAssistantReasoningFlush,
+      setContextUsageSnapshot,
     ]
   );
 
   const handleStop = useCallback(() => {
-    const chatId = streamingConversationIdRef.current;
+    const chatId = streamingConversationIdRef.current || activeConversation?.id || null;
     const abortCtrl = streamAbortRef.current;
-    if (!abortCtrl) return;
-
-    // 立即停止前端流，确保按钮点击立刻生效
-    abortCtrl.abort(new Error("stop"));
-
+    if (abortCtrl && !abortCtrl.signal.aborted) {
+      // 立即停止前端流，确保按钮点击立刻生效
+      abortCtrl.abort(new Error("stop"));
+    }
     if (!chatId) return;
-    if (!completionsStream || completionsPath !== "/api/chat/completions") return;
 
     // 后端停止异步执行，避免网络慢导致前端停不下来
     const stopApiAbort = new AbortController();
@@ -1057,121 +2025,28 @@ const ChatPanel = ({
       .finally(() => {
         clearTimeout(timeout);
       });
-  }, [completionsPath, completionsStream, token]);
+  }, [activeConversation?.id, token]);
 
-  const handleRateMessage = useCallback(
-    async (messageId: string, nextRating: MessageRating) => {
-      const conversationId = activeConversation?.id;
-      if (!conversationId) return;
+  const { chatInteractionContextValue } = useChatPlanInteractions({
+    token,
+    conversationId: activeConversation?.id,
+    pendingInteraction: activePendingInteraction,
+    clearPendingInteraction,
+  });
 
-      let previous: MessageRating | undefined;
-      let resolved: MessageRating | undefined;
-
-      setMessageRatings((prev) => {
-        previous = prev[messageId];
-        resolved = previous === nextRating ? undefined : nextRating;
-        return {
-          ...prev,
-          [messageId]: resolved,
-        };
-      });
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              userFeedback: resolved,
-            },
-          };
-        })
-      );
-
-      try {
-        await updateMessageFeedback({
-          token,
-          conversationId,
-          messageId,
-          feedback: resolved,
-        });
-      } catch {
-        setMessageRatings((prev) => ({
-          ...prev,
-          [messageId]: previous,
-        }));
-        setMessages((prev) =>
-          prev.map((message) => {
-            if (message.id !== messageId) return message;
-            const kwargs =
-              message.additional_kwargs && typeof message.additional_kwargs === "object"
-                ? message.additional_kwargs
-                : {};
-            return {
-              ...message,
-              additional_kwargs: {
-                ...kwargs,
-                userFeedback: previous,
-              },
-            };
-          })
-        );
-      }
-    },
-    [activeConversation?.id, token]
-  );
-
-  const handleDeleteMessage = useCallback((messageId: string) => {
-    setMessages((prev) => prev.filter((message) => message.id !== messageId));
-  }, []);
-
-  const handleRegenerateMessage = useCallback(
-    async (assistantMessageId: string) => {
-      if (isSending) return;
-      const snapshot = [...messages];
-      const assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
-      if (assistantIndex < 0) return;
-
-      const previousUserMessage = [...snapshot.slice(0, assistantIndex)]
-        .reverse()
-        .find((message) => message.role === "user");
-      if (!previousUserMessage) return;
-
-      const text = extractText(previousUserMessage.content).trim();
-      if (!text) return;
-
-      setMessages((prev) => prev.slice(0, assistantIndex));
-      setMessageRatings((prev) => {
-        const next = { ...prev };
-        for (const message of snapshot.slice(assistantIndex)) {
-          if (!message.id) continue;
-          delete next[message.id];
-        }
-        return next;
-      });
-
-      await handleSend({
-        text,
-        files: [],
-        uploadedFiles: [],
-        selectedSkill: selectedSkills[0],
-        selectedSkills,
-        selectedFilePaths:
-          previousUserMessage.additional_kwargs &&
-          typeof previousUserMessage.additional_kwargs === "object" &&
-          Array.isArray((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
-            ? ((previousUserMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
-                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-      }, { echoUserMessage: false });
-    },
-    [handleSend, isSending, messages, selectedSkills]
-  );
+  const { handleRateMessage, handleDeleteMessage, handleRegenerateMessage, handleRewindLatestTurn } = useChatMessageActions({
+    token,
+    activeConversationId: activeConversation?.id,
+    isSending,
+    messages,
+    setMessages,
+    streamingMessageId,
+    setStreamingMessageId,
+    setMessageRatings,
+    selectedSkills,
+    handleSend,
+    onFilesUpdated,
+  });
 
   const activeConversationTitle = useMemo(
     () => activeConversation?.title || defaultHeaderTitle,
@@ -1184,141 +2059,142 @@ const ChatPanel = ({
 
   const handleCreateSkillViaChat = useCallback(() => {
     const projectToken = token.startsWith("skill-studio:") ? "" : token;
+    const params = new URLSearchParams();
+    const currentPath = typeof router.asPath === "string" ? router.asPath : "";
+    if (projectToken) params.set("projectToken", projectToken);
+    if (currentPath.startsWith("/") && !currentPath.startsWith("/skills/create")) {
+      params.set("returnTo", currentPath);
+    }
     void router.push(
-      projectToken
-        ? `/skills/create?projectToken=${encodeURIComponent(projectToken)}`
-        : "/skills/create"
+      params.toString() ? `/skills/create?${params.toString()}` : "/skills/create"
     );
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;
 
+  const chatPanelViewContextValue = useMemo(
+    () => ({
+      height,
+      t,
+      activeConversationId: activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messageCount: messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      onChangeModel: handleChangeModel,
+      onChangeMode: setChatMode,
+      onDeleteAllConversations: () => deleteAllConversations(),
+      onDeleteConversation: (id: string) => void deleteConversation(id),
+      onNewConversation: () => {
+        setContextUsageSnapshot(null);
+        void createNewConversation();
+      },
+      onSelectConversation: (id: string) => void loadConversation(id),
+      activeConversationTitle,
+      scrollRef,
+      onScroll: (event: { currentTarget: { scrollHeight: number; scrollTop: number; clientHeight: number } }) => {
+        const el = event.currentTarget;
+        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        shouldAutoScrollRef.current = distanceToBottom < 80;
+      },
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      onDeleteMessage: (messageId: string) => void handleDeleteMessage(messageId),
+      onRateMessage: (messageId: string, rating: MessageRating) => void handleRateMessage(messageId, rating),
+      onRegenerateMessage: (messageId: string) => void handleRegenerateMessage(messageId),
+      onRewindLatestTurn: () => void handleRewindLatestTurn(),
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      onChangeThinkingEnabled: handleChangeThinkingEnabled,
+      onChangeSelectedSkills: setSelectedSkills,
+      onUploadFiles: prepareUploadFiles,
+      onSend: handleSend,
+      onStop: handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      onCloseSkills: () => setIsSkillsOpen(false),
+      token,
+      onFilesApplied: onFilesUpdated,
+      onOpenWorkspaceFile,
+      onCreateSkillViaChat: handleCreateSkillViaChat,
+      onUseSkill: handleUseSkill,
+    }),
+    [
+      height,
+      t,
+      activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      handleChangeModel,
+      deleteAllConversations,
+      deleteConversation,
+      setContextUsageSnapshot,
+      createNewConversation,
+      loadConversation,
+      activeConversationTitle,
+      scrollRef,
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      handleDeleteMessage,
+      handleRateMessage,
+      handleRegenerateMessage,
+      handleRewindLatestTurn,
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      handleChangeThinkingEnabled,
+      setSelectedSkills,
+      prepareUploadFiles,
+      handleSend,
+      handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      token,
+      onFilesUpdated,
+      onOpenWorkspaceFile,
+      handleCreateSkillViaChat,
+      handleUseSkill,
+    ]
+  );
+
   return (
-    <Flex
-      backdropFilter="blur(10px)"
-      bg="transparent"
-      border="1px solid"
-      borderBottomLeftRadius="xl"
-      borderColor="rgba(203,213,225,0.85)"
-      borderRight={0}
-      borderTopLeftRadius={roundTop ? "xl" : 0}
-      boxShadow="0 12px 30px -18px rgba(15,23,42,0.2)"
-      direction="column"
-      h={height}
-      overflow="hidden"
-    >
-      <ChatHeader
-        activeConversationId={activeConversation?.id}
-        conversations={conversations}
-        messageCount={messages.length}
-        model={model}
-        modelLoading={modelLoading}
-        modelOptions={modelOptions}
-        onChangeModel={setModel}
-        onDeleteAllConversations={() => deleteAllConversations()}
-        onDeleteConversation={(id) => deleteConversation(id)}
-        onNewConversation={() => createNewConversation()}
-        onOpenSkills={!hideSkillsManager ? () => setIsSkillsOpen(true) : undefined}
-        onSelectConversation={(id) => loadConversation(id)}
-        title={activeConversationTitle}
-      />
-
-      <Flex direction="column" flex="1" overflow="hidden">
-        <Box
-          ref={scrollRef}
-          bg="linear-gradient(180deg, rgba(248,250,252,0.82) 0%, rgba(241,245,249,0.78) 100%)"
-          flex="1"
-          overflowY="auto"
-          px={4}
-          py={4}
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-            shouldAutoScrollRef.current = distanceToBottom < 80;
-          }}
-        >
-          {showInitialLoading ? (
-            <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
-              <Spinner size="sm" />
-              <Text fontSize="sm">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-            </Flex>
-          ) : messages.length === 0 ? (
-            <Flex align="center" color="gray.500" h="full" justify="center">
-              <Box textAlign="center">
-                <Text color="myGray.700" fontSize="lg" fontWeight="700">
-                  {emptyStateTitle || t("chat:ready_start", { defaultValue: "准备开始" })}
-                </Text>
-                <Text fontSize="sm" mt={1}>
-                  {emptyStateDescription ||
-                    t("chat:ready_desc", { defaultValue: "描述你想改的功能，我会直接修改代码" })}
-                </Text>
-              </Box>
-            </Flex>
-          ) : (
-            <Flex direction="column" gap={3}>
-              {messages.map((message, index) => {
-                const messageId = message.id ?? `${message.role}-${index}`;
-                const summary = getExecutionSummary(message);
-                const canRegenerate =
-                  message.role === "assistant" &&
-                  messages.slice(0, index).some((item) => item.role === "user");
-                return (
-                  <Box key={messageId}>
-                    <ChatMessageBlock
-                      isStreaming={message.id === streamingMessageId}
-                      message={message}
-                      messageId={messageId}
-                      canRegenerate={canRegenerate}
-                      onDelete={() => handleDeleteMessage(messageId)}
-                      onRate={(rating) => handleRateMessage(messageId, rating)}
-                      onRegenerate={() => {
-                        void handleRegenerateMessage(messageId);
-                      }}
-                      rating={messageRatings[messageId]}
-                    />
-                    {summary ? (
-                      <ExecutionSummaryRow
-                        durationSeconds={summary.durationSeconds}
-                        nodeCount={summary.nodeCount}
-                      />
-                    ) : null}
-                  </Box>
-                );
-              })}
-              {isLoadingConversation ? (
-                <Flex align="center" color="gray.500" gap={2} justify="center" py={1}>
-                  <Spinner size="xs" />
-                  <Text fontSize="xs">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-                </Flex>
-              ) : null}
-            </Flex>
-          )}
-        </Box>
-
-        <ChatInput
-          isSending={isSending}
-          model={model}
-          modelLoading={modelLoading}
-          modelOptions={modelOptions}
-          selectedSkill={selectedSkills[0]}
-          selectedSkills={selectedSkills}
-          skillOptions={skillOptions}
-          fileOptions={fileOptions}
-          onChangeModel={setModel}
-          onChangeSelectedSkills={setSelectedSkills}
-          onUploadFiles={prepareUploadFiles}
-          onSend={handleSend}
-          onStop={handleStop}
-        />
-      </Flex>
-      {!hideSkillsManager ? (
-        <SkillsManagerModal
-          isOpen={isSkillsOpen}
-          onClose={() => setIsSkillsOpen(false)}
-          onCreateViaChat={handleCreateSkillViaChat}
-          onUseSkill={handleUseSkill}
-        />
-      ) : null}
-    </Flex>
+    <ChatPanelViewProvider value={chatPanelViewContextValue}>
+      <ChatPanelView />
+    </ChatPanelViewProvider>
   );
 };
 

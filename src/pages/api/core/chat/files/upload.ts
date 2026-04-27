@@ -1,8 +1,19 @@
+import path from "node:path";
 import { requireAuth } from "@server/auth/session";
-import { buildChatFileViewUrl, uploadObjectToStorage } from "@server/storage/s3";
+import {
+  getProject,
+  getProjectAccessState,
+  updateBinaryFile,
+} from "@server/projects/projectStorage";
+import { buildChatFileViewUrl, getObjectFromStorage } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-import { isImageFile, MAX_FILES, MAX_FILE_SIZE } from "./shared";
+import {
+  assertChatScopedStoragePath,
+  MAX_FILES,
+  MAX_FILE_SIZE,
+  toSafeFileName,
+} from "./shared";
 import { pendingParseInfo, type UploadFileResult } from "./types";
 
 interface UploadFileInput {
@@ -12,8 +23,54 @@ interface UploadFileInput {
   size?: number;
   lastModified?: number;
   storagePath: string;
-  markdownStoragePath?: string;
 }
+
+const inferContentTypeFromName = (fileName: string) => {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (lower.endsWith(".csv")) return "text/csv; charset=utf-8";
+  return "application/octet-stream";
+};
+const buildMirrorRawFilePath = ({
+  storagePath,
+  originalName,
+}: {
+  storagePath: string;
+  originalName?: string;
+}) => {
+  const fromOriginalName = toSafeFileName(originalName || "");
+  if (fromOriginalName && fromOriginalName !== "file") {
+    return `/.files/${fromOriginalName}`;
+  }
+  const base = toSafeFileName(path.posix.basename(storagePath));
+  return `/.files/${base}`;
+};
+
+const syncAttachmentRawToProject = async ({
+  token,
+  file,
+  storagePath,
+  buffer,
+}: {
+  token: string;
+  file: UploadFileInput;
+  storagePath: string;
+  buffer: Buffer;
+}) => {
+  const mirrorPath = buildMirrorRawFilePath({
+    storagePath,
+    originalName: file.name,
+  });
+  const normalizedType = (file.type || "").trim().toLowerCase();
+  const type =
+    normalizedType && normalizedType !== "application/octet-stream"
+      ? normalizedType
+      : inferContentTypeFromName(file.name || storagePath);
+  await updateBinaryFile(token, mirrorPath, buffer, type);
+};
 
 const getToken = (req: NextApiRequest): string | null =>
   typeof req.body?.token === "string" ? req.body.token : null;
@@ -40,6 +97,15 @@ export default async function handler(
     res.status(400).json({ error: "缺少 token 或 chatId 参数" });
     return;
   }
+  const access = await getProjectAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目不存在" });
+    return;
+  }
+  if (access !== "ok") {
+    res.status(403).json({ error: "无权访问该项目" });
+    return;
+  }
 
   const files = Array.isArray(req.body?.files) ? (req.body.files as UploadFileInput[]) : [];
   if (files.length === 0) {
@@ -53,16 +119,10 @@ export default async function handler(
 
   const now = Date.now();
   const results: UploadFileResult[] = [];
-
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
     if (!file || typeof file.name !== "string" || typeof file.storagePath !== "string") {
       continue;
-    }
-
-    if (!file.storagePath.startsWith("chat_uploads/")) {
-      res.status(400).json({ error: `文件 ${file.name} 路径非法` });
-      return;
     }
 
     const size = Number.isFinite(Number(file.size)) ? Number(file.size) : 0;
@@ -72,26 +132,38 @@ export default async function handler(
     }
 
     const type = file.type || "application/octet-stream";
-    const storagePath = file.storagePath;
-
-    let markdownStoragePath: string | undefined;
-    let markdownPublicUrl: string | undefined;
-    if (!isImageFile(file.name, type) && file.markdownStoragePath) {
-      markdownStoragePath = file.markdownStoragePath;
-      await uploadObjectToStorage({
-        key: markdownStoragePath,
-        body: "",
-        contentType: "text/markdown; charset=utf-8",
-        bucketType: "private",
+    let storagePath = "";
+    try {
+      storagePath = assertChatScopedStoragePath({
+        storagePath: file.storagePath,
+        token,
+        chatId,
       });
-      markdownPublicUrl = buildChatFileViewUrl({
-        storagePath: markdownStoragePath,
-      });
+    } catch {
+      res.status(400).json({ error: `文件 ${file.name} 路径非法` });
+      return;
     }
 
     const publicUrl = buildChatFileViewUrl({
       storagePath,
+      token,
+      chatId,
     });
+
+    let buffer: Buffer | null = null;
+    try {
+      const object = await getObjectFromStorage({
+        key: storagePath,
+        bucketType: "private",
+      });
+      buffer = object.buffer;
+    } catch (error) {
+      console.warn("[chat-files] read uploaded object failed", {
+        fileName: file.name,
+        storagePath,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
 
     results.push({
       id: typeof file.id === "string" ? file.id : undefined,
@@ -101,10 +173,25 @@ export default async function handler(
       lastModified: Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : now,
       storagePath,
       publicUrl,
-      markdownStoragePath,
-      markdownPublicUrl,
       parse: pendingParseInfo,
     });
+
+    try {
+      if (buffer) {
+        await syncAttachmentRawToProject({
+          token,
+          file,
+          storagePath,
+          buffer,
+        });
+      }
+    } catch (error) {
+      console.warn("[chat-files] sync attachment raw to project failed", {
+        fileName: file.name,
+        storagePath,
+        error: error instanceof Error ? error.message : String(error ?? ""),
+      });
+    }
   }
 
   res.status(200).json({ files: results });

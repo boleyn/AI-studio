@@ -6,19 +6,23 @@ import {
   HStack,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
   Menu,
   MenuButton,
   MenuItem,
   MenuList,
+  Spinner,
   Text,
   useToast,
 } from "@chakra-ui/react";
 import { useSandpack } from "@codesandbox/sandpack-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 
-import { AddIcon, ChevronDownIcon, SearchIcon } from "../common/Icon";
+import { AddIcon, SearchIcon } from "../common/Icon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import FileTree from "./fileExplorer/FileTree";
-import { FileGlyph } from "./fileExplorer/icons";
 import { useFileExplorerTheme } from "./fileExplorer/styleTokens";
 import type { CreateMode, RenameTarget, SandpackFilesPayload } from "./fileExplorer/types";
 import {
@@ -32,11 +36,144 @@ import {
   toSandpackPath,
 } from "./fileExplorer/utils";
 
-type FileExplorerPanelProps = {
-  token: string;
+const textFileExtSet = new Set([
+  "txt",
+  "md",
+  "json",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "css",
+  "scss",
+  "less",
+  "html",
+  "htm",
+  "xml",
+  "yml",
+  "yaml",
+  "svg",
+  "csv",
+  "log",
+  "env",
+  "gitignore",
+  "gitattributes",
+  "npmrc",
+  "editorconfig",
+  "sh",
+  "bash",
+  "zsh",
+  "py",
+  "java",
+  "go",
+  "rs",
+  "sql",
+]);
+
+const imageMimeByExt: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  avif: "image/avif",
 };
 
-const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
+const extFromPath = (filePath: string) => filePath.split(".").pop()?.toLowerCase() || "";
+
+const isTextLikePath = (filePath: string) => textFileExtSet.has(extFromPath(filePath));
+
+const inferMimeFromPath = (filePath: string) => imageMimeByExt[extFromPath(filePath)] || "application/octet-stream";
+
+const uint8ArrayToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
+const toDataUrl = (base64: string, contentType: string) => `data:${contentType};base64,${base64}`;
+
+const parseDataUrlToBytes = (value: string): { mime: string; bytes: Uint8Array } | null => {
+  const match = value.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const mime = (match[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const normalizedBase64 = match[2].replace(/\s+/g, "");
+  try {
+    const binary = atob(normalizedBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return { mime, bytes };
+  } catch {
+    return null;
+  }
+};
+
+const readBrowserFileAsWorkspaceCode = async (file: File, filePath: string) => {
+  if (file.type.startsWith("text/") || isTextLikePath(filePath)) {
+    return file.text();
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const contentType = file.type || inferMimeFromPath(filePath);
+  return toDataUrl(uint8ArrayToBase64(bytes), contentType);
+};
+
+const isAbsolutePath = (path: string) => path.startsWith("/");
+
+const toSkillsScopedPath = (path: string, skillRoot?: string) => {
+  const raw = isAbsolutePath(path) ? path.replace(/^\/+/, "") : path.replace(/^\/+/, "");
+  if (!raw) return null;
+  if (/^[^/]+\/.+/.test(raw)) {
+    return `/${raw}`.replace(/\/{2,}/g, "/");
+  }
+  if (skillRoot && /^\/[^/]+$/.test(skillRoot)) {
+    return `${skillRoot}/${raw}`.replace(/\/{2,}/g, "/");
+  }
+  return `/${raw}`.replace(/\/{2,}/g, "/");
+};
+
+const getSkillRootPath = (path: string) => {
+  const match = path.match(/^\/[^/]+/);
+  return match?.[0] || "";
+};
+
+const slugifySkillName = (value: string) => {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "") || "new-skill"
+  );
+};
+
+type FileExplorerPanelProps = {
+  token: string;
+  onOpenFile: (filePath: string) => void;
+  onPersistFiles?: (files: SandpackFilesPayload) => Promise<void>;
+  filePathFilter?: (path: string) => boolean;
+  defaultFolderPath?: string;
+  workspaceMode?: "project" | "skills";
+};
+
+const FileExplorerPanel = ({
+  token,
+  onOpenFile,
+  onPersistFiles,
+  filePathFilter,
+  defaultFolderPath = "/",
+  workspaceMode = "project",
+}: FileExplorerPanelProps) => {
   const { sandpack } = useSandpack();
   const toast = useToast();
   const styles = useFileExplorerTheme();
@@ -44,7 +181,11 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [selectedPath, setSelectedPath] = useState<string>(sandpack.activeFile || "/");
+  const [selectedPath, setSelectedPath] = useState<string>(
+    sandpack.activeFile && (!filePathFilter || filePathFilter(sandpack.activeFile))
+      ? sandpack.activeFile
+      : defaultFolderPath
+  );
   const [selectedType, setSelectedType] = useState<"file" | "folder">("file");
 
   const [createMode, setCreateMode] = useState<CreateMode>(null);
@@ -54,30 +195,80 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
   const [renameTarget, setRenameTarget] = useState<RenameTarget>(null);
   const [renameDraftName, setRenameDraftName] = useState("");
 
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["/"]));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([defaultFolderPath, "/"]));
 
   const fileUploadInputRef = useRef<HTMLInputElement>(null);
-  const zipUploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetFolderRef = useRef<string | null>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
+  const creatingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const uploadToastIdRef = useRef("workspace-uploading");
+  const [isUploading, setIsUploading] = useState(false);
 
-  const files = sandpack.files as SandpackFilesPayload;
+  const allFiles = sandpack.files as SandpackFilesPayload;
+  const files = useMemo(() => {
+    if (!filePathFilter) return allFiles;
+    return Object.fromEntries(Object.entries(allFiles).filter(([path]) => filePathFilter(path)));
+  }, [allFiles, filePathFilter]);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+  const visibleFiles = useMemo(() => {
+    if (!isSearching) return files;
+    return Object.fromEntries(
+      Object.entries(files).filter(([path]) => path.toLowerCase().includes(normalizedSearchQuery))
+    );
+  }, [files, isSearching, normalizedSearchQuery]);
+
   const treeRoot = useMemo(() => buildTree(files), [files]);
+  const visibleTreeRoot = useMemo(() => buildTree(visibleFiles), [visibleFiles]);
   const folderByPath = useMemo(() => buildFolderMap(treeRoot), [treeRoot]);
+  const visibleFolderByPath = useMemo(() => buildFolderMap(visibleTreeRoot), [visibleTreeRoot]);
   const fileByPath = useMemo(() => buildFileMap(treeRoot), [treeRoot]);
+  const skillsDisplayRootPath = useMemo(() => {
+    if (workspaceMode !== "skills") return null;
+    const roots = Array.from(
+      new Set(
+        Object.keys(files)
+          .map((path) => path.match(/^\/[^/]+/i)?.[0])
+          .filter((v): v is string => Boolean(v))
+      )
+    );
+    if (roots.length === 0) return null;
+    if (selectedPath) {
+      const fromSelected = roots.find((root) => selectedPath === root || selectedPath.startsWith(`${root}/`));
+      if (fromSelected) return fromSelected;
+    }
+    return roots[0];
+  }, [files, selectedPath, workspaceMode]);
+  const renderRoot = useMemo(
+    () =>
+      skillsDisplayRootPath
+        ? visibleFolderByPath.get(skillsDisplayRootPath) || visibleTreeRoot
+        : visibleTreeRoot,
+    [skillsDisplayRootPath, visibleFolderByPath, visibleTreeRoot]
+  );
 
   const filePaths = useMemo(() => Object.keys(files), [files]);
-  const filteredPaths = useMemo(() => {
+  const matchedPaths = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     if (!keyword) return [];
     return filePaths.filter((path) => path.toLowerCase().includes(keyword)).slice(0, 20);
   }, [filePaths, searchQuery]);
+  const firstMatchedPath = matchedPaths[0];
 
-  const allFolderPaths = useMemo(() => collectFolderPaths(treeRoot), [treeRoot]);
+  const allFolderPaths = useMemo(() => collectFolderPaths(renderRoot), [renderRoot]);
   const expandableFolderPaths = useMemo(
     () => allFolderPaths.filter((path) => path !== "/"),
     [allFolderPaths]
   );
+
+  useEffect(() => {
+    if (selectedType === "file" && selectedPath && !files[selectedPath]) {
+      setSelectedType("folder");
+      setSelectedPath(defaultFolderPath);
+    }
+  }, [defaultFolderPath, files, selectedPath, selectedType]);
   const allExpanded = useMemo(
     () =>
       expandableFolderPaths.length > 0 &&
@@ -101,6 +292,11 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
 
   const persistFullFiles = useCallback(
     async (nextFiles: SandpackFilesPayload) => {
+      if (onPersistFiles) {
+        await onPersistFiles(nextFiles);
+        return;
+      }
+
       const response = await fetch(`/api/code?token=${encodeURIComponent(token)}&action=files`, {
         method: "PUT",
         headers: {
@@ -114,7 +310,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
         throw new Error(`保存失败: ${response.status}`);
       }
     },
-    [token]
+    [onPersistFiles, token]
   );
 
   const syncLocalFiles = useCallback(
@@ -128,12 +324,12 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       });
 
       if (nextActiveFile) {
-        sandpack.setActiveFile(nextActiveFile);
+        onOpenFile(nextActiveFile);
         setSelectedType("file");
         setSelectedPath(nextActiveFile);
       }
     },
-    [files, sandpack]
+    [files, onOpenFile, sandpack]
   );
 
   const applyFullFiles = useCallback(
@@ -141,12 +337,14 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       syncLocalFiles(nextFiles, nextActiveFile);
       try {
         await persistFullFiles(nextFiles);
+        return true;
       } catch (error) {
         toast({
           status: "error",
           title: "文件保存失败",
           description: error instanceof Error ? error.message : "请稍后重试",
         });
+        return false;
       }
     },
     [persistFullFiles, syncLocalFiles, toast]
@@ -157,10 +355,15 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       ensureFolderExpanded(parentPath);
       setCreateMode(mode);
       setCreateParentPath(parentPath);
-      setCreateDraftName(mode === "file" ? "untitled.tsx" : "new-folder");
+      if (mode === "file") {
+        const defaultFileName = workspaceMode === "skills" ? "SKILL.md" : "untitled.tsx";
+        setCreateDraftName(defaultFileName);
+      } else {
+        setCreateDraftName("new-folder");
+      }
       setRenameTarget(null);
     },
-    [ensureFolderExpanded]
+    [ensureFolderExpanded, workspaceMode]
   );
 
   const openCreateFromSelection = useCallback(
@@ -177,37 +380,42 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
   }, []);
 
   const confirmCreate = useCallback(async () => {
-    if (!createMode) return;
+    if (!createMode || creatingRef.current) return;
+    creatingRef.current = true;
 
-    const targetPath = joinPath(createParentPath, createDraftName);
-    if (!targetPath) {
-      toast({ status: "warning", title: "路径不合法" });
-      return;
-    }
-
-    const nextFiles: SandpackFilesPayload = { ...files };
-
-    if (createMode === "file") {
-      if (nextFiles[targetPath]) {
-        toast({ status: "warning", title: "文件已存在" });
+    try {
+      const targetPath = joinPath(createParentPath, createDraftName);
+      if (!targetPath) {
+        toast({ status: "warning", title: "路径不合法" });
         return;
       }
-      nextFiles[targetPath] = { code: buildInitialFileCode(targetPath) };
-      await applyFullFiles(nextFiles, targetPath);
+
+      const nextFiles: SandpackFilesPayload = { ...files };
+
+      if (createMode === "file") {
+        if (nextFiles[targetPath]) {
+          toast({ status: "warning", title: "文件已存在" });
+          return;
+        }
+        nextFiles[targetPath] = { code: buildInitialFileCode(targetPath) };
+        cancelCreate();
+        await applyFullFiles(nextFiles, targetPath);
+        return;
+      }
+
+      const folderMarker = `${targetPath.replace(/\/+$/, "")}/.gitkeep`;
+      if (nextFiles[folderMarker]) {
+        toast({ status: "warning", title: "文件夹已存在" });
+        return;
+      }
+
+      nextFiles[folderMarker] = { code: "" };
+      ensureFolderExpanded(targetPath);
       cancelCreate();
-      return;
+      await applyFullFiles(nextFiles);
+    } finally {
+      creatingRef.current = false;
     }
-
-    const folderMarker = `${targetPath.replace(/\/+$/, "")}/.gitkeep`;
-    if (nextFiles[folderMarker]) {
-      toast({ status: "warning", title: "文件夹已存在" });
-      return;
-    }
-
-    nextFiles[folderMarker] = { code: "" };
-    ensureFolderExpanded(targetPath);
-    await applyFullFiles(nextFiles);
-    cancelCreate();
   }, [
     applyFullFiles,
     cancelCreate,
@@ -325,49 +533,115 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
     async (event: ChangeEvent<HTMLInputElement>) => {
       const selectedFiles = Array.from(event.target.files || []);
       event.currentTarget.value = "";
-      if (selectedFiles.length === 0) return;
-
-      const nextFiles: SandpackFilesPayload = { ...files };
-      for (const file of selectedFiles) {
-        const path = toSandpackPath(file.webkitRelativePath || file.name);
-        if (!path) continue;
-        nextFiles[path] = { code: await file.text() };
+      if (selectedFiles.length === 0) {
+        uploadTargetFolderRef.current = null;
+        return;
       }
-
-      const firstPath = toSandpackPath(selectedFiles[0].webkitRelativePath || selectedFiles[0].name) || undefined;
-      await applyFullFiles(nextFiles, firstPath);
-    },
-    [applyFullFiles, files]
-  );
-
-  const handleUploadZip = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.currentTarget.value = "";
-      if (!file) return;
+      setIsUploading(true);
+      toast({
+        id: uploadToastIdRef.current,
+        position: "top-right",
+        duration: null,
+        isClosable: false,
+        render: () => (
+          <Flex
+            align="center"
+            gap={2}
+            px={3}
+            py={2.5}
+            borderRadius="10px"
+            border="1px solid"
+            borderColor="var(--ws-border)"
+            bg="var(--ws-surface-strong)"
+            color="var(--ws-text-main)"
+            boxShadow="0 8px 24px rgba(15,23,42,0.12)"
+          >
+            <Spinner size="sm" color="var(--ws-text-subtle)" />
+            <Text fontSize="sm" fontWeight={500}>
+              正在上传 {selectedFiles.length} 个文件...
+            </Text>
+          </Flex>
+        ),
+      });
 
       try {
-        const [{ default: JSZip }, zipBuffer] = await Promise.all([import("jszip"), file.arrayBuffer()]);
-        const zip = await JSZip.loadAsync(zipBuffer);
         const nextFiles: SandpackFilesPayload = { ...files };
-        let firstImportedPath: string | undefined;
+        const explicitTargetFolder = uploadTargetFolderRef.current;
+        uploadTargetFolderRef.current = null;
+        const selectedParent =
+          explicitTargetFolder ||
+          (selectedType === "folder" ? selectedPath : getParentPath(selectedPath || defaultFolderPath)) ||
+          "/";
+        const selectedSkillRoot =
+          workspaceMode === "skills"
+            ? getSkillRootPath(selectedParent || skillsDisplayRootPath || selectedPath || "")
+            : "";
 
-        const entries = Object.values(zip.files).filter((entry) => !entry.dir);
-        for (const entry of entries) {
-          const path = toSandpackPath(entry.name);
-          if (!path) continue;
-          nextFiles[path] = { code: await entry.async("string") };
-          if (!firstImportedPath) firstImportedPath = path;
+        let firstPath: string | undefined;
+        for (const file of selectedFiles) {
+          const rawPath = toSandpackPath(file.webkitRelativePath || file.name);
+          if (!rawPath) continue;
+          const relativePath = rawPath.replace(/^\/+/, "");
+          const pathInFolder = joinPath(selectedParent, relativePath);
+          if (!pathInFolder) continue;
+          const finalPath =
+            workspaceMode === "skills"
+              ? toSkillsScopedPath(pathInFolder, selectedSkillRoot || undefined)
+              : pathInFolder;
+          if (!finalPath) continue;
+          if (!firstPath) firstPath = finalPath;
+          nextFiles[finalPath] = { code: await readBrowserFileAsWorkspaceCode(file, finalPath) };
         }
 
-        await applyFullFiles(nextFiles, firstImportedPath);
-      } catch (error) {
-        console.error("Failed to import zip:", error);
-        toast({ status: "error", title: "Zip 导入失败", description: "请确认压缩包格式正确" });
+        if (!firstPath) {
+          toast.close(uploadToastIdRef.current);
+          toast({
+            position: "top-right",
+            status: "warning",
+            title: "没有可上传的文件",
+            description: "请检查文件名或路径是否合法。",
+          });
+          return;
+        }
+
+        const persisted = await applyFullFiles(nextFiles, firstPath);
+        toast.close(uploadToastIdRef.current);
+        if (persisted) {
+          toast({
+            position: "top-right",
+            status: "success",
+            title: "上传完成",
+            description: `已上传 ${selectedFiles.length} 个文件`,
+          });
+        } else {
+          toast({
+            position: "top-right",
+            status: "warning",
+            title: "上传未持久化",
+            description: "文件在当前会话可见，但刷新后可能丢失，请重试。",
+          });
+        }
+      } finally {
+        uploadTargetFolderRef.current = null;
+        setIsUploading(false);
       }
     },
-    [applyFullFiles, files, toast]
+    [
+      applyFullFiles,
+      defaultFolderPath,
+      files,
+      selectedPath,
+      selectedType,
+      skillsDisplayRootPath,
+      toast,
+      workspaceMode,
+    ]
   );
+
+  const openUploadAt = useCallback((folderPath: string) => {
+    uploadTargetFolderRef.current = folderPath;
+    fileUploadInputRef.current?.click();
+  }, []);
 
   const handleToggleExpandAll = useCallback(() => {
     if (allExpanded) {
@@ -384,7 +658,10 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
   const handleDownloadFile = useCallback(
     (path: string, name: string) => {
       const code = files[path]?.code ?? "";
-      const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+      const binary = parseDataUrlToBytes(code);
+      const blob = binary
+        ? new Blob([binary.bytes], { type: binary.mime })
+        : new Blob([code], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -406,6 +683,27 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
       return next;
     });
   }, []);
+
+  const handleCreateSkill = useCallback(async () => {
+    const nextFiles: SandpackFilesPayload = { ...files };
+    const usedRoots = new Set(
+      Object.keys(nextFiles)
+        .map((path) => getSkillRootPath(path).replace(/^\/+/, ""))
+        .filter(Boolean)
+    );
+    let suffix = 1;
+    let candidateSlug = "new-skill";
+    while (usedRoots.has(candidateSlug)) {
+      suffix += 1;
+      candidateSlug = `new-skill-${suffix}`;
+    }
+    const safeSlug = slugifySkillName(candidateSlug);
+    const candidateFile = `/${safeSlug}/SKILL.md`;
+
+    nextFiles[candidateFile] = { code: buildInitialFileCode(candidateFile) };
+    ensureFolderExpanded(`/${safeSlug}`);
+    await applyFullFiles(nextFiles, candidateFile);
+  }, [applyFullFiles, ensureFolderExpanded, files]);
 
   useEffect(() => {
     if (!sandpack.activeFile) return;
@@ -432,15 +730,46 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
     return () => window.clearTimeout(timer);
   }, [renameTarget]);
 
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const keyword = searchQuery.trim();
+    if (!searchOpen || !keyword || !firstMatchedPath) return;
+
+    ensureFolderExpanded(getParentPath(firstMatchedPath));
+    if (selectedType !== "file" || selectedPath !== firstMatchedPath) {
+      setSelectedType("file");
+      setSelectedPath(firstMatchedPath);
+      onOpenFile(firstMatchedPath);
+    }
+  }, [
+    ensureFolderExpanded,
+    firstMatchedPath,
+    onOpenFile,
+    searchOpen,
+    searchQuery,
+    selectedPath,
+    selectedType,
+  ]);
+
   return (
     <Flex
       direction="column"
       minW={styles.panel.minW}
       maxW={styles.panel.maxW}
+      w={styles.panel.w || styles.panel.minW}
+      flex={`0 0 ${styles.panel.w || styles.panel.minW}`}
+      flexShrink={0}
       borderRight="1px solid"
       borderColor={styles.panel.borderColor}
       minH="0"
       bg={styles.panel.bg}
+      backdropFilter="blur(16px)"
+      overflow="hidden"
     >
       <input
         ref={fileUploadInputRef}
@@ -449,21 +778,16 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
         style={{ display: "none" }}
         onChange={handleUploadFiles}
       />
-      <input
-        ref={zipUploadInputRef}
-        type="file"
-        accept=".zip,application/zip"
-        style={{ display: "none" }}
-        onChange={handleUploadZip}
-      />
 
       <Flex
         align="center"
         justify="space-between"
         px={styles.spacing.headerX}
-        py={styles.spacing.headerY}
+        py={0}
+        minH="62px"
         borderBottom="1px solid"
         borderColor={styles.panel.borderColor}
+        bg="#f6f8fc"
       >
         <Text
           fontSize={styles.typography.title}
@@ -478,7 +802,16 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
             size="sm"
             variant="ghost"
             icon={<SearchIcon />}
-            onClick={() => setSearchOpen((prev) => !prev)}
+            borderRadius="10px"
+            color="var(--ws-text-subtle)"
+            _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
+            onClick={() =>
+              setSearchOpen((prev) => {
+                const next = !prev;
+                if (!next) setSearchQuery("");
+                return next;
+              })
+            }
           />
           <Menu placement="bottom-end" isLazy>
             <MenuButton
@@ -487,31 +820,37 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
               size="sm"
               variant="ghost"
               icon={<AddIcon />}
+              borderRadius="10px"
+              color="var(--ws-text-subtle)"
+              _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             />
             <MenuList minW={styles.sizes.createMenuListW}>
+              {workspaceMode === "skills" ? (
+                <MenuItem onClick={() => void handleCreateSkill()}>新建 Skill</MenuItem>
+              ) : null}
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
               <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
-              <MenuItem onClick={() => fileUploadInputRef.current?.click()}>上传文件</MenuItem>
-              <MenuItem onClick={() => zipUploadInputRef.current?.click()}>上传 zip 文件</MenuItem>
+              <MenuItem
+                isDisabled={isUploading}
+                onClick={() => {
+                  uploadTargetFolderRef.current = null;
+                  fileUploadInputRef.current?.click();
+                }}
+              >
+                {isUploading ? "上传中..." : "上传文件"}
+              </MenuItem>
             </MenuList>
           </Menu>
           <IconButton
             aria-label={allExpanded ? "折叠全部文件夹" : "展开全部文件夹"}
             size="sm"
             variant="ghost"
+            borderRadius="10px"
+            color="var(--ws-text-subtle)"
+            _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             icon={
-              <Box
-                as="span"
-                display="inline-flex"
-                alignItems="center"
-                justifyContent="center"
-                w="16px"
-                h="16px"
-                transform={allExpanded ? "rotate(180deg)" : "rotate(0deg)"}
-                transformOrigin="50% 50%"
-                transition={styles.motion.chevronTransition}
-              >
-                <ChevronDownIcon width="16px" height="16px" style={{ display: "block" }} />
+              <Box as="span" display="inline-flex" alignItems="center" justifyContent="center" w="16px" h="16px">
+                {allExpanded ? <ChevronUp size={16} strokeWidth={2.2} /> : <ChevronDown size={16} strokeWidth={2.2} />}
               </Box>
             }
             onClick={handleToggleExpandAll}
@@ -525,47 +864,53 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
           py={styles.spacing.searchContainerY}
           borderBottom="1px solid"
           borderColor={styles.panel.borderColor}
+          bg="var(--ws-surface-muted)"
         >
-          <Input
-            size="sm"
-            placeholder="Search files"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
+          <InputGroup size="sm">
+            <InputLeftElement pointerEvents="none">
+              <Box as={SearchIcon} color="var(--ws-text-subtle)" boxSize="13px" />
+            </InputLeftElement>
+            <Input
+              ref={searchInputRef}
+              placeholder="输入文件名或路径，自动定位"
+              value={searchQuery}
+              bg="var(--ws-surface-strong)"
+              borderColor="var(--ws-border)"
+              borderRadius="10px"
+              pr="32px"
+              _focusVisible={{
+                borderColor: "var(--ws-border-strong)",
+                boxShadow: "0 0 0 1px var(--ws-border-strong)",
+              }}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setSearchQuery("");
+                  setSearchOpen(false);
+                }
+              }}
+            />
+            {searchQuery ? (
+              <InputRightElement>
+                <IconButton
+                  aria-label="清空搜索"
+                  size="xs"
+                  variant="ghost"
+                  icon={<X size={12} />}
+                  onClick={() => setSearchQuery("")}
+                />
+              </InputRightElement>
+            ) : null}
+          </InputGroup>
           {searchQuery.trim() ? (
-            <Box mt={2} maxH="160px" overflowY="auto">
-              {filteredPaths.length > 0 ? (
-                filteredPaths.map((filePath) => (
-                  <HStack
-                    key={filePath}
-                    px={styles.spacing.searchResultX}
-                    py={styles.spacing.searchResultY}
-                    borderRadius={styles.spacing.rowRadius}
-                    fontSize={styles.typography.meta}
-                    color={styles.colors.searchResultText}
-                    cursor="pointer"
-                    spacing={styles.spacing.searchResultGap}
-                    _hover={{ bg: styles.colors.searchResultHoverBg }}
-                    onClick={() => {
-                      sandpack.setActiveFile(filePath);
-                      setSelectedType("file");
-                      setSelectedPath(filePath);
-                      ensureFolderExpanded(getParentPath(filePath));
-                      setSearchQuery("");
-                    }}
-                  >
-                    <FileGlyph name={filePath.split("/").pop()} />
-                    <Text fontSize={styles.typography.meta} noOfLines={1}>{filePath}</Text>
-                  </HStack>
-                ))
+            <Box mt={2} px={styles.spacing.searchResultX} py={styles.spacing.searchResultY}>
+              {firstMatchedPath ? (
+                <Text fontSize={styles.typography.meta} color={styles.colors.searchResultText} noOfLines={1}>
+                  共 {matchedPaths.length} 条
+                </Text>
               ) : (
-                <Text
-                  fontSize={styles.typography.meta}
-                  color={styles.colors.searchEmptyText}
-                  px={styles.spacing.searchResultEmptyX}
-                  py={styles.spacing.searchResultEmptyY}
-                >
-                  No matched files
+                <Text fontSize={styles.typography.meta} color={styles.colors.searchEmptyText}>
+                  未匹配到文件
                 </Text>
               )}
             </Box>
@@ -577,12 +922,15 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
         flex="1"
         minH="0"
         overflowY="auto"
+        overflowX="hidden"
         px={styles.spacing.treeX}
         py={styles.spacing.treeY}
+        style={{ scrollbarGutter: "stable both-edges" }}
       >
         <FileTree
-          root={treeRoot}
+          root={renderRoot}
           files={files}
+          searchActive={isSearching}
           expandedFolders={expandedFolders}
           selectedPath={selectedPath}
           selectedType={selectedType}
@@ -601,7 +949,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
           onSelectFile={(filePath) => {
             setSelectedType("file");
             setSelectedPath(filePath);
-            sandpack.setActiveFile(filePath);
+            onOpenFile(filePath);
           }}
           onCreateDraftNameChange={setCreateDraftName}
           onConfirmCreate={confirmCreate}
@@ -613,6 +961,7 @@ const FileExplorerPanel = ({ token }: FileExplorerPanelProps) => {
           onCancelRename={cancelRename}
           onDeleteFile={handleDeleteFile}
           onDeleteFolder={handleDeleteFolder}
+          onUploadAt={openUploadAt}
           onCopyPath={handleCopyPath}
           onDownloadFile={handleDownloadFile}
         />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Box,
   Button,
@@ -13,13 +13,17 @@ import {
   Text,
   useToast,
 } from "@chakra-ui/react";
-import { SandpackProvider, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
+import {
+  SandpackProvider,
+  useSandpack,
+  type SandpackPredefinedTemplate,
+} from "@codesandbox/sandpack-react";
 import dynamic from "next/dynamic";
 import { githubLight } from "@codesandbox/sandpack-themes";
+import { useRouter } from "next/router";
 
 import TopBar from "./TopBar";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import VectorBackground from "./auth/VectorBackground";
 const ChatPanel = dynamic(() => import("../features/chat/components/ChatPanel"), {
   ssr: false,
 });
@@ -28,8 +32,13 @@ import type { SaveStatus } from "./CodeChangeListener";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
+import { listConversations } from "@features/chat/services/conversations";
+import {
+  useAgentFileUpdates,
+  type AgentFilesSyncPayload,
+} from "./hooks/useAgentFileUpdates";
 
-type SandpackFile = { code: string };
+type SandpackFile = { code: string; hidden?: boolean };
 export type SandpackFiles = Record<string, SandpackFile>;
 
 type ProjectStatus = "idle" | "loading" | "ready" | "error";
@@ -45,43 +54,64 @@ type StudioShellProps = {
   };
 };
 
-type ActiveView = "preview" | "code";
+type ActiveView = "preview" | "code" | "logs";
 type ShareMode = "editable" | "preview";
 
 const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
-
-const fallbackFiles: SandpackFiles = {
-  "/App.js": {
-    code: `import "./styles.css";
-
-export default function App() {
-  return (
-    <main className="app">
-      <h1>AI Studio Proxy</h1>
-      <p>Paste a code token in the top bar to load a remote project.</p>
-    </main>
+const EMPTY_PROJECT_PLACEHOLDER_PATH = "/.ai-studio-empty.js";
+const EMPTY_PROJECT_PROVIDER_FILES: SandpackFiles = {
+  [EMPTY_PROJECT_PLACEHOLDER_PATH]: {
+    code: "export default function EmptyProjectPlaceholder() { return null; }",
+    hidden: true,
+  },
+};
+const ENTRY_CANDIDATES = [
+  "/src/main.tsx",
+  "/src/main.jsx",
+  "/src/main.ts",
+  "/src/main.js",
+  "/index.tsx",
+  "/index.jsx",
+  "/index.ts",
+  "/index.js",
+  "/main.tsx",
+  "/main.jsx",
+  "/main.ts",
+  "/main.js",
+  "/App.tsx",
+  "/App.jsx",
+  "/App.ts",
+  "/App.js",
+] as const;
+const isVueLikeTemplate = (value: SandpackPredefinedTemplate | undefined): boolean =>
+  value === "vue" || value === "vue-ts" || value === "vite-vue" || value === "vite-vue-ts";
+const EXTERNAL_RESOURCE_HTML_CANDIDATES = ["/public/index.html", "/index.html"] as const;
+const hasUserVisibleFiles = (input: SandpackFiles | null | undefined): boolean =>
+  Object.keys(input || {}).some(
+    (filePath) => filePath !== "/package.json" && filePath !== EMPTY_PROJECT_PLACEHOLDER_PATH
   );
-}`,
-  },
-  "/styles.css": {
-    code: `.app {
-  font-family: "Sora", sans-serif;
-  color: #f7f5ff;
-  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
-  min-height: 100vh;
-  padding: 64px;
-}
 
-h1 {
-  font-size: 40px;
-  letter-spacing: -0.02em;
-}
+const extractExternalResources = (files: SandpackFiles): string[] => {
+  const resources = new Set<string>();
+  const htmlPath = EXTERNAL_RESOURCE_HTML_CANDIDATES.find((path) => Boolean(files[path]));
+  if (!htmlPath) return [];
+  const html = files[htmlPath]?.code || "";
+  if (!html) return [];
 
-p {
-  opacity: 0.7;
-  margin-top: 12px;
-}`,
-  },
+  const scriptSrcRegex = /<script[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>\s*<\/script>/gi;
+  const stylesheetRegex = /<link[^>]*\brel\s*=\s*["']stylesheet["'][^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+  let match: RegExpExecArray | null = null;
+  while ((match = scriptSrcRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+  while ((match = stylesheetRegex.exec(html)) !== null) {
+    const url = (match[1] || "").trim();
+    if (/^https?:\/\//i.test(url)) resources.add(url);
+  }
+
+  return Array.from(resources);
 };
 
 const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
@@ -91,8 +121,11 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 
   const output: SandpackFiles = {};
   Object.entries(rawFiles as Record<string, unknown>).forEach(([path, value]) => {
+    const trimmedPath = path.trim();
+    if (!trimmedPath) return;
+    const normalizedPath = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
     if (typeof value === "string") {
-      output[path] = { code: value };
+      output[normalizedPath] = { code: value };
       return;
     }
     if (
@@ -101,15 +134,79 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
       "code" in value &&
       typeof (value as SandpackFile).code === "string"
     ) {
-      output[path] = value as SandpackFile;
+      output[normalizedPath] = value as SandpackFile;
     }
   });
 
-  return Object.keys(output).length > 0 ? output : null;
+  return output;
+};
+
+const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
+  Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
+
+const isRuntimeHiddenPath = (filePath: string): boolean => {
+  const normalizedPath = (filePath || "").trim().replace(/\\/g, "/");
+  if (!normalizedPath.startsWith("/")) return false;
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.some((segment) => segment.startsWith("."));
+};
+
+const resolveWorkspaceFilePath = (inputPath: string, knownPaths: string[]): string | null => {
+  const normalizedInput = (inputPath || "").trim().replace(/\\/g, "/");
+  if (!normalizedInput) return null;
+  const prefixedInput = normalizedInput.startsWith("/") ? normalizedInput : `/${normalizedInput}`;
+  if (knownPaths.includes(prefixedInput)) return prefixedInput;
+
+  const candidates = [prefixedInput, normalizedInput];
+  for (const candidate of candidates) {
+    const foundBySuffix = knownPaths.find((path) => path === candidate || path.endsWith(candidate));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  const segments = prefixedInput.split("/").filter(Boolean);
+  for (let index = 0; index < segments.length; index += 1) {
+    const suffix = `/${segments.slice(index).join("/")}`;
+    const foundBySuffix = knownPaths.find((path) => path === suffix || path.endsWith(suffix));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  return null;
+};
+
+const AgentFilesSandpackSync = ({ payload }: { payload: AgentFilesSyncPayload | null }) => {
+  const { sandpack } = useSandpack();
+  const lastAppliedVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!payload || payload.version <= lastAppliedVersionRef.current) return;
+    lastAppliedVersionRef.current = payload.version;
+
+    const changed: SandpackFiles = {};
+    for (const [filePath, file] of Object.entries(payload.files)) {
+      const current = sandpack.files[filePath];
+      const currentCode =
+        typeof current === "string"
+          ? current
+          : current && typeof current === "object" && "code" in current
+          ? String((current as { code?: unknown }).code ?? "")
+          : undefined;
+      if (currentCode !== file.code) {
+        changed[filePath] = file;
+      }
+    }
+
+    if (Object.keys(changed).length > 0) {
+      sandpack.updateFile(changed, undefined, true);
+    }
+  }, [payload, sandpack]);
+
+  return null;
 };
 
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
+  const router = useRouter();
   const toast = useToast();
+  const initialNormalizedFiles = normalizeFiles(initialProject?.files) || null;
   const [token, setToken] = useState(initialToken);
   const [status, setStatus] = useState<ProjectStatus>(() => {
     if (initialProject && initialProject.token === initialToken) {
@@ -122,9 +219,9 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     initialProject?.template || DEFAULT_TEMPLATE
   );
   const [files, setFiles] = useState<SandpackFiles | null>(
-    initialProject?.files || null
+    initialNormalizedFiles
   );
-  const latestFilesRef = useRef<SandpackFiles | null>(initialProject?.files || null);
+  const latestFilesRef = useRef<SandpackFiles | null>(initialNormalizedFiles);
   const [dependencies, setDependencies] = useState<Record<string, string>>(
     initialProject?.dependencies || {}
   );
@@ -133,10 +230,18 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const [openSkillsSignal, setOpenSkillsSignal] = useState(0);
+  const [topSearchConversations, setTopSearchConversations] = useState<Array<{ id: string; title: string }>>([]);
+  const [topSearchOpenFilePath, setTopSearchOpenFilePath] = useState<string | null>(null);
+  const [chatOpenFilePath, setChatOpenFilePath] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<Record<ShareMode, string>>({
     editable: "",
     preview: "",
   });
+  const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
+    toSortedFilePaths(initialNormalizedFiles).filter((path) => !isRuntimeHiddenPath(path))
+  );
+  const { agentFilesSyncPayload, queueAgentFileSync } = useAgentFileUpdates();
 
   const loadProject = useCallback(async (requestedToken: string) => {
     if (!requestedToken) {
@@ -158,6 +263,10 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
       const payload = (await response.json()) as Record<string, unknown>;
       const nextTemplate = payload.template || (payload.sandpack as Record<string, unknown>)?.template;
+      const normalizedTemplate =
+        nextTemplate === "vite-react" || nextTemplate === "vite-react-ts"
+          ? DEFAULT_TEMPLATE
+          : ((nextTemplate as SandpackPredefinedTemplate) || DEFAULT_TEMPLATE);
       const nextFiles = normalizeFiles(
         (payload as Record<string, unknown>).files ||
           (payload as Record<string, { files?: unknown }>).sandpack?.files
@@ -169,9 +278,10 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         {};
       const nextName = (payload.name as string) || "未命名项目";
 
-      setTemplate((nextTemplate as SandpackPredefinedTemplate) || DEFAULT_TEMPLATE);
+      setTemplate(normalizedTemplate);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
+      setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
       setDependencies(nextDependencies as Record<string, string>);
       setProjectName(nextName);
       setStatus("ready");
@@ -198,14 +308,91 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     loadProject(initialToken);
   }, [initialToken, token, loadProject, initialProject]);
 
-  const sandpackFiles = useMemo<SandpackFiles>(
-    () => files || fallbackFiles,
-    [files]
+  const sandpackFiles = useMemo<SandpackFiles>(() => files || {}, [files]);
+  const hasRealFiles = useMemo(() => hasUserVisibleFiles(sandpackFiles), [sandpackFiles]);
+  const runtimeTransientPaths = useMemo(() => {
+    const paths = [EMPTY_PROJECT_PLACEHOLDER_PATH];
+    if (!hasRealFiles) {
+      paths.push("/package.json");
+    }
+    return paths;
+  }, [hasRealFiles]);
+  const shouldShowPath = useCallback(
+    (filePath: string) => !runtimeTransientPaths.includes(filePath) && !isRuntimeHiddenPath(filePath),
+    [runtimeTransientPaths]
   );
+  const providerFiles = useMemo<SandpackFiles>(
+    () => (hasRealFiles ? sandpackFiles : EMPTY_PROJECT_PROVIDER_FILES),
+    [hasRealFiles, sandpackFiles]
+  );
+  const providerTemplate = hasRealFiles && isVueLikeTemplate(template) ? template : undefined;
+  const topSearchFilePaths = useMemo(
+    () => Object.keys(sandpackFiles).filter(shouldShowPath),
+    [sandpackFiles, shouldShowPath]
+  );
+  const mergedOpenFileRequest = chatOpenFilePath || topSearchOpenFilePath;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const trimmedName = projectName.trim();
+    if (trimmedName) {
+      document.title = trimmedName;
+    }
+  }, [projectName]);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    (async () => {
+      const data = await listConversations(token);
+      if (!active) return;
+      setTopSearchConversations(data.map((item) => ({ id: item.id, title: item.title || "未命名对话" })));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token, openSkillsSignal]);
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(dependencies);
   }, [dependencies]);
+  const providerEntry = useMemo(() => {
+    for (const path of ENTRY_CANDIDATES) {
+      if (providerFiles[path]) return path;
+    }
+    return EMPTY_PROJECT_PLACEHOLDER_PATH;
+  }, [providerFiles]);
+  const providerCustomSetup = useMemo(() => {
+    if (isVueLikeTemplate(template)) {
+      return customSetup;
+    }
+    return {
+      ...customSetup,
+      entry: providerEntry,
+    };
+  }, [customSetup, providerEntry, template]);
+  const providerExternalResources = useMemo(() => extractExternalResources(providerFiles), [providerFiles]);
+  const sandpackRuntimeId = useMemo(
+    () =>
+      [
+        token || "no-token",
+        template || "no-template",
+        providerTemplate || "auto-template",
+      ].join("::"),
+    [providerTemplate, template, token]
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hostname !== "localhost") return;
+    // Debug only: verify what we actually pass to Sandpack at runtime.
+    console.log("[StudioShell Sandpack Debug]", {
+      token,
+      template,
+      providerTemplate,
+      providerEntry,
+      filePaths: Object.keys(providerFiles),
+    });
+  }, [providerEntry, providerFiles, providerTemplate, template, token]);
 
   const handleManualSave = useCallback(async () => {
     // 手动保存：只保存文件内容
@@ -366,34 +553,27 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
   const handleFilesChange = useCallback((nextFiles: SandpackFiles) => {
     latestFilesRef.current = nextFiles;
-  }, []);
-
-  useEffect(() => {
-    const handleMove = (event: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const containerLeft = containerRef.current?.getBoundingClientRect().left || 0;
-      const next = Math.min(728, Math.max(300, event.clientX - containerLeft));
-      setChatWidth(next);
-    };
-    const handleUp = () => {
-      resizingRef.current = false;
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-  }, []);
+    setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
+    const prevHasReal = hasUserVisibleFiles(files);
+    const nextHasReal = hasUserVisibleFiles(nextFiles);
+    // Avoid SandpackProvider remount loops: only sync state when empty/non-empty mode changes.
+    if (prevHasReal !== nextHasReal) {
+      setFiles(nextFiles);
+    }
+  }, [files]);
 
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
+    const baseFiles = normalizeFiles(latestFilesRef.current || files || {}) || {};
+    const normalizedUpdated = normalizeFiles(updated) || {};
     const merged = {
-      ...(latestFilesRef.current || files || {}),
-      ...updated,
+      ...baseFiles,
+      ...normalizedUpdated,
     };
     latestFilesRef.current = merged;
+    setChatFileOptions(toSortedFilePaths(merged).filter((path) => !isRuntimeHiddenPath(path)));
     setFiles(merged);
-  }, [files]);
+    queueAgentFileSync(normalizedUpdated);
+  }, [files, queueAgentFileSync]);
 
   const handleProjectNameChange = useCallback(async (newName: string) => {
     if (!token || !newName.trim() || newName === projectName) {
@@ -434,6 +614,46 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [chatWidth, setChatWidth] = useState(546);
   const resizingRef = useRef(false);
 
+  const updateChatWidthByClientX = useCallback((clientX: number) => {
+    const containerLeft = containerRef.current?.getBoundingClientRect().left || 0;
+    const next = Math.min(728, Math.max(300, clientX - containerLeft));
+    setChatWidth(next);
+  }, []);
+
+  const finishResizing = useCallback(() => {
+    resizingRef.current = false;
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+  }, []);
+
+  const handleResizerPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizingRef.current = true;
+    updateChatWidthByClientX(event.clientX);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [updateChatWidthByClientX]);
+
+  const handleResizerPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    updateChatWidthByClientX(event.clientX);
+  }, [updateChatWidthByClientX]);
+
+  const handleResizerPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    finishResizing();
+  }, [finishResizing]);
+
+  useEffect(() => {
+    return () => {
+      finishResizing();
+    };
+  }, [finishResizing]);
+
   useEffect(() => {
     const container = containerRef.current;
     const main = mainRef.current;
@@ -465,46 +685,86 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   }, []);
 
   return (
-    <Box position="relative" minH="100vh" overflow="hidden">
-      <VectorBackground />
+    <Box
+      position="relative"
+      minH="100dvh"
+      h="100dvh"
+      overflow="hidden"
+      bg="#0f131b"
+      backgroundImage="radial-gradient(circle at 1px 1px, rgba(173,184,203,0.22) 1px, transparent 0)"
+      backgroundSize="18px 18px"
+      p={0}
+    >
       <Flex
         ref={containerRef}
         direction="column"
-        minH="100vh"
+        minH="100dvh"
+        h="100dvh"
         align="stretch"
         justify="flex-start"
-        px={{ base: 4, md: 8, xl: 10 }}
-        py={{ base: 6, md: 8 }}
+        px={0}
+        py={0}
         position="relative"
         zIndex={1}
-        gap={{ base: 4, md: 5 }}
+        gap={0}
         overflow="hidden"
         boxSizing="border-box"
+        borderRadius={0}
+        border="none"
+        bg="#f3f4fa"
+        boxShadow="none"
       >
-        <Box>
-          <TopBar
-            projectName={projectName}
-            saveStatus={saveStatus}
-            onSave={handleManualSave}
-            onDownload={handleDownload}
-            onShare={handleOpenShareModal}
-            onProjectNameChange={handleProjectNameChange}
-          />
-        </Box>
+        <TopBar
+          projectName={projectName}
+          activeView={activeView}
+          onChangeView={setActiveView}
+          onBack={() => {
+            if (typeof window !== "undefined") {
+              window.location.assign("/");
+            } else {
+              void router.push("/");
+            }
+          }}
+          onOpenSettings={() => setOpenSkillsSignal((prev) => prev + 1)}
+          onProjectNameChange={handleProjectNameChange}
+          searchFiles={topSearchFilePaths}
+          searchConversations={topSearchConversations}
+          onOpenFileFromSearch={(filePath) => {
+            setActiveView("code");
+            setTopSearchOpenFilePath(filePath);
+          }}
+          onOpenConversationFromSearch={(conversationId) => {
+            void router.replace(
+              {
+                pathname: router.pathname,
+                query: { ...router.query, conversation: conversationId },
+              },
+              undefined,
+              { shallow: true }
+            );
+          }}
+        />
 
         <SandpackProvider
-          template={template}
-          files={sandpackFiles}
-          customSetup={customSetup}
+          key={sandpackRuntimeId}
+          template={providerTemplate}
+          files={providerFiles}
+          customSetup={providerCustomSetup}
           theme={githubLight}
           options={{
+            id: sandpackRuntimeId,
             autorun: true,
+            recompileMode: "delayed",
+            recompileDelay: 600,
+            experimental_enableServiceWorker: true,
+            externalResources: providerExternalResources,
           }}
         >
           <CodeChangeListener
             token={token}
-            template={template}
-            dependencies={customSetup?.dependencies || {}}
+            template={providerTemplate || template}
+            dependencies={providerCustomSetup?.dependencies || {}}
+            transientPaths={runtimeTransientPaths}
             onSaveStatusChange={setSaveStatus}
             onFilesChange={handleFilesChange}
           />
@@ -523,31 +783,31 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 token={token}
                 onFilesUpdated={handleAgentFilesUpdated}
                 height="100%"
+                openSkillsSignal={openSkillsSignal}
+                fileOptions={chatFileOptions}
+                onOpenWorkspaceFile={(filePath) => {
+                  const knownPaths = Object.keys(latestFilesRef.current || files || {});
+                  const resolvedPath = resolveWorkspaceFilePath(filePath, knownPaths);
+                  if (!resolvedPath) return false;
+                  setActiveView("code");
+                  setChatOpenFilePath(resolvedPath);
+                  return true;
+                }}
               />
             </Box>
             <Box
               w="10px"
+              ml="-5px"
+              mr="-5px"
               cursor="col-resize"
               bg="transparent"
               position="relative"
-              _before={{
-                content: '""',
-                position: "absolute",
-                left: "50%",
-                top: "20%",
-                transform: "translateX(-50%)",
-                width: "2px",
-                height: "60%",
-                borderRadius: "999px",
-                background: "rgba(148,163,184,0.35)",
-              }}
-              _hover={{
-                bg: "rgba(148,163,184,0.12)",
-                _before: { background: "rgba(71,85,105,0.5)" },
-              }}
-              onMouseDown={() => {
-                resizingRef.current = true;
-              }}
+              flexShrink={0}
+              _hover={{ bg: "transparent" }}
+              onPointerDown={handleResizerPointerDown}
+              onPointerMove={handleResizerPointerMove}
+              onPointerUp={handleResizerPointerUp}
+              onLostPointerCapture={finishResizing}
             />
             <WorkspaceShell
               token={token}
@@ -555,6 +815,22 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
+              openFileRequest={mergedOpenFileRequest}
+              onOpenFileRequestHandled={() => {
+                if (chatOpenFilePath) {
+                  setChatOpenFilePath(null);
+                  return;
+                }
+                if (topSearchOpenFilePath) {
+                  setTopSearchOpenFilePath(null);
+                }
+              }}
+              filePathFilter={shouldShowPath}
+              saveStatus={saveStatus}
+              onManualPreview={() => setActiveView("preview")}
+              onManualSave={handleManualSave}
+              onManualDownload={handleDownload}
+              onManualShare={handleOpenShareModal}
             />
           </Flex>
         </SandpackProvider>

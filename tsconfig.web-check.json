@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "src/pages/**/*.tsx",
+    "src/features/**/*.ts",
+    "src/features/**/*.tsx",
+    "src/components/**/*.ts",
+    "src/components/**/*.tsx",
+    "src/contexts/**/*.ts",
+    "src/contexts/**/*.tsx",
+    "src/hooks/**/*.ts",
+    "src/hooks/**/*.tsx",
+    "src/types/**/*.ts",
+    "src/types/**/*.d.ts",
+    "src/shared/**/*.ts",
+    "src/shared/**/*.tsx",
+    "src/global/**/*.ts",
+    "src/global/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/server/**",
+    "src/pages/api/**"
+  ]
+}

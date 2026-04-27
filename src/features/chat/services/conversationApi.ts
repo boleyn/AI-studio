@@ -8,6 +8,7 @@ import type {
   GetHistoriesResponseType,
   InitChatQueryType,
   InitChatResponseType,
+  UpdateHistoryMessageActionBodyType,
   UpdateHistoryBodyType,
   UpdateHistoryResponseType,
 } from "../types/conversationApi";
@@ -19,6 +20,18 @@ export const getConversationHistories = (data: GetHistoriesBodyType) =>
 
 export const putConversationHistory = (data: UpdateHistoryBodyType) =>
   httpPut<UpdateHistoryResponseType>("/core/chat/history/updateHistory", data);
+
+export const deleteConversationMessage = (data: UpdateHistoryMessageActionBodyType) =>
+  httpPost<{ success?: boolean }>("/core/chat/history/deleteMessage", data);
+
+export const truncateConversationFromMessage = (data: UpdateHistoryMessageActionBodyType) =>
+  httpPost<{ success?: boolean }>("/core/chat/history/truncateFromMessage", data);
+
+export const rewindConversationLatestTurn = (data: { token: string; chatId: string }) =>
+  httpPost<{ success?: boolean; files?: Record<string, { code: string }> }>(
+    "/core/chat/history/rewindLatestTurn",
+    data
+  );
 
 export const deleteConversationHistory = (data: DelChatHistoryType) =>
   httpDelete<{ success?: boolean }>("/core/chat/history/delHistory", data);

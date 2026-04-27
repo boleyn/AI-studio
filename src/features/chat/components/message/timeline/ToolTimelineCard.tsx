@@ -1,0 +1,627 @@
+import { Box, Button, Collapse, Flex, Icon, IconButton, Spinner, Text } from "@chakra-ui/react";
+import { ChevronDownIcon } from "@/components/common/Icon";
+import type { TimelineItem } from "@/features/chat/utils/chatItemParsers";
+import { isDetailTruncated, truncateDetailText } from "@/features/chat/utils/chatItemParsers";
+import { ToolStreamText } from "@/features/chat/hooks/useChatItemViewModel";
+import TimelineStatusPill, { type TimelineStatus } from "./TimelineStatusPill";
+
+const parseJsonObject = (value?: string): Record<string, unknown> => {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+};
+
+const getFileName = (value?: string) => {
+  if (!value) return "";
+  const normalized = value.replace(/\\/g, "/");
+  const tail = normalized.split("/").filter(Boolean).pop();
+  return tail || value;
+};
+
+const normalizeWorkspaceFilePath = (value?: string): string => {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  return raw.startsWith("/") ? raw : `/${raw}`;
+};
+
+const getGlobFiles = (response?: string): string[] => {
+  if (!response) return [];
+  try {
+    const parsed = JSON.parse(response);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === "string");
+    }
+    if (parsed && typeof parsed === "object") {
+      const filenames = (parsed as { filenames?: unknown }).filenames;
+      if (Array.isArray(filenames)) {
+        return filenames.filter((item): item is string => typeof item === "string");
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return response
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("{") && !line.startsWith("[") && !line.startsWith('"'));
+};
+
+const toPreviewLines = (value: string): string[] =>
+  value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .slice(0, 80);
+
+type TodoState = "pending" | "in_progress" | "completed";
+
+type TodoItem = {
+  id?: string;
+  content: string;
+  status: TodoState;
+  activeForm?: string;
+};
+
+const normalizeTodoState = (value: unknown): TodoState => {
+  if (value === "completed") return "completed";
+  if (value === "in_progress") return "in_progress";
+  return "pending";
+};
+
+const isTodoItemLike = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value) && typeof (value as { content?: unknown }).content === "string");
+
+const normalizeTodoItems = (value: unknown): TodoItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isTodoItemLike)
+    .map((todo) => ({
+      id: typeof todo.id === "string" ? todo.id : undefined,
+      content: String(todo.content || "").trim(),
+      status: normalizeTodoState(todo.status),
+      activeForm: typeof todo.activeForm === "string" ? todo.activeForm : undefined,
+    }))
+    .filter((todo) => Boolean(todo.content));
+};
+
+const getTodoItems = (paramsRaw?: string, responseRaw?: string): TodoItem[] => {
+  const paramsObj = parseJsonObject(paramsRaw);
+  const todosFromParams = normalizeTodoItems(paramsObj.todos);
+  if (todosFromParams.length > 0) return todosFromParams;
+
+  const responseObj = parseJsonObject(responseRaw);
+  const candidates = [
+    responseObj.todos,
+    responseObj.newTodos,
+    responseObj.data,
+    responseObj.items,
+    responseObj.content,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeTodoItems(candidate);
+    if (normalized.length > 0) return normalized;
+  }
+  return [];
+};
+
+const HEADER_BTN_SX = {
+  borderRadius: "6px",
+  _hover: { bg: "myGray.100" },
+} as const;
+const RESULT_TEXT_SX = {
+  fontSize: "11px",
+  lineHeight: "18px",
+} as const;
+
+const ToolTimelineCard = ({
+  item,
+  index,
+  isStreaming,
+  isExpanded,
+  onToggle,
+  onOpenWorkspaceFile,
+  onOpenToolDetailModal,
+}: {
+  item: TimelineItem;
+  index: number;
+  isStreaming?: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenToolDetailModal: (title: string, content?: string) => void;
+}) => {
+  const normalizedToolName = (item.toolName || "").trim().toLowerCase();
+  const toolParams = parseJsonObject(item.params);
+  const filePath = typeof toolParams.file_path === "string" ? toolParams.file_path : "";
+  const fileName = getFileName(filePath);
+  const isReadTool = normalizedToolName === "read";
+  const isGlobTool = normalizedToolName === "glob";
+  const isTodoTool = normalizedToolName === "todowrite" || normalizedToolName === "todoread";
+  const isEditTool = normalizedToolName === "edit" || normalizedToolName === "apply_patch" || normalizedToolName === "applypatch";
+  const isWriteTool = normalizedToolName === "write";
+  const leftBorderColor = "myGray.300";
+  const isRunning =
+    item.progressStatus === "in_progress" ||
+    item.progressStatus === "pending" ||
+    Boolean(isStreaming && !item.response);
+  const responseRaw = item.response || "";
+  const responseLower = responseRaw.toLowerCase();
+  const hasToolUseErrorPayload =
+    responseLower.includes("<tool_use_error>") ||
+    responseLower.includes("tool_use_error") ||
+    responseLower.includes("file has not been read yet") ||
+    responseLower.includes("displayfilepath is not defined");
+  const isError = item.progressStatus === "error" || (!isRunning && hasToolUseErrorPayload);
+  const isDenied = isError && (responseLower.includes("user denied") || responseLower.includes("denied"));
+  const status: TimelineStatus = isRunning ? "running" : isDenied ? "denied" : isError ? "error" : "completed";
+  const shouldShowStatusPill = status !== "completed";
+  const workspaceFilePath = normalizeWorkspaceFilePath(filePath);
+  const truncatedResponse = truncateDetailText(item.response);
+  const responseTruncated = isDetailTruncated(item.response);
+
+  if (isTodoTool) {
+    const todos = getTodoItems(item.params, item.response);
+    const completedCount = todos.filter((todo) => todo.status === "completed").length;
+    const inProgressCount = todos.filter((todo) => todo.status === "in_progress").length;
+    const pendingCount = Math.max(0, todos.length - completedCount - inProgressCount);
+    const todoLabel = normalizedToolName === "todowrite" ? "TodoWrite" : "TodoRead";
+    const subtitle =
+      todos.length > 0
+        ? `${completedCount} completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ""}${pendingCount > 0 ? `, ${pendingCount} pending` : ""}`
+        : "No todo items";
+
+    return (
+      <Box
+        key={`tool-todo-${item.id || index}`}
+        border="1px solid"
+        borderColor="myGray.200"
+        borderRadius="10px"
+        bg="myGray.25"
+        px={3}
+        py={2}
+      >
+        <Flex align="center" gap={2}>
+          <Text color="myGray.800" fontSize="12px" fontWeight={600}>
+            {todoLabel}
+          </Text>
+          <Text color="myGray.350" fontSize="11px">
+            /
+          </Text>
+          <Text color="myGray.500" fontSize="11px" noOfLines={1}>
+            {todos.length > 0 ? `${todos.length} item${todos.length > 1 ? "s" : ""}` : "list update"}
+          </Text>
+          <Box ml="auto">
+            {shouldShowStatusPill ? <TimelineStatusPill status={status} /> : null}
+          </Box>
+          <IconButton
+            aria-label={isExpanded ? "收起待办详情" : "展开待办详情"}
+            icon={
+              <Icon
+                as={ChevronDownIcon}
+                boxSize="14px"
+                color="myGray.500"
+                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                transition="transform 0.2s ease"
+              />
+            }
+            h="22px"
+            minW="22px"
+            onClick={onToggle}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          />
+        </Flex>
+
+        <Collapse animateOpacity in={isExpanded}>
+          <Box borderTop="1px dashed" borderColor="myGray.250" mt={2} pt={2}>
+            <Text color="myGray.500" fontSize="11px" mb={2}>
+              {subtitle}
+            </Text>
+            {todos.length > 0 ? (
+              <Flex direction="column" gap={1}>
+                {todos.map((todo, todoIndex) => {
+                  const dotColor =
+                    todo.status === "completed" ? "green.500" : todo.status === "in_progress" ? "blue.500" : "myGray.400";
+                  const statusLabel =
+                    todo.status === "completed" ? "completed" : todo.status === "in_progress" ? "in progress" : "pending";
+                  return (
+                    <Flex align="flex-start" gap={2} key={todo.id || `${todo.content}-${todoIndex}`}>
+                      <Box bg={dotColor} borderRadius="full" flexShrink={0} h="7px" mt="6px" w="7px" />
+                      <Box flex="1" minW={0}>
+                        <Text color="myGray.800" fontSize="12px" fontWeight={todo.status === "in_progress" ? 600 : 500}>
+                          {todo.content}
+                        </Text>
+                        <Text color="myGray.500" fontSize="10px">
+                          {statusLabel}
+                          {todo.activeForm ? ` · ${todo.activeForm}` : ""}
+                        </Text>
+                      </Box>
+                    </Flex>
+                  );
+                })}
+              </Flex>
+            ) : truncatedResponse ? (
+              <Box bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+              </Box>
+            ) : isRunning ? (
+              <Text color="myGray.500" fontSize="12px">
+                执行中...
+              </Text>
+            ) : (
+              <Text color="myGray.400" fontSize="12px">
+                暂无待办内容
+              </Text>
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }
+
+  if (isReadTool) {
+    return (
+      <Box borderLeft="2px solid" borderLeftColor={leftBorderColor} key={`tool-read-${item.id || index}`} pl={3} py={1}>
+        <Flex align="center" gap={2}>
+          <Text color="myGray.500" fontSize="12px">Read</Text>
+          <Text color="myGray.350" fontSize="11px">/</Text>
+          <Button
+            color="myGray.800"
+            fontFamily="mono"
+            fontSize="12px"
+            h="22px"
+            minW="auto"
+            onClick={() => {
+              if (workspaceFilePath && onOpenWorkspaceFile?.(workspaceFilePath)) {
+                return;
+              }
+              onOpenToolDetailModal(
+                `Read · ${fileName || filePath || `工具 ${index + 1}`}`,
+                [item.params, item.response].filter(Boolean).join("\n\n")
+              );
+            }}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
+            {fileName || filePath || `工具 ${index + 1}`}
+          </Button>
+          {shouldShowStatusPill ? (
+            <Box ml="auto">
+              <TimelineStatusPill status={status} />
+            </Box>
+          ) : (
+            <Box ml="auto" />
+          )}
+        </Flex>
+      </Box>
+    );
+  }
+
+  if (isGlobTool) {
+    const globPattern = typeof toolParams.pattern === "string" ? toolParams.pattern : item.params || "";
+    const globPath = typeof toolParams.path === "string" ? toolParams.path : "";
+    const files = getGlobFiles(item.response);
+
+    return (
+      <Box borderLeft="2px solid" borderLeftColor={leftBorderColor} key={`tool-compact-${item.id || index}`} pl={3} py={1}>
+        <Flex align="center" gap={2}>
+          <Text color="myGray.500" fontSize="12px">Glob</Text>
+          <Text color="myGray.350" fontSize="11px">/</Text>
+          <Button
+            color="myGray.800"
+            fontFamily="mono"
+            fontSize="12px"
+            h="22px"
+            minW="auto"
+            onClick={onToggle}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
+            {globPattern || `工具 ${index + 1}`}
+          </Button>
+          {globPath ? (
+            <Text color="myGray.500" fontSize="11px" fontStyle="italic" noOfLines={1}>
+              in {globPath}
+            </Text>
+          ) : null}
+          {shouldShowStatusPill ? (
+            <Box ml="auto">
+              <TimelineStatusPill status={status} />
+            </Box>
+          ) : (
+            <Box ml="auto" />
+          )}
+          <IconButton
+            aria-label={isExpanded ? "收起结果" : "展开结果"}
+            icon={
+              <Icon
+                as={ChevronDownIcon}
+                boxSize="14px"
+                color="myGray.500"
+                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                transition="transform 0.2s ease"
+              />
+            }
+            h="22px"
+            minW="22px"
+            onClick={onToggle}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          />
+        </Flex>
+        <Collapse animateOpacity in={isExpanded}>
+          <Box mt={2}>
+            {files.length > 0 ? (
+              <Text color="myGray.500" mb={1} sx={RESULT_TEXT_SX}>
+                Found {files.length} {files.length === 1 ? "file" : "files"}
+              </Text>
+            ) : null}
+            {files.length > 0 ? (
+              <Flex maxH="148px" overflowY="auto" wrap="wrap">
+                {files.slice(0, 120).map((file, fileIndex) => {
+                  const displayName = getFileName(file);
+                  return (
+                    <Box alignItems="center" display="inline-flex" key={`${file}-${fileIndex}`} mr={1}>
+                      <Button
+                        color="blue.600"
+                        fontFamily="mono"
+                        fontSize={RESULT_TEXT_SX.fontSize}
+                        h="18px"
+                        minW="auto"
+                        onClick={() => {
+                          const normalizedFilePath = normalizeWorkspaceFilePath(file);
+                          if (normalizedFilePath && onOpenWorkspaceFile?.(normalizedFilePath)) {
+                            return;
+                          }
+                          onOpenToolDetailModal(`Glob 匹配文件 #${fileIndex + 1}`, file);
+                        }}
+                        px={0.5}
+                        size="xs"
+                        title={file}
+                        variant="ghost"
+                      >
+                        {displayName || file}
+                      </Button>
+                      {fileIndex < Math.min(files.length, 120) - 1 ? (
+                        <Text color="myGray.350" sx={RESULT_TEXT_SX}>
+                          ,
+                        </Text>
+                      ) : null}
+                    </Box>
+                  );
+                })}
+              </Flex>
+            ) : item.response ? (
+              <ToolStreamText color="myGray.700" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+            ) : isRunning ? (
+              <Text color="myGray.500" fontSize="12px">搜索中...</Text>
+            ) : (
+              <Text color="myGray.400" fontSize="12px">No files found</Text>
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }
+
+  const toolLabel = isWriteTool ? "Write" : isEditTool ? "Edit" : item.toolName || "工具";
+  const title = isWriteTool
+    ? fileName || filePath || "新建文件"
+    : isEditTool
+    ? fileName || filePath || "编辑文件"
+    : item.toolName || `工具 ${index + 1}`;
+  const oldString = typeof toolParams.old_string === "string" ? toolParams.old_string : "";
+  const newString =
+    typeof toolParams.new_string === "string"
+      ? toolParams.new_string
+      : typeof toolParams.content === "string"
+      ? toolParams.content
+      : "";
+  const editWriteDetailContent = [
+    filePath ? `file_path: ${filePath}` : "",
+    oldString ? `old_string:\n${oldString}` : "",
+    newString ? `new_string:\n${newString}` : "",
+    item.response ? `tool_result:\n${item.response}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return (
+    <Box
+      key={`tool-${item.id || index}`}
+      borderLeft="2px solid"
+      borderLeftColor={leftBorderColor}
+      py={1}
+      pl={3}
+    >
+      <Flex align="center" gap={2}>
+        {isRunning ? (
+          <Spinner color="blue.500" size="xs" speed="0.7s" thickness="2.5px" />
+        ) : (
+          <Box bg="myGray.350" borderRadius="full" h="6px" w="6px" />
+        )}
+        {(isWriteTool || isEditTool) ? (
+          <>
+            <Button
+              color="myGray.500"
+              fontSize="12px"
+              h="22px"
+              minW="auto"
+              onClick={onToggle}
+              px={1}
+              size="xs"
+              variant="ghost"
+              sx={HEADER_BTN_SX}
+            >
+              {toolLabel}
+            </Button>
+            <Text color="myGray.350" fontSize="11px">/</Text>
+          </>
+        ) : null}
+        {isWriteTool || isEditTool ? (
+          <Button
+            color="myGray.800"
+            fontFamily="mono"
+            fontSize="12px"
+            fontWeight={600}
+            h="22px"
+            minW="auto"
+            onClick={() => {
+              if (workspaceFilePath && onOpenWorkspaceFile?.(workspaceFilePath)) {
+                return;
+              }
+              onOpenToolDetailModal(`${item.toolName || "工具"} · ${title}`, editWriteDetailContent);
+            }}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
+            {title}
+          </Button>
+        ) : (
+          <Button
+            color="myGray.800"
+            fontSize="12px"
+            fontWeight={600}
+            h="22px"
+            minW="auto"
+            onClick={onToggle}
+            px={1.5}
+            size="xs"
+            variant="ghost"
+            sx={HEADER_BTN_SX}
+          >
+            {title}
+          </Button>
+        )}
+        {shouldShowStatusPill ? (
+          <Box ml="auto">
+            <TimelineStatusPill status={status} />
+          </Box>
+        ) : (
+          <Box ml="auto" />
+        )}
+        <IconButton
+          aria-label={isExpanded ? "收起详情" : "展开详情"}
+          icon={
+            <Icon
+              as={ChevronDownIcon}
+              boxSize="14px"
+              color="myGray.500"
+              transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+              transition="transform 0.2s ease"
+            />
+          }
+          h="22px"
+          minW="22px"
+          onClick={onToggle}
+          size="xs"
+          variant="ghost"
+          sx={HEADER_BTN_SX}
+        />
+      </Flex>
+
+      <Collapse animateOpacity in={isExpanded}>
+        <Flex direction="column" gap={2} mt={2}>
+          {(isEditTool || isWriteTool) && newString ? (
+            <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
+              <Flex
+                align="center"
+                justify="space-between"
+                mb={1}
+              >
+                <Text color="myGray.600" fontFamily="mono" fontSize="11px" noOfLines={1}>
+                  {filePath || title}
+                </Text>
+                <Box
+                  bg={isWriteTool ? "green.50" : "myGray.50"}
+                  border="1px solid"
+                  borderColor={isWriteTool ? "green.200" : "myGray.200"}
+                  borderRadius="999px"
+                  color={isWriteTool ? "green.700" : "myGray.600"}
+                  fontSize="10px"
+                  px={1.5}
+                  py="1px"
+                >
+                  {isWriteTool ? "New" : "Diff"}
+                </Box>
+              </Flex>
+              <Box border="1px solid" borderColor="myGray.200" borderRadius="8px" fontFamily="mono" fontSize="11px" overflow="hidden">
+                {oldString
+                  ? toPreviewLines(oldString).map((line, rowIndex) => (
+                      <Flex bg="red.50" key={`old-${rowIndex}`} lineHeight="18px">
+                        <Box color="red.500" textAlign="center" w="20px">-</Box>
+                        <Text color="red.800" flex="1" px={2} whiteSpace="pre-wrap">
+                          {line || " "}
+                        </Text>
+                      </Flex>
+                    ))
+                  : null}
+                {toPreviewLines(newString).map((line, rowIndex) => (
+                  <Flex bg="green.50" key={`new-${rowIndex}`} lineHeight="18px">
+                    <Box color="green.500" textAlign="center" w="20px">+</Box>
+                    <Text color="green.800" flex="1" px={2} whiteSpace="pre-wrap">
+                      {line || " "}
+                    </Text>
+                  </Flex>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+
+          {!(isEditTool || isWriteTool) || status !== "completed" ? (
+            <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
+              <Flex align="center" justify="space-between" mb={1}>
+                <Text color="primary.700" fontSize="10px" fontWeight="700">
+                  结果
+                </Text>
+                {responseTruncated ? (
+                  <Button
+                    colorScheme="primary"
+                    h="20px"
+                    minW="auto"
+                    onClick={() => onOpenToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)}
+                    px={2}
+                    size="xs"
+                    variant="ghost"
+                  >
+                    查看完整
+                  </Button>
+                ) : null}
+              </Flex>
+              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+                {truncatedResponse ? (
+                  <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+                ) : isRunning ? (
+                  <Text color="myGray.500" fontSize="12px">
+                    执行中...
+                  </Text>
+                ) : (
+                  <Text color="myGray.400" fontSize="12px">
+                    暂无输出
+                  </Text>
+                )}
+              </Box>
+            </Box>
+          ) : null}
+        </Flex>
+      </Collapse>
+    </Box>
+  );
+};
+
+export default ToolTimelineCard;

@@ -8,15 +8,12 @@ export interface UploadedFileArtifact {
   lastModified: number;
   storagePath?: string;
   publicUrl?: string;
-  markdownStoragePath?: string;
-  markdownPublicUrl?: string;
   previewUrl?: string;
   downloadUrl?: string;
   parse?: {
     status: ParseStatus;
     progress: number;
     parser: "text" | "customPdfParse" | "metadata";
-    markdown?: string;
     error?: string;
   };
 }

@@ -11,14 +11,19 @@ export const getExecutionSummary = (
   if (message.role !== "assistant") return null;
   const meta = message.additional_kwargs;
   if (!meta || typeof meta !== "object") return null;
-
-  const responseData = Array.isArray((meta as { responseData?: unknown }).responseData)
-    ? ((meta as { responseData?: unknown[] }).responseData ?? [])
-    : [];
-  const toolDetails = Array.isArray((meta as { toolDetails?: unknown }).toolDetails)
-    ? ((meta as { toolDetails?: unknown[] }).toolDetails ?? [])
-    : [];
-  const nodeCount = Math.max(responseData.length, toolDetails.length);
+  const sdkMessage =
+    (meta as { sdkMessage?: unknown }).sdkMessage &&
+    typeof (meta as { sdkMessage?: unknown }).sdkMessage === "object"
+      ? ((meta as { sdkMessage: { message?: unknown } }).sdkMessage.message as
+          | { content?: unknown }
+          | undefined)
+      : null;
+  const content = Array.isArray(sdkMessage?.content) ? sdkMessage.content : [];
+  const nodeCount = content.filter((item) => {
+    if (!item || typeof item !== "object") return false;
+    const type = (item as { type?: unknown }).type;
+    return type === "tool_use";
+  }).length;
   const durationSeconds =
     typeof (meta as { durationSeconds?: unknown }).durationSeconds === "number"
       ? ((meta as { durationSeconds?: number }).durationSeconds ?? 0)

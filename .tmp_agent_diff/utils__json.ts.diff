@@ -1,0 +1,11 @@
+--- /Users/santian/claude-code/src/utils/json.ts	2026-04-02 21:54:01
++++ src/server/agent/utils/json.ts	2026-04-18 20:11:37
+@@ -3,7 +3,7 @@
+   applyEdits,
+   modify,
+   parse as parseJsonc,
+-} from 'jsonc-parser/lib/esm/main.js'
++} from 'jsonc-parser'
+ import { stripBOM } from './jsonRead.js'
+ import { logError } from './log.js'
+ import { memoizeWithLRU } from './memoize.js'

@@ -1,0 +1,73 @@
+--- /Users/santian/claude-code/src/utils/glob.ts	2026-04-02 21:54:01
++++ src/server/agent/utils/glob.ts	2026-04-18 20:11:37
+@@ -1,6 +1,8 @@
+-import { basename, dirname, isAbsolute, join, sep } from 'path'
++import { basename, dirname, isAbsolute, join, relative, sep } from 'path'
++import picomatch from 'picomatch'
+ import type { ToolPermissionContext } from '../Tool.js'
+ import { isEnvTruthy } from './envUtils.js'
++import { getFsImplementation, getVirtualProjectRoot } from './fsOperations.js'
+ import {
+   getFileReadIgnorePatterns,
+   normalizePatternsToPath,
+@@ -88,6 +90,60 @@
+     searchDir,
+   )
+ 
++  const virtualProjectRoot = (getVirtualProjectRoot() || '').trim()
++  if (virtualProjectRoot) {
++    const fs = getFsImplementation()
++    const all: string[] = []
++    const maxScanEntries = Math.max(2000, offset + limit + 500)
++    const normalizedPattern = (searchPattern || '*').trim() || '*'
++    const requiresDot = normalizedPattern.startsWith('.')
++    const hasMagic = /[*?[{\]]/.test(normalizedPattern)
++    const hasSlash = normalizedPattern.includes('/') || normalizedPattern.includes('\\')
++    const matchPath = picomatch(normalizedPattern, { dot: requiresDot })
++    const normalizedLiteral = normalizedPattern.replace(/\\/g, '/')
++    const shouldIgnore = (fullPath: string): boolean =>
++      ignorePatterns.some(pattern => {
++        if (!pattern) return false
++        if (pattern.startsWith('/')) return fullPath.startsWith(pattern)
++        return fullPath.includes(pattern)
++      })
++
++    const walk = async (dir: string): Promise<void> => {
++      if (all.length >= maxScanEntries) return
++      let entries
++      try {
++        entries = await fs.readdir(dir)
++      } catch {
++        return
++      }
++      for (const entry of entries) {
++        if (all.length >= maxScanEntries) break
++        const name = entry.name
++        if (!requiresDot && name.startsWith('.')) continue
++        const fullPath = join(dir, name)
++        if (shouldIgnore(fullPath)) continue
++        if (entry.isDirectory()) {
++          await walk(fullPath)
++          continue
++        }
++        const rel = relative(searchDir, fullPath).replace(/\\/g, '/')
++        const matched = hasMagic
++          ? matchPath(rel) || (!hasSlash && matchPath(name))
++          : rel === normalizedLiteral || (!hasSlash && name === normalizedLiteral)
++        if (!matched) continue
++        all.push(fullPath)
++      }
++    }
++
++    await walk(searchDir)
++    all.sort((a, b) => a.localeCompare(b))
++    const truncated = all.length > offset + limit
++    return {
++      files: all.slice(offset, offset + limit),
++      truncated,
++    }
++  }
++
+   // Use ripgrep for better memory performance
+   // --files: list files instead of searching content
+   // --glob: filter by pattern

@@ -1,6 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import {
+  DEFAULT_PROJECT_TEMPLATE,
+  isCommonProjectTemplate,
+  toSandpackTemplate,
+} from "@shared/sandpack/projectTemplates";
+import { loadProjectTemplateDefaults } from "@server/projects/projectTemplateLoader";
+import {
   listProjects,
   getProject,
   saveProject,
@@ -8,125 +14,32 @@ import {
   deleteProject as deleteProjectStorage,
   type ProjectData,
 } from "@server/projects/projectStorage";
-import { deleteAllConversations } from "@server/conversations/conversationStorage";
+import { purgeAllConversations } from "@server/conversations/conversationStorage";
 import { requireAuth } from "@server/auth/session";
 
 type ProjectListItem = {
   token: string;
   name: string;
+  description?: string;
+  fileCount?: number;
+  createdAt: string;
   updatedAt: string;
 };
 
 type CreateProjectRequest = {
   name?: string;
+  description?: string;
   template?: SandpackPredefinedTemplate;
   files?: Record<string, { code: string }>;
   dependencies?: Record<string, string>;
 };
 
-const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: string }> => {
-  if (!files || typeof files !== "object") return false;
-  return Object.keys(files as Record<string, unknown>).length > 0;
+const hasFilesObject = (files: unknown): files is Record<string, { code: string }> => {
+  return Boolean(files && typeof files === "object");
 };
 
-// 默认项目模板（Node + React）
-const DEFAULT_TEMPLATE: SandpackPredefinedTemplate = "react";
-const DEFAULT_FILES: Record<string, { code: string }> = {
-  "/index.js": {
-    code: `import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./styles.css";
-
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-`,
-  },
-  "/App.js": {
-    code: `import { useState } from "react";
-
-export default function App() {
-  const [count, setCount] = useState(0);
-  return (
-    <main className="app">
-      <header>
-        <p className="badge">Node + React Starter</p>
-        <h1>欢迎来到 AI Studio</h1>
-        <p className="subtle">从这里开始构建你的全栈组件。</p>
-      </header>
-      <section className="card">
-        <h2>交互示例</h2>
-        <p>点击计数器：{count}</p>
-        <button onClick={() => setCount((prev) => prev + 1)}>Click me</button>
-      </section>
-    </main>
-  );
-}`,
-  },
-  "/styles.css": {
-    code: `.app {
-  font-family: "Sora", sans-serif;
-  color: #f7f5ff;
-  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
-  min-height: 100vh;
-  padding: 64px;
-}
-
-h1 {
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  margin: 16px 0;
-}
-
-p {
-  opacity: 0.7;
-  margin-top: 12px;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f7f5ff;
-}
-
-.subtle {
-  opacity: 0.75;
-  max-width: 520px;
-}
-
-.card {
-  margin-top: 32px;
-  padding: 24px;
-  border-radius: 16px;
-  background: rgba(16, 16, 24, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 60px rgba(8, 8, 16, 0.3);
-}
-
-button {
-  margin-top: 12px;
-  border: 0;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: #f7f5ff;
-  color: #111018;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-h2 {
-  margin: 0 0 8px;
-}
-
-}`,
-  },
+const hasDependenciesObject = (dependencies: unknown): dependencies is Record<string, string> => {
+  return Boolean(dependencies && typeof dependencies === "object");
 };
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
@@ -161,14 +74,22 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       }
       const token = generateToken();
       const now = new Date().toISOString();
+      const requestedTemplate = isCommonProjectTemplate(body.template)
+        ? body.template
+        : DEFAULT_PROJECT_TEMPLATE;
+      const sandpackTemplate = toSandpackTemplate(requestedTemplate);
+      const templateDefaults = await loadProjectTemplateDefaults(requestedTemplate);
 
       const project: ProjectData = {
         token,
         name,
-        template: body.template || DEFAULT_TEMPLATE,
+        description: body.description?.trim() || undefined,
+        template: sandpackTemplate,
         userId,
-        files: hasNonEmptyFiles(body.files) ? body.files : DEFAULT_FILES,
-        dependencies: body.dependencies || {},
+        files: hasFilesObject(body.files) ? body.files : templateDefaults.files,
+        dependencies: hasDependenciesObject(body.dependencies)
+          ? body.dependencies
+          : templateDefaults.dependencies,
         createdAt: now,
         updatedAt: now,
       };
@@ -178,6 +99,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       res.status(201).json({
         token: project.token,
         name: project.name,
+        description: project.description,
         template: project.template,
         files: project.files,
         dependencies: project.dependencies,
@@ -207,7 +129,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         res.status(403).json({ error: "无权删除该项目" });
         return;
       }
-      await deleteAllConversations(token);
+      await purgeAllConversations(token);
       await deleteProjectStorage(token);
       res.status(200).json({ success: true });
     } catch (error) {

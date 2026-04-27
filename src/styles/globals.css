@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 html,
 body,
@@ -8,13 +8,47 @@ body,
 
 body {
   margin: 0;
-  font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-  background: linear-gradient(120deg, #f5f7ff 0%, #f8f6f2 48%, #f4f7fb 100%);
+  font-family: "Manrope", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(148, 186, 255, 0.28) 0%, rgba(148, 186, 255, 0) 34%),
+    radial-gradient(circle at 92% 12%, rgba(133, 209, 173, 0.2) 0%, rgba(133, 209, 173, 0) 30%),
+    linear-gradient(126deg, #f5f7ff 0%, #f7f8ff 44%, #f4f7fb 100%);
   color: #1f2937;
+  background-attachment: fixed;
 }
 
 * {
   box-sizing: border-box;
+}
+
+:root {
+  --ws-surface: rgba(255, 255, 255, 0.78);
+  --ws-surface-strong: rgba(255, 255, 255, 0.9);
+  --ws-surface-muted: rgba(246, 249, 255, 0.74);
+  --ws-border: rgba(148, 163, 184, 0.34);
+  --ws-border-strong: rgba(100, 116, 139, 0.44);
+  --ws-text-main: #0f172a;
+  --ws-text-subtle: #475569;
+  --ws-accent: #28823b;
+  --ws-accent-soft: rgba(100, 218, 122, 0.14);
+  --ws-accent-border: rgba(100, 218, 122, 0.52);
+  --ws-tab-active-bg: linear-gradient(132deg, rgba(186, 238, 205, 0.86) 0%, rgba(221, 247, 229, 0.95) 100%);
+  --ws-glow-soft: 0 20px 42px -26px rgba(15, 23, 42, 0.35);
+}
+
+@keyframes editorEmptyRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.editor-empty-state {
+  animation: editorEmptyRiseIn 0.42s cubic-bezier(0.2, 0.72, 0.2, 1) both;
 }
 
 /* Sandpack FileTabs overrides (high-specificity to beat injected Sandpack styles) */
@@ -33,32 +67,54 @@ body {
   padding-right: 0;
   margin: 0 !important;
   background: transparent !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .sp-wrapper .sp-tab-button {
   height: 32px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: 1px solid transparent !important;
   border-radius: 12px;
   background: transparent !important;
-  color: #8b95a5 !important;
+  color: #7f8ba0 !important;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   outline: none !important;
   box-shadow: none !important;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.sp-wrapper .sp-tab-container .sp-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: #64748b !important;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sp-wrapper .sp-tab-container .sp-close-button:hover {
+  background: rgba(148, 163, 184, 0.2);
+  color: #334155 !important;
 }
 
 .sp-wrapper .sp-tab-button:hover {
-  color: #374151 !important;
+  color: #1f2937 !important;
   background: transparent !important;
 }
 
 .sp-wrapper .sp-tab-button[data-active="true"] {
-  border-color: #93c5fd !important;
-  background: #dbeafe !important;
-  color: #1e3a8a !important;
+  border-color: #94b5ff !important;
+  background: #e1eaff !important;
+  color: #1d4091 !important;
   font-weight: 600;
+  transform: translateY(-1px);
 }
 
 .sp-wrapper .sp-tab-button[data-active="false"] {
@@ -66,9 +122,9 @@ body {
 }
 
 .sp-wrapper .sp-tab-container[aria-selected="true"] .sp-tab-button {
-  border-color: #93c5fd !important;
-  background: #dbeafe !important;
-  color: #1e3a8a !important;
+  border-color: #94b5ff !important;
+  background: #e1eaff !important;
+  color: #1d4091 !important;
   font-weight: 600;
 }
 
@@ -80,4 +136,26 @@ body {
 .sp-wrapper .sp-tab-container:has(.sp-tab-button:focus),
 .sp-wrapper .sp-tab-container:has(.sp-tab-button:focus-visible) {
   outline: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.36);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.52);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }

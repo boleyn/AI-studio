@@ -4,15 +4,26 @@ import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { normalizeSandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import JSZip from "jszip";
 import {
+  createProjectFileViewUrl,
   getProject,
+  readProjectFile,
   updateProjectMeta,
   updateFile,
   updateFiles,
 } from "@server/projects/projectStorage";
 import { requireAuth } from "@server/auth/session";
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "50mb",
+    },
+  },
+};
+
 type PatchProjectRequest = {
   name?: string;
+  description?: string;
   template?: SandpackPredefinedTemplate;
   dependencies?: Record<string, string>;
   sandpackCompileInfo?: SandpackCompileInfo;
@@ -36,6 +47,10 @@ const hasNonEmptyFiles = (files: unknown): files is Record<string, { code: strin
   return Object.keys(files as Record<string, unknown>).length > 0;
 };
 
+const hasFilesObject = (files: unknown): files is Record<string, { code: string }> => {
+  return Boolean(files && typeof files === "object");
+};
+
 const normalizeZipPath = (filePath: string): string | null => {
   const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
   if (!normalized || normalized.includes("..")) {
@@ -52,6 +67,21 @@ const normalizeFilename = (name: string): string => {
 const toAsciiFilename = (name: string): string => {
   const ascii = name.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "_").trim();
   return ascii || "project.zip";
+};
+
+const parseBase64DataUrl = (value: string): { mime: string; bytes: Buffer } | null => {
+  const match = value.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const mime = (match[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const base64Body = match[2].replace(/\s+/g, "");
+  try {
+    return {
+      mime,
+      bytes: Buffer.from(base64Body, "base64"),
+    };
+  } catch {
+    return null;
+  }
 };
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
@@ -80,12 +110,55 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
 
       const action = typeof req.query.action === "string" ? req.query.action : "";
 
+      if (action === "view") {
+        const filePath = typeof req.query.path === "string" ? req.query.path : "";
+        if (!filePath) {
+          res.status(400).json({ error: "缺少 path 参数" });
+          return;
+        }
+        try {
+          const { buffer, contentType, contentLength } = await readProjectFile(token, filePath);
+          res.setHeader("Cache-Control", "private, no-store, must-revalidate");
+          res.setHeader("Content-Type", contentType || "application/octet-stream");
+          if (typeof contentLength === "number" && contentLength >= 0) {
+            res.setHeader("Content-Length", String(contentLength));
+          } else {
+            res.setHeader("Content-Length", String(buffer.length));
+          }
+          res.status(200).send(buffer);
+        } catch {
+          res.status(404).json({ error: "文件不存在" });
+        }
+        return;
+      }
+
+      if (action === "view-url") {
+        const filePath = typeof req.query.path === "string" ? req.query.path : "";
+        if (!filePath) {
+          res.status(400).json({ error: "缺少 path 参数" });
+          return;
+        }
+        try {
+          const url = await createProjectFileViewUrl(token, filePath, 900);
+          res.status(200).json({ url });
+        } catch {
+          res.status(404).json({ error: "文件不存在" });
+        }
+        return;
+      }
+
       if (action === "download") {
         const zip = new JSZip();
         Object.entries(project.files).forEach(([filePath, file]) => {
           const zipPath = normalizeZipPath(filePath);
           if (!zipPath) return;
-          zip.file(zipPath, file.code ?? "");
+          const code = file.code ?? "";
+          const dataUrl = parseBase64DataUrl(code);
+          if (dataUrl) {
+            zip.file(zipPath, dataUrl.bytes);
+            return;
+          }
+          zip.file(zipPath, code);
         });
 
         if (Object.keys(zip.files).length === 0) {
@@ -119,6 +192,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         dependencies: project.dependencies || {},
         sandpackCompileInfo: project.sandpackCompileInfo || null,
         name: project.name,
+        description: project.description,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       });
@@ -144,6 +218,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       const body = req.body as PatchProjectRequest;
       await updateProjectMeta(token, {
         name: body.name,
+        description: body.description,
         template: body.template,
         dependencies: body.dependencies,
         sandpackCompileInfo: body.sandpackCompileInfo,
@@ -153,6 +228,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       res.status(200).json({
         token: updatedProject!.token,
         name: updatedProject!.name,
+        description: updatedProject!.description,
         template: updatedProject!.template,
         dependencies: updatedProject!.dependencies,
         sandpackCompileInfo: updatedProject!.sandpackCompileInfo,
@@ -274,13 +350,8 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         return;
       }
 
-      if (!body.files || typeof body.files !== "object") {
+      if (!hasFilesObject(body.files)) {
         res.status(400).json({ error: "缺少files参数" });
-        return;
-      }
-
-      if (!hasNonEmptyFiles(body.files)) {
-        res.status(400).json({ error: "files 不能为空" });
         return;
       }
 

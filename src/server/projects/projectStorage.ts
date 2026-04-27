@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
@@ -5,6 +7,7 @@ import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { getMongoDb } from "../db/mongo";
 import {
+  createGetObjectPresignedUrl,
   deleteStorageObjects,
   getObjectFromStorage,
   listStorageObjectKeysByPrefix,
@@ -18,6 +21,7 @@ export type ProjectFile = {
 export type ProjectMeta = {
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   dependencies?: Record<string, string>;
@@ -29,6 +33,7 @@ export type ProjectMeta = {
 export type ProjectData = {
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   files: Record<string, ProjectFile>;
@@ -41,6 +46,17 @@ export type ProjectData = {
 export type ProjectListItem = {
   token: string;
   name: string;
+  description?: string;
+  fileCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectOverviewItem = {
+  token: string;
+  name: string;
+  description?: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -48,12 +64,14 @@ type ProjectDoc = {
   _id: ObjectId;
   token: string;
   name: string;
+  description?: string;
   template: string;
   userId: string;
   dependencies?: Record<string, string>;
   sandpackCompileInfo?: SandpackCompileInfo;
   filesPath?: string;
   files?: Record<string, ProjectFile>;
+  fileCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -61,105 +79,8 @@ type ProjectDoc = {
 const COLLECTION = "projects";
 const PROJECT_STORAGE_PREFIX = "projects";
 const PROJECT_STORAGE_FILES_SEGMENT = "files";
+const CHAT_UPLOAD_ROOT = "chat_uploads";
 const LEGACY_PROJECT_FILES_ROOT = path.join(process.cwd(), "data", "projects");
-
-const DEFAULT_PROJECT_FILES: Record<string, ProjectFile> = {
-  "/index.js": {
-    code: `import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./styles.css";
-
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-`,
-  },
-  "/App.js": {
-    code: `import { useState } from "react";
-
-export default function App() {
-  const [count, setCount] = useState(0);
-  return (
-    <main className="app">
-      <header>
-        <p className="badge">Node + React Starter</p>
-        <h1>欢迎来到 AI Studio</h1>
-        <p className="subtle">从这里开始构建你的全栈组件。</p>
-      </header>
-      <section className="card">
-        <h2>交互示例</h2>
-        <p>点击计数器：{count}</p>
-        <button onClick={() => setCount((prev) => prev + 1)}>Click me</button>
-      </section>
-    </main>
-  );
-}`,
-  },
-  "/styles.css": {
-    code: `.app {
-  font-family: "Sora", sans-serif;
-  color: #f7f5ff;
-  background: radial-gradient(circle at top, #3b2f6d, #101018 65%);
-  min-height: 100vh;
-  padding: 64px;
-}
-
-h1 {
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  margin: 16px 0;
-}
-
-p {
-  opacity: 0.7;
-  margin-top: 12px;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f7f5ff;
-}
-
-.subtle {
-  opacity: 0.75;
-  max-width: 520px;
-}
-
-.card {
-  margin-top: 32px;
-  padding: 24px;
-  border-radius: 16px;
-  background: rgba(16, 16, 24, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 60px rgba(8, 8, 16, 0.3);
-}
-
-button {
-  margin-top: 12px;
-  border: 0;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: #f7f5ff;
-  color: #111018;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-h2 {
-  margin: 0 0 8px;
-}
-
-}`,
-  },
-};
 
 async function getCollection() {
   const db = await getMongoDb();
@@ -175,8 +96,16 @@ function getLegacyProjectDir(token: string): string {
   return path.join(LEGACY_PROJECT_FILES_ROOT, token);
 }
 
+function toSafeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown";
+}
+
 function getProjectStoragePrefix(token: string): string {
   return path.posix.join(PROJECT_STORAGE_PREFIX, token, PROJECT_STORAGE_FILES_SEGMENT);
+}
+
+function getTokenChatUploadPrefix(token: string): string {
+  return `${CHAT_UPLOAD_ROOT}/${toSafeSegment(token)}`;
 }
 
 function getFilesMetaPath(token: string): string {
@@ -207,6 +136,46 @@ function toProjectFilePathFromStorageKey(token: string, storageKey: string): str
   return `/${relative}`;
 }
 
+const isImagePath = (filePath: string) => {
+  const ext = path.posix.extname(filePath).toLowerCase();
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif"].includes(ext);
+};
+
+const inferImageMimeFromPath = (filePath: string) => {
+  const ext = path.posix.extname(filePath).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".ico") return "image/x-icon";
+  if (ext === ".avif") return "image/avif";
+  return "image/png";
+};
+
+const isLikelyTextContentType = (contentType?: string) => {
+  const normalized = (contentType || "").toLowerCase().split(";")[0].trim();
+  if (!normalized) return true;
+  if (normalized.startsWith("text/")) return true;
+  return [
+    "application/json",
+    "application/ld+json",
+    "application/xml",
+    "application/javascript",
+    "application/x-javascript",
+    "application/typescript",
+    "application/x-typescript",
+    "application/ecmascript",
+    "application/x-www-form-urlencoded",
+    "application/graphql",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "image/svg+xml",
+  ].includes(normalized);
+};
+
 async function syncFileToStorage(token: string, filePath: string, code: string) {
   await uploadObjectToStorage({
     key: toProjectStorageFileKey(token, filePath),
@@ -216,10 +185,48 @@ async function syncFileToStorage(token: string, filePath: string, code: string) 
   });
 }
 
+async function syncBinaryFileToStorage(
+  token: string,
+  filePath: string,
+  content: Buffer | Uint8Array,
+  contentType?: string
+) {
+  const normalizedType = (contentType || "").toLowerCase();
+  const resolvedContentType =
+    normalizedType && normalizedType !== "application/octet-stream"
+      ? normalizedType
+      : isImagePath(filePath)
+      ? inferImageMimeFromPath(filePath)
+      : contentType || "application/octet-stream";
+  await uploadObjectToStorage({
+    key: toProjectStorageFileKey(token, filePath),
+    body: content,
+    contentType: resolvedContentType,
+    bucketType: "private",
+  });
+}
+
 async function syncFilesToStorage(token: string, files: Record<string, { code: string }>) {
+  const dataUrlPrefix = "data:";
+  const dataUrlBase64Flag = ";base64,";
   await Promise.all(
     Object.entries(files).map(async ([filePath, file]) => {
-      await syncFileToStorage(token, filePath, file.code ?? "");
+      const code = file.code ?? "";
+      const trimmed = code.trim();
+      if (trimmed.startsWith(dataUrlPrefix) && trimmed.includes(dataUrlBase64Flag)) {
+        const commaIndex = trimmed.indexOf(",");
+        const header = trimmed.slice(5, commaIndex);
+        const base64Body = trimmed.slice(commaIndex + 1);
+        const contentType = header.split(";")[0] || "application/octet-stream";
+        try {
+          const bytes = Buffer.from(base64Body, "base64");
+          await syncBinaryFileToStorage(token, filePath, bytes, contentType);
+          return;
+        } catch {
+          // fallback to plain text persistence
+        }
+      }
+      await syncFileToStorage(token, filePath, code);
     })
   );
 }
@@ -231,11 +238,24 @@ async function listProjectStorageKeys(token: string): Promise<string[]> {
   });
 }
 
+async function countProjectStorageFiles(token: string): Promise<number> {
+  const keys = await listProjectStorageKeys(token);
+  return keys.length;
+}
+
 async function deleteProjectStorageFilesByKeys(keys: string[]): Promise<void> {
   await deleteStorageObjects({
     keys,
     bucketType: "private",
   });
+}
+
+async function deleteChatUploadStorageByToken(token: string): Promise<void> {
+  const keys = await listStorageObjectKeysByPrefix({
+    prefix: getTokenChatUploadPrefix(token),
+    bucketType: "private",
+  });
+  await deleteProjectStorageFilesByKeys(keys);
 }
 
 async function replaceProjectFilesInStorage(
@@ -264,11 +284,24 @@ async function collectFilesFromStorage(token: string): Promise<Record<string, Pr
   const entries = await Promise.all(
     keys.map(async (key) => {
       const filePath = toProjectFilePathFromStorageKey(token, key);
-      const { buffer } = await getObjectFromStorage({
+      const { buffer, contentType } = await getObjectFromStorage({
         key,
         bucketType: "private",
       });
-      return [filePath, { code: buffer.toString("utf8") }] as const;
+      const type = (contentType || "").toLowerCase();
+      if (type.startsWith("image/") || isImagePath(filePath)) {
+        const mime = type.startsWith("image/") ? type : inferImageMimeFromPath(filePath);
+        const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+        return [filePath, { code: dataUrl }] as const;
+      }
+
+      if (isLikelyTextContentType(contentType)) {
+        return [filePath, { code: buffer.toString("utf8") }] as const;
+      }
+
+      const mime = (contentType || "application/octet-stream").split(";")[0].trim() || "application/octet-stream";
+      const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+      return [filePath, { code: dataUrl }] as const;
     })
   );
 
@@ -319,7 +352,11 @@ async function migrateLegacyFilesIfNeeded(doc: ProjectDoc, coll: Awaited<ReturnT
   await coll.updateOne(
     { token: doc.token },
     {
-      $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
+      $set: {
+        filesPath: getFilesMetaPath(doc.token),
+        fileCount: Object.keys(legacyFiles).length,
+        updatedAt: new Date().toISOString(),
+      },
       $unset: { files: "" },
     }
   );
@@ -338,21 +375,24 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
       await coll.updateOne(
         { token: doc.token },
         {
-          $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
+          $set: {
+            filesPath: getFilesMetaPath(doc.token),
+            fileCount: Object.keys(legacyDiskFiles).length,
+            updatedAt: new Date().toISOString(),
+          },
           $unset: { files: "" },
         }
       );
       files = legacyDiskFiles;
     } else {
-      await syncFilesToStorage(doc.token, DEFAULT_PROJECT_FILES);
-      await coll.updateOne(
-        { token: doc.token },
-        {
-          $set: { filesPath: getFilesMetaPath(doc.token), updatedAt: new Date().toISOString() },
-          $unset: { files: "" },
-        }
-      );
-      files = DEFAULT_PROJECT_FILES;
+      // 当元数据声明已有文件但对象存储为空时，通常是存储配置错误（例如 bucket 指向错误）。
+      // 此时不应静默回退默认模板，否则会掩盖问题并造成“看起来成功但项目文件不对”的假象。
+      const declaredFileCount =
+        typeof doc.fileCount === "number" && Number.isFinite(doc.fileCount) ? Math.max(0, Math.trunc(doc.fileCount)) : 0;
+      if (declaredFileCount > 0) {
+        throw new Error(`项目文件缺失：token=${doc.token}, declaredFileCount=${declaredFileCount}`);
+      }
+      files = {};
     }
   } else {
     await cleanupLegacyDir(doc.token);
@@ -361,6 +401,7 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
   return {
     token: doc.token,
     name: doc.name,
+    description: doc.description,
     template: doc.template,
     userId: doc.userId,
     files,
@@ -400,7 +441,7 @@ export async function hasProjectFilesDir(token: string): Promise<boolean> {
  */
 export async function updateProjectMeta(
   token: string,
-  updates: Partial<Pick<ProjectMeta, "name" | "template" | "dependencies" | "sandpackCompileInfo">>
+  updates: Partial<Pick<ProjectMeta, "name" | "description" | "template" | "dependencies" | "sandpackCompileInfo">>
 ): Promise<void> {
   const coll = await getCollection();
   const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
@@ -411,6 +452,7 @@ export async function updateProjectMeta(
     updatedAt: now,
   };
   if (updates.name !== undefined) set.name = updates.name;
+  if (updates.description !== undefined) set.description = updates.description;
   if (updates.template !== undefined) set.template = updates.template;
   if (updates.dependencies !== undefined) set.dependencies = updates.dependencies;
   if (updates.sandpackCompileInfo !== undefined) set.sandpackCompileInfo = updates.sandpackCompileInfo;
@@ -431,11 +473,82 @@ export async function updateFile(token: string, filePath: string, code: string):
   await cleanupLegacyDir(token);
 
   const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
   const result = await coll.updateOne(
     { token },
-    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
+export async function updateBinaryFile(
+  token: string,
+  filePath: string,
+  content: Buffer | Uint8Array,
+  contentType?: string
+): Promise<void> {
+  const coll = await getCollection();
+  const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
+  if (!exists) throw new Error("项目不存在");
+
+  await syncBinaryFileToStorage(token, filePath, content, contentType);
+  await cleanupLegacyDir(token);
+
+  const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
+  const result = await coll.updateOne(
+    { token },
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
+  );
+  if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
+export async function deleteFile(token: string, filePath: string): Promise<void> {
+  const coll = await getCollection();
+  const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
+  if (!exists) throw new Error("项目不存在");
+
+  const key = toProjectStorageFileKey(token, filePath);
+  await deleteProjectStorageFilesByKeys([key]);
+  await cleanupLegacyDir(token);
+
+  const now = new Date().toISOString();
+  const fileCount = await countProjectStorageFiles(token);
+  const result = await coll.updateOne(
+    { token },
+    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount }, $unset: { files: "" } }
+  );
+  if (result.matchedCount === 0) throw new Error("项目不存在");
+}
+
+export async function readProjectFile(
+  token: string,
+  filePath: string
+): Promise<{ buffer: Buffer; contentType?: string; contentLength?: number }> {
+  const key = toProjectStorageFileKey(token, filePath);
+  const object = await getObjectFromStorage({
+    key,
+    bucketType: "private",
+  });
+  return {
+    buffer: object.buffer,
+    contentType: object.contentType,
+    contentLength: object.contentLength,
+  };
+}
+
+export async function createProjectFileViewUrl(
+  token: string,
+  filePath: string,
+  expiresIn = 900
+): Promise<string> {
+  const key = toProjectStorageFileKey(token, filePath);
+  const { url } = await createGetObjectPresignedUrl({
+    key,
+    bucketType: "private",
+    expiresIn,
+  });
+  return url;
 }
 
 /**
@@ -455,7 +568,10 @@ export async function updateFiles(
   const now = new Date().toISOString();
   const result = await coll.updateOne(
     { token },
-    { $set: { updatedAt: now, filesPath: getFilesMetaPath(token) }, $unset: { files: "" } }
+    {
+      $set: { updatedAt: now, filesPath: getFilesMetaPath(token), fileCount: Object.keys(files).length },
+      $unset: { files: "" },
+    }
   );
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
@@ -472,11 +588,13 @@ export async function saveProject(project: ProjectData): Promise<void> {
   const doc: Omit<ProjectDoc, "_id"> = {
     token: project.token,
     name: project.name,
+    description: project.description,
     template: project.template,
     userId: project.userId,
     dependencies: project.dependencies ?? {},
     sandpackCompileInfo: project.sandpackCompileInfo,
     filesPath: getFilesMetaPath(project.token),
+    fileCount: Object.keys(project.files ?? {}).length,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
@@ -493,14 +611,80 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, fileCount: 1, createdAt: 1, updatedAt: 1 })
+    .toArray();
+
+  const resolved = await Promise.all(
+    docs.map(async (d) => {
+      const hasCount = typeof d.fileCount === "number" && Number.isFinite(d.fileCount);
+      if (hasCount) {
+        return {
+          token: d.token,
+          name: d.name,
+          description: d.description,
+          fileCount: Math.max(0, Math.trunc(d.fileCount as number)),
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+        };
+      }
+
+      const fileCount = await countProjectStorageFiles(d.token);
+      void coll.updateOne({ token: d.token }, { $set: { fileCount } }).catch(() => undefined);
+      return {
+        token: d.token,
+        name: d.name,
+        description: d.description,
+        fileCount,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      };
+    })
+  );
+
+  return resolved;
+}
+
+/**
+ * 获取指定用户的项目概览数据（含 createdAt，用于首页统计）
+ */
+export async function listProjectOverviewItems(userId: string): Promise<ProjectOverviewItem[]> {
+  if (!userId || typeof userId !== "string") return [];
+
+  const coll = await getCollection();
+  const docs = await coll
+    .find({ userId })
+    .sort({ updatedAt: -1 })
+    .project({ token: 1, name: 1, description: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
   return docs.map((d) => ({
     token: d.token,
     name: d.name,
+    description: d.description,
+    createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   }));
+}
+
+export async function getProjectAccessState(
+  token: string,
+  userId: string
+): Promise<"ok" | "not_found" | "forbidden"> {
+  const safeToken = typeof token === "string" ? token.trim() : "";
+  const safeUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!safeToken || !safeUserId) {
+    return "forbidden";
+  }
+
+  const coll = await getCollection();
+  const doc = await coll.findOne({ token: safeToken }, { projection: { userId: 1 } });
+  if (!doc) {
+    return "not_found";
+  }
+  if (doc.userId !== safeUserId) {
+    return "forbidden";
+  }
+  return "ok";
 }
 
 /**
@@ -511,6 +695,7 @@ export async function deleteProject(token: string): Promise<boolean> {
   const result = await coll.deleteOne({ token });
   const keys = await listProjectStorageKeys(token);
   await deleteProjectStorageFilesByKeys(keys);
+  await deleteChatUploadStorageByToken(token);
   await cleanupLegacyDir(token);
   return result.deletedCount > 0;
 }

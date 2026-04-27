@@ -7,7 +7,16 @@ import {
   type Conversation,
   type ConversationMessage,
 } from "@server/conversations/conversationStorage";
+import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import type { NextApiRequest, NextApiResponse } from "next";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "8mb",
+    },
+  },
+};
 
 const getToken = (req: NextApiRequest): string | null => {
   const queryToken = typeof req.query.token === "string" ? req.query.token : null;
@@ -31,6 +40,15 @@ export default async function handler(
   const token = getToken(req);
   if (!token) {
     res.status(400).json({ error: "缺少 token 参数" });
+    return;
+  }
+  const access = await getChatTokenAccessState(token, String(auth.user._id));
+  if (access === "not_found") {
+    res.status(404).json({ error: "项目或技能不存在" });
+    return;
+  }
+  if (access === "forbidden") {
+    res.status(403).json({ error: "无权访问该项目或技能" });
     return;
   }
 

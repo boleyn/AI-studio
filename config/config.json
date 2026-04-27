@@ -20,37 +20,59 @@
   },
   "model": [
     {
-      "id": "openai/gpt-5.3-codex",
-      "label": "gpt-5.3-codex",
-      "maxContext": 40000,
-      "maxResponse": 120000,
-      "quoteMaxToken": 80000,
-      "maxTemperature": 1.2,
-      "reasoning": true,
-      "defaultConfig": {},
-      "fieldMap": {}
-    },
-    {
-      "id": "gemini-3-flash-preview",
-      "label": "gemini-3-flash",
-      "maxContext": 40000,
-      "maxResponse": 120000,
-      "quoteMaxToken": 80000,
+      "id": "MiniMax-M2.7",
+      "label": "MiniMax-M2.7",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.minimaxi.com/anthropic",
+      "key": "sk-cp-pCTsvHH4sJ632gt28wqtzFSka3Dw06_mbx89pc6ZzlCvO_r3dJD4mqoOvyGJAIMBDpyzqiSh_ehLjFemIYbbbvnf1MesnptN4NxyDv7kmb3G772h0msIXPA",
+      "maxContext": 192000,
       "maxTemperature": 1.2,
       "reasoning": false,
       "defaultConfig": {},
-      "fieldMap": {}
-    },
+      "fieldMap": {},
+      "icon":"minimax.svg"
+    } ,
     {
-      "id": "gemini-3.1-pro-preview",
-      "label": "gemini-3.1",
-      "maxContext": 40000,
-      "maxResponse": 120000,
-      "quoteMaxToken": 80000,
+      "id": "kimi-k2.5",
+      "label": "kimi-k2.5",
+      "vision": true,
+      "toolChoiceMode": "auto",
+      "maxContext": 192000,
       "maxTemperature": 1.2,
       "reasoning": true,
       "defaultConfig": {},
-      "fieldMap": {}
+      "fieldMap": {},
+      "icon":"kimi.svg"
+    } ,
+    {
+      "id": "GLM-4.7",
+      "label": "GLM-4.7",
+      "maxContext": 192000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"glm.svg"
+    } ,
+    {
+      "id": "GLM-5",
+      "label": "GLM-5",
+      "maxContext": 192000,
+      "maxTemperature": 1.2,
+      "reasoning": false,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"glm.svg"
+    } ,
+    {
+      "id": "openai/gpt-5.3-codex",
+      "label": "gpt-5.3-codex",
+      "maxContext": 400000,
+      "maxTemperature": 1.2,
+      "reasoning": true,
+      "defaultConfig": {},
+      "fieldMap": {},
+      "icon":"openai.svg"
     }
   ]
 }

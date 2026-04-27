@@ -6,7 +6,7 @@ import { getAuthUserFromRequest } from "@server/auth/ssr";
 
 const HomePage = () => {
   return (
-    <Flex direction="column" minH="100vh" bg="gray.50">
+    <Flex direction="column" minH="100vh" bg="transparent">
       <ProjectList />
     </Flex>
   );

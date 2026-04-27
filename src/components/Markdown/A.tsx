@@ -1,9 +1,10 @@
 import { eventBus, EventNameEnum } from '@/shared/utils/eventbus';
-import { Box, Button, Link } from '@chakra-ui/react';
+import { Box, Button, Link, Text } from '@chakra-ui/react';
 import MyIcon from '@/components/common/MyIcon';
 import MyTooltip from '@/components/common/MyTooltip';
 import React, { useMemo } from 'react';
 import { isObjectId } from '@/global/common/string/utils';
+import { getFileIcon } from '@fastgpt/global/common/file/icon';
 import type { OutLinkChatAuthProps } from '@/global/support/permission/chat';
 import { useMarkdownCtx } from './context';
 
@@ -96,25 +97,32 @@ const A = ({
     } catch {
       decoded = encoded;
     }
+    const fileIcon = getFileIcon(content || decoded);
     return (
       <Box
         as="span"
         display="inline-flex"
         alignItems="center"
         px={2}
-        py={0.5}
+        py={1}
         mr={1.5}
         mb={1}
         borderRadius="8px"
         border="1px solid"
-        borderColor="gray.200"
-        bg="gray.50"
+        borderColor="#E2E8F0"
+        boxShadow="0px 2.571px 6.429px 0px rgba(19, 51, 107, 0.08), 0px 0px 0.643px 0px rgba(19, 51, 107, 0.08)"
+        bg="white"
         color="gray.700"
         fontSize="12px"
         fontWeight={600}
         lineHeight={1.2}
+        gap={2}
+        maxW="320px"
       >
-        {decoded}
+        <Box as="img" h="18px" src={`/icons/chat/${fileIcon}.svg`} w="18px" />
+        <Text as="span" noOfLines={1}>
+          {content || decoded}
+        </Text>
       </Box>
     );
   }

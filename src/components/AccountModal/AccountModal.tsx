@@ -1,32 +1,50 @@
-import { useState } from "react";
+import { keyframes } from "@emotion/react";
+import { useEffect, useState } from "react";
 import {
   Box,
-  Button,
   Flex,
   IconButton,
   Modal,
   ModalBody,
   ModalContent,
   ModalOverlay,
-  Text,
   useToast,
 } from "@chakra-ui/react";
 import { useAuth } from "../../contexts/AuthContext";
 import { AccountInfoPanel } from "./AccountInfoPanel";
 import { AccountLogoutConfirm } from "./AccountLogoutConfirm";
+import { AccountModelConfigPanel } from "./AccountModelConfigPanel";
 import { AccountPasswordPanel } from "./AccountPasswordPanel";
 
-export type AccountPanelTab = "account" | "password" | "logout";
+export type AccountPanelTab = "account" | "password" | "modelConfig" | "logout";
 
 type AccountModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  panel?: AccountPanelTab;
 };
 
-export function AccountModal({ isOpen, onClose }: AccountModalProps) {
+const panelFadeIn = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+`;
+
+export function AccountModal({ isOpen, onClose, panel: initialPanel = "account" }: AccountModalProps) {
   const toast = useToast();
-  const { user, logout } = useAuth();
+  const { user, logout, loadUser } = useAuth();
   const [panel, setPanel] = useState<AccountPanelTab>("account");
+
+  useEffect(() => {
+    if (isOpen) {
+      setPanel(initialPanel);
+    }
+  }, [initialPanel, isOpen]);
 
   const handleLogoutConfirm = () => {
     onClose();
@@ -37,96 +55,67 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
     toast({ title: "密码已修改", status: "success", duration: 2000 });
   };
 
-  const menuItems: { key: AccountPanelTab; label: string }[] = [
-    { key: "account", label: "账号管理" },
-    { key: "password", label: "修改密码" },
-    { key: "logout", label: "退出登录" },
-  ];
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
-      <ModalOverlay bg="blackAlpha.400" />
+      <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
       <ModalContent
         position="relative"
-        maxW="720px"
-        borderRadius="xl"
-        border="1px solid rgba(255,255,255,0.65)"
-        bg="rgba(255,255,255,0.92)"
-        backdropFilter="blur(18px)"
-        boxShadow="0px 18px 40px -18px rgba(15, 23, 42, 0.35)"
+        maxW={panel === "logout" ? "520px" : panel === "modelConfig" ? "1060px" : "720px"}
+        borderRadius="2xl"
+        border="1px solid var(--ws-border)"
+        bg="var(--ws-surface)"
+        backdropFilter="blur(22px)"
+        boxShadow="var(--ws-glow-soft, 0 28px 56px -30px rgba(15, 23, 42, 0.42))"
+        overflow="hidden"
+        maxH={panel === "modelConfig" ? "80vh" : undefined}
+        transition="max-width 0.3s ease-out"
       >
         <IconButton
           aria-label="关闭账号弹窗"
-          icon={<Box as="span" fontSize="16px" lineHeight="1">×</Box>}
+          icon={<Box as="span" fontSize="20px" lineHeight="1">×</Box>}
           size="sm"
           variant="ghost"
           position="absolute"
-          top={3}
-          right={3}
-          borderRadius="full"
-          color="myGray.600"
-          _hover={{ bg: "myGray.100", color: "myGray.800" }}
-          _active={{ bg: "myGray.150" }}
+          top={panel === "modelConfig" ? 6 : 4}
+          right={panel === "modelConfig" ? 6 : 4}
+          borderRadius="12px"
+          color="myGray.400"
+          border="1px solid"
+          borderColor="transparent"
+          bg={panel === "modelConfig" ? "white" : "transparent"}
+          _hover={{ bg: "red.300", color: "white", borderColor: "red.300" }}
+          _active={{ bg: "red.400", color: "white", borderColor: "red.400" }}
           onClick={onClose}
+          zIndex={10}
         />
         <ModalBody p={0}>
-          <Flex minH="420px">
-            <Box
-              w="160px"
-              flexShrink={0}
-              bg="rgba(255,255,255,0.75)"
-              borderRight="1px solid rgba(255,255,255,0.7)"
-              py={5}
-              px={3}
-              borderTopLeftRadius="xl"
-              borderBottomLeftRadius="xl"
-            >
-              <Text fontSize="xs" color="myGray.500" mb={3} px={2} textTransform="uppercase" letterSpacing="wider">
-                账号
-              </Text>
-              <Flex direction="column" gap={1.5}>
-                {menuItems.map(({ key, label }) => (
-                  <Button
-                    key={key}
-                    variant="ghost"
-                    size="sm"
-                    justifyContent="flex-start"
-                    fontWeight="semibold"
-                    color="myGray.800"
-                    fontSize="sm"
-                    borderRadius="md"
-                    bg={panel === key ? "myGray.150" : "transparent"}
-                    _hover={{ bg: panel === key ? "myGray.150" : "myGray.100" }}
-                    _active={{ bg: "myGray.150" }}
-                    onClick={() => setPanel(key)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </Flex>
-            </Box>
+          <Box
+            p={panel === "modelConfig" ? 6 : 8}
+            pt={panel === "modelConfig" ? 8 : 10}
+            minH={panel === "logout" ? "auto" : panel === "modelConfig" ? "auto" : "560px"}
+            display="flex"
+            flexDirection="column"
+          >
             <Flex
-              flex={1}
-              align="center"
-              justify="center"
-              p={8}
-              bg="rgba(255,255,255,0.65)"
-              borderTopRightRadius="xl"
-              borderBottomRightRadius="xl"
-              minH="420px"
+              direction="column"
+              flex="1"
+              w="100%"
+              key={panel}
+              animation={`${panelFadeIn} 300ms cubic-bezier(0.22, 1, 0.36, 1)`}
             >
-              {panel === "account" && <AccountInfoPanel user={user} />}
-              {panel === "password" && (
-                <AccountPasswordPanel onSuccess={handlePasswordSuccess} />
-              )}
-              {panel === "logout" && (
-                <AccountLogoutConfirm
-                  onConfirm={handleLogoutConfirm}
-                  onCancel={() => setPanel("account")}
+              {panel === "account" && (
+                <AccountInfoPanel
+                  user={user}
+                  onSaved={async () => {
+                    await loadUser();
+                  }}
                 />
               )}
+              {panel === "password" && <AccountPasswordPanel onSuccess={handlePasswordSuccess} />}
+              {panel === "modelConfig" && <AccountModelConfigPanel />}
+              {panel === "logout" && <AccountLogoutConfirm onConfirm={handleLogoutConfirm} onCancel={onClose} />}
             </Flex>
-          </Flex>
+          </Box>
         </ModalBody>
       </ModalContent>
     </Modal>
