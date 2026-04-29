@@ -9,6 +9,18 @@ const getLastRoute = (raw: string | null) => {
   return raw.includes("?lastRoute=") ? raw.split("?lastRoute=")[0] : raw;
 };
 
+const normalizeRelayUrl = (raw: string | null) => {
+  if (!raw) return "";
+  try {
+    const decoded = decodeURIComponent(raw);
+    const url = new URL(decoded);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+};
+
 const FeishuCallbackPage = () => {
   const router = useRouter();
   const toast = useToast();
@@ -26,6 +38,7 @@ const FeishuCallbackPage = () => {
         : "/";
     const lastRoute = getLastRoute(rawLastRoute);
     const returnTo = typeof router.query.returnTo === "string" ? router.query.returnTo : lastRoute;
+    const ccRelay = normalizeRelayUrl(typeof router.query.ccRelay === "string" ? router.query.ccRelay : null);
 
     if (!code) {
       setError("缺少授权码");
@@ -45,6 +58,14 @@ const FeishuCallbackPage = () => {
           | null;
         if (!response.ok || !payload?.token) {
           throw new Error(payload?.error || "飞书登录失败");
+        }
+
+        if (ccRelay) {
+          const relayUrl = new URL(ccRelay);
+          relayUrl.searchParams.set("feishu_token", payload.token);
+          relayUrl.searchParams.set("returnTo", returnTo || "/");
+          window.location.replace(relayUrl.toString());
+          return;
         }
 
         setAuthToken(payload.token);
@@ -93,4 +114,3 @@ const FeishuCallbackPage = () => {
 };
 
 export default FeishuCallbackPage;
-
