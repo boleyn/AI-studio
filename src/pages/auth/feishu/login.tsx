@@ -15,9 +15,11 @@ const FeishuAutoLoginPage = () => {
   useEffect(() => {
     const rawLastRoute = typeof router.query.lastRoute === "string" ? router.query.lastRoute : "/";
     const lastRoute = getLastRoute(rawLastRoute);
+    const ccRelay = typeof router.query.ccRelay === "string" ? router.query.ccRelay : "";
     if (!router.isReady) return;
     setStatus("正在跳转飞书授权...");
-    const target = `/api/auth/feishu/authorize?returnTo=${encodeURIComponent(lastRoute)}`;
+    const relayPart = ccRelay ? `&ccRelay=${encodeURIComponent(ccRelay)}` : "";
+    const target = `/api/auth/feishu/authorize?returnTo=${encodeURIComponent(lastRoute)}${relayPart}`;
     window.location.replace(target);
   }, [router]);
 
