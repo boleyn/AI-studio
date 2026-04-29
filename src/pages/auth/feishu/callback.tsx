@@ -73,6 +73,12 @@ const FeishuCallbackPage = () => {
         window.location.replace(lastRoute);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "飞书登录失败";
+        if (ccRelay) {
+          const relayUrl = new URL(ccRelay);
+          relayUrl.searchParams.set("auth_error", msg);
+          window.location.replace(relayUrl.toString());
+          return;
+        }
         setError(msg);
       }
     };
