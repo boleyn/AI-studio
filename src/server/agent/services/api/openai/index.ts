@@ -47,6 +47,7 @@ import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '@claude-code-best/builtin-tools/tools/ToolSearchTool/prompt.js'
+import { getChatModelProfile } from '../../../../aiProxy/catalogStore.js'
 
 /**
  * Detect whether DeepSeek-style thinking mode should be enabled.
@@ -289,15 +290,22 @@ export async function* queryModelOpenAI(
     const { upperLimit } = getModelMaxOutputTokens(openaiModel)
     const maxTokens = options.maxOutputTokensOverride ?? upperLimit
 
-    // 11. Get client
+    // 11. Resolve custom model config (baseURL, key) if any
+    const profile = getChatModelProfile(options.model)
+    const customBaseURL = profile?.baseUrl as string | undefined
+    const customApiKey = profile?.key as string | undefined
+
+    // 12. Get client
     const client = getOpenAIClient({
       maxRetries: 0,
       fetchOverride: options.fetchOverride as unknown as typeof fetch,
       source: options.querySource,
+      baseURL: customBaseURL,
+      apiKey: customApiKey,
     })
 
     logForDebugging(
-      `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}`,
+      `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}, baseURL=${customBaseURL || 'default'}`,
     )
 
     // 12. Call OpenAI API with streaming

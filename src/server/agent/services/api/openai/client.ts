@@ -17,11 +17,14 @@ export function getOpenAIClient(options?: {
   maxRetries?: number
   fetchOverride?: typeof fetch
   source?: string
+  baseURL?: string
+  apiKey?: string
 }): OpenAI {
-  if (cachedClient) return cachedClient
+  const isCustom = options?.baseURL || options?.apiKey
+  if (cachedClient && !isCustom) return cachedClient
 
-  const apiKey = process.env.OPENAI_API_KEY || ''
-  const baseURL = process.env.OPENAI_BASE_URL
+  const apiKey = options?.apiKey || process.env.OPENAI_API_KEY || ''
+  const baseURL = options?.baseURL || process.env.OPENAI_BASE_URL
 
   const client = new OpenAI({
     apiKey,
@@ -35,7 +38,7 @@ export function getOpenAIClient(options?: {
     ...(options?.fetchOverride && { fetch: options.fetchOverride }),
   })
 
-  if (!options?.fetchOverride) {
+  if (!options?.fetchOverride && !isCustom) {
     cachedClient = client
   }
 

@@ -24,6 +24,7 @@ import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
 } from 'src/utils/model/providers.js'
+import { getChatModelProfile } from '../../../aiProxy/catalogStore.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -1071,9 +1072,11 @@ async function* queryModel(
   // so concurrent agents don't clobber each other's request chain tracking.
   // Also naturally handles rollback/undo since removed messages won't be in the array.
   const previousRequestId = getPreviousRequestIdFromMessages(messages)
+  const modelProfile = getChatModelProfile(options.model)
+  const effectiveProvider = (modelProfile?.protocol as string) || getAPIProvider()
 
   const resolvedModel =
-    getAPIProvider() === 'bedrock' &&
+    effectiveProvider === 'bedrock' &&
     options.model.includes('application-inference-profile')
       ? ((await getInferenceProfileBackingModel(options.model)) ??
         options.model)
@@ -1193,7 +1196,7 @@ async function* queryModel(
   // Header differs by provider: 1P/Foundry use advanced-tool-use, Vertex/Bedrock use tool-search-tool
   // For Bedrock, this header must go in extraBodyParams, not the betas array
   const toolSearchHeader = useToolSearch ? getToolSearchBetaHeader() : null
-  if (toolSearchHeader && getAPIProvider() !== 'bedrock') {
+  if (toolSearchHeader && effectiveProvider !== 'bedrock') {
     if (!betas.includes(toolSearchHeader)) {
       betas.push(toolSearchHeader)
     }
@@ -1335,13 +1338,13 @@ async function* queryModel(
   // OpenAI-compatible provider: delegate to the OpenAI adapter layer
   // after shared preprocessing (message normalization, tool filtering,
   // media stripping) but before Anthropic-specific logic (betas, thinking, caching).
-  if (getAPIProvider() === 'openai') {
+  if (effectiveProvider === 'openai' || effectiveProvider === 'grok') {
     const { queryModelOpenAI } = await import('./openai/index.js')
     yield* queryModelOpenAI(messagesForAPI, systemPrompt, filteredTools, signal, options)
     return
   }
 
-  if (getAPIProvider() === 'gemini') {
+  if (effectiveProvider === 'gemini') {
     const { queryModelGemini } = await import('./gemini/index.js')
     yield* queryModelGemini(
       messagesForAPI,
@@ -1354,7 +1357,7 @@ async function* queryModel(
     return
   }
 
-  if (getAPIProvider() === 'grok') {
+  if (effectiveProvider === 'grok') {
     const { queryModelGrok } = await import('./grok/index.js')
     yield* queryModelGrok(messagesForAPI, systemPrompt, filteredTools, signal, options)
     return
@@ -1594,7 +1597,7 @@ async function* queryModel(
 
     // For Bedrock, include both model-based betas and dynamically-added tool search header
     const bedrockBetas =
-      getAPIProvider() === 'bedrock'
+      effectiveProvider === 'bedrock'
         ? [
             ...getBedrockExtraBodyParamsBetas(retryContext.model),
             ...(toolSearchHeader ? [toolSearchHeader] : []),
@@ -1856,8 +1859,8 @@ async function* queryModel(
         // Generate and track client request ID so timeouts (which return no
         // server request ID) can still be correlated with server logs.
         // First-party only — 3P providers don't log it (inc-4029 class).
-        clientRequestId =
-          getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+        const clientRequestId =
+          effectiveProvider === 'firstParty' && isFirstPartyAnthropicBaseUrl()
             ? randomUUID()
             : undefined
 
@@ -2904,7 +2907,7 @@ async function* queryModel(
   // Record LLM observation in Langfuse (no-op if not configured)
   recordLLMObservation(options.langfuseTrace ?? null, {
     model: resolvedModel,
-    provider: getAPIProvider(),
+    provider: effectiveProvider,
     input: convertMessagesToLangfuse(messagesForAPI, systemPrompt),
     output: convertOutputToLangfuse(newMessages),
     usage: {
