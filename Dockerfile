@@ -19,8 +19,11 @@ ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 ENV RIPGREP_PATH=/usr/bin/rg
+# Bun otherwise resolves a missing node-gyp command through `bunx
+# node-gyp@latest`. node-gyp 13 requires a newer Node runtime than this image,
+# so keep the native-addon toolchain compatible with Node 20.
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
-  && npm install -g bun@1.3.10
+  && npm install -g bun@1.3.10 node-gyp@10.3.1
 
 FROM base AS deps
 ARG NPM_REGISTRY=https://registry.npmmirror.com
