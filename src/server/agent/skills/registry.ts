@@ -1,7 +1,8 @@
 import path from "path";
+import { promises as nativeFs, type Dirent } from "node:fs";
 import { getCwd } from "../utils/cwd.js";
 import { maskVirtualPathForDisplay } from "../utils/file.js";
-import { getFsImplementation } from "../utils/fsOperations.js";
+import { getFsImplementation, type FsOperations } from "../utils/fsOperations.js";
 
 export type SkillIssue = {
   code: string;
@@ -45,8 +46,16 @@ let snapshotCache: SkillSnapshot | null = null;
 const toPosix = (input: string) => input.split(path.sep).join("/");
 const virtualizePath = (input: string) => toPosix(maskVirtualPathForDisplay(path.resolve(input)));
 const getProjectSkillsRoot = () => path.join(getCwd(), ".aistudio", "skills");
-const getBuiltinSkillsRoot = () => path.join(getCwd(), "skills");
+const getBuiltinSkillsRoot = () => path.join(process.cwd(), "skills");
 type SkillSourcePrefix = "/.aistudio/skills" | "/skills";
+type SkillFs = Pick<FsOperations, "readdir" | "readFile">;
+
+// Built-ins are shipped in the application image. They must not be read through
+// the request-scoped virtual filesystem used by Agent workspaces.
+const nativeSkillFs: SkillFs = {
+  readdir: async (target) => nativeFs.readdir(target, { withFileTypes: true }) as Promise<Dirent[]>,
+  readFile: async (target, options) => nativeFs.readFile(target, options.encoding),
+};
 const toRootRelativeSkillPath = (input: string, skillsRoot: string) => {
   const relativePath = toPosix(path.relative(skillsRoot, path.resolve(input)));
   if (!relativePath || relativePath === ".") return "/";
@@ -129,28 +138,27 @@ const buildRuntimeSkill = (
   };
 };
 
-const safeReadFile = async (target: string): Promise<string | null> => {
+const safeReadFile = async (fs: SkillFs, target: string): Promise<string | null> => {
   try {
-    return await getFsImplementation().readFile(target, { encoding: "utf8" });
+    return await fs.readFile(target, { encoding: "utf8" });
   } catch {
     return null;
   }
 };
 
 const scanProjectSkills = async (): Promise<SkillSnapshot> => {
-  const fs = getFsImplementation();
   const projectSkillsRoot = getProjectSkillsRoot();
   const builtinSkillsRoot = getBuiltinSkillsRoot();
   const scannedAt = Date.now();
   const entries: SkillEntry[] = [];
   const skills: RuntimeSkill[] = [];
   const duplicateNames: Record<string, string[]> = {};
-  const roots: Array<{ root: string; prefix: SkillSourcePrefix }> = [
-    { root: projectSkillsRoot, prefix: "/.aistudio/skills" },
-    { root: builtinSkillsRoot, prefix: "/skills" },
+  const roots: Array<{ root: string; prefix: SkillSourcePrefix; fs: SkillFs }> = [
+    { root: projectSkillsRoot, prefix: "/.aistudio/skills", fs: getFsImplementation() },
+    { root: builtinSkillsRoot, prefix: "/skills", fs: nativeSkillFs },
   ];
 
-  for (const { root, prefix } of roots) {
+  for (const { root, prefix, fs } of roots) {
     let dirEntries: string[] = [];
     try {
       const listed = await fs.readdir(root);
@@ -164,7 +172,7 @@ const scanProjectSkills = async (): Promise<SkillSnapshot> => {
     for (const item of dirEntries) {
       const skillDir = path.join(root, item);
       const skillFile = path.join(skillDir, "SKILL.md");
-      const markdown = await safeReadFile(skillFile);
+      const markdown = await safeReadFile(fs, skillFile);
       if (markdown == null) {
         entries.push({
           name: item,

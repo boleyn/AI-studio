@@ -506,6 +506,15 @@ const SkillCreatePage = () => {
     [getSkillNameFromFiles]
   );
 
+  const refreshSkillWorkspaceFiles = useCallback(async (): Promise<FileMap | null> => {
+    if (!workspaceId) return null;
+    const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+      headers: withAuthHeaders(),
+    });
+    if (!response.ok) return null;
+    return normalizeSkillFiles((await response.json().catch(() => ({}))).files);
+  }, [workspaceId]);
+
   const handleValidateSkills = useCallback(
     async (silent = false) => {
       setIsValidatingSkills(true);
@@ -1009,6 +1018,7 @@ const SkillCreatePage = () => {
                   fileOptions={Object.keys(sandpackFiles).sort((a, b) => a.localeCompare(b))}
                   skillsProjectToken={projectToken || undefined}
                   onFilesUpdated={handleAgentFilesUpdated}
+                  onFilesRefresh={refreshSkillWorkspaceFiles}
                 />
               </Box>
 

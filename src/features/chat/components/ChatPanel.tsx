@@ -481,6 +481,7 @@ const toPendingInteractionFromApi = (
 const ChatPanel = ({
   token,
   onFilesUpdated,
+  onFilesRefresh,
   height = "100%",
   completionsPath = "/api/v2/chat/completions",
   completionsStream = true,
@@ -501,6 +502,7 @@ const ChatPanel = ({
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
+  onFilesRefresh?: () => Promise<Record<string, { code: string }> | null>;
   height?: string;
   completionsPath?: string;
   completionsStream?: boolean;
@@ -871,19 +873,24 @@ const ChatPanel = ({
       );
 
       if (onFilesUpdated) {
-        const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
-          headers: withAuthHeaders(),
-        }).catch(() => null);
-        if (response?.ok) {
-          const payload = (await response.json().catch(() => ({}))) as { files?: unknown };
-          const normalized = normalizeProjectFiles(payload.files);
-          if (normalized) onFilesUpdated(normalized);
+        if (onFilesRefresh) {
+          const files = await onFilesRefresh().catch(() => null);
+          if (files) onFilesUpdated(files);
+        } else {
+          const response = await fetch(`/api/code?token=${encodeURIComponent(token)}`, {
+            headers: withAuthHeaders(),
+          }).catch(() => null);
+          if (response?.ok) {
+            const payload = (await response.json().catch(() => ({}))) as { files?: unknown };
+            const normalized = normalizeProjectFiles(payload.files);
+            if (normalized) onFilesUpdated(normalized);
+          }
         }
       }
 
       return withPreviewUrls;
     },
-    [activeConversation?.id, ensureConversation, onFilesUpdated, token]
+    [activeConversation?.id, ensureConversation, onFilesRefresh, onFilesUpdated, token]
   );
 
   const handleSend = useCallback(
