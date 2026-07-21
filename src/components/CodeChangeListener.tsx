@@ -7,6 +7,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 export type CodeChangeListenerHandle = {
   save: () => Promise<void>;
   getFiles: () => Record<string, { code: string }>;
+  applyFiles: (files: Record<string, { code: string }>) => void;
 };
 
 type CodeChangeListenerProps = {
@@ -109,7 +110,23 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   useImperativeHandle(ref, () => ({
     save: saveProject,
     getFiles: () => sanitizeFiles(sandpack.files),
-  }), [sandpack.files, saveProject, sanitizeFiles]);
+    applyFiles: (nextFiles) => {
+      const patches = Object.entries(nextFiles).filter(
+        ([filePath, file]) => Boolean(filePath) && typeof file?.code === "string"
+      );
+      if (patches.length === 0) return;
+
+      // Agent updates must not replace the provider's files prop: doing so resets Sandpack's active file.
+      const mergedFiles = {
+        ...sandpack.files,
+        ...Object.fromEntries(patches),
+      };
+      previousFilesRef.current = JSON.stringify(sanitizeFiles(mergedFiles));
+      patches.forEach(([filePath, file]) => {
+        sandpack.updateFile(filePath, file.code, true);
+      });
+    },
+  }), [sandpack, sandpack.files, saveProject, sanitizeFiles]);
 
   const debouncedSave = useDebounce(saveProject, autoSaveDelay);
 

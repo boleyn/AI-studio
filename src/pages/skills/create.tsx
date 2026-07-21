@@ -485,7 +485,17 @@ const SkillCreatePage = () => {
         ...normalized,
       };
       latestFilesRef.current = merged;
-      setFiles(merged);
+      const editor = codeChangeListenerRef.current;
+      if (editor) {
+        editor.applyFiles(normalized);
+      }
+
+      // Keep Sandpack's provider input stable for normal agent edits. Rebinding it resets
+      // the active file and open tabs; the listener above applies the changed files directly.
+      setFiles((prev) => {
+        if (isSameFileMap(prev, merged) || isSameSkillRoots(prev, merged)) return prev;
+        return merged;
+      });
 
       // 当机器人更新文件时，也尝试同步解析一下名字（比如机器人刚写完 SKILL.md）
       const nameInFiles = getSkillNameFromFiles(merged);
