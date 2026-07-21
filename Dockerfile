@@ -18,6 +18,7 @@ RUN ALPINE_VERSION="$(cut -d. -f1,2 /etc/alpine-release)" \
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+ENV NPM_CONFIG_NODEDIR=/usr/local
 ENV RIPGREP_PATH=/usr/bin/rg
 # Bun otherwise resolves a missing node-gyp command through `bunx
 # node-gyp@latest`. node-gyp 13 requires a newer Node runtime than this image,
