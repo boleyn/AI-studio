@@ -857,9 +857,9 @@ const SkillCreatePage = () => {
       return;
     }
     try {
-      // 下载以服务端持久化结果为准：先保存，再重新读取服务器中的最新文件。
+      // 下载以服务端持久化结果为准：先保存，再由服务端读取数据库并生成 ZIP。
       await persistSkillFiles(filesToSave);
-      const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+      const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/download`, {
         method: "GET",
         headers: {
           ...withAuthHeaders(),
@@ -867,30 +867,18 @@ const SkillCreatePage = () => {
         },
         cache: "no-store",
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; files?: unknown };
       if (!response.ok) {
-        throw new Error(payload.error || "读取服务器最新 skill 文件失败");
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "从服务器下载最新 skill 失败");
       }
-      const serverFiles = normalizeSkillFiles(payload.files);
-      const entries = Object.entries(serverFiles).filter(([path]) => skillFilePathFilter(path));
-      if (entries.length === 0) {
-        throw new Error("服务器上暂无可导出的 skill 文件");
-      }
-      persistedFilesRef.current = serverFiles;
-      latestFilesRef.current = serverFiles;
-
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-      entries.forEach(([path, file]) => {
-        const normalizedPath = path.replace(/^\/+/, "");
-        zip.file(normalizedPath, typeof file?.code === "string" ? file.code : "");
-      });
-      const blob = await zip.generateAsync({ type: "blob" });
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const serverFileName = disposition.match(/filename="([^"]+)"/i)?.[1] || "";
       const baseName = normalizeDownloadName(skillName || publishDraft.slug || "skill");
       anchor.href = url;
-      anchor.download = `${baseName}.zip`;
+      anchor.download = serverFileName || `${baseName}-${Date.now()}.zip`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -902,7 +890,7 @@ const SkillCreatePage = () => {
         duration: 2400,
       });
     }
-  }, [persistSkillFiles, publishDraft.slug, skillFilePathFilter, skillName, toast, workspaceId]);
+  }, [persistSkillFiles, publishDraft.slug, skillName, toast, workspaceId]);
 
   return (
     <Box
