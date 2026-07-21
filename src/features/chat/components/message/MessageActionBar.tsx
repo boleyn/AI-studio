@@ -1,12 +1,12 @@
-import { Box, Flex } from "@chakra-ui/react";
+import { Box, Flex, IconButton } from "@chakra-ui/react";
 import {
-  CopyIcon,
   DeleteIcon,
   RefreshIcon,
   ThumbDownIcon,
   ThumbUpIcon,
 } from "@/components/common/Icon";
 import MyTooltip from "@/components/ui/MyTooltip";
+import MessageCopyControl from "./MessageCopyControl";
 
 type MessageRating = "up" | "down";
 
@@ -15,7 +15,8 @@ interface MessageActionBarProps {
   canDelete?: boolean;
   showRating?: boolean;
   rating?: MessageRating;
-  onCopy: () => void;
+  copyContent: string;
+  messageType: "user" | "assistant";
   onRegenerate?: () => void;
   onDelete?: () => void;
   onRate?: (rating: MessageRating) => void;
@@ -31,7 +32,8 @@ const MessageActionBar = ({
   canDelete,
   showRating = true,
   rating,
-  onCopy,
+  copyContent,
+  messageType,
   onRegenerate,
   onDelete,
   onRate,
@@ -51,75 +53,76 @@ const MessageActionBar = ({
         },
       }}
     >
-      <MyTooltip label="复制">
-        <Box
-          _hover={{ color: "primary.600" }}
-          borderRight="1px solid"
-          borderRightColor="myGray.200"
-          cursor="pointer"
-          onClick={onCopy}
-          p="5px"
-        >
-          <CopyIcon {...iconProps} />
-        </Box>
-      </MyTooltip>
+      <Box borderRight="1px solid" borderRightColor="myGray.200" px="2px" py="2px">
+        <MessageCopyControl content={copyContent} messageType={messageType} />
+      </Box>
 
       {canRegenerate ? (
         <MyTooltip label="重新生成">
-          <Box
+          <IconButton
             _hover={{ color: "primary.600" }}
+            aria-label="重新生成"
             borderRight="1px solid"
             borderRightColor="myGray.200"
-            cursor="pointer"
+            h="26px"
+            icon={<RefreshIcon {...iconProps} />}
+            minW="26px"
             onClick={onRegenerate}
-            p="5px"
-          >
-            <RefreshIcon {...iconProps} />
-          </Box>
+            size="xs"
+            variant="ghost"
+          />
         </MyTooltip>
       ) : null}
 
       {canDelete ? (
         <MyTooltip label="删除">
-          <Box
+          <IconButton
             _hover={{ color: "red.600" }}
+            aria-label="删除"
             borderRight="1px solid"
             borderRightColor="myGray.200"
-            cursor="pointer"
+            h="26px"
+            icon={<DeleteIcon {...iconProps} />}
+            minW="26px"
             onClick={onDelete}
-            p="5px"
-          >
-            <DeleteIcon {...iconProps} />
-          </Box>
+            size="xs"
+            variant="ghost"
+          />
         </MyTooltip>
       ) : null}
 
       {showRating ? (
         <>
           <MyTooltip label="赞">
-            <Box
-              _hover={{ color: "primary.600" }}
+            <IconButton
+              _hover={{ color: "primary.600", bg: "primary.50" }}
+              aria-label="赞"
               borderRight="1px solid"
               borderRightColor="myGray.200"
-              color={rating === "up" ? "primary.600" : undefined}
-              cursor="pointer"
+              bg={rating === "up" ? "primary.50" : "transparent"}
+              color={rating === "up" ? "primary.600" : "myGray.500"}
+              h="26px"
+              icon={<ThumbUpIcon {...iconProps} />}
+              minW="26px"
               onClick={() => onRate?.("up")}
-              p="5px"
-            >
-              <ThumbUpIcon {...iconProps} />
-            </Box>
+              size="xs"
+              variant="ghost"
+            />
           </MyTooltip>
 
           <MyTooltip label="踩">
-            <Box
-              _hover={{ color: "yellow.500" }}
-              color={rating === "down" ? "yellow.500" : undefined}
-              cursor="pointer"
+            <IconButton
+              _hover={{ color: "orange.600", bg: "orange.50" }}
+              aria-label="踩"
+              bg={rating === "down" ? "orange.50" : "transparent"}
+              color={rating === "down" ? "orange.600" : "myGray.500"}
+              h="26px"
+              icon={<ThumbDownIcon {...iconProps} />}
+              minW="26px"
               onClick={() => onRate?.("down")}
-              p="5px"
-            >
-              <ThumbDownIcon {...iconProps} />
-            </Box>
+              size="xs"
+              variant="ghost"
+            />
           </MyTooltip>
         </>
       ) : null}

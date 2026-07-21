@@ -1,0 +1,62 @@
+--- /Users/santian/claude-code/src/tools.ts	2026-04-14 23:06:45
++++ src/server/agent/tools.ts	2026-04-18 20:11:37
+@@ -184,6 +184,16 @@
+   return tools.filter((_, i) => isEnabled[i]).map(tool => tool.name)
+ }
+ 
++const isToolLike = (tool: unknown): tool is Tool => {
++  if (!tool || typeof tool !== 'object') return false
++  const candidate = tool as { name?: unknown; isEnabled?: unknown }
++  return (
++    typeof candidate.name === 'string' &&
++    candidate.name.trim().length > 0 &&
++    typeof candidate.isEnabled === 'function'
++  )
++}
++
+ /**
+  * Get the complete exhaustive list of all tools that could be available
+  * in the current environment (respecting process.env flags).
+@@ -193,7 +203,7 @@
+  * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/claude_code_global_system_caching, in order to cache the system prompt across users.
+  */
+ export function getAllBaseTools(): Tools {
+-  return [
++  const tools: unknown[] = [
+     AgentTool,
+     TaskOutputTool,
+     BashTool,
+@@ -251,6 +261,7 @@
+     // The actual decision to defer tools happens at request time in claude.ts
+     ...(isToolSearchEnabledOptimistic() ? [ToolSearchTool] : []),
+   ]
++  return tools.filter(isToolLike)
+ }
+ 
+ /**
+@@ -307,7 +318,9 @@
+     SYNTHETIC_OUTPUT_TOOL_NAME,
+   ])
+ 
+-  const tools = getAllBaseTools().filter(tool => !specialTools.has(tool.name))
++  const tools = getAllBaseTools().filter(
++    tool => isToolLike(tool) && !specialTools.has(tool.name),
++  )
+ 
+   // Filter out tools that are denied by the deny rules
+   let allowedTools = filterToolsByDenyRules(tools, permissionContext)
+@@ -325,7 +338,13 @@
+     }
+   }
+ 
+-  const isEnabled = allowedTools.map(_ => _.isEnabled())
++  const isEnabled = allowedTools.map(tool => {
++    try {
++      return tool.isEnabled()
++    } catch {
++      return false
++    }
++  })
+   return allowedTools.filter((_, i) => isEnabled[i])
+ }
+ 

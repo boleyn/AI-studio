@@ -19,7 +19,7 @@ const Markdown = ({ content }: MarkdownProps) => {
       code({ inline, className, children, ...props }: any) {
         const match = /language-(\w+)/.exec(className || "");
         const language = match?.[1];
-        const value = String(children ?? "").replace(/\n$/, "");
+        const value = String(children ?? "");
         if (inline) {
           return (
             <Box as="code" px={1} py={0.5} bg="gray.100" borderRadius="4px" fontSize="0.85em" {...props}>

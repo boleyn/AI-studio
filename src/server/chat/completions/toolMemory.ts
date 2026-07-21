@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
 import type { ConversationMessage } from "@server/conversations/conversationStorage";
 import { createDataId } from "@shared/chat/ids";

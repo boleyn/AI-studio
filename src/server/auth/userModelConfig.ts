@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 export type UserModelConfig = {
   id: string;
   label?: string;

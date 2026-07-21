@@ -169,7 +169,7 @@ const ProgressCard: React.FC<ProgressCardProps> = ({ text, dataId }) => {
   // 如果当前组件不是该 scope 的第一个实例，则不渲染，避免重复占位撑高消息框
   if (!cardRef.current || !cardRef.current.isFirst) return null;
 
-  const { id, progress, total, title } = progressData;
+  const { progress, total, title } = progressData;
   const percentage = total > 0 ? Math.min(Math.round((progress / total) * 100), 100) : 0;
   const isComplete = progress >= total;
 

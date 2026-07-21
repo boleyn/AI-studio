@@ -1,8 +1,8 @@
 import { Box, Flex } from "@chakra-ui/react";
 import { extractText } from "@shared/chat/messages";
 import React from "react";
-import { useCopyData } from "@/hooks/useCopyData";
 import type { ConversationMessage } from "@/types/conversation";
+import { useChatInteractionContext } from "../../context/ChatInteractionContext";
 import type { MessageExecutionSummary } from "../../utils/executionSummary";
 import ChatItem from "../ChatItem";
 import MessageActionBar, { type MessageRating } from "./MessageActionBar";
@@ -20,6 +20,7 @@ interface ChatMessageBlockProps {
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onRate?: (messageId: string, rating: MessageRating) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }
 
 const ChatMessageBlock = ({
@@ -35,15 +36,16 @@ const ChatMessageBlock = ({
   onRegenerate,
   onDelete,
   onRate,
+  onOpenWorkspaceFile,
 }: ChatMessageBlockProps) => {
-  const { copyData } = useCopyData();
+  const { hideInteractiveCards } = useChatInteractionContext();
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
 
   return (
     <Flex
-      align="flex-start"
+      align={isUser ? "flex-end" : "flex-start"}
       direction="column"
       position="relative"
       w="full"
@@ -66,7 +68,8 @@ const ChatMessageBlock = ({
         <Box
           className="message-action-anchor"
           position="absolute"
-          left={0}
+          left={isUser ? "auto" : 0}
+          right={isUser ? 0 : "auto"}
           top={0}
           transform="translateY(calc(-100% - 6px))"
           zIndex={60}
@@ -74,7 +77,8 @@ const ChatMessageBlock = ({
           <MessageActionBar
             canDelete={isUser || isAssistant}
             canRegenerate={isAssistant && canRegenerate}
-            onCopy={() => copyData(extractText(message.content))}
+            copyContent={extractText(message.content)}
+            messageType={isUser ? "user" : "assistant"}
             onDelete={isUser || isAssistant ? () => onDelete?.(messageId) : undefined}
             onRate={isUser ? undefined : (rating) => onRate?.(messageId, rating)}
             onRegenerate={isAssistant ? () => onRegenerate?.(messageId) : undefined}
@@ -92,6 +96,8 @@ const ChatMessageBlock = ({
         messageId={messageId}
         requestMessage={requestMessage}
         requestContent={requestContent}
+        hideInteractiveCards={hideInteractiveCards}
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
       />
     </Flex>
   );
@@ -112,5 +118,6 @@ export default React.memo(
     prevProps.canRegenerate === nextProps.canRegenerate &&
     prevProps.onRegenerate === nextProps.onRegenerate &&
     prevProps.onDelete === nextProps.onDelete &&
-    prevProps.onRate === nextProps.onRate
+    prevProps.onRate === nextProps.onRate &&
+    prevProps.onOpenWorkspaceFile === nextProps.onOpenWorkspaceFile
 );

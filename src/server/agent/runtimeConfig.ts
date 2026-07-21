@@ -9,7 +9,6 @@ export type AgentRuntimeConfig = {
   baseUrl?: string;
   memoryEnabled: boolean;
   memoryAutoExtractEnabled: boolean;
-  contextManagerEnabled: boolean;
 };
 
 const DEFAULT_TOOL_CALL_MODEL = "";
@@ -19,7 +18,9 @@ const DEFAULT_RECURSION_LIMIT = 20;
 export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
   const provider = "openai";
   const aiproxyEndpoint = process.env.AIPROXY_API_ENDPOINT;
-  const baseUrl = aiproxyEndpoint ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1` : process.env.OPENAI_BASE_URL;
+  const baseUrl = aiproxyEndpoint
+    ? `${aiproxyEndpoint.replace(/\/$/, "")}/v1`
+    : process.env.OPENAI_BASE_URL;
   const apiKey = process.env.AIPROXY_API_TOKEN || process.env.CHAT_API_KEY;
 
   const toolCallModel = process.env.TOOL_CALL_MODEL || DEFAULT_TOOL_CALL_MODEL;
@@ -46,6 +47,5 @@ export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
     baseUrl,
     memoryEnabled: process.env.AI_MEMORY_ENABLED !== "0",
     memoryAutoExtractEnabled: process.env.AI_MEMORY_AUTO_EXTRACT_ENABLED !== "0",
-    contextManagerEnabled: process.env.AI_CONTEXT_MANAGER_ENABLED !== "0",
   };
 };

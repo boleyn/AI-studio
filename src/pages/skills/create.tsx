@@ -180,6 +180,10 @@ const SkillCreatePage = () => {
     if (!value.startsWith("/") || value.startsWith("//")) return "";
     return value;
   }, [router.query.returnTo]);
+  const safeReturnTo = useMemo(() => {
+    if (!returnTo) return "";
+    return returnTo.startsWith("/skills/create") ? "" : returnTo;
+  }, [returnTo]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -201,7 +205,7 @@ const SkillCreatePage = () => {
       const query: Record<string, string> = { skillId: nextSkillId };
       if (conversationId) query.conversation = conversationId;
       if (projectToken) query.projectToken = projectToken;
-      if (returnTo) query.returnTo = returnTo;
+      if (safeReturnTo) query.returnTo = safeReturnTo;
       void router.replace(
         {
           pathname: "/skills/create",
@@ -211,7 +215,7 @@ const SkillCreatePage = () => {
         { shallow: true }
       );
     },
-    [conversationId, projectToken, returnTo, router]
+    [conversationId, projectToken, safeReturnTo, router]
   );
 
   const isWorkspaceReady = !isBootstrapping && !bootstrapError && Boolean(workspaceId);
@@ -927,12 +931,12 @@ const SkillCreatePage = () => {
           activeView={activeView}
           onChangeView={setActiveView}
           onBack={() => {
-            const target = returnTo || (projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/");
+            const target = safeReturnTo || (projectToken ? `/project/${encodeURIComponent(projectToken)}` : "/");
             if (typeof window !== "undefined") {
               window.location.assign(target);
-              return;
+            } else {
+              void router.push(target);
             }
-            void router.push(target);
           }}
           onOpenSettings={() => {
             toast({
@@ -976,9 +980,9 @@ const SkillCreatePage = () => {
               >
                 <ChatPanel
                   key={workspaceId}
-                  token={`skill-studio:${workspaceId}`}
+                  token={workspaceId}
                   height="100%"
-                  completionsPath="/api/skills/chat/completions"
+                  completionsPath="/api/v2/chat/completions"
                   completionsStream
                   completionsExtraBody={{
                     workspaceId,

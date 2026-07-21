@@ -187,11 +187,11 @@ export default function DashboardEntityCard({
           <HStack spacing={6} color="myGray.600" fontSize="sm" whiteSpace="nowrap" minW="fit-content">
             <HStack spacing={2}>
               <Box as={CalendarDays} w={4} h={4} />
-              <Text>创建于 {createdMeta || "--"}</Text>
+              <Text>{createdMeta || "--"}</Text>
             </HStack>
             <HStack spacing={2}>
               <Box as={History} w={4} h={4} />
-              <Text>{meta || "更新于 --"}</Text>
+              <Text>{meta || "--"}</Text>
             </HStack>
           </HStack>
         }

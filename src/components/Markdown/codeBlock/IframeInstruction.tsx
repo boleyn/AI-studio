@@ -178,7 +178,6 @@ const IframeInstructionBlock: React.FC<IframeInstructionProps> = ({ code, dataId
 
       // 匹配消息：dataId 和 index 都要匹配
       if (event.data.dataId === dataId && event.data.instructionIndex === instructionData.index) {
-        const targetIndex = event.data.instructionIndex;
         const { status, executionTime, error } = event.data;
         console.log('[IframeInstruction] 接收到父窗口状态更新:', { status, executionTime, error });
 

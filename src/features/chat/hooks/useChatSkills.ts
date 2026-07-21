@@ -1,5 +1,38 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listSkills } from "../services/skills";
+
+const inferSkillOptionsFromFiles = (fileOptions?: string[]) =>
+  Array.from(
+    new Set(
+      (fileOptions || [])
+        .map((item) => item.replace(/\\/g, "/"))
+        .map((item) => {
+          const match =
+            item.match(/(?:^|\/)skills\/([^/]+)\/SKILL\.md$/i) ||
+            item.match(/(?:^|\/)\.aistudio\/skills\/([^/]+)\/SKILL\.md$/i);
+          return match?.[1]?.trim() || "";
+        })
+        .filter(Boolean)
+    )
+  )
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ name }));
+
+const mergeSkillOptions = (
+  inferred: Array<{ name: string; description?: string }>,
+  remote: Array<{ name: string; description?: string }>
+) => {
+  const merged = new Map<string, { name: string; description?: string }>();
+  for (const item of inferred) {
+    if (!item.name) continue;
+    merged.set(item.name, item);
+  }
+  for (const item of remote) {
+    if (!item.name) continue;
+    merged.set(item.name, item);
+  }
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+};
 
 export const useChatSkills = ({
   token,
@@ -38,20 +71,47 @@ export const useChatSkills = ({
   }, [hideSkillsManager, openSkillsSignal]);
 
   useEffect(() => {
+    const inferredSkillOptions = inferSkillOptionsFromFiles(fileOptions);
+    setSkillOptions((prev) => mergeSkillOptions(inferredSkillOptions, prev));
+  }, [fileOptions]);
+
+  useEffect(() => {
+    if (selectedSkills.length === 0) return;
+    setSkillOptions((prev) =>
+      mergeSkillOptions(
+        selectedSkills.filter(Boolean).map((name) => ({ name })),
+        prev
+      )
+    );
+  }, [selectedSkills]);
+
+  useEffect(() => {
     let active = true;
-    const tokenForSkills =
-      (skillsProjectToken && skillsProjectToken.trim()) ||
-      (token.startsWith("skill-studio:") ? "" : token);
-    
-    listSkills(tokenForSkills)
-      .then((result) => {
+    const builtinToken = token.startsWith("skill-studio:") ? "" : token;
+    const projectToken = (skillsProjectToken && skillsProjectToken.trim()) || "";
+    const inferredSkillOptions = inferSkillOptionsFromFiles(fileOptions);
+    const toVisible = (result: { skills?: Array<{ isLoadable?: boolean; name?: string; description?: string }> }) =>
+      (result.skills || [])
+        .filter((item) => typeof item.name === "string" && item.name.length > 0)
+        .map((item) => ({
+          name: item.name as string,
+          description:
+            item.isLoadable === false
+              ? `${item.description || "技能可见，但当前环境标记为不可加载"}`
+              : item.description,
+        }));
+
+    Promise.allSettled([
+      listSkills(builtinToken).then(toVisible),
+      projectToken ? listSkills(projectToken).then(toVisible) : Promise.resolve([] as Array<{ name: string; description?: string }>),
+    ])
+      .then((results) => {
         if (!active) return;
-        const next = (result.skills || [])
-          .filter((item) => item.isLoadable && typeof item.name === "string" && item.name.length > 0)
-          .map((item) => ({
-            name: item.name as string,
-            description: item.description,
-          }));
+        const builtinSkills = results[0].status === "fulfilled" ? results[0].value : [];
+        const projectSkills =
+          results[1] && results[1].status === "fulfilled" ? results[1].value : [];
+        const remote = [...builtinSkills, ...projectSkills];
+        const next = mergeSkillOptions(inferredSkillOptions, remote);
         setSkillOptions(next);
 
         setSelectedSkills((prev) => {
@@ -63,7 +123,7 @@ export const useChatSkills = ({
       })
       .catch(() => {
         if (!active) return;
-        setSkillOptions([]);
+        setSkillOptions(mergeSkillOptions(inferredSkillOptions, []));
       });
       
     return () => {
@@ -71,7 +131,6 @@ export const useChatSkills = ({
     };
   }, [
     defaultSelectedSkill,
-    isSkillsOpen,
     skillsProjectToken,
     token,
     skillListRefreshKey,

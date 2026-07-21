@@ -27,6 +27,12 @@ export const deleteConversationMessage = (data: UpdateHistoryMessageActionBodyTy
 export const truncateConversationFromMessage = (data: UpdateHistoryMessageActionBodyType) =>
   httpPost<{ success?: boolean }>("/core/chat/history/truncateFromMessage", data);
 
+export const rewindConversationLatestTurn = (data: { token: string; chatId: string }) =>
+  httpPost<{ success?: boolean; files?: Record<string, { code: string }> }>(
+    "/core/chat/history/rewindLatestTurn",
+    data
+  );
+
 export const deleteConversationHistory = (data: DelChatHistoryType) =>
   httpDelete<{ success?: boolean }>("/core/chat/history/delHistory", data);
 

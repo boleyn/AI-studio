@@ -13,7 +13,11 @@ import {
   Text,
   useToast,
 } from "@chakra-ui/react";
-import { SandpackProvider, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
+import {
+  SandpackProvider,
+  useSandpack,
+  type SandpackPredefinedTemplate,
+} from "@codesandbox/sandpack-react";
 import dynamic from "next/dynamic";
 import { githubLight } from "@codesandbox/sandpack-themes";
 import { useRouter } from "next/router";
@@ -29,6 +33,10 @@ import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 import { listConversations } from "@features/chat/services/conversations";
+import {
+  useAgentFileUpdates,
+  type AgentFilesSyncPayload,
+} from "./hooks/useAgentFileUpdates";
 
 type SandpackFile = { code: string; hidden?: boolean };
 export type SandpackFiles = Record<string, SandpackFile>;
@@ -136,6 +144,65 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles | null => {
 const toSortedFilePaths = (input: SandpackFiles | null | undefined): string[] =>
   Object.keys(input || {}).sort((a, b) => a.localeCompare(b));
 
+const isRuntimeHiddenPath = (filePath: string): boolean => {
+  const normalizedPath = (filePath || "").trim().replace(/\\/g, "/");
+  if (!normalizedPath.startsWith("/")) return false;
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.some((segment) => segment.startsWith("."));
+};
+
+const resolveWorkspaceFilePath = (inputPath: string, knownPaths: string[]): string | null => {
+  const normalizedInput = (inputPath || "").trim().replace(/\\/g, "/");
+  if (!normalizedInput) return null;
+  const prefixedInput = normalizedInput.startsWith("/") ? normalizedInput : `/${normalizedInput}`;
+  if (knownPaths.includes(prefixedInput)) return prefixedInput;
+
+  const candidates = [prefixedInput, normalizedInput];
+  for (const candidate of candidates) {
+    const foundBySuffix = knownPaths.find((path) => path === candidate || path.endsWith(candidate));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  const segments = prefixedInput.split("/").filter(Boolean);
+  for (let index = 0; index < segments.length; index += 1) {
+    const suffix = `/${segments.slice(index).join("/")}`;
+    const foundBySuffix = knownPaths.find((path) => path === suffix || path.endsWith(suffix));
+    if (foundBySuffix) return foundBySuffix;
+  }
+
+  return null;
+};
+
+const AgentFilesSandpackSync = ({ payload }: { payload: AgentFilesSyncPayload | null }) => {
+  const { sandpack } = useSandpack();
+  const lastAppliedVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!payload || payload.version <= lastAppliedVersionRef.current) return;
+    lastAppliedVersionRef.current = payload.version;
+
+    const changed: SandpackFiles = {};
+    for (const [filePath, file] of Object.entries(payload.files)) {
+      const current = sandpack.files[filePath];
+      const currentCode =
+        typeof current === "string"
+          ? current
+          : current && typeof current === "object" && "code" in current
+          ? String((current as { code?: unknown }).code ?? "")
+          : undefined;
+      if (currentCode !== file.code) {
+        changed[filePath] = file;
+      }
+    }
+
+    if (Object.keys(changed).length > 0) {
+      sandpack.updateFile(changed, undefined, true);
+    }
+  }, [payload, sandpack]);
+
+  return null;
+};
+
 const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) => {
   const router = useRouter();
   const toast = useToast();
@@ -166,13 +233,15 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [openSkillsSignal, setOpenSkillsSignal] = useState(0);
   const [topSearchConversations, setTopSearchConversations] = useState<Array<{ id: string; title: string }>>([]);
   const [topSearchOpenFilePath, setTopSearchOpenFilePath] = useState<string | null>(null);
+  const [chatOpenFilePath, setChatOpenFilePath] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<Record<ShareMode, string>>({
     editable: "",
     preview: "",
   });
   const [chatFileOptions, setChatFileOptions] = useState<string[]>(() =>
-    toSortedFilePaths(initialNormalizedFiles)
+    toSortedFilePaths(initialNormalizedFiles).filter((path) => !isRuntimeHiddenPath(path))
   );
+  const { agentFilesSyncPayload, queueAgentFileSync } = useAgentFileUpdates();
 
   const loadProject = useCallback(async (requestedToken: string) => {
     if (!requestedToken) {
@@ -212,7 +281,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
       setTemplate(normalizedTemplate);
       setFiles(nextFiles);
       latestFilesRef.current = nextFiles;
-      setChatFileOptions(toSortedFilePaths(nextFiles));
+      setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
       setDependencies(nextDependencies as Record<string, string>);
       setProjectName(nextName);
       setStatus("ready");
@@ -249,7 +318,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     return paths;
   }, [hasRealFiles]);
   const shouldShowPath = useCallback(
-    (filePath: string) => !runtimeTransientPaths.includes(filePath),
+    (filePath: string) => !runtimeTransientPaths.includes(filePath) && !isRuntimeHiddenPath(filePath),
     [runtimeTransientPaths]
   );
   const providerFiles = useMemo<SandpackFiles>(
@@ -261,6 +330,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     () => Object.keys(sandpackFiles).filter(shouldShowPath),
     [sandpackFiles, shouldShowPath]
   );
+  const mergedOpenFileRequest = chatOpenFilePath || topSearchOpenFilePath;
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -308,9 +378,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
         token || "no-token",
         template || "no-template",
         providerTemplate || "auto-template",
-        Object.keys(providerFiles).sort().join("|"),
       ].join("::"),
-    [providerFiles, providerTemplate, template, token]
+    [providerTemplate, template, token]
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -484,7 +553,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
 
   const handleFilesChange = useCallback((nextFiles: SandpackFiles) => {
     latestFilesRef.current = nextFiles;
-    setChatFileOptions(toSortedFilePaths(nextFiles));
+    setChatFileOptions(toSortedFilePaths(nextFiles).filter((path) => !isRuntimeHiddenPath(path)));
     const prevHasReal = hasUserVisibleFiles(files);
     const nextHasReal = hasUserVisibleFiles(nextFiles);
     // Avoid SandpackProvider remount loops: only sync state when empty/non-empty mode changes.
@@ -494,14 +563,17 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   }, [files]);
 
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
+    const baseFiles = normalizeFiles(latestFilesRef.current || files || {}) || {};
+    const normalizedUpdated = normalizeFiles(updated) || {};
     const merged = {
-      ...(latestFilesRef.current || files || {}),
-      ...updated,
+      ...baseFiles,
+      ...normalizedUpdated,
     };
     latestFilesRef.current = merged;
-    setChatFileOptions(toSortedFilePaths(merged));
+    setChatFileOptions(toSortedFilePaths(merged).filter((path) => !isRuntimeHiddenPath(path)));
     setFiles(merged);
-  }, [files]);
+    queueAgentFileSync(normalizedUpdated);
+  }, [files, queueAgentFileSync]);
 
   const handleProjectNameChange = useCallback(async (newName: string) => {
     if (!token || !newName.trim() || newName === projectName) {
@@ -713,6 +785,14 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 height="100%"
                 openSkillsSignal={openSkillsSignal}
                 fileOptions={chatFileOptions}
+                onOpenWorkspaceFile={(filePath) => {
+                  const knownPaths = Object.keys(latestFilesRef.current || files || {});
+                  const resolvedPath = resolveWorkspaceFilePath(filePath, knownPaths);
+                  if (!resolvedPath) return false;
+                  setActiveView("code");
+                  setChatOpenFilePath(resolvedPath);
+                  return true;
+                }}
               />
             </Box>
             <Box
@@ -735,8 +815,16 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               error={error}
               activeView={activeView}
               onChangeView={setActiveView}
-              openFileRequest={topSearchOpenFilePath}
-              onOpenFileRequestHandled={() => setTopSearchOpenFilePath(null)}
+              openFileRequest={mergedOpenFileRequest}
+              onOpenFileRequestHandled={() => {
+                if (chatOpenFilePath) {
+                  setChatOpenFilePath(null);
+                  return;
+                }
+                if (topSearchOpenFilePath) {
+                  setTopSearchOpenFilePath(null);
+                }
+              }}
               filePathFilter={shouldShowPath}
               saveStatus={saveStatus}
               onManualPreview={() => setActiveView("preview")}

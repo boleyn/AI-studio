@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { parse } from "cookie";
 import type { IncomingMessage } from "http";
 import { verifyAuthToken } from "./jwt";

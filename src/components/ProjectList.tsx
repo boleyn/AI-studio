@@ -617,7 +617,7 @@ export default function ProjectList() {
                         title={project.name}
                         description={project.description || "继续编辑项目代码与相关对话"}
                         createdMeta={formatCompactDate(project.createdAt)}
-                        meta={`更新于 ${formatCompactDate(project.updatedAt)}`}
+                        meta={formatCompactDate(project.updatedAt)}
                         fileCount={project.fileCount}
                         onOpen={() => openProject(project.token)}
                         onRename={(nextName, nextDesc) => renameProject(project.token, nextName, nextDesc)}
@@ -688,7 +688,7 @@ export default function ProjectList() {
                       title={skill.name}
                       description={skill.description || "暂无描述"}
                       createdMeta={formatCompactDate(skill.createdAt)}
-                      meta={`更新于 ${formatCompactDate(skill.updatedAt)}`}
+                      meta={formatCompactDate(skill.updatedAt)}
                       fileCount={skill.fileCount}
                       onOpen={() => {
                         void openSkill(skill.token);

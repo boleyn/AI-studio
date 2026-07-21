@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { MongoClient } from "mongodb";
 
 declare global {

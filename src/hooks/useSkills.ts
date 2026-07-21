@@ -58,7 +58,7 @@ export function useSkills() {
     (token: string) => {
       const params = new URLSearchParams({ skillId: token });
       const currentPath = typeof router.asPath === "string" ? router.asPath : "";
-      if (currentPath.startsWith("/")) {
+      if (currentPath.startsWith("/") && !currentPath.startsWith("/skills/create")) {
         params.set("returnTo", currentPath);
       }
       return `/skills/create?${params.toString()}`;

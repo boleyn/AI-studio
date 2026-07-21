@@ -1,0 +1,17 @@
+{
+  "name": "@alcalzone/ansi-tokenize",
+  "version": "0.3.0-aistudio.1",
+  "private": true,
+  "type": "module",
+  "main": "./index.cjs",
+  "module": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.cjs",
+      "default": "./index.mjs"
+    }
+  }
+}

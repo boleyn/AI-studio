@@ -7,7 +7,26 @@ export type ToolCall = {
   };
 };
 
+export type ClaudeMessageType = "user" | "assistant" | "system" | "tool" | "progress";
+
 export type ConversationMessage = {
+  // Claude Code style envelope
+  type?: ClaudeMessageType;
+  subtype?: string;
+  uuid?: string;
+  parent_uuid?: string;
+  is_sidechain?: boolean;
+  session_id?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    id?: string;
+    content?: unknown;
+    [key: string]: unknown;
+  };
+  meta?: Record<string, unknown>;
+
+  // Legacy field kept for transition; runtime now prefers `type`.
   role: "user" | "assistant" | "system" | "tool";
   content: unknown;
   /**

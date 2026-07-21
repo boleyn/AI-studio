@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { Box, Flex } from '@chakra-ui/react';
-import Icon from '@/components/common/MyIcon';
+import { CopyIcon } from '@/components/common/Icon';
 import { useCopyData } from '@/hooks/useCopyData';
 import { useMarkdownWidth } from '../hooks';
 
@@ -349,7 +349,7 @@ const CodeLight = ({
             {codeBoxName}
           </Box>
           <Flex cursor={'pointer'} onClick={() => copyData(String(children))} alignItems={'center'}>
-            <Icon name={'copy'} width={15} height={15}></Icon>
+            <Box as={CopyIcon} w={'15px'} h={'15px'} />
             <Box ml={1}>{'复制'}</Box>
           </Flex>
         </Flex>

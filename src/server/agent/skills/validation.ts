@@ -1,34 +1,27 @@
-import { getSkillSnapshot } from "./registry";
-import type { SkillValidationResult } from "./types";
+import { getSkillSnapshot, type SkillIssue } from "./registry";
 
-export const validateSkills = async (targetName?: string): Promise<SkillValidationResult> => {
+export const validateSkills = async (targetName?: string) => {
   const snapshot = await getSkillSnapshot(false);
-  const allItems = snapshot.entries.map((entry) => ({
-    name: entry.name,
-    location: entry.location,
-    relativeLocation: entry.relativeLocation,
-    isLoadable: entry.isLoadable,
-    issues: entry.issues,
-  }));
+  const normalizedTarget = (targetName || "").trim().toLowerCase();
+  const filtered = normalizedTarget
+    ? snapshot.entries.filter((entry) => (entry.name || "").trim().toLowerCase() === normalizedTarget)
+    : snapshot.entries;
 
-  const skills = targetName
-    ? allItems.filter((item) => item.name === targetName)
-    : allItems;
-
-  const issues = skills.flatMap((item) => item.issues);
-  if (targetName && skills.length === 0) {
-    issues.push({
-      code: "not_found",
-      message: `未找到 skill: ${targetName}`,
-      location: "",
-      name: targetName,
-    });
+  const issues: SkillIssue[] = [];
+  for (const entry of filtered) {
+    for (const issue of entry.issues) issues.push(issue);
   }
 
   return {
     ok: issues.length === 0,
     scannedAt: new Date(snapshot.scannedAt).toISOString(),
-    skills,
+    skills: filtered.map((entry) => ({
+      name: entry.name,
+      location: entry.location,
+      relativeLocation: entry.relativeLocation,
+      isLoadable: entry.isLoadable,
+      issues: entry.issues,
+    })),
     issues,
   };
 };

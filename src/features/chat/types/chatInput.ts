@@ -9,6 +9,24 @@ export interface ChatInputSubmitPayload {
   text: string;
   files: ChatInputFile[];
   uploadedFiles: UploadedFileArtifact[];
+  permissionApprovalResponse?: {
+    requestId?: string;
+    toolName: string;
+    toolUseId?: string;
+    decision: "approve" | "reject";
+    note?: string;
+  };
+  planQuestionResponse?: {
+    requestId: string;
+    answers: Record<string, string>;
+    note?: string;
+  };
+  planModeApprovalResponse?: {
+    requestId: string;
+    action: "enter" | "exit";
+    decision: "approve" | "reject";
+    note?: string;
+  };
   selectedSkill?: string;
   selectedSkills?: string[];
   selectedFilePaths?: string[];
@@ -38,6 +56,7 @@ export interface ChatInputProps {
   modelLoading?: boolean;
   thinkingEnabled?: boolean;
   showThinkingToggle?: boolean;
+  mode?: "default" | "plan";
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
   selectedSkill?: string;
@@ -50,6 +69,7 @@ export interface ChatInputProps {
   prefillText?: string;
   prefillVersion?: number;
   onChangeModel: (model: string) => void;
+  onChangeMode?: (mode: "default" | "plan") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
   onChangeSelectedSkills?: (skillNames: string[]) => void;

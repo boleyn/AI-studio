@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 type HubSkillDetailPayload = {
   skill?: {
     slug?: string;

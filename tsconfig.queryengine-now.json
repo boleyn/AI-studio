@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/server/agent/QueryEngine.ts",
+    "src/server/agent/query.ts"
+  ],
+  "exclude": ["node_modules"]
+}

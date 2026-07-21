@@ -1,10 +1,4 @@
-import { createChatId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
-import {
-  buildDownloadUrl,
-  buildPreviewUrl,
-  getPresignedChatFileGetUrl,
-} from "../services/files";
 import type { ChatInputFile } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
@@ -16,9 +10,6 @@ export const SKILL_TAG_MARKER_PREFIX = "SKILLTAG:";
 
 export const normalizeAttachmentWorkspacePath = (filePath: string): string => {
   const normalized = (filePath || "").replace(/\\/g, "/").trim();
-  if (!normalized) return normalized;
-  if (normalized === "/files") return "/.files";
-  if (normalized.startsWith("/files/")) return `/.files/${normalized.slice("/files/".length)}`;
   return normalized;
 };
 
@@ -36,6 +27,83 @@ export const getMessageFeedback = (message: ConversationMessage): MessageRating 
   if (!message.additional_kwargs || typeof message.additional_kwargs !== "object") return undefined;
   const value = (message.additional_kwargs as { userFeedback?: unknown }).userFeedback;
   return value === "up" || value === "down" ? value : undefined;
+};
+
+export const normalizeHistoryMessagesForTimeline = (messages: ConversationMessage[]): ConversationMessage[] => {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+
+  // Keep last occurrence for duplicated message ids while preserving chronological order.
+  const latestIndexById = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (typeof message.id === "string" && message.id.trim()) {
+      latestIndexById.set(message.id.trim(), index);
+    }
+  });
+  const deduped = messages.filter((message, index) => {
+    const id = typeof message.id === "string" ? message.id.trim() : "";
+    if (!id) return true;
+    return latestIndexById.get(id) === index;
+  });
+
+  const findLatestPlanProgressPayload = (
+    controlEvents: unknown
+  ): { explanation?: string; plan: Array<{ step: string; status: "pending" | "in_progress" | "completed" }> } | null => {
+    const events = Array.isArray(controlEvents) ? controlEvents : [];
+    for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+      const entry = events[idx];
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const record = entry as Record<string, unknown>;
+      if (record.type !== "plan_progress") continue;
+      const payload =
+        record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
+          ? (record.payload as Record<string, unknown>)
+          : null;
+      if (!payload) continue;
+      const rawPlan = Array.isArray(payload.plan) ? payload.plan : [];
+      const plan = rawPlan
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+        .map((item): { step: string; status: "pending" | "in_progress" | "completed" } => {
+          const status: "pending" | "in_progress" | "completed" =
+            item.status === "completed"
+              ? "completed"
+              : item.status === "in_progress"
+              ? "in_progress"
+              : "pending";
+          return {
+            step: typeof item.step === "string" ? item.step.trim() : "",
+            status,
+          };
+        })
+        .filter((item) => item.step.length > 0);
+      if (plan.length === 0) continue;
+      return {
+        ...(typeof payload.explanation === "string" && payload.explanation.trim()
+          ? { explanation: payload.explanation.trim() }
+          : {}),
+        plan,
+      };
+    }
+    return null;
+  };
+
+  return deduped.map((message) => {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object" && !Array.isArray(message.additional_kwargs)
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs || kwargs.planProgress) return message;
+
+    const planProgress = findLatestPlanProgressPayload(kwargs.controlEvents);
+    if (!planProgress) return message;
+
+    return {
+      ...message,
+      additional_kwargs: {
+        ...kwargs,
+        planProgress,
+      },
+    };
+  });
 };
 
 export const buildConversationTitle = (value: string): string | null => {
@@ -64,7 +132,7 @@ export const buildUserBubbleContent = ({
   text,
   files: _files,
   selectedSkills,
-  selectedFilePaths,
+  selectedFilePaths: _selectedFilePaths,
 }: {
   text: string;
   files: UploadedFileArtifact[];
@@ -78,16 +146,9 @@ export const buildUserBubbleContent = ({
           .map((skill) => `[${skill}](${SKILL_TAG_MARKER_PREFIX}${encodeURIComponent(skill)})`)
           .join(" ")
       : "";
-  const fileTagsMarkdown =
-    selectedFilePaths && selectedFilePaths.length > 0
-      ? selectedFilePaths
-          .map((path) => normalizeAttachmentWorkspacePath(path))
-          .filter(Boolean)
-          .map((path) => `[${toFileTagLabel(path)}](${FILE_TAG_MARKER_PREFIX}${encodeURIComponent(path)})`)
-          .join(" ")
-      : "";
-  // User image previews are rendered from artifact.files in ChatItem to avoid stale markdown URLs in history.
-  return [skillTagsMarkdown, fileTagsMarkdown, trimmedText].filter(Boolean).join("\n\n");
+  // User image previews and selected project files are rendered from artifact/files
+  // and additional_kwargs.selectedFilePaths in timeline view, so no FILETAG is emitted.
+  return [skillTagsMarkdown, trimmedText].filter(Boolean).join("\n\n");
 };
 
 export const stripTagMarkersFromUserContent = (content: string): string => {
@@ -100,17 +161,30 @@ export const stripTagMarkersFromUserContent = (content: string): string => {
     /\[[^\]]+\]\(FILETAG:[^)]+\)/g,
     ""
   );
-  return noFileTags
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return noFileTags;
+};
+
+export const extractSelectedFilePathsFromUserContent = (content: string): string[] => {
+  if (!content) return [];
+  const matches = content.match(/\[[^\]]+\]\(FILETAG:([^)]+)\)/g) || [];
+  const parsed = matches
+    .map((entry) => {
+      const pathMatch = entry.match(/\(FILETAG:([^)]+)\)/);
+      if (!pathMatch || !pathMatch[1]) return "";
+      try {
+        return normalizeAttachmentWorkspacePath(decodeURIComponent(pathMatch[1]));
+      } catch {
+        return normalizeAttachmentWorkspacePath(pathMatch[1]);
+      }
+    })
+    .filter((item) => item.length > 0);
+  return Array.from(new Set(parsed));
 };
 
 export const stripInlineImageMarkdown = (content: string): string => {
   if (!content) return "";
   return content
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "");
 };
 
 export const isImageArtifact = (file: UploadedFileArtifact) => (file.type || "").toLowerCase().startsWith("image/");
@@ -131,6 +205,16 @@ export const toStableChatFileViewUrl = ({
   if (token) params.set("token", token);
   if (chatId) params.set("chatId", chatId);
   return `/api/core/chat/files/view?${params.toString()}`;
+};
+
+const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
+  if (!storagePath || !token) return "";
+  const params = new URLSearchParams({
+    token,
+    action: "view",
+    path: storagePath,
+  });
+  return `/api/code?${params.toString()}`;
 };
 
 export const hydrateHistoryUserMessage = ({
@@ -155,7 +239,10 @@ export const hydrateHistoryUserMessage = ({
   const hydratedFiles = files.map((file) => {
     if (!isImageArtifact(file)) return file;
     const stablePreviewUrl =
-      file.publicUrl || toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) || file.previewUrl;
+      file.publicUrl ||
+      toProjectFileViewUrl({ storagePath: file.storagePath, token }) ||
+      toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) ||
+      file.previewUrl;
     if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
     return {
       ...file,
@@ -223,6 +310,52 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
     },
   }));
 
+export const toSelectedPathArtifacts = ({
+  paths,
+  token,
+  chatId,
+}: {
+  paths: string[];
+  token: string;
+  chatId?: string;
+}): UploadedFileArtifact[] => {
+  const inferMimeType = (inputPath: string): string => {
+    const lower = inputPath.toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".txt")) return "text/plain";
+    if (lower.endsWith(".md")) return "text/markdown";
+    if (lower.endsWith(".json")) return "application/json";
+    if (lower.endsWith(".csv")) return "text/csv";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".webp")) return "image/webp";
+    return "application/octet-stream";
+  };
+
+  const normalized = Array.isArray(paths)
+    ? paths
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => normalizeAttachmentWorkspacePath(item))
+        .filter(Boolean)
+    : [];
+  const unique = Array.from(new Set(normalized));
+  return unique.map((path, index) => ({
+    id: `selected-file-${index + 1}`,
+    name: toFileTagLabel(path),
+    size: 0,
+    type: inferMimeType(path),
+    storagePath: path,
+    publicUrl: toProjectFileViewUrl({ storagePath: path, token }),
+    previewUrl: toProjectFileViewUrl({ storagePath: path, token }),
+    downloadUrl: toStableChatFileViewUrl({
+      storagePath: path,
+      token,
+      chatId: chatId || "",
+    }),
+    lastModified: 0,
+  }));
+};
+
 export const getImageInputParts = async (files: UploadedFileArtifact[]) => {
   const imageFiles = files
     .filter((item) => (item.type || "").startsWith("image/") && item.storagePath)
@@ -245,6 +378,12 @@ export const toUpdatedFilesMap = (value: unknown): Record<string, { code: string
     return null;
   }
 
+  const normalizeWorkspaceFilePath = (inputPath: string): string => {
+    const normalized = inputPath.replace(/\\/g, "/").trim();
+    if (!normalized) return "";
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  };
+
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length === 0) return null;
 
@@ -256,7 +395,9 @@ export const toUpdatedFilesMap = (value: unknown): Record<string, { code: string
     const code = (file as { code?: unknown }).code;
     if (typeof code !== "string") return null;
 
-    normalized[path] = { code };
+    const normalizedPath = normalizeWorkspaceFilePath(path);
+    if (!normalizedPath) return null;
+    normalized[normalizedPath] = { code };
   }
 
   return Object.keys(normalized).length > 0 ? normalized : null;

@@ -1,12 +1,17 @@
-import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
-import { streamFetch, SseResponseEventEnum } from "@shared/network/streamFetch";
+import {
+  isPlanInteractionEnvelope,
+  type PlanProgressInteractionPayload,
+} from "@shared/chat/planInteraction";
+import { streamFetch } from "@shared/network/streamFetch";
+import { SdkStreamEventEnum } from "@shared/network/sdkStreamEvents";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ChatPanelViewProvider } from "../context/ChatPanelViewContext";
 import { useConversations } from "../hooks/useConversations";
 import {
   buildDownloadUrl,
@@ -14,68 +19,58 @@ import {
   getPresignedChatFileGetUrl,
   uploadChatFiles,
 } from "../services/files";
-import { updateMessageFeedback } from "../services/feedback";
 import {
-  deleteConversationMessageById,
   getConversation as getConversationById,
   replaceConversationMessages,
-  truncateConversationFromMessageId,
 } from "../services/conversations";
 import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
-import { getExecutionSummary } from "../utils/executionSummary";
-import { type FlowNodeResponsePayload } from "../utils/flowNodeMessages";
+import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
+import {
+  derivePlanModeFromMessages,
+  getPlanModeApprovalFromMessage,
+  parseToolPayload,
+} from "../utils/planModeDisplay";
 
-import ChatHeader from "./ChatHeader";
-import ChatInput from "./ChatInput";
-import SkillsManagerModal from "./SkillsManagerModal";
-import ChatMessageBlock from "./message/ChatMessageBlock";
+import ChatPanelView from "./ChatPanelView";
 import type { MessageRating } from "./message/MessageActionBar";
 
 import type { ConversationMessage } from "@/types/conversation";
 
-interface ToolStreamPayload {
-  id?: string;
-  toolName?: string;
-  params?: string;
-  response?: string;
-  rawResponse?: string;
-}
-
-interface ReasoningStreamPayload {
-  reasoningText?: string;
-}
-
-interface WorkflowDurationPayload {
-  durationSeconds?: number;
-}
-
 import {
-  FILE_TAG_MARKER_PREFIX,
-  SKILL_TAG_MARKER_PREFIX,
   buildConversationTitle,
   buildUserBubbleContent,
-  stripTagMarkersFromUserContent,
-  stripInlineImageMarkdown,
   getLatestContextUsageFromMessages,
   getMessageFeedback,
   hydrateHistoryUserMessage,
   normalizeProjectFiles,
+  normalizeAttachmentWorkspacePath,
   toFileArtifacts,
+  toSelectedPathArtifacts,
   getImageInputParts,
   toUpdatedFilesMap,
+  normalizeHistoryMessagesForTimeline,
 } from "../utils/chatPanelUtils";
 import { useChatModels } from "../hooks/useChatModels";
+import { useChatMessageActions } from "../hooks/useChatMessageActions";
+import { useChatPlanInteractions } from "../hooks/useChatPlanInteractions";
 import { useChatSkills } from "../hooks/useChatSkills";
 import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import { updatePrimaryModel } from "../services/models";
+import { mergeSdkBlock } from "../utils/sdkBlockMerge";
+import type { PendingChatInteraction, PendingPlanQuestion } from "../context/ChatInteractionContext";
+import {
+  getPermissionApproval,
+  getPermissionApprovalDecision,
+  getPlanModeApprovalPending,
+  getPlanQuestions,
+} from "../utils/chatItemParsers";
 
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
 const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
-const VIRTUAL_FAILED_ASSISTANT_PREFIX = "virtual-failed-assistant:";
 
 const readThinkingEnabled = () => {
   if (typeof window === "undefined") return true;
@@ -98,11 +93,396 @@ const persistThinkingEnabled = (enabled: boolean) => {
   }
 };
 
+const hasPendingInteractionState = (kwargs: unknown): boolean => {
+  if (!kwargs || typeof kwargs !== "object" || Array.isArray(kwargs)) return false;
+  const record = kwargs as Record<string, unknown>;
+  const planState =
+    record.planModeInteractionState &&
+    typeof record.planModeInteractionState === "object" &&
+    !Array.isArray(record.planModeInteractionState)
+      ? (record.planModeInteractionState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(planState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
+  }
+
+  const permissionState =
+    record.permissionApprovalState &&
+    typeof record.permissionApprovalState === "object" &&
+    !Array.isArray(record.permissionApprovalState)
+      ? (record.permissionApprovalState as Record<string, unknown>)
+      : {};
+  for (const value of Object.values(permissionState)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if ((value as Record<string, unknown>).status === "pending") return true;
+  }
+
+  return Boolean(record.planModeApproval || record.permissionApproval);
+};
+
+const isSdkLikeMessage = (value: unknown): value is {
+  type: "user" | "assistant" | "system" | "progress";
+  uuid?: string;
+  timestamp?: string;
+  message?: {
+    role?: "user" | "assistant" | "system" | "tool";
+    content?: unknown;
+  };
+  meta?: Record<string, unknown>;
+} => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "";
+  return type === "user" || type === "assistant" || type === "system" || type === "progress";
+};
+
+const sdkContentToText = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const block = item as Record<string, unknown>;
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      // Only assistant "text" blocks should become the final visible answer body.
+      // thinking/tool_result are intermediate protocol artifacts and must stay in timeline metadata.
+      return "";
+    })
+    .join("");
+};
+
+const toUserMessageContentBlocks = ({
+  text,
+  artifacts,
+}: {
+  text: string;
+  artifacts: UploadedFileArtifact[];
+}): Array<Record<string, unknown>> => {
+  const toSafeFileName = (value: string): string => {
+    const base = (value || "file")
+      .split("/")
+      .pop()
+      ?.split("\\")
+      .pop()
+      ?.trim() || "file";
+    const withoutControlChars = base.replace(/[\u0000-\u001f\u007f]/g, "");
+    const sanitized = withoutControlChars
+      .replace(/[\\/:"*?<>|]/g, "_")
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalized = sanitized.replace(/^\.+/, "").slice(0, 180);
+    return normalized || "file";
+  };
+  const toRuntimeAttachmentPath = (file: UploadedFileArtifact): string => {
+    const raw = typeof file.storagePath === "string" ? file.storagePath.trim() : "";
+    if (!raw) {
+      return `/.files/${toSafeFileName(file.name || "file")}`;
+    }
+    const normalized = raw.replace(/\\/g, "/");
+    if (normalized === ".files" || normalized === "/.files") return "/.files";
+    if (normalized.startsWith(".files/")) return `/${normalized}`;
+    if (normalized.startsWith("/.files/")) return normalized;
+    if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
+      return `/.files/${toSafeFileName(file.name || normalized)}`;
+    }
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  };
+
+  const blocks: Array<Record<string, unknown>> = [];
+  if (text.trim()) {
+    blocks.push({
+      type: "text",
+      text,
+    });
+  }
+  artifacts.forEach((file) => {
+    const storagePath = toRuntimeAttachmentPath(file);
+    if (!storagePath) return;
+    blocks.push({
+      type: "attachment",
+      name: file.name || "",
+      mime_type: file.type || "application/octet-stream",
+      storage_path: storagePath,
+      ...(typeof file.storagePath === "string" && file.storagePath.trim()
+        ? { source_storage_path: file.storagePath.trim() }
+        : {}),
+      ...(file.previewUrl ? { preview_url: file.previewUrl } : {}),
+      ...(file.downloadUrl ? { download_url: file.downloadUrl } : {}),
+    });
+  });
+  return blocks;
+};
+
+const getPendingInteractionKey = (interaction: PendingChatInteraction) => {
+  if (interaction.type === "permission") {
+    return (interaction.permission.toolUseId || interaction.requestId || interaction.permission.toolName || "")
+      .toString()
+      .trim()
+      .toLowerCase();
+  }
+  return interaction.requestId.trim().toLowerCase();
+};
+
+const collectResolvedInteractionKeys = (messages: ConversationMessage[]) => {
+  const resolvedRequestIds = new Set<string>();
+  const resolvedPermissionKeys = new Set<string>();
+
+  for (const message of messages) {
+    const kwargs =
+      message.additional_kwargs && typeof message.additional_kwargs === "object"
+        ? (message.additional_kwargs as Record<string, unknown>)
+        : null;
+    if (!kwargs) continue;
+
+    const planQuestionResponse =
+      kwargs.planQuestionResponse &&
+      typeof kwargs.planQuestionResponse === "object" &&
+      !Array.isArray(kwargs.planQuestionResponse)
+        ? (kwargs.planQuestionResponse as Record<string, unknown>)
+        : null;
+    const planQuestionRequestId =
+      typeof planQuestionResponse?.requestId === "string" ? planQuestionResponse.requestId.trim().toLowerCase() : "";
+    if (planQuestionRequestId) resolvedRequestIds.add(planQuestionRequestId);
+
+    const planModeApprovalResponse =
+      kwargs.planModeApprovalResponse &&
+      typeof kwargs.planModeApprovalResponse === "object" &&
+      !Array.isArray(kwargs.planModeApprovalResponse)
+        ? (kwargs.planModeApprovalResponse as Record<string, unknown>)
+        : null;
+    const planModeApprovalRequestId =
+      typeof planModeApprovalResponse?.requestId === "string"
+        ? planModeApprovalResponse.requestId.trim().toLowerCase()
+        : "";
+    if (planModeApprovalRequestId) resolvedRequestIds.add(planModeApprovalRequestId);
+
+    const permissionApprovalResponse =
+      kwargs.permissionApprovalResponse &&
+      typeof kwargs.permissionApprovalResponse === "object" &&
+      !Array.isArray(kwargs.permissionApprovalResponse)
+        ? (kwargs.permissionApprovalResponse as Record<string, unknown>)
+        : null;
+    const permissionRequestId =
+      typeof permissionApprovalResponse?.requestId === "string"
+        ? permissionApprovalResponse.requestId.trim().toLowerCase()
+        : "";
+    const permissionToolUseId =
+      typeof permissionApprovalResponse?.toolUseId === "string"
+        ? permissionApprovalResponse.toolUseId.trim().toLowerCase()
+        : "";
+    const permissionToolName =
+      typeof permissionApprovalResponse?.toolName === "string"
+        ? permissionApprovalResponse.toolName.trim().toLowerCase()
+        : "";
+    if (permissionRequestId) resolvedRequestIds.add(permissionRequestId);
+    if (permissionToolUseId) resolvedPermissionKeys.add(permissionToolUseId);
+    if (permissionToolName) resolvedPermissionKeys.add(permissionToolName);
+  }
+
+  return {
+    resolvedRequestIds,
+    resolvedPermissionKeys,
+  };
+};
+
+const buildPendingInteractionsFromMessages = (
+  messages: ConversationMessage[],
+  options?: {
+    isPlanModeActive?: boolean;
+  }
+): PendingChatInteraction[] => {
+  const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messages);
+  const isPlanModeActive = options?.isPlanModeActive === true;
+
+  const pending: PendingChatInteraction[] = [];
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    const assistantMessageId = (message.id || "").trim();
+    if (!assistantMessageId) continue;
+
+    const permission = getPermissionApproval(message);
+    const permissionDecision = getPermissionApprovalDecision(message);
+    if (permission && !permissionDecision) {
+      const permissionRequestId = (permission.toolUseId || "").trim().toLowerCase();
+      const permissionToolKey = permission.toolName.trim().toLowerCase();
+      if (
+        (permissionRequestId && resolvedRequestIds.has(permissionRequestId)) ||
+        (permissionRequestId && resolvedPermissionKeys.has(permissionRequestId)) ||
+        (permissionToolKey && resolvedPermissionKeys.has(permissionToolKey))
+      ) {
+        continue;
+      }
+      pending.push({
+        type: "permission",
+        requestId: permission.toolUseId,
+        assistantMessageId,
+        permission: {
+          toolName: permission.toolName,
+          ...(permission.toolUseId ? { toolUseId: permission.toolUseId } : {}),
+          ...(permission.reason ? { reason: permission.reason } : {}),
+        },
+      });
+    }
+
+    const approval = getPlanModeApprovalFromMessage(message);
+    const approvalPending = getPlanModeApprovalPending(message);
+    if (approval && approvalPending && approval.requestId) {
+      if (!isPlanModeActive) continue;
+      const requestId = approval.requestId.trim().toLowerCase();
+      if (requestId && resolvedRequestIds.has(requestId)) continue;
+      pending.push({
+        type: "plan_approval",
+        requestId: approval.requestId,
+        assistantMessageId,
+        approval: {
+          requestId: approval.requestId,
+          action: approval.action,
+          ...(approval.title ? { title: approval.title } : {}),
+          ...(approval.description ? { description: approval.description } : {}),
+        },
+      });
+    }
+
+    const questions = getPlanQuestions(message);
+    if (questions.length > 0) {
+      if (!isPlanModeActive) continue;
+      const requestId = (questions[0]?.requestId || "").trim();
+      if (requestId) {
+        const normalizedRequestId = requestId.toLowerCase();
+        if (resolvedRequestIds.has(normalizedRequestId)) continue;
+        pending.push({
+          type: "plan_questions",
+          requestId,
+          assistantMessageId,
+          questions: questions.map((question) => ({
+            header: question.header,
+            id: question.id,
+            question: question.question,
+            options: question.options,
+          })),
+        });
+      }
+    }
+  }
+  return pending;
+};
+
+const normalizePendingPlanQuestionPayload = (
+  input: unknown
+): { questions: PendingPlanQuestion[] } | null => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const questionsRaw = Array.isArray((input as { questions?: unknown }).questions)
+    ? ((input as { questions: unknown[] }).questions ?? [])
+    : [];
+  const questions = questionsRaw
+    .filter((question): question is Record<string, unknown> => Boolean(question && typeof question === "object" && !Array.isArray(question)))
+    .map((question) => ({
+      ...(typeof question.header === "string" && question.header.trim() ? { header: question.header.trim() } : {}),
+      id: typeof question.id === "string" ? question.id.trim() : "",
+      question: typeof question.question === "string" ? question.question.trim() : "",
+      options: Array.isArray(question.options)
+        ? question.options
+            .filter(
+              (option): option is Record<string, unknown> =>
+                Boolean(option && typeof option === "object" && !Array.isArray(option) && typeof option.label === "string")
+            )
+            .map((option) => ({
+              label: String(option.label).trim(),
+              ...(typeof option.description === "string" && option.description.trim()
+                ? { description: option.description.trim() }
+                : {}),
+            }))
+            .filter((option) => option.label.length > 0)
+        : [],
+    }))
+    .filter((question) => question.id.length > 0 && question.question.length > 0);
+  if (questions.length === 0) return null;
+  return { questions };
+};
+
+const normalizePendingPlanApprovalPayload = (
+  input: unknown
+): { action: "enter" | "exit"; title?: string; description?: string } => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      action: "exit",
+      title: "计划已完成，是否进入执行？",
+    };
+  }
+  const record = input as Record<string, unknown>;
+  return {
+    action: record.action === "enter" ? "enter" : "exit",
+    ...(typeof record.title === "string" && record.title.trim() ? { title: record.title.trim() } : {}),
+    ...(typeof record.description === "string" && record.description.trim()
+      ? { description: record.description.trim() }
+      : {}),
+  };
+};
+
+const toPendingInteractionFromApi = (
+  item: unknown,
+  assistantMessageId: string
+): PendingChatInteraction | null => {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const record = item as Record<string, unknown>;
+  const requestId = typeof record.requestId === "string" ? record.requestId.trim() : "";
+  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
+  if (!requestId || !assistantMessageId) return null;
+
+  if (kind === "plan_question") {
+    const inputValue =
+      record.input && typeof record.input === "object" && !Array.isArray(record.input) ? record.input : undefined;
+    const payload = normalizePendingPlanQuestionPayload(inputValue);
+    if (!payload || payload.questions.length === 0) return null;
+    return {
+      type: "plan_questions",
+      requestId,
+      assistantMessageId,
+      questions: payload.questions,
+    };
+  }
+
+  if (kind === "plan_approval") {
+    const payload = normalizePendingPlanApprovalPayload(record.input);
+    return {
+      type: "plan_approval",
+      requestId,
+      assistantMessageId,
+      approval: {
+        requestId,
+        action: payload.action,
+        ...(payload.title ? { title: payload.title } : {}),
+        ...(payload.description ? { description: payload.description } : {}),
+      },
+    };
+  }
+
+  if (kind === "permission") {
+    const toolName = typeof record.toolName === "string" ? record.toolName.trim() : "";
+    if (!toolName) return null;
+    const toolUseId =
+      typeof record.toolUseId === "string" && record.toolUseId.trim() ? record.toolUseId.trim() : requestId;
+    return {
+      type: "permission",
+      requestId,
+      assistantMessageId,
+      permission: {
+        toolName,
+        ...(toolUseId ? { toolUseId } : {}),
+      },
+    };
+  }
+
+  return null;
+};
+
+
 const ChatPanel = ({
   token,
   onFilesUpdated,
   height = "100%",
-  completionsPath = "/api/chat/completions",
+  completionsPath = "/api/v2/chat/completions",
   completionsStream = true,
   completionsExtraBody,
   hideSkillsManager = false,
@@ -110,13 +490,14 @@ const ChatPanel = ({
   defaultHeaderTitle = "代码助手",
   emptyStateTitle,
   emptyStateDescription,
-  roundTop = true,
+  roundTop: _roundTop = true,
   defaultSelectedSkill,
   fileOptions = [],
   skillsProjectToken,
   openSkillsSignal = 0,
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
+  onOpenWorkspaceFile,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -136,6 +517,7 @@ const ChatPanel = ({
   openSkillsSignal?: number;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -157,6 +539,8 @@ const ChatPanel = ({
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
+  const [chatMode, setChatMode] = useState<"default" | "plan">("default");
+  const [pendingInteractions, setPendingInteractions] = useState<PendingChatInteraction[]>([]);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
   );
@@ -186,6 +570,7 @@ const ChatPanel = ({
   const contextUsageCacheRef = useRef<Record<string, ContextWindowUsage>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingConversationIdRef = useRef<string | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
 
   const handleChangeModel = useCallback(
     (nextModel: string) => {
@@ -209,7 +594,39 @@ const ChatPanel = ({
     return selected?.reasoning === true;
   }, [model, modelCatalog]);
 
-  const { scrollRef, shouldAutoScrollRef, scrollRafRef } = useChatAutoScroll(messages);
+  const upsertPendingInteraction = useCallback((interaction: PendingChatInteraction) => {
+    const nextKey = getPendingInteractionKey(interaction);
+    if (!nextKey) return;
+    setPendingInteractions((current) => {
+      const filtered = current.filter((item) => getPendingInteractionKey(item) !== nextKey);
+      return [...filtered, interaction];
+    });
+  }, []);
+
+  const clearPendingInteraction = useCallback((input: {
+    requestId?: string;
+    toolUseId?: string;
+    toolName?: string;
+  }) => {
+    const requestId = (input.requestId || "").trim().toLowerCase();
+    const toolUseId = (input.toolUseId || "").trim().toLowerCase();
+    const toolName = (input.toolName || "").trim().toLowerCase();
+    setPendingInteractions((current) =>
+      current.filter((item) => {
+        const itemKey = getPendingInteractionKey(item);
+        if (requestId && item.requestId?.trim().toLowerCase() === requestId) return false;
+        if (toolUseId && itemKey === toolUseId) return false;
+        if (toolName && item.type === "permission" && item.permission.toolName.trim().toLowerCase() === toolName) {
+          return false;
+        }
+        return true;
+      })
+    );
+  }, []);
+
+  const activePendingInteraction = pendingInteractions.length > 0 ? pendingInteractions[0] : null;
+
+  const { scrollRef, shouldAutoScrollRef } = useChatAutoScroll(messages);
   const {
     streamingTextRef,
     streamingReasoningRef,
@@ -249,6 +666,23 @@ const ChatPanel = ({
   }, [messages]);
 
   useEffect(() => {
+    if (isSending) return;
+    setPendingInteractions((current) =>
+      current.filter((interaction) => {
+        const assistantId = interaction.assistantMessageId.trim();
+        if (!assistantId) return false;
+        return messagesRef.current.some(
+          (message) => message.role === "assistant" && message.id === assistantId
+        );
+      })
+    );
+  }, [isSending, messages]);
+
+  useEffect(() => {
+    streamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
+
+  useEffect(() => {
     const nextMessages = activeConversation?.messages ?? [];
     const chatId = activeConversation?.id || "";
     const hydratedMessages =
@@ -261,10 +695,40 @@ const ChatPanel = ({
             })
           )
         : nextMessages;
-    setMessages(hydratedMessages);
+    const normalizedHydratedMessages = normalizeHistoryMessagesForTimeline(hydratedMessages);
+    const isStreamingCurrentConversation =
+      Boolean(streamAbortRef.current) &&
+      Boolean(chatId) &&
+      streamingConversationIdRef.current === chatId;
+    if (isStreamingCurrentConversation) {
+      const localMessages = messagesRef.current;
+      const localCount = localMessages.length;
+      const hydratedCount = normalizedHydratedMessages.length;
+      const activeStreamingId = (streamingMessageIdRef.current || "").trim();
+      const localHasStreamingMessage = activeStreamingId
+        ? localMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      const hydratedHasStreamingMessage = activeStreamingId
+        ? normalizedHydratedMessages.some((message) => message.id === activeStreamingId)
+        : false;
+      if (
+        hydratedCount < localCount ||
+        (localHasStreamingMessage && !hydratedHasStreamingMessage)
+      ) {
+        return;
+      }
+    }
+    setMessages(normalizedHydratedMessages);
+    const nextChatMode = derivePlanModeFromMessages(normalizedHydratedMessages);
+    setChatMode(nextChatMode);
+    setPendingInteractions(
+      buildPendingInteractionsFromMessages(normalizedHydratedMessages, {
+        isPlanModeActive: nextChatMode === "plan",
+      })
+    );
     setMessageRatings(() => {
       const next: Record<string, MessageRating | undefined> = {};
-      for (const message of hydratedMessages) {
+      for (const message of normalizedHydratedMessages) {
         if (!message.id) continue;
         const feedback = getMessageFeedback(message);
         if (feedback) {
@@ -274,15 +738,69 @@ const ChatPanel = ({
       return next;
     });
     shouldAutoScrollRef.current = true;
-    const activeId = activeConversation?.id || "";
-    const cachedUsage = getCachedContextUsage(activeId || null, model);
-    const recoveredUsage = getLatestContextUsageFromMessages(hydratedMessages, model);
-    const matchedRecoveredUsage =
-      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
-        ? recoveredUsage
-        : null;
-    setContextUsageSnapshot(cachedUsage || matchedRecoveredUsage || null, activeId || null, model);
-  }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, setContextUsageSnapshot, token]);
+  }, [
+    activeConversation?.id,
+    activeConversation?.messages,
+    token,
+  ]);
+
+  useEffect(() => {
+    const conversationId = (activeConversation?.id || "").trim();
+    if (!conversationId) return;
+    const assistantMessageId = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.id)?.id;
+    if (!assistantMessageId) return;
+    let cancelled = false;
+    void fetch(
+      `/api/v2/chat/pending-interactions?token=${encodeURIComponent(token)}&chatId=${encodeURIComponent(conversationId)}`,
+      {
+        headers: withAuthHeaders(),
+      }
+    )
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload || !Array.isArray(payload.interactions)) return;
+        const { resolvedRequestIds, resolvedPermissionKeys } = collectResolvedInteractionKeys(messagesRef.current);
+        const recovered = payload.interactions
+          .map((item: unknown) => toPendingInteractionFromApi(item, assistantMessageId))
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => {
+            if (!item) return false;
+            if (item.type === "permission") {
+              const requestKey = (item.requestId || item.permission.toolUseId || "").trim().toLowerCase();
+              const toolNameKey = item.permission.toolName.trim().toLowerCase();
+              if (requestKey && (resolvedRequestIds.has(requestKey) || resolvedPermissionKeys.has(requestKey))) {
+                return false;
+              }
+              if (toolNameKey && resolvedPermissionKeys.has(toolNameKey)) return false;
+              return true;
+            }
+            const requestKey = item.requestId.trim().toLowerCase();
+            if (requestKey && resolvedRequestIds.has(requestKey)) return false;
+            return true;
+          })
+          .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => Boolean(item));
+        if (recovered.length === 0) return;
+        setPendingInteractions((current) => {
+          const next = [...current];
+          for (const interaction of recovered) {
+            const key = getPendingInteractionKey(interaction);
+            if (!key) continue;
+            const withoutExisting = next.filter((item) => getPendingInteractionKey(item) !== key);
+            withoutExisting.push(interaction);
+            next.splice(0, next.length, ...withoutExisting);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Ignore pending interaction recovery failures and keep local state.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation?.id, token]);
 
   useEffect(() => {
     const activeId = activeConversation?.id || "";
@@ -301,12 +819,10 @@ const ChatPanel = ({
       setContextUsageSnapshot(cachedUsage, activeId, model);
       return;
     }
-    const recoveredUsage = getLatestContextUsageFromMessages(messagesRef.current, model);
-    const matchedRecoveredUsage =
-      recoveredUsage && (!recoveredUsage.model || recoveredUsage.model === model)
-        ? recoveredUsage
-        : null;
-    setContextUsageSnapshot(matchedRecoveredUsage || null, activeId, model);
+    // Recover from the active conversation source of truth instead of local ref,
+    // to avoid stale ref timing causing context usage to appear missing on history switch.
+    const recoveredUsage = getLatestContextUsageFromMessages(activeMessages, model);
+    setContextUsageSnapshot(recoveredUsage || null, activeId, model);
   }, [activeConversation?.id, activeConversation?.messages, getCachedContextUsage, model, setContextUsageSnapshot]);
 
 
@@ -376,19 +892,60 @@ const ChatPanel = ({
       options?: {
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
+        continueAssistantMessageId?: string;
       }
     ) => {
       const text = payload.text.trim();
       const fallbackArtifacts = toFileArtifacts(payload.files);
-      const finalArtifacts =
+      const uploadedArtifacts =
         payload.uploadedFiles.length > 0 ? payload.uploadedFiles : fallbackArtifacts;
+      const selectedPathArtifacts = toSelectedPathArtifacts({
+        paths: payload.selectedFilePaths || [],
+        token,
+        chatId: activeConversation?.id || undefined,
+      });
+      const dedupeKey = (file: UploadedFileArtifact) => {
+        if (file.storagePath) return `path:${normalizeAttachmentWorkspacePath(file.storagePath)}`;
+        if (file.publicUrl) return `url:${file.publicUrl}`;
+        if (file.id) return `id:${file.id}`;
+        return `name:${file.name}`;
+      };
+      const seenArtifactKeys = new Set<string>();
+      const finalArtifacts: UploadedFileArtifact[] = [];
+      [...selectedPathArtifacts, ...uploadedArtifacts].forEach((file) => {
+        const key = dedupeKey(file);
+        if (seenArtifactKeys.has(key)) return;
+        seenArtifactKeys.add(key);
+        finalArtifacts.push(file);
+      });
       const hasArtifacts = finalArtifacts.length > 0;
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
+      const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
+
+      if (payload.planQuestionResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planQuestionResponse.requestId });
+      }
+      if (payload.planModeApprovalResponse?.requestId) {
+        clearPendingInteraction({ requestId: payload.planModeApprovalResponse.requestId });
+      }
+      if (payload.permissionApprovalResponse) {
+        clearPendingInteraction({
+          requestId: payload.permissionApprovalResponse.requestId,
+          toolUseId: payload.permissionApprovalResponse.toolUseId,
+          toolName: payload.permissionApprovalResponse.toolName,
+        });
+      }
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
+      const effectiveMode: "default" | "plan" =
+        payload.planModeApprovalResponse?.decision === "approve"
+          ? payload.planModeApprovalResponse.action === "enter"
+            ? "plan"
+            : "default"
+          : chatMode;
 
       const displayText =
         text ||
@@ -403,10 +960,12 @@ const ChatPanel = ({
         setMessages((prev) => [
           ...prev,
           {
+            type: "user",
             role: "user",
             content: displayText,
             id: userMessageId,
             time: userCreatedAt,
+            subtype: effectiveMode === "plan" ? "plan_user" : "user",
             artifact:
               hasArtifacts
                 ? {
@@ -429,16 +988,32 @@ const ChatPanel = ({
         selectedSkills: payload.selectedSkills || (payload.selectedSkill ? [payload.selectedSkill] : undefined),
         selectedFilePaths: payload.selectedFilePaths,
       });
+      const userContentBlocks = toUserMessageContentBlocks({
+        text: userBubbleContent || displayText,
+        artifacts: finalArtifacts,
+      });
 
       const userMessage: ConversationMessage = {
+        type: "user",
+        subtype: effectiveMode === "plan" ? "plan_user" : "user",
         role: "user",
-        content: userBubbleContent || displayText,
+        content: userContentBlocks.length > 0 ? userContentBlocks : userBubbleContent || displayText,
         id: userMessageId,
         time: userCreatedAt,
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
-        additional_kwargs: payload.selectedFilePaths
-          ? { selectedFilePaths: payload.selectedFilePaths }
-          : undefined,
+        additional_kwargs: {
+          ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+            : {}),
+        },
       };
 
       if (echoUserMessage) {
@@ -459,27 +1034,127 @@ const ChatPanel = ({
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-          ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
+          planModeState: effectiveMode === "plan",
+          ...(payload.planModeApprovalResponse
+            ? { planModeApprovalResponse: payload.planModeApprovalResponse }
+            : {}),
+          ...(payload.planQuestionResponse
+            ? { planQuestionResponse: payload.planQuestionResponse }
+            : {}),
+          ...(payload.permissionApprovalResponse
+            ? { permissionApprovalResponse: payload.permissionApprovalResponse }
+            : {}),
         },
       };
+      const continuedAssistantMessage = continueAssistantMessageId
+        ? messagesRef.current.find(
+            (item) => item.id === continueAssistantMessageId && item.role === "assistant"
+          ) || null
+        : null;
+      const isInteractionContinuation = Boolean(
+        payload.planQuestionResponse || payload.planModeApprovalResponse || payload.permissionApprovalResponse
+      );
+      const assistantMessageId = continuedAssistantMessage?.id || createDataId();
+      const assistantCreatedAt = continuedAssistantMessage?.time || new Date().toISOString();
+      const existingAssistantContent = continuedAssistantMessage
+        ? extractText(continuedAssistantMessage.content)
+        : "";
+      const existingAssistantKwargs =
+        continuedAssistantMessage?.additional_kwargs &&
+        typeof continuedAssistantMessage.additional_kwargs === "object"
+          ? (continuedAssistantMessage.additional_kwargs as Record<string, unknown>)
+          : {};
+      const existingAssistantReasoning =
+        !isInteractionContinuation && typeof existingAssistantKwargs.reasoning_text === "string"
+          ? existingAssistantKwargs.reasoning_text
+          : "";
 
-      const assistantMessageId = createDataId();
-      const assistantCreatedAt = new Date().toISOString();
+      const requestMessagesForApi = [requestMessage];
+      console.log("[skill-debug][chatpanel-send]", {
+        selectedSkillsState: selectedSkills,
+        payloadSelectedSkill: payload.selectedSkill || null,
+        payloadSelectedSkills: payload.selectedSkills || [],
+        requestMessageSelectedSkill:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkill" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkill
+            : null,
+        requestMessageSelectedSkills:
+          requestMessage.additional_kwargs &&
+          typeof requestMessage.additional_kwargs === "object" &&
+          "selectedSkills" in requestMessage.additional_kwargs
+            ? (requestMessage.additional_kwargs as Record<string, unknown>).selectedSkills
+            : [],
+      });
+      if (continuedAssistantMessage && isInteractionContinuation) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMessageId) return msg;
+            const kwargs =
+              msg.additional_kwargs && typeof msg.additional_kwargs === "object"
+                ? (msg.additional_kwargs as Record<string, unknown>)
+                : {};
+            const sdkMessage =
+              kwargs.sdkMessage && typeof kwargs.sdkMessage === "object"
+                ? (kwargs.sdkMessage as Record<string, unknown>)
+                : null;
+            const sdkPayload =
+              sdkMessage?.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : null;
+            const content = Array.isArray(sdkPayload?.content)
+              ? (sdkPayload?.content as unknown[]).filter(
+                  (item) =>
+                    !(
+                      item &&
+                      typeof item === "object" &&
+                      (item as Record<string, unknown>).type === "thinking"
+                    )
+                )
+              : [];
+            return {
+              ...msg,
+              additional_kwargs: {
+                ...kwargs,
+                reasoning_text: "",
+                reasoning_content: "",
+                ...(sdkMessage
+                  ? {
+                      sdkMessage: {
+                        ...sdkMessage,
+                        message: {
+                          ...(sdkPayload || {}),
+                          role: (sdkPayload?.role as string) || "assistant",
+                          content,
+                        },
+                      },
+                    }
+                  : {}),
+              },
+            };
+          })
+        );
+      }
       let assistantFailureText: string | null = null;
-      streamingTextRef.current = "";
-      streamingReasoningRef.current = "";
+      streamingTextRef.current = existingAssistantContent;
+      streamingReasoningRef.current = existingAssistantReasoning;
       cancelPendingFlushes();
       shouldAutoScrollRef.current = true;
       setStreamingMessageId(assistantMessageId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "",
-          id: assistantMessageId,
-          time: assistantCreatedAt,
-        },
-      ]);
+      if (!continuedAssistantMessage) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "assistant",
+            subtype: effectiveMode === "plan" ? "plan_result" : "result",
+            role: "assistant",
+            content: "",
+            id: assistantMessageId,
+            time: assistantCreatedAt,
+          },
+        ]);
+      }
 
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
@@ -502,111 +1177,34 @@ const ChatPanel = ({
         );
       };
       try {
-        const upsertToolMessage = (
-          id: string,
-          nextPartial: { toolName?: string; params?: string; response?: string }
-        ) => {
+        const appendSdkBlock = (block: Record<string, unknown>) => {
           updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.toolDetails)
-              ? (current.toolDetails as Array<{
-                  id?: string;
-                  toolName?: string;
-                  params?: string;
-                  response?: string;
-                }>)
+            const sdkMessage =
+              current.sdkMessage && typeof current.sdkMessage === "object"
+                ? (current.sdkMessage as Record<string, unknown>)
+                : { type: "assistant", message: { role: "assistant", content: [] as unknown[] } };
+            const sdkPayload =
+              sdkMessage.message && typeof sdkMessage.message === "object"
+                ? (sdkMessage.message as Record<string, unknown>)
+                : { role: "assistant", content: [] as unknown[] };
+            const content = Array.isArray(sdkPayload.content)
+              ? (sdkPayload.content as unknown[])
               : [];
-            const index = list.findIndex((item) => item.id === id);
-            const base = index >= 0 ? list[index] : { id, params: "", response: "" };
-            const merged = {
-              ...base,
-              id,
-              toolName: nextPartial.toolName ?? base.toolName,
-              params: `${base.params || ""}${nextPartial.params || ""}`,
-              response: nextPartial.response ?? base.response,
-            };
-            const next = [...list];
-            if (index >= 0) {
-              next[index] = merged;
-            } else {
-              next.push(merged);
-            }
             return {
               ...current,
-              toolDetails: next,
-            };
-          });
-        };
-        const appendTimelineText = (type: "reasoning" | "answer", text: string) => {
-          if (!text) return;
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const last = list[list.length - 1];
-            if (last && last.type === type && typeof last.text === "string") {
-              const next = [...list];
-              next[next.length - 1] = {
-                ...last,
-                text: `${last.text}${text}`,
-              };
-              return { ...current, timeline: next };
-            }
-
-            return {
-              ...current,
-              timeline: [...list, { type, text }],
-            };
-          });
-        };
-        const upsertTimelineTool = (nextPartial: {
-          id?: string;
-          toolName?: string;
-          params?: string;
-          response?: string;
-        }) => {
-          updateAssistantMetadata((current) => {
-            const list = Array.isArray(current.timeline)
-              ? (current.timeline as Array<Record<string, unknown>>)
-              : [];
-            const toolId = typeof nextPartial.id === "string" ? nextPartial.id : "";
-            if (toolId) {
-              const index = list.findIndex((item) => item.type === "tool" && item.id === toolId);
-              if (index >= 0) {
-                const target = list[index];
-                const next = [...list];
-                next[index] = {
-                  ...target,
-                  id: toolId,
-                  toolName:
-                    typeof nextPartial.toolName === "string" ? nextPartial.toolName : target.toolName,
-                  params: `${typeof target.params === "string" ? target.params : ""}${typeof nextPartial.params === "string" ? nextPartial.params : ""}`,
-                  response:
-                    typeof nextPartial.response === "string" ? nextPartial.response : target.response,
-                };
-                return { ...current, timeline: next };
-              }
-            }
-            return {
-              ...current,
-              timeline: [
-                ...list,
-                {
-                  type: "tool",
-                  id: toolId || undefined,
-                  toolName: nextPartial.toolName || "",
-                  params: nextPartial.params || "",
-                  response: nextPartial.response || "",
+              sdkMessage: {
+                ...sdkMessage,
+                message: {
+                  ...sdkPayload,
+                  role: sdkPayload.role || "assistant",
+                  content: mergeSdkBlock(content, block),
                 },
-              ],
+              },
             };
           });
         };
 
         if (!completionsStream) {
-          const historyMessages = [...messages, requestMessage].map((message) => ({
-            role: message.role,
-            content: extractText(message.content),
-          }));
           const response = await fetch(completionsPath, {
             method: "POST",
             headers: {
@@ -616,8 +1214,10 @@ const ChatPanel = ({
             signal: abortCtrl.signal,
             body: JSON.stringify({
               token,
-              messages: historyMessages,
+              messages: [requestMessage],
+              permissionMode: effectiveMode,
               persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -626,7 +1226,6 @@ const ChatPanel = ({
                 : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             }),
           });
@@ -697,158 +1296,541 @@ const ChatPanel = ({
               }
             };
 
-            if (event === SseResponseEventEnum.answer) {
-              const answerPayload = item as { text?: string; reasoningText?: string };
-              if (answerPayload.reasoningText) {
+            if (event === SdkStreamEventEnum.streamEvent) {
+              const payload = item as {
+                subtype?: unknown;
+                text?: unknown;
+                id?: unknown;
+                name?: unknown;
+                agent_type?: unknown;
+                description?: unknown;
+                prompt?: unknown;
+                input?: unknown;
+                content?: unknown;
+                files?: unknown;
+                parent_agent_tool_use_id?: unknown;
+                is_error?: unknown;
+                trigger?: unknown;
+                pre_tokens?: unknown;
+              };
+              const subtype = typeof payload.subtype === "string" ? payload.subtype : "";
+              if (subtype === "thinking_delta" && typeof payload.text === "string" && payload.text) {
                 shouldAutoScrollRef.current = true;
-                const reasoningText = answerPayload.reasoningText;
-                streamingReasoningRef.current = `${streamingReasoningRef.current}${reasoningText}`;
+                streamingReasoningRef.current = `${streamingReasoningRef.current}${payload.text}`;
                 scheduleAssistantReasoningFlush(assistantMessageId);
-                appendTimelineText("reasoning", reasoningText);
+                appendSdkBlock({ type: "thinking", thinking: payload.text });
+                return;
               }
-              if (answerPayload.text) {
+              if (subtype === "text_delta" && typeof payload.text === "string" && payload.text) {
                 shouldAutoScrollRef.current = true;
-                streamingTextRef.current = `${streamingTextRef.current}${answerPayload.text}`;
+                streamingTextRef.current = `${streamingTextRef.current}${payload.text}`;
                 scheduleAssistantTextFlush(assistantMessageId);
-                appendTimelineText("answer", answerPayload.text);
+                appendSdkBlock({ type: "text", text: payload.text });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolCall) {
-              // 保证视觉顺序与事件顺序一致：在工具卡片出现前先提交已到达的文本片段
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  params: "",
-                  response: "",
+              if (
+                (subtype === "tool_use_start" || subtype === "agent_tool_use_start") &&
+                typeof payload.id === "string"
+              ) {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolParams) {
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  params: streamPayload.params || "",
+              if (subtype === "agent_start" && typeof payload.id === "string") {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "agent_start",
+                  id: payload.id,
+                  ...(typeof payload.agent_type === "string" ? { agent_type: payload.agent_type } : {}),
+                  ...(typeof payload.description === "string" ? { description: payload.description } : {}),
+                  ...(typeof payload.prompt === "string" ? { prompt: payload.prompt } : {}),
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  params: streamPayload.params || "",
-                });
+                return;
               }
-              return;
-            }
-            if (event === SseResponseEventEnum.toolResponse) {
-              flushPendingAssistantStreams();
-              const streamPayload = item as ToolStreamPayload;
-              const responseForDisplay = streamPayload.response || "";
-              const responseForFileUpdates = streamPayload.rawResponse || streamPayload.response || "";
-              if (streamPayload.id) {
-                upsertToolMessage(streamPayload.id, {
-                  toolName: streamPayload.toolName,
-                  response: responseForDisplay,
+              if (
+                subtype === "agent_error" &&
+                typeof payload.id === "string"
+              ) {
+                flushPendingAssistantStreams();
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content:
+                    typeof payload.content === "string"
+                      ? payload.content
+                      : typeof payload.text === "string"
+                      ? payload.text
+                      : "Agent execution failed",
+                  is_error: true,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
                 });
-                upsertTimelineTool({
-                  id: streamPayload.id,
-                  toolName: streamPayload.toolName,
-                  response: responseForDisplay,
-                });
+                return;
               }
+              if (
+                (subtype === "tool_use_delta" || subtype === "agent_tool_use_delta") &&
+                typeof payload.id === "string"
+              ) {
+                appendSdkBlock({
+                  type: "tool_use",
+                  id: payload.id,
+                  name: typeof payload.name === "string" ? payload.name : "tool",
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
+                });
+                return;
+              }
+              if (
+                (subtype === "tool_result" || subtype === "agent_tool_result") &&
+                typeof payload.id === "string"
+              ) {
+                const responseText =
+                  typeof payload.content === "string"
+                    ? payload.content
+                    : JSON.stringify(payload.content ?? "", null, 2);
+                appendSdkBlock({
+                  type: "tool_result",
+                  tool_use_id: payload.id,
+                  content: responseText,
+                  ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+                  ...(payload.input !== undefined ? { input: payload.input } : {}),
+                  ...(typeof payload.parent_agent_tool_use_id === "string"
+                    ? { parent_agent_tool_use_id: payload.parent_agent_tool_use_id }
+                    : {}),
+                  ...(payload.is_error === true ? { is_error: true } : {}),
+                });
+                const parsedPayload = parseToolPayload(responseText, responseText);
+                if (parsedPayload) {
+                  const parsed = parsedPayload as {
+                    requiresPermissionApproval?: boolean;
+                    permission?: PermissionApprovalPayload;
+                  };
+                  const permission = parsed.permission;
+                  if (
+                    parsed.requiresPermissionApproval === true &&
+                    permission &&
+                    typeof permission === "object" &&
+                    typeof permission.toolName === "string"
+                  ) {
+                    const toolUseId =
+                      typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : "";
+                    upsertPendingInteraction({
+                      type: "permission",
+                      requestId: toolUseId || undefined,
+                      assistantMessageId,
+                      permission: {
+                        requestId: toolUseId || undefined,
+                        toolName: permission.toolName,
+                        ...(toolUseId ? { toolUseId } : {}),
+                        ...(typeof permission.reason === "string"
+                          ? { reason: permission.reason }
+                          : {}),
+                      },
+                    });
+                    updateAssistantMetadata((current) => {
+                      const interactionKey = toolUseId || permission.toolName.trim().toLowerCase();
+                      const currentPermissionState =
+                        current.permissionApprovalState &&
+                        typeof current.permissionApprovalState === "object" &&
+                        !Array.isArray(current.permissionApprovalState)
+                          ? (current.permissionApprovalState as Record<string, unknown>)
+                          : {};
 
-              if (responseForFileUpdates && onFilesUpdated) {
-                try {
-                  const parsed = JSON.parse(responseForFileUpdates);
-                  const filesCandidate =
-                    (parsed as { uiFiles?: Record<string, { code: string }> }).uiFiles ||
-                    (parsed as { files?: Record<string, { code: string }> }).files ||
-                    (parsed as {
-                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
-                    }).data?.uiFiles ||
-                    (parsed as {
-                      data?: { files?: Record<string, { code: string }>; uiFiles?: Record<string, { code: string }> };
-                    }).data?.files;
-                  const files = toUpdatedFilesMap(filesCandidate);
-                  if (files && typeof files === "object") {
-                    onFilesUpdated(files);
+                      const nextPermissionState: Record<string, unknown> = {};
+                      for (const [key, value] of Object.entries(currentPermissionState)) {
+                        if (!value || typeof value !== "object" || Array.isArray(value)) {
+                          nextPermissionState[key] = value;
+                          continue;
+                        }
+                        const record = value as Record<string, unknown>;
+                        if (record.status === "pending") {
+                          nextPermissionState[key] = { ...record, status: "superseded" };
+                        } else {
+                          nextPermissionState[key] = record;
+                        }
+                      }
+                      if (interactionKey) {
+                        nextPermissionState[interactionKey] = {
+                          toolName: permission.toolName,
+                          status: "pending",
+                          ...(toolUseId ? { toolUseId } : {}),
+                        };
+                      }
+
+                      return {
+                        ...current,
+                        permissionApproval: {
+                          toolName: permission.toolName,
+                          ...(toolUseId ? { toolUseId } : {}),
+                          reason:
+                            typeof permission.reason === "string"
+                              ? permission.reason
+                              : undefined,
+                        },
+                        permissionApprovalState: nextPermissionState,
+                      };
+                    });
                   }
-                } catch {
-                  return;
+                }
+              }
+              if (subtype === "files_updated" && onFilesUpdated) {
+                const files = toUpdatedFilesMap(payload.files);
+                if (files) onFilesUpdated(files);
+                return;
+              }
+              if (subtype === "compact_boundary") {
+                const compactMeta = {
+                  trigger:
+                    typeof payload.trigger === "string" && payload.trigger.trim()
+                      ? payload.trigger.trim()
+                      : "auto",
+                  ...(typeof payload.pre_tokens === "number" && Number.isFinite(payload.pre_tokens)
+                    ? { preTokens: Math.max(0, Math.floor(payload.pre_tokens)) }
+                    : {}),
+                };
+                appendSdkBlock({
+                  type: "compact_boundary",
+                  compact_metadata: compactMeta,
+                });
+                updateAssistantMetadata((current) => ({
+                  ...current,
+                  compactEvent: compactMeta,
+                }));
+                return;
+              }
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.control) {
+              const payload = item as { interaction?: unknown };
+              const interaction = isPlanInteractionEnvelope(payload.interaction)
+                ? payload.interaction
+                : undefined;
+              if (!interaction) return;
+              if (interaction.type === "plan_question") {
+                const questionPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as { questions?: unknown }).questions
+                    : undefined;
+                const questions = Array.isArray(questionPayload)
+                  ? questionPayload
+                      .filter((question): question is {
+                        header?: string;
+                        id: string;
+                        question: string;
+                        options?: Array<{ label: string; description?: string }>;
+                      } => {
+                        if (!question || typeof question !== "object" || Array.isArray(question)) {
+                          return false;
+                        }
+                        const record = question as Record<string, unknown>;
+                        return (
+                          typeof record.id === "string" &&
+                          Boolean(record.id.trim()) &&
+                          typeof record.question === "string" &&
+                          Boolean(record.question.trim())
+                        );
+                      })
+                      .map((question) => ({
+                        header: question.header,
+                        id: question.id,
+                        question: question.question,
+                        options: Array.isArray(question.options)
+                          ? question.options
+                              .filter(
+                                (option): option is { label: string; description?: string } =>
+                                  Boolean(
+                                    option &&
+                                      typeof option === "object" &&
+                                      !Array.isArray(option) &&
+                                      typeof (option as { label?: unknown }).label === "string"
+                                  )
+                              )
+                              .map((option) => ({
+                                label: option.label,
+                                ...(typeof option.description === "string"
+                                  ? { description: option.description }
+                                  : {}),
+                              }))
+                          : [],
+                      }))
+                  : [];
+                if (questions.length > 0) {
+                  upsertPendingInteraction({
+                    type: "plan_questions",
+                    requestId: interaction.requestId,
+                    assistantMessageId,
+                    questions,
+                  });
+                }
+              }
+              if (interaction.type === "plan_approval") {
+                const approvalPayload =
+                  interaction.payload && typeof interaction.payload === "object"
+                    ? (interaction.payload as Record<string, unknown>)
+                    : {};
+                upsertPendingInteraction({
+                  type: "plan_approval",
+                  requestId: interaction.requestId,
+                  assistantMessageId,
+                  approval: {
+                    requestId: interaction.requestId,
+                    action: approvalPayload.action === "enter" ? "enter" : "exit",
+                    ...(typeof approvalPayload.title === "string"
+                      ? { title: approvalPayload.title }
+                      : {}),
+                    ...(typeof approvalPayload.description === "string"
+                      ? { description: approvalPayload.description }
+                      : {}),
+                  },
+                });
+              }
+              updateAssistantMetadata((current) => {
+                const controlEventsBase = Array.isArray(current.controlEvents)
+                  ? (current.controlEvents as unknown[])
+                  : [];
+                const controlEvents = [
+                  ...controlEventsBase.filter((entry) => {
+                    if (!isPlanInteractionEnvelope(entry)) return true;
+                    return !(entry.type === interaction.type && entry.requestId === interaction.requestId);
+                  }),
+                  interaction,
+                ];
+                const currentInteractionState =
+                  current.planModeInteractionState &&
+                  typeof current.planModeInteractionState === "object" &&
+                  !Array.isArray(current.planModeInteractionState)
+                    ? (current.planModeInteractionState as Record<string, unknown>)
+                    : {};
+                const nextInteractionState: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(currentInteractionState)) {
+                  if (!value || typeof value !== "object" || Array.isArray(value)) {
+                    nextInteractionState[key] = value;
+                    continue;
+                  }
+                  const record = value as Record<string, unknown>;
+                  if (record.type === interaction.type && record.status === "pending") {
+                    nextInteractionState[key] = { ...record, status: "superseded" };
+                  } else {
+                    nextInteractionState[key] = record;
+                  }
+                }
+                const next: Record<string, unknown> = {
+                  ...current,
+                  controlEvents,
+                  planModeProtocolVersion: 2,
+                  planModeInteractionState: {
+                    ...nextInteractionState,
+                    [interaction.requestId]: {
+                      type: interaction.type,
+                      status: "pending",
+                    },
+                  },
+                };
+                if (interaction.type === "plan_progress") {
+                  const content = interaction.payload as PlanProgressInteractionPayload;
+                  next.planProgress = {
+                    explanation: content.explanation,
+                    plan: content.plan,
+                  };
+                }
+                if (interaction.type === "plan_approval") {
+                  next.planModeApproval = {
+                    requestId: interaction.requestId,
+                    ...(interaction.payload as Record<string, unknown>),
+                  };
+                }
+                return next;
+              });
+              return;
+            }
+
+            if (event === SdkStreamEventEnum.status) {
+              const payload = item as {
+                phase?: unknown;
+                toolName?: unknown;
+                text?: unknown;
+                tokenBudget?: unknown;
+              };
+              if (payload.phase === "tool_error") {
+                appendSdkBlock({
+                  type: "text",
+                  text: `\n[tool-error] ${typeof payload.toolName === "string" ? payload.toolName : "tool"}\n`,
+                });
+              }
+              if (payload.text === "token_budget" && payload.tokenBudget) {
+                const budget = payload.tokenBudget;
+                if (budget && typeof budget === "object" && !Array.isArray(budget)) {
+                  const record = budget as Record<string, unknown>;
+                  const usedTokens = record.usedTokens;
+                  const maxContext = record.maxContext;
+                  const remainingTokens = record.remainingTokens;
+                  const usedPercent = record.usedPercent;
+                  if (
+                    typeof usedTokens === "number" &&
+                    Number.isFinite(usedTokens) &&
+                    typeof maxContext === "number" &&
+                    Number.isFinite(maxContext) &&
+                    typeof remainingTokens === "number" &&
+                    Number.isFinite(remainingTokens) &&
+                    typeof usedPercent === "number" &&
+                    Number.isFinite(usedPercent)
+                  ) {
+                    const contextWindowPayload: ContextWindowUsage = {
+                      model:
+                        typeof record.model === "string" && record.model.trim()
+                          ? record.model.trim()
+                          : model,
+                      usedTokens,
+                      maxContext,
+                      remainingTokens,
+                      usedPercent,
+                      totalPromptTokens:
+                        typeof record.totalPromptTokens === "number" &&
+                        Number.isFinite(record.totalPromptTokens)
+                          ? record.totalPromptTokens
+                          : undefined,
+                      currentInputTokens:
+                        typeof record.currentInputTokens === "number" &&
+                        Number.isFinite(record.currentInputTokens)
+                          ? record.currentInputTokens
+                          : undefined,
+                    };
+                    setContextUsageSnapshot(
+                      contextWindowPayload,
+                      conversationId || activeConversation?.id || null,
+                      contextWindowPayload.model
+                    );
+                    updateAssistantMetadata((current) => ({
+                      ...current,
+                      contextWindow: contextWindowPayload,
+                    }));
+                  }
                 }
               }
               return;
             }
-            if (event === SseResponseEventEnum.flowNodeResponse) {
-              const streamPayload = item as FlowNodeResponsePayload;
+
+            if (event === SdkStreamEventEnum.message) {
+              const payload = item as { message?: unknown };
+              if (!isSdkLikeMessage(payload.message)) return;
+              const sdkMessage = payload.message;
+              if ((sdkMessage.message?.role || "assistant") !== "assistant") return;
+              const contentText = sdkContentToText(sdkMessage.message?.content);
+              // In streaming mode, delta text is the source of truth for visible content.
+              // Some backends may serialize final content with escaped newlines in `event: message`,
+              // which can collapse formatting if we overwrite the already-streamed body.
+              if (contentText && !streamingTextRef.current) {
+                shouldAutoScrollRef.current = true;
+                streamingTextRef.current = contentText;
+                flushAssistantText(assistantMessageId, contentText);
+              }
               updateAssistantMetadata((current) => {
-                const currentResponseData = Array.isArray(current.responseData)
-                  ? current.responseData
+                const currentSdkMessage =
+                  current.sdkMessage && typeof current.sdkMessage === "object"
+                    ? (current.sdkMessage as Record<string, unknown>)
+                    : null;
+                const currentPayload =
+                  currentSdkMessage?.message && typeof currentSdkMessage.message === "object"
+                    ? (currentSdkMessage.message as Record<string, unknown>)
+                    : null;
+                const currentContent = Array.isArray(currentPayload?.content)
+                  ? (currentPayload.content as unknown[])
                   : [];
+
+                const incomingPayload =
+                  sdkMessage.message && typeof sdkMessage.message === "object"
+                    ? (sdkMessage.message as Record<string, unknown>)
+                    : null;
+                const incomingContent = Array.isArray(incomingPayload?.content)
+                  ? (incomingPayload.content as unknown[])
+                  : [];
+                const hasCompactBoundaryInCurrent = currentContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
+                const hasCompactBoundaryInIncoming = incomingContent.some((block) => {
+                  if (!block || typeof block !== "object") return false;
+                  return (block as Record<string, unknown>).type === "compact_boundary";
+                });
+
+              if (incomingContent.length === 0) {
                 return {
                   ...current,
-                  responseData: [...currentResponseData, streamPayload],
+                  sdkMessage:
+                    currentContent.length > 0
+                      ? {
+                          ...sdkMessage,
+                          message: {
+                            ...(incomingPayload || {}),
+                            role: (incomingPayload?.role as string) || "assistant",
+                            content: currentContent,
+                          },
+                        }
+                      : sdkMessage,
+                };
+              }
+
+                const toolInputById = new Map<string, unknown>();
+                for (const block of currentContent) {
+                  if (!block || typeof block !== "object") continue;
+                  const record = block as Record<string, unknown>;
+                  if (record.type !== "tool_use" || typeof record.id !== "string") continue;
+                  if (record.input !== undefined) {
+                    toolInputById.set(record.id, record.input);
+                  }
+                }
+
+                const mergeToolInput = (blocks: unknown[]) =>
+                  blocks.map((block) => {
+                    if (!block || typeof block !== "object") return block;
+                    const record = block as Record<string, unknown>;
+                    if (record.type !== "tool_use" || typeof record.id !== "string") return block;
+                    if (record.input !== undefined) return block;
+                    if (!toolInputById.has(record.id)) return block;
+                    return {
+                      ...record,
+                      input: toolInputById.get(record.id),
+                    };
+                  });
+
+                // Prefer the stream-assembled sdk blocks to avoid duplicated tool rows when
+                // both `stream_event` and final `message` include the same sequence.
+                const mergedContent = (() => {
+                  if (currentContent.length === 0) return mergeToolInput(incomingContent);
+                  // Keep stream-assembled compact boundaries when the final SDK message omits them.
+                  if (hasCompactBoundaryInCurrent && !hasCompactBoundaryInIncoming) {
+                    return mergeToolInput(currentContent);
+                  }
+                  return mergeToolInput(currentContent);
+                })();
+
+                return {
+                  ...current,
+                  sdkMessage: {
+                    ...sdkMessage,
+                    message: {
+                      ...(incomingPayload || {}),
+                      role: (incomingPayload?.role as string) || "assistant",
+                      content: mergedContent,
+                    },
+                  },
                 };
               });
               return;
             }
-            if (event === SseResponseEventEnum.workflowDuration) {
-              const streamPayload = item as WorkflowDurationPayload;
-              if (typeof streamPayload.durationSeconds !== "number") return;
-              updateAssistantMetadata((current) => ({
-                ...current,
-                durationSeconds: streamPayload.durationSeconds,
-              }));
-              return;
-            }
-            if (event === SseResponseEventEnum.contextWindow) {
-              const streamPayload = item as Partial<ContextWindowUsage>;
-              if (
-                typeof streamPayload.usedTokens !== "number" ||
-                typeof streamPayload.maxContext !== "number" ||
-                typeof streamPayload.remainingTokens !== "number" ||
-                typeof streamPayload.usedPercent !== "number"
-              ) {
-                return;
-              }
-              const phase = streamPayload.phase;
-              const prevUsage = contextUsageRef.current;
-              // Prevent visual "drop then recover": keep previous number during start phase
-              // when backend sends a transient lower snapshot before final usage is emitted.
-              if (
-                phase === "start" &&
-                prevUsage &&
-                typeof prevUsage.usedPercent === "number" &&
-                streamPayload.usedPercent < prevUsage.usedPercent
-              ) {
-                return;
-              }
-              setContextUsageSnapshot({
-                model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                phase: phase === "start" || phase === "final" ? phase : undefined,
-                usedTokens: streamPayload.usedTokens,
-                maxContext: streamPayload.maxContext,
-                remainingTokens: streamPayload.remainingTokens,
-                usedPercent: streamPayload.usedPercent,
-              }, conversationId || null, typeof streamPayload.model === "string" ? streamPayload.model : model);
-              updateAssistantMetadata((current) => ({
-                ...current,
-                contextWindow: {
-                  model: typeof streamPayload.model === "string" ? streamPayload.model : model,
-                  usedTokens: streamPayload.usedTokens,
-                  maxContext: streamPayload.maxContext,
-                  remainingTokens: streamPayload.remainingTokens,
-                  usedPercent: streamPayload.usedPercent,
-                },
-              }));
-            }
+
+            if (event === SdkStreamEventEnum.done) return;
+            if (event === SdkStreamEventEnum.error) return;
           };
           const enqueueSseEvent = (item: unknown) => {
             streamEventQueue.push(item);
@@ -867,9 +1849,11 @@ const ChatPanel = ({
             url: completionsPath,
             data: {
               token,
-              messages: [requestMessage],
+              messages: requestMessagesForApi,
               stream: true,
+              permissionMode: effectiveMode,
               persistIncomingMessages,
+              ...(continueAssistantMessageId ? { continueAssistantMessageId } : {}),
               ...(conversationId ? { conversationId } : {}),
               channel,
               model,
@@ -878,7 +1862,6 @@ const ChatPanel = ({
                 : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
-              ...(payload.selectedFilePaths ? { selectedFilePaths: payload.selectedFilePaths } : {}),
               ...(completionsExtraBody || {}),
             },
             headers: withAuthHeaders(),
@@ -912,44 +1895,9 @@ const ChatPanel = ({
         if (streamingReasoningRef.current) {
           flushAssistantReasoning(assistantMessageId, streamingReasoningRef.current);
         }
-        updateAssistantMetadata((current) => {
-          const details = Array.isArray(current.toolDetails)
-            ? (current.toolDetails as Array<{ response?: string }>)
-            : [];
-          const timeline = Array.isArray(current.timeline)
-            ? (current.timeline as Array<Record<string, unknown>>)
-            : [];
-          const pendingCount = details.filter(
-            (item) => !item?.response || String(item.response).trim().length === 0
-          ).length;
-          const pendingTimelineCount = timeline.filter(
-            (item) =>
-              item?.type === "tool" &&
-              (typeof item.response !== "string" || item.response.trim().length === 0)
-          ).length;
-          if (pendingCount === 0 && pendingTimelineCount === 0) return current;
-
-          const pendingMessage = abortCtrl.signal.aborted
-            ? "[已中断] 工具未返回结果"
-            : "[已结束] 工具未返回结果";
-          return {
-            ...current,
-            toolDetails: details.map((item) => ({
-              ...item,
-              response:
-                !item?.response || String(item.response).trim().length === 0
-                  ? pendingMessage
-                  : item.response,
-            })),
-            timeline: timeline.map((item) =>
-              item?.type === "tool" &&
-              (typeof item.response !== "string" || item.response.trim().length === 0)
-                ? { ...item, response: pendingMessage }
-                : item
-            ),
-          };
-        });
-        if ((abortCtrl.signal.aborted || assistantFailureText) && conversationId) {
+        // Do not synthesize client-side fake tool results.
+        // Missing tool closures must be emitted by backend protocol events.
+        if (conversationId) {
           const persistedMessages = (() => {
             const snapshot = messagesRef.current.map((item) => ({ ...item }));
             if (!snapshot.some((item) => item.id === userMessage.id)) {
@@ -965,29 +1913,39 @@ const ChatPanel = ({
                 assistant.additional_kwargs && typeof assistant.additional_kwargs === "object"
                   ? assistant.additional_kwargs
                   : {};
+              const hasPendingInteraction = hasPendingInteractionState(kwargs);
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
               snapshot[assistantIndex] = {
                 ...assistant,
                 content:
                   finalAssistantText ||
                   extractText(assistant.content) ||
                   assistantFailureText ||
-                  "[已中断]",
+                  (hasPendingInteraction ? "" : "[已中断]"),
                 ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: {
                   ...kwargs,
                   ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                  ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
                 },
               };
             } else if (finalAssistantText || finalReasoningText || assistantFailureText) {
+              const recoveredContextUsage =
+                getLatestContextUsageFromMessages(snapshot, model) || contextUsageRef.current;
               snapshot.push({
                 role: "assistant",
                 id: assistantMessageId,
                 time: assistantCreatedAt,
                 content: finalAssistantText || assistantFailureText || "[已中断]",
                 ...(assistantFailureText ? { status: "error" as const } : {}),
-                additional_kwargs: finalReasoningText
-                  ? { reasoning_text: finalReasoningText }
-                  : undefined,
+                additional_kwargs:
+                  finalReasoningText || recoveredContextUsage
+                    ? {
+                        ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
+                        ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
+                      }
+                    : undefined,
               });
             }
 
@@ -1024,6 +1982,7 @@ const ChatPanel = ({
     },
     [
       activeConversation?.id,
+      chatMode,
       ensureConversation,
       isSending,
       model,
@@ -1068,186 +2027,26 @@ const ChatPanel = ({
       });
   }, [activeConversation?.id, token]);
 
-  const handleRateMessage = useCallback(
-    async (messageId: string, nextRating: MessageRating) => {
-      const conversationId = activeConversation?.id;
-      if (!conversationId) return;
+  const { chatInteractionContextValue } = useChatPlanInteractions({
+    token,
+    conversationId: activeConversation?.id,
+    pendingInteraction: activePendingInteraction,
+    clearPendingInteraction,
+  });
 
-      let previous: MessageRating | undefined;
-      let resolved: MessageRating | undefined;
-
-      setMessageRatings((prev) => {
-        previous = prev[messageId];
-        resolved = previous === nextRating ? undefined : nextRating;
-        return {
-          ...prev,
-          [messageId]: resolved,
-        };
-      });
-
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== messageId) return message;
-          const kwargs =
-            message.additional_kwargs && typeof message.additional_kwargs === "object"
-              ? message.additional_kwargs
-              : {};
-          return {
-            ...message,
-            additional_kwargs: {
-              ...kwargs,
-              userFeedback: resolved,
-            },
-          };
-        })
-      );
-
-      try {
-        await updateMessageFeedback({
-          token,
-          conversationId,
-          messageId,
-          feedback: resolved,
-        });
-      } catch {
-        setMessageRatings((prev) => ({
-          ...prev,
-          [messageId]: previous,
-        }));
-        setMessages((prev) =>
-          prev.map((message) => {
-            if (message.id !== messageId) return message;
-            const kwargs =
-              message.additional_kwargs && typeof message.additional_kwargs === "object"
-                ? message.additional_kwargs
-                : {};
-            return {
-              ...message,
-              additional_kwargs: {
-                ...kwargs,
-                userFeedback: previous,
-              },
-            };
-          })
-        );
-      }
-    },
-    [activeConversation?.id, token]
-  );
-
-  const handleDeleteMessage = useCallback(
-    async (messageId: string) => {
-      if (isSending) return;
-      const snapshot = [...messages];
-      const isVirtualFailedAssistant = messageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX);
-      const resolvedDeleteId = isVirtualFailedAssistant
-        ? messageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length)
-        : messageId;
-      if (!resolvedDeleteId) return;
-
-      const targetIndex = snapshot.findIndex((message) => message.id === resolvedDeleteId);
-      if (targetIndex < 0) return;
-
-      const remainedMessages = snapshot.filter((message) => message.id !== resolvedDeleteId);
-      const conversationId = activeConversation?.id;
-      if (conversationId) {
-        const deleted = await deleteConversationMessageById(token, conversationId, resolvedDeleteId);
-        if (!deleted) return;
-      }
-
-      setMessages(remainedMessages);
-      setMessageRatings((prev) => {
-        const next = { ...prev };
-        delete next[resolvedDeleteId];
-        return next;
-      });
-      if (streamingMessageId === resolvedDeleteId) {
-        setStreamingMessageId(null);
-      }
-    },
-    [activeConversation?.id, isSending, messages, streamingMessageId, token]
-  );
-
-  const handleRegenerateMessage = useCallback(
-    async (assistantMessageId: string) => {
-      if (isSending) return;
-      const snapshot = [...messages];
-      let userIndex = -1;
-      let assistantIndex = snapshot.findIndex((message) => message.id === assistantMessageId);
-      if (assistantIndex >= 0) {
-        const assistantMessage = snapshot[assistantIndex];
-        if (assistantMessage.role !== "assistant") return;
-        for (let i = assistantIndex - 1; i >= 0; i -= 1) {
-          if (snapshot[i].role === "user") {
-            userIndex = i;
-            break;
-          }
-        }
-      } else if (assistantMessageId.startsWith(VIRTUAL_FAILED_ASSISTANT_PREFIX)) {
-        const failedUserId = assistantMessageId.slice(VIRTUAL_FAILED_ASSISTANT_PREFIX.length);
-        userIndex = snapshot.findIndex((message) => message.role === "user" && message.id === failedUserId);
-        assistantIndex = userIndex >= 0 ? userIndex + 1 : -1;
-      }
-      if (userIndex < 0) return;
-      const userMessage = snapshot[userIndex];
-
-      const text = stripInlineImageMarkdown(
-        stripTagMarkersFromUserContent(extractText(userMessage.content))
-      );
-      if (!text) return;
-      const uploadedFiles =
-        userMessage.artifact && typeof userMessage.artifact === "object"
-          ? (Array.isArray((userMessage.artifact as { files?: unknown }).files) ? ((userMessage.artifact as { files?: unknown }).files as unknown[]) : [])
-              .filter((item): item is UploadedFileArtifact => Boolean(item && typeof item === "object"))
-          : [];
-
-      const conversationId = activeConversation?.id;
-      if (!conversationId) return;
-
-      // Step 1: 删除当前 assistant 回复及其以下所有消息（持久化到后端）
-      const cutIndex = Math.max(0, Math.min(assistantIndex, snapshot.length));
-      const truncated = await truncateConversationFromMessageId(
-        token,
-        conversationId,
-        assistantMessageId,
-        userMessage.id
-      );
-      if (!truncated) return;
-
-      setMessages((prev) => prev.slice(0, cutIndex));
-      setMessageRatings((prev) => {
-        const next = { ...prev };
-        for (const message of snapshot.slice(cutIndex)) {
-          if (!message.id) continue;
-          delete next[message.id];
-        }
-        return next;
-      });
-      if (streamingMessageId && snapshot.slice(cutIndex).some((message) => message.id === streamingMessageId)) {
-        setStreamingMessageId(null);
-      }
-
-      // Step 2: 重新回答当前 user 消息，避免重复持久化 user 记录。
-      await handleSend({
-        text,
-        files: [],
-        uploadedFiles,
-        selectedSkill: Array.from(new Set(selectedSkills.filter(Boolean)))[0],
-        selectedSkills: Array.from(new Set(selectedSkills.filter(Boolean))),
-        selectedFilePaths:
-          userMessage.additional_kwargs &&
-          typeof userMessage.additional_kwargs === "object" &&
-          Array.isArray((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths)
-            ? ((userMessage.additional_kwargs as { selectedFilePaths?: unknown }).selectedFilePaths as unknown[])
-                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-      }, {
-        echoUserMessage: false,
-        persistIncomingMessages: false,
-      });
-    },
-    [activeConversation?.id, handleSend, isSending, messages, selectedSkills, streamingMessageId, token]
-  );
+  const { handleRateMessage, handleDeleteMessage, handleRegenerateMessage, handleRewindLatestTurn } = useChatMessageActions({
+    token,
+    activeConversationId: activeConversation?.id,
+    isSending,
+    messages,
+    setMessages,
+    streamingMessageId,
+    setStreamingMessageId,
+    setMessageRatings,
+    selectedSkills,
+    handleSend,
+    onFilesUpdated,
+  });
 
   const activeConversationTitle = useMemo(
     () => activeConversation?.title || defaultHeaderTitle,
@@ -1263,249 +2062,139 @@ const ChatPanel = ({
     const params = new URLSearchParams();
     const currentPath = typeof router.asPath === "string" ? router.asPath : "";
     if (projectToken) params.set("projectToken", projectToken);
-    if (currentPath.startsWith("/")) params.set("returnTo", currentPath);
+    if (currentPath.startsWith("/") && !currentPath.startsWith("/skills/create")) {
+      params.set("returnTo", currentPath);
+    }
     void router.push(
       params.toString() ? `/skills/create?${params.toString()}` : "/skills/create"
     );
   }, [router, token]);
   const showInitialLoading = !isInitialized && messages.length === 0;
 
+  const chatPanelViewContextValue = useMemo(
+    () => ({
+      height,
+      t,
+      activeConversationId: activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messageCount: messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      onChangeModel: handleChangeModel,
+      onChangeMode: setChatMode,
+      onDeleteAllConversations: () => deleteAllConversations(),
+      onDeleteConversation: (id: string) => void deleteConversation(id),
+      onNewConversation: () => {
+        setContextUsageSnapshot(null);
+        void createNewConversation();
+      },
+      onSelectConversation: (id: string) => void loadConversation(id),
+      activeConversationTitle,
+      scrollRef,
+      onScroll: (event: { currentTarget: { scrollHeight: number; scrollTop: number; clientHeight: number } }) => {
+        const el = event.currentTarget;
+        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        shouldAutoScrollRef.current = distanceToBottom < 80;
+      },
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      onDeleteMessage: (messageId: string) => void handleDeleteMessage(messageId),
+      onRateMessage: (messageId: string, rating: MessageRating) => void handleRateMessage(messageId, rating),
+      onRegenerateMessage: (messageId: string) => void handleRegenerateMessage(messageId),
+      onRewindLatestTurn: () => void handleRewindLatestTurn(),
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      onChangeThinkingEnabled: handleChangeThinkingEnabled,
+      onChangeSelectedSkills: setSelectedSkills,
+      onUploadFiles: prepareUploadFiles,
+      onSend: handleSend,
+      onStop: handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      onCloseSkills: () => setIsSkillsOpen(false),
+      token,
+      onFilesApplied: onFilesUpdated,
+      onOpenWorkspaceFile,
+      onCreateSkillViaChat: handleCreateSkillViaChat,
+      onUseSkill: handleUseSkill,
+    }),
+    [
+      height,
+      t,
+      activeConversation?.id,
+      conversations,
+      contextUsage,
+      contextStatus,
+      messages.length,
+      model,
+      modelLoading,
+      modelOptions,
+      modelGroups,
+      handleChangeModel,
+      deleteAllConversations,
+      deleteConversation,
+      setContextUsageSnapshot,
+      createNewConversation,
+      loadConversation,
+      activeConversationTitle,
+      scrollRef,
+      showInitialLoading,
+      emptyStateTitle,
+      emptyStateDescription,
+      messages,
+      chatInteractionContextValue,
+      isLoadingConversation,
+      isSending,
+      messageRatings,
+      handleDeleteMessage,
+      handleRateMessage,
+      handleRegenerateMessage,
+      handleRewindLatestTurn,
+      streamingMessageId,
+      thinkingEnabled,
+      chatMode,
+      selectedModelSupportsReasoning,
+      thinkingTooltipEnabled,
+      thinkingTooltipDisabled,
+      selectedSkills,
+      skillOptions,
+      fileOptions,
+      handleChangeThinkingEnabled,
+      setSelectedSkills,
+      prepareUploadFiles,
+      handleSend,
+      handleStop,
+      hideSkillsManager,
+      isSkillsOpen,
+      token,
+      onFilesUpdated,
+      onOpenWorkspaceFile,
+      handleCreateSkillViaChat,
+      handleUseSkill,
+    ]
+  );
+
   return (
-    <Flex
-      backdropFilter="none"
-      bg="#f7f8fc"
-      border="1px solid"
-      borderTop={0}
-      borderBottom={0}
-      borderBottomLeftRadius={0}
-      borderColor="#dbe2ec"
-      borderRight={0}
-      borderTopLeftRadius={0}
-      boxShadow="none"
-      direction="column"
-      h={height}
-      overflow="hidden"
-    >
-      <ChatHeader
-        activeConversationId={activeConversation?.id}
-        conversations={conversations}
-        contextUsage={contextUsage}
-        contextStatus={contextStatus}
-        messageCount={messages.length}
-        model={model}
-        modelLoading={modelLoading}
-        modelOptions={modelOptions}
-        onChangeModel={handleChangeModel}
-        onDeleteAllConversations={() => deleteAllConversations()}
-        onDeleteConversation={(id) => deleteConversation(id)}
-        onNewConversation={() => {
-          setContextUsageSnapshot(null);
-          void createNewConversation();
-        }}
-        onOpenSkills={undefined}
-        onSelectConversation={(id) => loadConversation(id)}
-        title={activeConversationTitle}
-      />
-
-      <Flex direction="column" flex="1" overflow="hidden">
-        <Box
-          ref={scrollRef}
-          bg="#f7f8fc"
-          flex="1"
-          overflowY="auto"
-          sx={{
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-            "&::-webkit-scrollbar": {
-              display: "none",
-            },
-          }}
-          px={4}
-          py={4}
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-            shouldAutoScrollRef.current = distanceToBottom < 80;
-          }}
-        >
-          {showInitialLoading ? (
-            <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
-              <Spinner size="sm" />
-              <Text fontSize="sm">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-            </Flex>
-          ) : messages.length === 0 ? (
-            <Flex align="center" color="gray.500" h="full" justify="center">
-              <Box textAlign="center">
-                <Text color="myGray.700" fontSize="lg" fontWeight="700">
-                  {emptyStateTitle || t("chat:ready_start", { defaultValue: "准备开始" })}
-                </Text>
-                <Text fontSize="sm" mt={1}>
-                  {emptyStateDescription ||
-                    t("chat:ready_desc", { defaultValue: "描述你想改的功能，我会直接修改代码" })}
-                </Text>
-              </Box>
-            </Flex>
-          ) : (
-            <Flex direction="column" gap={3} pt={14}>
-              {(() => {
-                const rows: Array<{
-                  key: string;
-                  message: ConversationMessage;
-                  messageId: string;
-                  requestMessage?: ConversationMessage;
-                  requestContent?: string;
-                  summary: ReturnType<typeof getExecutionSummary>;
-                  isStreaming: boolean;
-                  canRegenerate: boolean;
-                  rating?: MessageRating;
-                }> = [];
-                for (let index = 0; index < messages.length; index += 1) {
-                  const message = messages[index];
-                  const nextMessage = messages[index + 1];
-                  if (message.role === "user" && nextMessage?.role === "assistant") {
-                    const userMessageId = message.id ?? `user-${index}`;
-                    const assistantMessageId = nextMessage.id ?? `assistant-${index + 1}`;
-                    const summary = getExecutionSummary(nextMessage);
-                    rows.push({
-                      key: `${userMessageId}__${assistantMessageId}`,
-                      message: nextMessage,
-                      messageId: assistantMessageId,
-                      requestMessage: message,
-                      requestContent: extractText(message.content),
-                      summary,
-                      isStreaming: nextMessage.id === streamingMessageId,
-                      canRegenerate: true,
-                      rating: messageRatings[assistantMessageId],
-                    });
-                    index += 1;
-                    continue;
-                  }
-                  if (message.role === "user" && !nextMessage && !isSending) {
-                    const userMessageId = message.id ?? `user-${index}`;
-                    const virtualAssistantId = `${VIRTUAL_FAILED_ASSISTANT_PREFIX}${userMessageId}`;
-                    const virtualMessage: ConversationMessage = {
-                      role: "assistant",
-                      id: virtualAssistantId,
-                      time: message.time,
-                      content: "请求失败（历史记录未保存回复），可点击重新生成。",
-                      status: "error",
-                    };
-                    rows.push({
-                      key: `${userMessageId}__${virtualAssistantId}`,
-                      message: virtualMessage,
-                      messageId: virtualAssistantId,
-                      requestMessage: message,
-                      requestContent: extractText(message.content),
-                      summary: getExecutionSummary(virtualMessage),
-                      isStreaming: false,
-                      canRegenerate: true,
-                    });
-                    continue;
-                  }
-
-                  const messageId = message.id ?? `${message.role}-${index}`;
-                  const summary = getExecutionSummary(message);
-                  let canRegenerate = false;
-                  if (message.role === "assistant") {
-                    canRegenerate = messages.slice(0, index).some((item) => item.role === "user");
-                  }
-                  rows.push({
-                    key: messageId,
-                    message,
-                    messageId,
-                    summary,
-                    isStreaming: message.id === streamingMessageId,
-                    canRegenerate,
-                    rating: messageRatings[messageId],
-                  });
-                }
-                return rows.map((row, rowIndex) => {
-                  const isLastRow = rowIndex === rows.length - 1;
-                  const rowStatusColor =
-                    row.isStreaming
-                      ? "green.500"
-                      : row.message.status === "error"
-                      ? "red.500"
-                      : "blue.500";
-                  return (
-                    <Flex key={row.key} align="stretch" gap={3} w="full">
-                      <Flex align="center" direction="column" w="16px">
-                        {row.isStreaming ? (
-                          <Spinner color="green.500" mt="8px" size="xs" speed="0.7s" thickness="2.5px" />
-                        ) : (
-                          <Box
-                            bg={rowStatusColor}
-                            borderRadius="full"
-                            h="9px"
-                            mt="10px"
-                            w="9px"
-                          />
-                        )}
-                        {!isLastRow ? <Box bg="myGray.200" flex="1" mt={1} w="2px" /> : null}
-                      </Flex>
-                      <Box flex="1" minW={0}>
-                        <ChatMessageBlock
-                          isLatestRun={isLastRow}
-                          isStreaming={row.isStreaming}
-                          message={row.message}
-                          messageId={row.messageId}
-                          requestMessage={row.requestMessage}
-                          requestContent={row.requestContent}
-                          summary={row.summary}
-                          canRegenerate={row.canRegenerate}
-                          onDelete={handleDeleteMessage}
-                          onRate={handleRateMessage}
-                          onRegenerate={handleRegenerateMessage}
-                          rating={row.rating}
-                        />
-                      </Box>
-                    </Flex>
-                  );
-                });
-              })()}
-              {isLoadingConversation ? (
-                <Flex align="center" color="gray.500" gap={2} justify="center" py={1}>
-                  <Spinner size="xs" />
-                  <Text fontSize="xs">{t("chat:loading_conversation", { defaultValue: "加载对话..." })}</Text>
-                </Flex>
-              ) : null}
-            </Flex>
-          )}
-        </Box>
-
-        <ChatInput
-          isSending={isSending}
-          model={model}
-          modelLoading={modelLoading}
-          modelOptions={modelOptions}
-          modelGroups={modelGroups}
-          thinkingEnabled={thinkingEnabled}
-          showThinkingToggle={selectedModelSupportsReasoning}
-          thinkingTooltipEnabled={thinkingTooltipEnabled}
-          thinkingTooltipDisabled={thinkingTooltipDisabled}
-          selectedSkill={selectedSkills[0]}
-          selectedSkills={selectedSkills}
-          skillOptions={skillOptions}
-          fileOptions={fileOptions}
-          onChangeModel={handleChangeModel}
-          onChangeThinkingEnabled={handleChangeThinkingEnabled}
-          onChangeSelectedSkills={setSelectedSkills}
-          onUploadFiles={prepareUploadFiles}
-          onSend={handleSend}
-          onStop={handleStop}
-        />
-      </Flex>
-      {!hideSkillsManager ? (
-        <SkillsManagerModal
-          isOpen={isSkillsOpen}
-          onClose={() => setIsSkillsOpen(false)}
-          projectToken={token.startsWith("skill-studio:") ? "" : token}
-          onFilesApplied={onFilesUpdated}
-          onCreateViaChat={handleCreateSkillViaChat}
-          onUseSkill={handleUseSkill}
-        />
-      ) : null}
-    </Flex>
+    <ChatPanelViewProvider value={chatPanelViewContextValue}>
+      <ChatPanelView />
+    </ChatPanelViewProvider>
   );
 };
 

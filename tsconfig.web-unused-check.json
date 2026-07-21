@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.web-check.json",
+  "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/types/**/*.d.ts",
+    "src/features/chat/**/*.ts",
+    "src/features/chat/**/*.tsx",
+    "src/components/core/chat/**/*.ts",
+    "src/components/core/chat/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/server/**",
+    "src/pages/api/**",
+    "src/components/Markdown/**"
+  ]
+}

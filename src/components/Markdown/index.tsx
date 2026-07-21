@@ -15,7 +15,6 @@ import dynamic from 'next/dynamic';
 
 import { Box } from '@chakra-ui/react';
 import { CodeClassNameEnum, mdTextFormat } from './utils';
-import { useCreation } from 'ahooks';
 import type { AProps } from './A';
 import { MarkdownCtx } from './context';
 import MarkdownTable from './Table';
@@ -51,7 +50,6 @@ type Props = {
   dataId?: string;
 } & AProps;
 const Markdown = (props: Props) => {
-  const source = props.source || '';
   return <MarkdownRender {...props} />;
 };
 const MarkdownRender = ({

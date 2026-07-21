@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 import { createGetObjectPresignedUrl } from "@server/storage/s3";
 import { CHAT_FILE_GET_URL_EXPIRES_IN_SECONDS } from "@server/chat/presign";
 

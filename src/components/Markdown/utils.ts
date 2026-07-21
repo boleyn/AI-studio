@@ -21,7 +21,7 @@ export enum CodeClassNameEnum {
 export const mdTextFormat = (text: string) => {
   // 保护 iframe 代码块，避免其中的URL被处理
   const iframeBlocks: string[] = [];
-  text = text.replace(/```iframe\s+([\s\S]*?)```/g, (match, content) => {
+  text = text.replace(/```iframe\s+([\s\S]*?)```/g, (match) => {
     const placeholder = `__IFRAME_BLOCK_${iframeBlocks.length}__`;
     iframeBlocks.push(match);
     return placeholder;
@@ -62,44 +62,44 @@ export const mdTextFormat = (text: string) => {
   // 统一将各种格式的链接转换为 **url** 格式，确保最佳显示效果
 
   // 1. 处理单引号包裹的链接：'http://...' -> **http://...**
-  text = text.replace(/'(https?:\/\/[^'\s]+)'/g, (match, url) => {
+  text = text.replace(/'(https?:\/\/[^'\s]+)'/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 2. 处理双引号包裹的链接："http://..." -> **http://...**
-  text = text.replace(/"(https?:\/\/[^"\s]+)"/g, (match, url) => {
+  text = text.replace(/"(https?:\/\/[^"\s]+)"/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 3. 处理圆括号包裹的链接：(http://...) -> **http://...**，但排除 [text](url)
-  text = text.replace(/(?<!\])\((https?:\/\/[^)\s]+)\)/g, (match, url) => {
+  text = text.replace(/(?<!\])\((https?:\/\/[^)\s]+)\)/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 4. 处理中文圆括号包裹的链接：（http://...） -> **http://...**，但排除 【text】（url）
-  text = text.replace(/(?<!】)（(https?:\/\/[^）\s]+)）/g, (match, url) => {
+  text = text.replace(/(?<!】)（(https?:\/\/[^）\s]+)）/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 5. 处理反引号包裹的链接：`http://...` -> **http://...**
-  text = text.replace(/`(https?:\/\/[^`\s]+)`/g, (match, url) => {
+  text = text.replace(/`(https?:\/\/[^`\s]+)`/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 6. 处理方括号包裹的链接：[http://...] -> **http://...**
-  text = text.replace(/\[(https?:\/\/[^\]\s]+)\]/g, (match, url) => {
+  text = text.replace(/\[(https?:\/\/[^\]\s]+)\]/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 7. 处理中文方括号包裹的链接：【http://...】 -> **http://...**
-  text = text.replace(/【(https?:\/\/[^】\s]+)】/g, (match, url) => {
+  text = text.replace(/【(https?:\/\/[^】\s]+)】/g, (_match, url) => {
     return `**${url}**`;
   });
 
   // 8. 处理裸链接 - 改进版本，排除 Markdown 链接/图片的 (url) 以及行内代码
   text = text.replace(
     /(?<!\*\*)(?<!\]\()(?<!】（)(?<!\[)(?<!!\[)(?<!`)(https?:\/\/[^\s]+?)(?=[\s，。！？；：、"'）】\]）\[]|\[[a-f0-9]{24}\]|$)(?!\*\*)(?!`)/g,
-    (match, url) => {
+    (_match, url) => {
       // 特别处理：如果URL末尾有标点符号，添加空格
       const cleanUrl = url.replace(/[，。！？；：、"'）】\]）]+$/, '');
       return `**${cleanUrl}**`;
@@ -107,12 +107,12 @@ export const mdTextFormat = (text: string) => {
   );
 
   // 9. 最后处理**格式链接，确保链接后有空格分隔
-  text = text.replace(/(\*\*https?:\/\/[^\s*]+\*\*)([^\s])/g, (match, url, nextChar) => {
+  text = text.replace(/(\*\*https?:\/\/[^\s*]+\*\*)([^\s])/g, (_match, url, nextChar) => {
     return `${url} ${nextChar}`;
   });
 
   // 原有的特殊符号处理（保留，以防万一LLM开始配合）
-  text = text.replace(/(https?:\/\/[^\s○]+)○/g, (match, url) => {
+  text = text.replace(/(https?:\/\/[^\s○]+)○/g, (_match, url) => {
     return `**${url}**`;
   });
 

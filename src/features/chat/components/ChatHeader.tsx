@@ -15,7 +15,7 @@ import { useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 
-import { AddIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
+import { AddIcon, BackIcon, ClockIcon, CloseIcon } from "@/components/common/Icon";
 import type { ConversationSummary } from "@/types/conversation";
 import type { ContextWindowUsage } from "../types/contextWindow";
 
@@ -31,12 +31,21 @@ interface ChatHeaderProps {
   onSelectConversation?: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
   onDeleteAllConversations?: () => void;
+  onRewindLatestTurn?: () => void;
   onReset?: () => void;
   onNewConversation?: () => void;
   onOpenSkills?: () => void;
   contextUsage?: ContextWindowUsage | null;
   contextStatus?: "idle" | "pending" | "ready";
 }
+
+const formatTokenCompact = (value?: number): string => {
+  if (!Number.isFinite(value)) return "--";
+  const normalized = Math.max(0, Number(value));
+  if (normalized >= 1_000_000) return `${(normalized / 1_000_000).toFixed(2)}M`;
+  if (normalized >= 1_000) return `${(normalized / 1_000).toFixed(1)}k`;
+  return `${Math.round(normalized)}`;
+};
 
 const ChatHeader = ({
   title,
@@ -46,9 +55,10 @@ const ChatHeader = ({
   onSelectConversation,
   onDeleteConversation,
   onDeleteAllConversations,
+  onRewindLatestTurn,
   onReset,
   onNewConversation,
-  onOpenSkills,
+  onOpenSkills: _onOpenSkills,
   contextUsage,
   contextStatus = "idle",
 }: ChatHeaderProps) => {
@@ -58,18 +68,23 @@ const ChatHeader = ({
   const hasUsage = Boolean(contextUsage);
   const isReady = contextStatus === "ready" && !!contextUsage;
   const isPending = contextStatus === "pending";
-  const usedPercent = Math.min(100, Math.max(0, hasUsage ? contextUsage?.usedPercent || 0 : 0));
+  const computedUsedPercent = hasUsage && contextUsage && contextUsage.maxContext > 0
+    ? (contextUsage.usedTokens / contextUsage.maxContext) * 100
+    : 0;
+  const usedPercent = Math.min(100, Math.max(0, computedUsedPercent));
   const usedPercentText = usedPercent.toFixed(1);
-  const remainingPercentText = Math.max(0, 100 - usedPercent).toFixed(1);
+  const usageState = hasUsage && usedPercent >= 80 ? "danger" : hasUsage && usedPercent >= 60 ? "warning" : "ok";
+  const usedTokenText = formatTokenCompact(contextUsage?.usedTokens);
+  const maxTokenText = formatTokenCompact(contextUsage?.maxContext);
   const tooltipWithInput = isReady
-    ? `剩余 ${remainingPercentText}%`
+    ? `${usedTokenText}/${maxTokenText} tokens (${usedPercentText}%)`
     : isPending
     ? hasUsage
-      ? `计算中...（当前显示上次快照：剩余 ${remainingPercentText}%）`
+      ? `计算中...（${usedTokenText}/${maxTokenText} tokens）`
       : "计算中..."
     : "继续提问后会自动更新";
-  const ringColor = usedPercent < 60 ? "#72C284" : "#E58888";
-  const ringTrackColor = usedPercent < 60 ? "#E3F3E7" : "#F7E3E3";
+  const ringColor = usageState === "danger" ? "#EF4444" : usageState === "warning" ? "#F59E0B" : "primary.500";
+  const ringTrackColor = usageState === "danger" ? "#FEE2E2" : usageState === "warning" ? "#FEF3C7" : "primary.100";
 
   const handleConfirmDeleteOne = async () => {
     if (!pendingDeleteId) return;
@@ -110,12 +125,27 @@ const ChatHeader = ({
           {title || "代码助手"}
         </Text>
         <Text color="myGray.500" fontSize="xs" mt={0.5}>
-          对话数 {messageCount}
+          消息数 {messageCount}
         </Text>
       </Box>
 
       <Flex align="center" gap={2}>
         <Flex gap={1}>
+        <MyTooltip label="撤回上一轮">
+          <IconButton
+            _hover={{ bg: "myGray.100" }}
+            aria-label="撤回上一轮"
+            bg="white"
+            border="1px solid"
+            borderColor="myGray.200"
+            borderRadius="10px"
+            icon={<BackIcon />}
+            onClick={onRewindLatestTurn}
+            size="sm"
+            variant="ghost"
+          />
+        </MyTooltip>
+
         <Menu placement="bottom-end">
           <MyTooltip label="历史对话">
             <MenuButton
@@ -199,25 +229,27 @@ const ChatHeader = ({
         </Flex>
 
         <MyTooltip label={tooltipWithInput}>
-          <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
-            <CircularProgress
-              color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
-              isIndeterminate={isPending && !hasUsage}
-              size="32px"
-              thickness="12px"
-              trackColor={ringTrackColor}
-              value={usedPercent}
-            >
-              <CircularProgressLabel
-                color="#1F2937"
-                fontSize="7.5px"
-                fontWeight="700"
-                lineHeight="1"
+          <Flex align="center" direction="column" minW="56px">
+            <Box alignItems="center" display="flex" h="32px" justifyContent="center" w="32px">
+              <CircularProgress
+                color={isPending && !hasUsage ? "#9CA3AF" : ringColor}
+                isIndeterminate={isPending && !hasUsage}
+                size="32px"
+                thickness="12px"
+                trackColor={ringTrackColor}
+                value={usedPercent}
               >
-                {hasUsage ? usedPercentText : "--"}
-              </CircularProgressLabel>
-            </CircularProgress>
-          </Box>
+                <CircularProgressLabel
+                  color="#1F2937"
+                  fontSize="7.5px"
+                  fontWeight="700"
+                  lineHeight="1"
+                >
+                  {hasUsage ? usedPercentText : "--"}
+                </CircularProgressLabel>
+              </CircularProgress>
+            </Box>
+          </Flex>
         </MyTooltip>
       </Flex>
       </Flex>

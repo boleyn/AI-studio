@@ -1,0 +1,86 @@
+import { createContext, useContext } from "react";
+import type { TFunction } from "next-i18next";
+import type { LegacyRef } from "react";
+import type { ConversationMessage } from "@/types/conversation";
+import type { ConversationSummary } from "@/types/conversation";
+import type { ChatInteractionContextValue } from "./ChatInteractionContext";
+import type { ContextWindowUsage } from "../types/contextWindow";
+import type { MessageRating } from "../components/message/MessageActionBar";
+import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
+import type { UploadedFileArtifact } from "../types/fileArtifact";
+
+export type ChatPanelViewContextValue = {
+  height: string;
+  t: TFunction;
+  activeConversationId?: string;
+  conversations: ConversationSummary[];
+  contextUsage: ContextWindowUsage | null;
+  contextStatus: "idle" | "pending" | "ready";
+  messageCount: number;
+  model: string;
+  modelLoading: boolean;
+  modelOptions: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }>;
+  modelGroups: Array<{ id: "user" | "system"; label: string; options: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }> }>;
+  onChangeModel: (nextModel: string) => void;
+  onChangeMode: (mode: "default" | "plan") => void;
+  onDeleteAllConversations: () => void;
+  onDeleteConversation: (id: string) => void;
+  onNewConversation: () => void;
+  onSelectConversation: (id: string) => void;
+  activeConversationTitle: string;
+  scrollRef: LegacyRef<HTMLDivElement>;
+  onScroll: (event: { currentTarget: { scrollHeight: number; scrollTop: number; clientHeight: number } }) => void;
+  showInitialLoading: boolean;
+  emptyStateTitle?: string;
+  emptyStateDescription?: string;
+  messages: ConversationMessage[];
+  chatInteractionContextValue: ChatInteractionContextValue;
+  isLoadingConversation: boolean;
+  isSending: boolean;
+  messageRatings: Record<string, MessageRating | undefined>;
+  onDeleteMessage: (messageId: string) => void;
+  onRateMessage: (messageId: string, rating: MessageRating) => void;
+  onRegenerateMessage: (messageId: string) => void;
+  onRewindLatestTurn: () => void;
+  streamingMessageId: string | null;
+  thinkingEnabled: boolean;
+  chatMode: "default" | "plan";
+  selectedModelSupportsReasoning?: boolean;
+  thinkingTooltipEnabled?: string;
+  thinkingTooltipDisabled?: string;
+  selectedSkills: string[];
+  skillOptions: Array<{ name: string; description?: string }>;
+  fileOptions: string[];
+  onChangeThinkingEnabled: (enabled: boolean) => void;
+  onChangeSelectedSkills: (skills: string[]) => void;
+  onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;
+  onSend: (
+    payload: ChatInputSubmitPayload,
+    options?: {
+      echoUserMessage?: boolean;
+      persistIncomingMessages?: boolean;
+      continueAssistantMessageId?: string;
+    }
+  ) => Promise<void>;
+  onStop: () => void;
+  hideSkillsManager: boolean;
+  isSkillsOpen: boolean;
+  onCloseSkills: () => void;
+  token: string;
+  onFilesApplied?: (files: Record<string, { code: string }>) => void;
+  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onCreateSkillViaChat: () => void;
+  onUseSkill: (skillName: string) => void;
+};
+
+const ChatPanelViewContext = createContext<ChatPanelViewContextValue | null>(null);
+
+export const ChatPanelViewProvider = ChatPanelViewContext.Provider;
+
+export const useChatPanelViewContext = () => {
+  const context = useContext(ChatPanelViewContext);
+  if (!context) {
+    throw new Error("useChatPanelViewContext must be used within ChatPanelViewProvider");
+  }
+  return context;
+};
