@@ -1,6 +1,7 @@
 import {
   deleteSkillWorkspaceFile,
   getSkillWorkspace,
+  patchSkillWorkspaceFiles,
   replaceSkillWorkspaceFiles,
   toWorkspacePublicFiles,
   toWorkspaceStoredFiles,
@@ -64,6 +65,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body.files && typeof body.files === "object" && !Array.isArray(body.files)
         ? (body.files as Record<string, { code: string }>)
         : null;
+    const changes = Array.isArray(body.changes)
+      ? body.changes
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+          .map((item) => ({
+            path: typeof item.path === "string" ? item.path.trim() : "",
+            delete: item.delete === true,
+            content: typeof item.content === "string" ? item.content : "",
+          }))
+          .filter((item) => Boolean(item.path))
+      : null;
+
+    if (changes) {
+      if (changes.length === 0) {
+        res.status(400).json({ error: "缺少文件变更" });
+        return;
+      }
+      try {
+        const changedPaths = await patchSkillWorkspaceFiles({
+          workspaceId,
+          userId,
+          projectToken: bodyProjectToken || projectToken || undefined,
+          skillId: bodySkillId || skillId || undefined,
+          changes,
+        });
+        res.status(200).json({ workspaceId, changedPaths });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "增量保存 workspace 文件失败";
+        res.status(400).json({ error: message });
+      }
+      return;
+    }
 
     if (nextFiles) {
       try {
@@ -99,25 +131,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
     try {
-      const files = shouldDelete
-        ? await deleteSkillWorkspaceFile({
-            workspaceId,
-            userId,
-            projectToken: bodyProjectToken || projectToken || undefined,
-            skillId: bodySkillId || skillId || undefined,
-            path,
-          })
-        : await writeSkillWorkspaceFile({
-            workspaceId,
-            userId,
-            projectToken: bodyProjectToken || projectToken || undefined,
-            skillId: bodySkillId || skillId || undefined,
-            path,
-            content,
-          });
+      if (shouldDelete) {
+        await deleteSkillWorkspaceFile({
+          workspaceId,
+          userId,
+          projectToken: bodyProjectToken || projectToken || undefined,
+          skillId: bodySkillId || skillId || undefined,
+          path,
+        });
+      } else {
+        await writeSkillWorkspaceFile({
+          workspaceId,
+          userId,
+          projectToken: bodyProjectToken || projectToken || undefined,
+          skillId: bodySkillId || skillId || undefined,
+          path,
+          content,
+        });
+      }
       res.status(200).json({
         workspaceId,
-        files: toWorkspacePublicFiles(files),
         updatedPath: path,
         deleted: shouldDelete,
       });

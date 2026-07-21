@@ -366,6 +366,55 @@ export const replaceSkillWorkspaceFiles = async ({
   return filterSkillFiles(updated.files || skillToFiles(updated.name, updated.content));
 };
 
+export type SkillWorkspaceFileChange = {
+  path: string;
+  content?: string;
+  delete?: boolean;
+};
+
+export const patchSkillWorkspaceFiles = async ({
+  workspaceId,
+  userId,
+  projectToken,
+  skillId,
+  changes,
+}: {
+  workspaceId: string;
+  userId: string;
+  projectToken?: string;
+  skillId?: string;
+  changes: SkillWorkspaceFileChange[];
+}) => {
+  const workspace = await resolveWorkspace({ workspaceId, userId, projectToken, skillId });
+  if (workspace.source === "project") {
+    throw new Error("项目绑定 workspace 为兼容只读模式，无法写入");
+  }
+
+  const nextFiles = { ...workspace.files };
+  const changedPaths: string[] = [];
+  for (const change of changes) {
+    const normalizedPath = toWorkspaceStoredPath(change.path, workspace.files);
+    if (change.delete) {
+      delete nextFiles[normalizedPath];
+    } else {
+      nextFiles[normalizedPath] = { code: change.content || "" };
+    }
+    changedPaths.push(normalizedPath);
+  }
+
+  const next = pickSkillContentFromFiles(nextFiles);
+  const updated = await updateUserSkill({
+    token: workspace.skillId || workspace.id,
+    userId,
+    updates: {
+      files: nextFiles,
+      content: next?.content || "",
+    },
+  });
+  if (!updated) throw new Error("skill 不存在");
+  return changedPaths;
+};
+
 export const runWorkspaceAction = async (
   context: {
     workspaceId: string;

@@ -412,45 +412,26 @@ const SkillCreatePage = () => {
         return;
       }
 
-      for (const item of upserts) {
-        const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...withAuthHeaders(),
-          },
-          body: JSON.stringify({
-            skillId: workspaceId,
-            path: item.path,
-            content: item.content,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          if (response.status === 413) {
-            throw new Error("文件过大，已超出服务端上传限制（413）。请联系管理员调大网关大小限制。");
-          }
-          throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
+      const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...withAuthHeaders(),
+        },
+        body: JSON.stringify({
+          skillId: workspaceId,
+          changes: [
+            ...upserts.map((item) => ({ path: item.path, content: item.content })),
+            ...deletions.map((path) => ({ path, delete: true })),
+          ],
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error("文件过大，已超出服务端上传限制（413）。请联系管理员调大网关大小限制。");
         }
-      }
-
-      for (const path of deletions) {
-        const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...withAuthHeaders(),
-          },
-          body: JSON.stringify({
-            skillId: workspaceId,
-            path,
-            delete: true,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
-        }
+        throw new Error(typeof payload?.error === "string" ? payload.error : "保存失败");
       }
 
       const persistedFiles = normalized;
@@ -860,7 +841,11 @@ const SkillCreatePage = () => {
   }, [isPublishingToHub, projectToken, publishDraft, skillId, toast, workspaceId]);
 
   const downloadSkillZip = useCallback(async () => {
-    const entries = Object.entries(files).filter(([path]) => skillFilePathFilter(path));
+    // `files` is intentionally not refreshed for edits within the same skill root,
+    // because rebinding Sandpack files resets the active editor tab. Always export
+    // from the live editor snapshot instead of that bootstrap-time state.
+    const filesToDownload = normalizeSkillFiles(latestFilesRef.current);
+    const entries = Object.entries(filesToDownload).filter(([path]) => skillFilePathFilter(path));
     if (entries.length === 0 || typeof window === "undefined") {
       toast({
         title: "暂无可导出的 skill 文件",
@@ -870,6 +855,9 @@ const SkillCreatePage = () => {
       return;
     }
     try {
+      // Make the download button a persistence boundary as well, so the ZIP and
+      // the server-side workspace cannot silently diverge.
+      await persistSkillFiles(filesToDownload);
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
       entries.forEach(([path, file]) => {
@@ -893,7 +881,7 @@ const SkillCreatePage = () => {
         duration: 2400,
       });
     }
-  }, [files, publishDraft.slug, skillFilePathFilter, skillName, toast]);
+  }, [persistSkillFiles, publishDraft.slug, skillFilePathFilter, skillName, toast]);
 
   return (
     <Box
@@ -1026,12 +1014,26 @@ const SkillCreatePage = () => {
                 onManualPreview={() => setActiveView("preview")}
                 onManualSave={() => {
                   if (isWorkspaceReady && latestFilesRef.current) {
-                    void persistSkillFiles(latestFilesRef.current);
-                    toast({
-                      title: "已保存技能文件",
-                      status: "success",
-                      duration: 2000,
-                    });
+                    setSaveStatus("saving");
+                    void persistSkillFiles(latestFilesRef.current)
+                      .then(() => {
+                        setSaveStatus("saved");
+                        toast({
+                          title: "已保存技能文件",
+                          status: "success",
+                          duration: 2000,
+                        });
+                      })
+                      .catch((error) => {
+                        setSaveStatus("error");
+                        toast({
+                          title: "保存失败",
+                          description: error instanceof Error ? error.message : "请稍后重试",
+                          status: "error",
+                          duration: 3200,
+                          isClosable: true,
+                        });
+                      });
                   }
                 }}
                 onManualShare={() => {
