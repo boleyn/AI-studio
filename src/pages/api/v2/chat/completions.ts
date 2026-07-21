@@ -8,6 +8,10 @@ import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile } from "@server/projects/projectStorage";
 import { getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
+import {
+  toPublicSkillRuntimeFiles,
+  toStoredSkillRuntimeFiles,
+} from "@server/skills/runtimeFilePaths";
 import { saveChatFileSnapshot } from "@server/chat/fileSnapshotStorage";
 import {
   appendConversationMessages,
@@ -601,7 +605,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const baseFiles = isProjectToken
       ? (project?.files || {})
-      : ((skill?.files || {}) as Record<string, { code?: string }>);
+      : toStoredSkillRuntimeFiles(
+          (skill?.files || {}) as Record<string, { code: string }>,
+          skill?.name || ""
+        );
     const projectFilesForRun = await materializeAttachmentRuntimeFiles({
       token,
       projectFiles: baseFiles,
@@ -620,9 +627,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       abortSignal: abortController.signal,
       onEvent: (event, data) => {
         if (event === SdkStreamEventEnum.streamEvent && data.subtype === "files_updated") {
-          const normalized = normalizeUpdatedFiles(data.files);
+          const normalizedRaw = normalizeUpdatedFiles(data.files);
+          const normalized = isProjectToken
+            ? normalizedRaw
+            : toStoredSkillRuntimeFiles(normalizedRaw, skill?.name || "");
           Object.assign(streamedUpdatedFiles, normalized);
-          // Do not return early, allow the event to be sent immediately
+          runtimeStatusLog(event, data);
+          streamEvent(res, event, {
+            ...data,
+            files: isProjectToken ? normalized : toPublicSkillRuntimeFiles(normalized),
+          });
+          return;
         }
         runtimeStatusLog(event, data);
         streamEvent(res, event, data);
@@ -632,7 +647,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const updatedFiles = {
       ...streamedUpdatedFiles,
-      ...normalizeUpdatedFiles(runResult.updatedFiles),
+      ...(isProjectToken
+        ? normalizeUpdatedFiles(runResult.updatedFiles)
+        : toStoredSkillRuntimeFiles(
+            normalizeUpdatedFiles(runResult.updatedFiles),
+            skill?.name || ""
+          )),
     };
 
     if (Object.keys(updatedFiles).length > 0) {
@@ -654,7 +674,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
       } else {
         const nextSkillFiles: Record<string, { code: string }> = {
-          ...((skill?.files || {}) as Record<string, { code: string }>),
+          ...toStoredSkillRuntimeFiles(
+            (skill?.files || {}) as Record<string, { code: string }>,
+            skill?.name || ""
+          ),
           ...updatedFiles,
         };
         await updateUserSkill({
@@ -667,7 +690,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       streamEvent(res, SdkStreamEventEnum.streamEvent, {
         subtype: "files_updated",
-        files: updatedFiles,
+        files: isProjectToken ? updatedFiles : toPublicSkillRuntimeFiles(updatedFiles),
       });
     }
 

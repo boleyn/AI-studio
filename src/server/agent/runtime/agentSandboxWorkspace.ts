@@ -80,19 +80,22 @@ async function ensureDir(dirPath: string): Promise<void> {
 async function writeProjectFilesToWorkspace(
   workspaceRoot: string,
   projectFiles: ProjectFilesInput,
+  options?: { overwrite?: boolean },
 ): Promise<void> {
   for (const [rawPath, file] of Object.entries(projectFiles || {})) {
     const normalizedPath = normalizeProjectFilePath(rawPath)
     const absolutePath = toVirtualAbsoluteFilePath(workspaceRoot, normalizedPath)
     if (!isPathInsideRoot(absolutePath, workspaceRoot)) continue
-    try {
-      const existing = await fsStat(absolutePath)
-      if (existing.isFile()) {
-        // Preserve latest sandbox/S3 state across turns; projectFiles are initial seed input.
-        continue
+    if (!options?.overwrite) {
+      try {
+        const existing = await fsStat(absolutePath)
+        if (existing.isFile()) {
+          // Preserve latest sandbox/S3 state across turns; projectFiles are initial seed input.
+          continue
+        }
+      } catch {
+        // File does not exist yet; proceed to seed it.
       }
-    } catch {
-      // File does not exist yet; proceed to seed it.
     }
     await ensureDir(path.dirname(absolutePath))
     const rawCode = typeof file?.code === 'string' ? file.code : ''
@@ -124,6 +127,10 @@ function toRelativeFromS3ObjectKey(
 function shouldSkipPersistenceRelativePath(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
   if (!normalized) return false
+  // /skills contains repository-provided runtime dependencies. Bash and other
+  // tools open their own workspace handles, so this must be a global rule
+  // rather than relying only on the runtimeFiles set from the query adapter.
+  if (normalized === 'skills' || normalized.startsWith('skills/')) return true
   const segments = normalized.split('/').filter(Boolean)
   return segments.some(segment => segment.startsWith('.'))
 }
@@ -161,6 +168,7 @@ async function hydrateWorkspaceFromS3(
 async function persistWorkspaceToS3(
   workspaceRoot: string,
   workspaceKey: string,
+  excludedRelativePaths: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   if (!isS3PersistenceEnabled()) return
 
@@ -186,6 +194,7 @@ async function persistWorkspaceToS3(
       const relative = path.relative(workspaceRoot, absolutePath).replace(/\\/g, '/')
       if (!relative || relative.includes('..')) continue
       if (shouldSkipPersistenceRelativePath(relative)) continue
+      if (excludedRelativePaths.has(relative)) continue
       const objectKey = toS3ObjectKey(workspaceKey, relative)
       currentObjectKeys.add(objectKey)
 
@@ -365,6 +374,7 @@ export async function prepareAgentSandboxWorkspace(params: {
   workspaceIdentity: string
   hostProjectRoot: string
   projectFiles?: ProjectFilesInput
+  runtimeFiles?: ProjectFilesInput
 }): Promise<AgentSandboxWorkspace> {
   const workspaceKey = sanitizeWorkspaceKey(params.workspaceIdentity)
   const workspaceRoot = path.resolve(
@@ -377,9 +387,33 @@ export async function prepareAgentSandboxWorkspace(params: {
   await ensureDir(workspaceRoot)
   await hydrateWorkspaceFromS3(workspaceRoot, workspaceKey)
 
+  // /workspace/<token> was produced by the pre-agent-sandbox cwd adapter. It
+  // is a reserved runtime path and otherwise gets rehydrated from persisted
+  // state after a user deletes it in the editor.
+  await fsRm(path.join(workspaceRoot, 'workspace'), {
+    recursive: true,
+    force: true,
+  })
+
   if (params.projectFiles && Object.keys(params.projectFiles).length > 0) {
     await writeProjectFilesToWorkspace(workspaceRoot, params.projectFiles)
   }
+
+  // Runtime dependencies (for example repository-provided skills) must be
+  // refreshed on every turn. They are mounted into the sandbox for tools and
+  // command discovery, but are not user project state and must not enter S3.
+  if (params.runtimeFiles && Object.keys(params.runtimeFiles).length > 0) {
+    await writeProjectFilesToWorkspace(workspaceRoot, params.runtimeFiles, {
+      overwrite: true,
+    })
+  }
+
+  const runtimeRelativePaths = new Set(
+    Object.keys(params.runtimeFiles || {})
+      .map(normalizeProjectFilePath)
+      .map(filePath => filePath.replace(/^\/+/, ''))
+      .filter(Boolean),
+  )
 
   const scopedFs = createScopedFs(workspaceRoot, params.hostProjectRoot)
 
@@ -388,7 +422,11 @@ export async function prepareAgentSandboxWorkspace(params: {
     workspaceKey,
     scopedFs,
     persistToS3: async () => {
-      await persistWorkspaceToS3(workspaceRoot, workspaceKey)
+      await persistWorkspaceToS3(
+        workspaceRoot,
+        workspaceKey,
+        runtimeRelativePaths,
+      )
     },
   }
 }

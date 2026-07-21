@@ -53,6 +53,7 @@ import {
   isSkillPath,
   isSameFileMap,
   isSameSkillRoots,
+  normalizeAgentSkillFiles,
   normalizeDownloadName,
   normalizeSkillFiles,
   parseConflictOwnerName,
@@ -477,7 +478,7 @@ const SkillCreatePage = () => {
 
   const handleAgentFilesUpdated = useCallback(
     (updated: FileMap) => {
-      const normalized = normalizeSkillFiles(updated);
+      const normalized = normalizeAgentSkillFiles(updated, latestFilesRef.current);
       if (Object.keys(normalized).length === 0) return;
 
       const merged: FileMap = {
@@ -502,8 +503,15 @@ const SkillCreatePage = () => {
       if (nameInFiles) {
         setSkillName(nameInFiles);
       }
+
+      // Agent edits originate in the sandbox. Persist the normalized editor files as a
+      // frontend safety net so a streamed path-shape mismatch cannot leave the DB stale.
+      void persistSkillFiles(merged).catch((error) => {
+        console.error("Failed to persist agent-updated skill files:", error);
+        setSaveStatus("error");
+      });
     },
-    [getSkillNameFromFiles]
+    [getSkillNameFromFiles, persistSkillFiles]
   );
 
   const refreshSkillWorkspaceFiles = useCallback(async (): Promise<FileMap | null> => {

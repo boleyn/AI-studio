@@ -51,6 +51,7 @@ export type ChatPanelViewContextValue = {
   selectedSkills: string[];
   skillOptions: Array<{ name: string; description?: string }>;
   fileOptions: string[];
+  addFileRequest?: { path: string; version: number } | null;
   onChangeThinkingEnabled: (enabled: boolean) => void;
   onChangeSelectedSkills: (skills: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;

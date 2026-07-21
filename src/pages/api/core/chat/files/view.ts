@@ -1,5 +1,5 @@
 import { requireAuth } from "@server/auth/session";
-import { getProjectAccessState } from "@server/projects/projectStorage";
+import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { assertChatStoragePath, getObjectFromStorage, getStorageFileName } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { assertChatScopedStoragePath } from "./shared";
@@ -50,13 +50,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: "缺少 token 参数" });
       return;
     }
-    const access = await getProjectAccessState(token, String(auth.user._id));
+    const access = await getChatTokenAccessState(token, String(auth.user._id));
     if (access === "not_found") {
-      res.status(404).json({ error: "项目不存在" });
+      res.status(404).json({ error: "项目或技能不存在" });
       return;
     }
-    if (access !== "ok") {
-      res.status(403).json({ error: "无权访问该项目" });
+    if (access === "forbidden") {
+      res.status(403).json({ error: "无权访问该项目或技能" });
       return;
     }
     const chatId = getChatId(req) || undefined;

@@ -481,6 +481,8 @@ const toPendingInteractionFromApi = (
 const ChatPanel = ({
   token,
   onFilesUpdated,
+  onAttachmentsAvailable,
+  addFileRequest,
   onFilesRefresh,
   height = "100%",
   completionsPath = "/api/v2/chat/completions",
@@ -502,6 +504,8 @@ const ChatPanel = ({
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
+  onAttachmentsAvailable?: (files: UploadedFileArtifact[]) => void;
+  addFileRequest?: { path: string; version: number } | null;
   onFilesRefresh?: () => Promise<Record<string, { code: string }> | null>;
   height?: string;
   completionsPath?: string;
@@ -926,6 +930,7 @@ const ChatPanel = ({
         finalArtifacts.push(file);
       });
       const hasArtifacts = finalArtifacts.length > 0;
+      if (hasArtifacts) onAttachmentsAvailable?.(finalArtifacts);
       if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
@@ -1998,6 +2003,7 @@ const ChatPanel = ({
       completionsPath,
       completionsStream,
       onFilesUpdated,
+      onAttachmentsAvailable,
       token,
       updateConversationTitle,
       scheduleAssistantReasoningFlush,
@@ -2128,6 +2134,7 @@ const ChatPanel = ({
       selectedSkills,
       skillOptions,
       fileOptions,
+      addFileRequest,
       onChangeThinkingEnabled: handleChangeThinkingEnabled,
       onChangeSelectedSkills: setSelectedSkills,
       onUploadFiles: prepareUploadFiles,
@@ -2183,6 +2190,7 @@ const ChatPanel = ({
       selectedSkills,
       skillOptions,
       fileOptions,
+      addFileRequest,
       handleChangeThinkingEnabled,
       setSelectedSkills,
       prepareUploadFiles,

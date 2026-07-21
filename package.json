@@ -114,7 +114,6 @@
     "lodash-es": "^4.18.1",
     "lru-cache": "^11.3.5",
     "lucide-react": "^0.468.0",
-    "memfs": "^4.40.0",
     "mermaid": "^10.9.0",
     "modifiers-napi": "file:vendor/claude-packages/modifiers-napi",
     "module-alias": "^2.3.4",

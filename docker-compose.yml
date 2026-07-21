@@ -9,6 +9,12 @@ services:
       FASTGPT_WORKDIR: /workspace
       FASTGPT_EXEC_PORT: "8091"
       FASTGPT_EXEC_TOKEN: sandbox-exec-token
+      FASTGPT_SANDBOX_UID: "1000"
+      FASTGPT_SANDBOX_GID: "1000"
+      FASTGPT_SYNC_MAX_FILES: "5000"
+      FASTGPT_SYNC_MAX_TOTAL_BYTES: "104857600"
+      FASTGPT_SYNC_MAX_FILE_BYTES: "26214400"
+      FASTGPT_EXEC_MAX_REQUEST_BYTES: "146800640"
     volumes:
       - ./data/sandboxes:/workspace
     ports:
@@ -69,6 +75,9 @@ services:
       AGENT_SANDBOX_URL: http://agent-sandbox:8080
       AGENT_SANDBOX_EXEC_URL: http://agent-sandbox:8091/exec
       AGENT_SANDBOX_EXEC_TOKEN: sandbox-exec-token
+      AGENT_SANDBOX_SYNC_MAX_FILES: "5000"
+      AGENT_SANDBOX_SYNC_MAX_TOTAL_BYTES: "104857600"
+      AGENT_SANDBOX_SYNC_MAX_FILE_BYTES: "26214400"
 
       SKILL_HUB: https://claw.asiainfo.tech
       # ClawHub one-click edit key validation

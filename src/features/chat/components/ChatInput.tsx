@@ -43,6 +43,7 @@ const ChatInput = ({
   selectedSkills,
   skillOptions = [],
   fileOptions = [],
+  addFileRequest,
   prefillText,
   prefillVersion,
   onChangeModel,
@@ -67,6 +68,15 @@ const ChatInput = ({
   const [skillQuery, setSkillQuery] = useState("");
   const [fileQuery, setFileQuery] = useState("");
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
+  useEffect(() => {
+    const requestedPath = addFileRequest?.path?.trim();
+    if (!requestedPath) return;
+    const normalizedPath = requestedPath.startsWith("/") ? requestedPath : `/${requestedPath}`;
+    setSelectedFilePaths((current) =>
+      current.includes(normalizedPath) ? current : [...current, normalizedPath]
+    );
+    textAreaRef.current?.focus();
+  }, [addFileRequest]);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
   const inputBaseHeight = 50;

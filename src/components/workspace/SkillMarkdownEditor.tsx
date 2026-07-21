@@ -20,6 +20,7 @@ type SkillMarkdownEditorProps = {
   activeFile: string;
   code: string;
   onChangeCode: (nextCode: string) => void;
+  onParseErrorChange?: (message: string) => void;
 };
 
 type SkillFrontmatter = {
@@ -96,7 +97,7 @@ const composeSkillMarkdown = (frontmatter: SkillFrontmatter, body: string) => {
   return `---\n${yamlText}\n---\n\n${normalizedBody}`;
 };
 
-const SkillMarkdownEditor = ({ activeFile, code, onChangeCode }: SkillMarkdownEditorProps) => {
+const SkillMarkdownEditor = ({ activeFile, code, onChangeCode, onParseErrorChange }: SkillMarkdownEditorProps) => {
   const fallbackName = useMemo(() => deriveSkillNameFromPath(activeFile), [activeFile]);
   const parsed = useMemo(() => parseSkillMarkdown(code, fallbackName), [code, fallbackName]);
 
@@ -107,6 +108,10 @@ const SkillMarkdownEditor = ({ activeFile, code, onChangeCode }: SkillMarkdownEd
     setFrontmatter(parsed.frontmatter);
     setBody(parsed.body);
   }, [parsed.body, parsed.frontmatter]);
+
+  useEffect(() => {
+    onParseErrorChange?.(parsed.parseError);
+  }, [onParseErrorChange, parsed.parseError]);
 
   const updateAndEmit = (nextFrontmatter: SkillFrontmatter, nextBody: string) => {
     setFrontmatter(nextFrontmatter);
@@ -139,11 +144,6 @@ const SkillMarkdownEditor = ({ activeFile, code, onChangeCode }: SkillMarkdownEd
             <AccordionIcon />
           </AccordionButton>
           <AccordionPanel pt={1} pb={3}>
-            {parsed.parseError ? (
-              <Text fontSize="xs" color="orange.600" mb={2}>
-                {parsed.parseError}
-              </Text>
-            ) : null}
             <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
               <FormControl>
                 <FormLabel fontSize="xs" color="var(--ws-text-subtle)" mb={1}>

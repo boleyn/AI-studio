@@ -58,6 +58,11 @@ import { notifyFileUpdated } from 'src/utils/fileUpdateNotifier.js'
 import { truncate } from 'src/utils/format.js'
 import { getFsImplementation, getVirtualProjectRoot } from 'src/utils/fsOperations.js'
 import { prepareAgentSandboxWorkspace } from 'src/runtime/agentSandboxWorkspace.js'
+import {
+  applySandboxWorkspaceSnapshot,
+  collectSandboxWorkspaceSnapshot,
+  type SandboxWorkspaceSnapshot,
+} from 'src/runtime/agentSandboxSync.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { expandPath } from 'src/utils/path.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
@@ -124,6 +129,7 @@ const EOL = '\n'
 const PROGRESS_THRESHOLD_MS = 2000 // Show progress after 2 seconds
 // In assistant mode, blocking bash auto-backgrounds after this many ms in the main agent
 const ASSISTANT_BLOCKING_BUDGET_MS = 15_000
+const AGENT_SANDBOX_PROTOCOL_VERSION = 1
 
 // Search commands for collapsible display (grep, find, etc.)
 const BASH_SEARCH_COMMANDS = new Set([
@@ -272,29 +278,9 @@ function commandReferencesDisallowedPath(command: string): string | null {
   return null
 }
 
-function rewriteVirtualAbsolutePathsInCommand(
-  command: string,
-  workspaceRoot: string,
-): string {
-  const tokens = tokenizeShellLike(command.trim())
-  if (tokens.length === 0) return command
-  const toWorkspacePath = (virtualPath: string): string => {
-    const relative = virtualPath.replace(/^\/+/, '')
-    return path.join(workspaceRoot, relative)
-  }
-  return tokens
-    .map(token => {
-      const t = token.trim()
-      if (!t) return token
-      if (isVirtualAbsolutePathToken(t)) return toWorkspacePath(t)
-      return token
-    })
-    .join(' ')
-}
-
 async function executeInHostShellFromVirtualWorkspace(
   command: string,
-  cwd: string,
+  cwdRelative: string,
   workspaceRoot: string,
   timeoutMs: number,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -310,14 +296,18 @@ async function executeInHostShellFromVirtualWorkspace(
     headers['x-fastgpt-exec-token'] = sandboxExecToken
   }
 
+  const snapshot = await collectSandboxWorkspaceSnapshot(workspaceRoot)
+
   const response = await fetch(sandboxExecUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       command,
-      cwd,
+      cwdRelative,
       workspaceKey,
       timeoutMs,
+      protocolVersion: AGENT_SANDBOX_PROTOCOL_VERSION,
+      snapshot,
     }),
   })
 
@@ -336,7 +326,23 @@ async function executeInHostShellFromVirtualWorkspace(
     code?: unknown
     stdout?: unknown
     stderr?: unknown
+    protocolVersion?: unknown
+    snapshot?: unknown
   }
+  if (
+    data.protocolVersion !== AGENT_SANDBOX_PROTOCOL_VERSION ||
+    !data.snapshot ||
+    typeof data.snapshot !== 'object'
+  ) {
+    throw new Error(
+      'Agent sandbox protocol mismatch. Rebuild/restart the agent-sandbox service.',
+    )
+  }
+  await applySandboxWorkspaceSnapshot(
+    workspaceRoot,
+    data.snapshot as SandboxWorkspaceSnapshot,
+    { preserveExcludedPaths: true },
+  )
   return {
     code:
       typeof data.code === 'number' && Number.isFinite(data.code)
@@ -417,18 +423,11 @@ async function runVirtualBashCommand(
       }
     }
 
-    const rewrittenCommand = rewriteVirtualAbsolutePathsInCommand(
-      command,
-      path.posix.join('/workspace', workspaceIdentity),
-    )
-    const remoteCwd = path.posix.join(
-      '/workspace',
-      workspaceIdentity,
-      path.relative(prepared.workspaceRoot, hostCwd).replace(/\\/g, '/') || '.',
-    )
+    const remoteCwdRelative =
+      path.relative(prepared.workspaceRoot, hostCwd).replace(/\\/g, '/') || '.'
     const result = await executeInHostShellFromVirtualWorkspace(
-      rewrittenCommand,
-      remoteCwd,
+      command,
+      remoteCwdRelative,
       prepared.workspaceRoot,
       timeoutMs,
     )

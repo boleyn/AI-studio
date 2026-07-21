@@ -33,6 +33,7 @@ type WorkspaceShellProps = {
   workspaceMode?: "project" | "skills";
   onPersistFiles?: (files: Record<string, { code: string }>) => Promise<void>;
   filePathFilter?: (path: string) => boolean;
+  onAddFileToChat?: (path: string) => void;
   defaultFolderPath?: string;
   saveStatus?: SaveStatus;
   onManualPreview?: () => void;
@@ -128,6 +129,7 @@ const WorkspaceShell = ({
   workspaceMode = "project",
   onPersistFiles,
   filePathFilter,
+  onAddFileToChat,
   defaultFolderPath,
   saveStatus = "idle",
   onManualPreview,
@@ -154,6 +156,7 @@ const WorkspaceShell = ({
   const previewLayerRef = useRef<HTMLDivElement | null>(null);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogItem[]>([]);
+  const [skillFrontmatterError, setSkillFrontmatterError] = useState("");
   const lastConsoleCountRef = useRef(0);
   const isSkillsMode = workspaceMode === "skills";
 
@@ -497,6 +500,7 @@ const WorkspaceShell = ({
               workspaceMode={workspaceMode}
               onPersistFiles={onPersistFiles}
               filePathFilter={filePathFilter}
+              onAddFileToChat={onAddFileToChat}
               defaultFolderPath={defaultFolderPath}
             />
             <Flex direction="column" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -679,6 +683,21 @@ const WorkspaceShell = ({
                               最近更新时间：{skillsValidationLog.updatedAt}
                             </Text>
                           ) : null}
+                          {skillFrontmatterError ? (
+                            <Flex
+                              align="flex-start"
+                              gap={2}
+                              px={2}
+                              py={1.5}
+                              borderRadius="8px"
+                              border="1px solid rgba(239,68,68,0.22)"
+                              bg="rgba(239,68,68,0.08)"
+                            >
+                              <Text fontSize="12px" color="#b91c1c" whiteSpace="pre-wrap" flex={1}>
+                                [frontmatter] {skillFrontmatterError}
+                              </Text>
+                            </Flex>
+                          ) : null}
                         </Flex>
                       ) : runtimeLogs.length === 0 ? (
                         <Text fontSize="12px" color="#64748b">
@@ -771,6 +790,7 @@ const WorkspaceShell = ({
                         <SkillMarkdownEditor
                           activeFile={activeFile}
                           code={activeFileCode}
+                          onParseErrorChange={setSkillFrontmatterError}
                           onChangeCode={(nextCode) => {
                             if (!activeFile) return;
                             sandpack.updateFile(activeFile, nextCode, true);

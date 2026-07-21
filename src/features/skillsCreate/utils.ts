@@ -82,6 +82,29 @@ export const normalizeSkillFiles = (rawFiles: unknown): FileMap => {
   return next;
 };
 
+export const normalizeAgentSkillFiles = (rawFiles: unknown, currentFiles: FileMap): FileMap => {
+  if (!rawFiles || typeof rawFiles !== "object") return {};
+  const skillRoot = Object.keys(currentFiles)
+    .map((path) => path.match(/^(\/[^/]+)\/SKILL\.md$/i)?.[1] || "")
+    .find(Boolean);
+  if (!skillRoot) return normalizeSkillFiles(rawFiles);
+
+  const skillName = skillRoot.slice(1);
+  const normalizedInput = Object.fromEntries(
+    Object.entries(rawFiles as Record<string, unknown>).map(([rawPath, value]) => {
+      const path = rawPath.trim().replace(/\\/g, "/");
+      if (path.startsWith(`/skills/${skillName}/`)) {
+        return [`${skillRoot}/${path.slice(`/skills/${skillName}/`.length)}`, value];
+      }
+      if (path === "/SKILL.md" || path === "/_meta.json" || path.startsWith("/scripts/")) {
+        return [`${skillRoot}${path}`, value];
+      }
+      return [path, value];
+    })
+  );
+  return normalizeSkillFiles(normalizedInput);
+};
+
 export const isSameFileMap = (a: FileMap, b: FileMap) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);

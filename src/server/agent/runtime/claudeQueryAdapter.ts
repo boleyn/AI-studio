@@ -3,8 +3,6 @@ import type { SdkMessage } from "@shared/chat/sdkMessages";
 import { createSdkMessage, sdkContentToText } from "@shared/chat/sdkMessages";
 import type { SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { FsOperations } from "../utils/fsOperations";
@@ -16,6 +14,7 @@ import { runQueryEngineShadowProbe } from "./queryEngineShadowProbe";
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from "../../builtin-tools/tools/AgentTool/constants";
 import { registerPendingConversationInteraction } from "@server/chat/activeRuns";
 import { getContextWindowForModel } from "../utils/context";
+import { collectSystemSkillFiles, excludeProjectOverrides } from "./runtimeProjectFiles";
 
 type RunClaudeQueryAdapterInput = {
   token: string;
@@ -216,6 +215,11 @@ const normalizeProjectFilePath = (filePath: string): string => {
 const isExportableRuntimeProjectPath = (filePath: string): boolean => {
   const normalized = normalizeProjectFilePath(filePath);
   const segments = normalized.split("/").filter(Boolean);
+  const topLevel = segments[0]?.toLowerCase();
+  // These directories are runtime mounts, not project output.  In particular,
+  // exporting /skills used to leak built-in skills into the user's file tree,
+  // while /workspace was created by the legacy sandbox cwd implementation.
+  if (topLevel === "skills" || topLevel === "workspace") return false;
   if (segments.some((segment) => segment.startsWith("."))) return false;
   return true;
 };
@@ -239,7 +243,9 @@ const diffProjectFiles = (
   const changed: Record<string, { code: string }> = {};
   for (const [rawPath, file] of Object.entries(after)) {
     const normalizedPath = normalizeProjectFilePath(rawPath);
-    if (!isExportableRuntimeProjectPath(normalizedPath)) continue;
+    // User skill workspaces intentionally store their editable files under /skills/<slug>.
+    // Keep blocking unrelated bundled skills, but allow paths that were part of the input.
+    if (!isExportableRuntimeProjectPath(normalizedPath) && !beforeMap.has(normalizedPath)) continue;
     const nextCode = file.code;
     if (beforeMap.get(normalizedPath) === nextCode) continue;
     if (!beforeMap.has(normalizedPath) && ignoredMap.get(normalizedPath) === nextCode) continue;
@@ -248,65 +254,25 @@ const diffProjectFiles = (
   return changed;
 };
 
-const collectSystemSkillFiles = (systemSkillsRoot: string): ProjectFilesInput => {
-  const normalizedRoot = path.resolve(systemSkillsRoot);
-  if (!existsSync(normalizedRoot)) return {};
-  let rootStats;
-  try {
-    rootStats = statSync(normalizedRoot);
-  } catch {
-    return {};
-  }
-  if (!rootStats.isDirectory()) return {};
-
-  const files: ProjectFilesInput = {};
-  const walk = (currentDir: string) => {
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(currentDir, { withFileTypes: true }) as Dirent[];
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const relative = path.relative(normalizedRoot, fullPath).replace(/\\/g, "/");
-      if (!relative || relative.startsWith("..")) continue;
-      let code = "";
-      try {
-        code = readFileSync(fullPath, "utf8");
-      } catch {
-        continue;
-      }
-      files[`/skills/${relative}`] = { code };
-    }
-  };
-
-  walk(normalizedRoot);
-  return files;
-};
-
-
 const buildProjectSandboxOverlay = async ({
   baseCwd,
   workspaceIdentity,
   hostProjectRoot,
   projectFiles,
+  runtimeFiles,
 }: {
   baseCwd: string;
   workspaceIdentity: string;
   hostProjectRoot: string;
   projectFiles?: ProjectFilesInput;
+  runtimeFiles?: ProjectFilesInput;
 }): Promise<{ workspaceRoot: string; scopedFs: FsOperations; persistToS3: () => Promise<void> }> => {
   const prepared = await prepareAgentSandboxWorkspace({
     baseCwd,
     workspaceIdentity,
     hostProjectRoot,
     projectFiles,
+    runtimeFiles,
   });
   return {
     workspaceRoot: prepared.workspaceRoot,
@@ -445,7 +411,7 @@ const extractPrompt = (messages: ChatCompletionMessageParam[]): string => {
   const last = userMessages[userMessages.length - 1];
   if (!last) return "";
   const content = (last as { content?: unknown }).content;
-  return typeof content === "string" ? content : sdkContentToText(content);
+  return normalizeMessageContent(content);
 };
 
 const normalizeMessageContent = (content: unknown): string => {
@@ -739,6 +705,26 @@ const buildAppendSystemPrompt = (input: RunClaudeQueryAdapterInput): string | un
   if (input.selectedSkills.length > 0) {
     parts.push(`Selected runtime skills: ${input.selectedSkills.join(", ")}`);
   }
+  const lastUserMessage = [...input.messages].reverse().find((item) => item.role === "user");
+  const currentAttachments = Array.isArray((lastUserMessage as { content?: unknown } | undefined)?.content)
+    ? ((lastUserMessage as { content?: unknown }).content as unknown[])
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+        .filter((item) => item.type === "attachment")
+        .map((item) => {
+          const name = typeof item.name === "string" ? item.name.trim() : "file";
+          const filePath = typeof item.storage_path === "string" ? item.storage_path.trim() : "";
+          return filePath ? `${name}: ${filePath}` : name;
+        })
+    : [];
+  if (currentAttachments.length > 0) {
+    parts.push(
+      [
+        "Attachments in the current user turn:",
+        ...currentAttachments,
+        'When the user says "this file" or equivalent, use the attachment from this current turn; do not ask them to choose among older workspace files.',
+      ].join("\n")
+    );
+  }
   if (input.projectFiles && Object.keys(input.projectFiles).length > 0) {
     const fileNames = Object.keys(input.projectFiles).slice(0, 80);
     parts.push(`Project files in scope (${fileNames.length}):\n${fileNames.join("\n")}`);
@@ -1000,11 +986,16 @@ const tryRunQueryEngine = async (
   const hasVirtualProjectFiles = Boolean(input.projectFiles && Object.keys(input.projectFiles).length > 0);
   const virtualProjectRoot = path.resolve(baseCwd, ".aistudio", "sandboxes", input.token || "project");
   const systemSkillFiles = collectSystemSkillFiles(path.resolve(process.cwd(), "skills"));
+  const runtimeSkillFiles = excludeProjectOverrides(systemSkillFiles, input.projectFiles);
+  const inputProjectPathSet = new Set(
+    Object.keys(input.projectFiles || {}).map((filePath) => normalizeProjectFilePath(filePath))
+  );
   const sandboxWorkspace = await buildProjectSandboxOverlay({
     baseCwd,
     workspaceIdentity: input.token || "project",
     hostProjectRoot: path.resolve(process.cwd()),
     projectFiles: input.projectFiles,
+    runtimeFiles: runtimeSkillFiles,
   });
   const scopedFs = sandboxWorkspace.scopedFs;
 
@@ -1408,7 +1399,10 @@ const tryRunQueryEngine = async (
                 const latestCode = scopedFs.readFileSync(absoluteFilePath, { encoding: "utf8" });
                 if (typeof latestCode === "string") {
                   const displayPath = toVirtualDisplayFilePath(virtualProjectRoot, absoluteFilePath);
-                  if (!isExportableRuntimeProjectPath(displayPath)) {
+                  if (
+                    !isExportableRuntimeProjectPath(displayPath) &&
+                    !inputProjectPathSet.has(normalizeProjectFilePath(displayPath))
+                  ) {
                     continue;
                   }
                   emitEvent("stream_event", {

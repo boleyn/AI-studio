@@ -29,6 +29,7 @@ const ChatPanel = dynamic(() => import("../features/chat/components/ChatPanel"),
 });
 import WorkspaceShell from "./WorkspaceShell";
 import type { SaveStatus } from "./CodeChangeListener";
+import type { UploadedFileArtifact } from "../features/chat/types/fileArtifact";
 import CodeChangeListener from "./CodeChangeListener";
 import SandpackCompileListener from "./SandpackCompileListener";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
@@ -148,6 +149,11 @@ const isRuntimeHiddenPath = (filePath: string): boolean => {
   const normalizedPath = (filePath || "").trim().replace(/\\/g, "/");
   if (!normalizedPath.startsWith("/")) return false;
   const segments = normalizedPath.split("/").filter(Boolean);
+  const topLevel = segments[0]?.toLowerCase();
+  if (topLevel === "skills" || topLevel === "workspace") return true;
+  // Uploaded files intentionally live in /.files and are user-visible. Other
+  // dot-directories remain runtime/configuration details.
+  if (topLevel === ".files") return false;
   return segments.some((segment) => segment.startsWith("."));
 };
 
@@ -221,6 +227,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const [files, setFiles] = useState<SandpackFiles | null>(
     initialNormalizedFiles
   );
+  const [attachmentPaths, setAttachmentPaths] = useState<string[]>([]);
+  const [addFileRequest, setAddFileRequest] = useState<{ path: string; version: number } | null>(null);
   const latestFilesRef = useRef<SandpackFiles | null>(initialNormalizedFiles);
   const [dependencies, setDependencies] = useState<Record<string, string>>(
     initialProject?.dependencies || {}
@@ -311,12 +319,12 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
   const sandpackFiles = useMemo<SandpackFiles>(() => files || {}, [files]);
   const hasRealFiles = useMemo(() => hasUserVisibleFiles(sandpackFiles), [sandpackFiles]);
   const runtimeTransientPaths = useMemo(() => {
-    const paths = [EMPTY_PROJECT_PLACEHOLDER_PATH];
+    const paths = [EMPTY_PROJECT_PLACEHOLDER_PATH, ...attachmentPaths];
     if (!hasRealFiles) {
       paths.push("/package.json");
     }
     return paths;
-  }, [hasRealFiles]);
+  }, [attachmentPaths, hasRealFiles]);
   const shouldShowPath = useCallback(
     (filePath: string) => !runtimeTransientPaths.includes(filePath) && !isRuntimeHiddenPath(filePath),
     [runtimeTransientPaths]
@@ -562,6 +570,33 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     }
   }, [files]);
 
+  const handleAttachmentsAvailable = useCallback((artifacts: UploadedFileArtifact[]) => {
+    const attachmentFiles: SandpackFiles = {};
+    const nextPaths: string[] = [];
+    for (const artifact of artifacts) {
+      const fileName = (artifact.name || "file").replace(/[\\/]/g, "_");
+      const displayPath = `/.files/${fileName}`;
+      nextPaths.push(displayPath);
+      attachmentFiles[displayPath] = {
+        // Sandpack stores text only. Keep a visible, non-persisted descriptor;
+        // the real bytes remain available to the agent at the same path.
+        code: [
+          `Uploaded attachment: ${artifact.name}`,
+          `Type: ${artifact.type || "application/octet-stream"}`,
+          `Size: ${artifact.size || 0} bytes`,
+          artifact.previewUrl ? `Preview: ${artifact.previewUrl}` : "",
+          artifact.downloadUrl ? `Download: ${artifact.downloadUrl}` : "",
+        ].filter(Boolean).join("\n"),
+      };
+    }
+    if (nextPaths.length === 0) return;
+    setAttachmentPaths((current) => Array.from(new Set([...current, ...nextPaths])));
+    const merged = { ...(latestFilesRef.current || files || {}), ...attachmentFiles };
+    latestFilesRef.current = merged;
+    setFiles(merged);
+    setChatFileOptions(toSortedFilePaths(merged).filter((filePath) => !isRuntimeHiddenPath(filePath)));
+  }, [files]);
+
   const handleAgentFilesUpdated = useCallback((updated: Record<string, { code: string }>) => {
     const baseFiles = normalizeFiles(latestFilesRef.current || files || {}) || {};
     const normalizedUpdated = normalizeFiles(updated) || {};
@@ -782,6 +817,8 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
               <ChatPanel
                 token={token}
                 onFilesUpdated={handleAgentFilesUpdated}
+                onAttachmentsAvailable={handleAttachmentsAvailable}
+                addFileRequest={addFileRequest}
                 height="100%"
                 openSkillsSignal={openSkillsSignal}
                 fileOptions={chatFileOptions}
@@ -826,6 +863,9 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
                 }
               }}
               filePathFilter={shouldShowPath}
+              onAddFileToChat={(filePath) =>
+                setAddFileRequest((current) => ({ path: filePath, version: (current?.version || 0) + 1 }))
+              }
               saveStatus={saveStatus}
               onManualPreview={() => setActiveView("preview")}
               onManualSave={handleManualSave}

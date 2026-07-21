@@ -123,6 +123,7 @@ const ChatPanelView = () => {
           selectedSkills={context.selectedSkills}
           skillOptions={context.skillOptions}
           fileOptions={context.fileOptions}
+          addFileRequest={context.addFileRequest}
           onChangeModel={context.onChangeModel}
           onChangeMode={context.onChangeMode}
           onChangeThinkingEnabled={context.onChangeThinkingEnabled}

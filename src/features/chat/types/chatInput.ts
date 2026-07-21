@@ -68,6 +68,7 @@ export interface ChatInputProps {
   fileOptions?: string[];
   prefillText?: string;
   prefillVersion?: number;
+  addFileRequest?: { path: string; version: number } | null;
   onChangeModel: (model: string) => void;
   onChangeMode?: (mode: "default" | "plan") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;

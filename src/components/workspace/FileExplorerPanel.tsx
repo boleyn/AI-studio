@@ -164,6 +164,7 @@ type FileExplorerPanelProps = {
   filePathFilter?: (path: string) => boolean;
   defaultFolderPath?: string;
   workspaceMode?: "project" | "skills";
+  onAddFileToChat?: (path: string) => void;
 };
 
 const FileExplorerPanel = ({
@@ -173,6 +174,7 @@ const FileExplorerPanel = ({
   filePathFilter,
   defaultFolderPath = "/",
   workspaceMode = "project",
+  onAddFileToChat,
 }: FileExplorerPanelProps) => {
   const { sandpack } = useSandpack();
   const toast = useToast();
@@ -964,6 +966,7 @@ const FileExplorerPanel = ({
           onUploadAt={openUploadAt}
           onCopyPath={handleCopyPath}
           onDownloadFile={handleDownloadFile}
+          onAddFileToChat={workspaceMode === "project" ? onAddFileToChat : undefined}
         />
       </Box>
     </Flex>

@@ -150,4 +150,63 @@ describe('agentSandboxWorkspace S3 persistence', () => {
       fs.rmSync(baseCwd, { recursive: true, force: true })
     }
   })
+
+  test('refreshes runtime files on every turn and excludes them from S3', async () => {
+    const baseCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aistudio-runtime-files-'))
+    const workspaceIdentity = 'runtime-files-demo'
+
+    try {
+      const first = await prepareAgentSandboxWorkspace({
+        baseCwd,
+        workspaceIdentity,
+        hostProjectRoot: '/virtual/project',
+        projectFiles: {
+          '/skills/demo/SKILL.md': { code: 'stale skill\n' },
+          '/src/keep.ts': { code: 'keep\n' },
+        },
+      })
+      await first.persistToS3()
+      const persistedKeepKey = [...s3MockState.objects.keys()].find(key =>
+        key.endsWith('/files/src/keep.ts'),
+      )
+      expect(persistedKeepKey).toBeDefined()
+      const staleRuntimeKey = persistedKeepKey!.replace(
+        '/files/src/keep.ts',
+        '/files/skills/demo/SKILL.md',
+      )
+      expect(
+        [...s3MockState.objects.keys()].some(key =>
+          key.endsWith('/files/skills/demo/SKILL.md'),
+        ),
+      ).toBe(false)
+      // Simulate a stale object written by the pre-fix implementation.
+      s3MockState.objects.set(staleRuntimeKey, Buffer.from('stale skill\n'))
+
+      const second = await prepareAgentSandboxWorkspace({
+        baseCwd,
+        workspaceIdentity,
+        hostProjectRoot: '/virtual/project',
+        runtimeFiles: {
+          '/skills/demo/SKILL.md': { code: 'fresh runtime skill\n' },
+        },
+      })
+
+      expect(
+        second.scopedFs.readFileSync('/skills/demo/SKILL.md', {
+          encoding: 'utf8',
+        }),
+      ).toBe('fresh runtime skill\n')
+
+      await second.persistToS3()
+      const objectKeys = [...s3MockState.objects.keys()]
+      expect(
+        objectKeys.some(key => key.endsWith('/files/skills/demo/SKILL.md')),
+      ).toBe(false)
+      expect(objectKeys.some(key => key.endsWith('/files/src/keep.ts'))).toBe(
+        true,
+      )
+    } finally {
+      fs.rmSync(baseCwd, { recursive: true, force: true })
+    }
+  })
 })

@@ -38,6 +38,7 @@ type FileTreeProps = {
   onUploadAt: (folderPath: string) => void;
   onCopyPath: (path: string) => void;
   onDownloadFile: (path: string, name: string) => void;
+  onAddFileToChat?: (path: string) => void;
 };
 
 const FileTree = ({
@@ -70,6 +71,7 @@ const FileTree = ({
   onUploadAt,
   onCopyPath,
   onDownloadFile,
+  onAddFileToChat,
 }: FileTreeProps) => {
   const styles = useFileExplorerTheme();
 
@@ -146,6 +148,9 @@ const FileTree = ({
           menuWidth={styles.sizes.menuListW}
           actions={[
             { label: "在编辑器中打开", onClick: () => onSelectFile(fileNode.path) },
+            ...(onAddFileToChat
+              ? [{ label: "添加到对话中", onClick: () => onAddFileToChat(fileNode.path) }]
+              : []),
             { label: "重命名", onClick: () => onStartRename(fileNode.path, "file") },
             { label: "删除", onClick: () => void onDeleteFile(fileNode.path) },
             { label: "复制路径", onClick: () => onCopyPath(fileNode.path) },

@@ -19,6 +19,8 @@ const normalizeProjectFilePath = (filePath: string): string => {
 const isExportableRuntimeProjectPath = (filePath: string): boolean => {
   const normalized = normalizeProjectFilePath(filePath);
   const segments = normalized.split("/").filter(Boolean);
+  const topLevel = segments[0]?.toLowerCase();
+  if (topLevel === "skills" || topLevel === "workspace") return false;
   if (segments.some((segment) => segment.startsWith("."))) return false;
   return true;
 };
