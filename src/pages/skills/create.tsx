@@ -24,7 +24,10 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-import CodeChangeListener, { type SaveStatus } from "@/components/CodeChangeListener";
+import CodeChangeListener, {
+  type CodeChangeListenerHandle,
+  type SaveStatus,
+} from "@/components/CodeChangeListener";
 import WorkspaceShell from "@/components/WorkspaceShell";
 import TopBar from "@/components/TopBar";
 import { PublishIcon } from "@/components/common/Icon";
@@ -109,6 +112,7 @@ const SkillCreatePage = () => {
 
   const latestFilesRef = useRef<FileMap>({});
   const persistedFilesRef = useRef<FileMap>({});
+  const codeChangeListenerRef = useRef<CodeChangeListenerHandle | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
@@ -841,12 +845,10 @@ const SkillCreatePage = () => {
   }, [isPublishingToHub, projectToken, publishDraft, skillId, toast, workspaceId]);
 
   const downloadSkillZip = useCallback(async () => {
-    // `files` is intentionally not refreshed for edits within the same skill root,
-    // because rebinding Sandpack files resets the active editor tab. Always export
-    // from the live editor snapshot instead of that bootstrap-time state.
-    const filesToDownload = normalizeSkillFiles(latestFilesRef.current);
-    const entries = Object.entries(filesToDownload).filter(([path]) => skillFilePathFilter(path));
-    if (entries.length === 0 || typeof window === "undefined") {
+    const liveEditorFiles = codeChangeListenerRef.current?.getFiles();
+    const filesToSave = normalizeSkillFiles(liveEditorFiles || latestFilesRef.current);
+    latestFilesRef.current = filesToSave;
+    if (Object.keys(filesToSave).length === 0 || typeof window === "undefined") {
       toast({
         title: "暂无可导出的 skill 文件",
         status: "warning",
@@ -855,9 +857,28 @@ const SkillCreatePage = () => {
       return;
     }
     try {
-      // Make the download button a persistence boundary as well, so the ZIP and
-      // the server-side workspace cannot silently diverge.
-      await persistSkillFiles(filesToDownload);
+      // 下载以服务端持久化结果为准：先保存，再重新读取服务器中的最新文件。
+      await persistSkillFiles(filesToSave);
+      const response = await fetch(`/api/skills/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+        method: "GET",
+        headers: {
+          ...withAuthHeaders(),
+          "Cache-Control": "no-cache",
+        },
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; files?: unknown };
+      if (!response.ok) {
+        throw new Error(payload.error || "读取服务器最新 skill 文件失败");
+      }
+      const serverFiles = normalizeSkillFiles(payload.files);
+      const entries = Object.entries(serverFiles).filter(([path]) => skillFilePathFilter(path));
+      if (entries.length === 0) {
+        throw new Error("服务器上暂无可导出的 skill 文件");
+      }
+      persistedFilesRef.current = serverFiles;
+      latestFilesRef.current = serverFiles;
+
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
       entries.forEach(([path, file]) => {
@@ -881,7 +902,7 @@ const SkillCreatePage = () => {
         duration: 2400,
       });
     }
-  }, [persistSkillFiles, publishDraft.slug, skillFilePathFilter, skillName, toast]);
+  }, [persistSkillFiles, publishDraft.slug, skillFilePathFilter, skillName, toast, workspaceId]);
 
   return (
     <Box
@@ -945,6 +966,7 @@ const SkillCreatePage = () => {
             options={{ autorun: false, experimental_enableServiceWorker: true }}
           >
             <CodeChangeListener
+              ref={codeChangeListenerRef}
               token={workspaceId}
               template="skills"
               onSaveStatusChange={setSaveStatus}
@@ -1013,9 +1035,12 @@ const SkillCreatePage = () => {
                 saveStatus={saveStatus}
                 onManualPreview={() => setActiveView("preview")}
                 onManualSave={() => {
-                  if (isWorkspaceReady && latestFilesRef.current) {
+                  if (isWorkspaceReady) {
+                    const liveEditorFiles = codeChangeListenerRef.current?.getFiles();
+                    const filesToSave = normalizeSkillFiles(liveEditorFiles || latestFilesRef.current);
+                    latestFilesRef.current = filesToSave;
                     setSaveStatus("saving");
-                    void persistSkillFiles(latestFilesRef.current)
+                    void persistSkillFiles(filesToSave)
                       .then(() => {
                         setSaveStatus("saved");
                         toast({

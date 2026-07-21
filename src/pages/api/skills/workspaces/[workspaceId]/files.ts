@@ -168,6 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       projectToken || undefined,
       skillId || undefined
     );
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.status(200).json({
       workspaceId: workspace.id,
       projectToken: workspace.projectToken,

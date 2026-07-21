@@ -6,6 +6,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export type CodeChangeListenerHandle = {
   save: () => Promise<void>;
+  getFiles: () => Record<string, { code: string }>;
 };
 
 type CodeChangeListenerProps = {
@@ -107,7 +108,8 @@ const CodeChangeListener = forwardRef<CodeChangeListenerHandle, CodeChangeListen
   // 暴露手动保存方法
   useImperativeHandle(ref, () => ({
     save: saveProject,
-  }), [saveProject]);
+    getFiles: () => sanitizeFiles(sandpack.files),
+  }), [sandpack.files, saveProject, sanitizeFiles]);
 
   const debouncedSave = useDebounce(saveProject, autoSaveDelay);
 
