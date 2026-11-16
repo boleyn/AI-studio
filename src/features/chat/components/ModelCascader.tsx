@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   Divider,
   Flex,
   IconButton,
@@ -38,6 +39,7 @@ const resolveModelIcon = (option?: ChatInputModelOption) => {
 
 const ModelCascader = ({
   disabled,
+  showLabel = false,
   loading,
   model,
   modelOptions,
@@ -45,6 +47,7 @@ const ModelCascader = ({
   onChangeModel,
 }: {
   disabled: boolean;
+  showLabel?: boolean;
   loading?: boolean;
   model: string;
   modelOptions: ChatInputModelOption[];
@@ -94,6 +97,14 @@ const ModelCascader = ({
             label={`当前模型: ${selectedModelLabel}`}
             openDelay={180}
           >
+            {showLabel ? (
+              <Button size="sm" variant="ghost" fontWeight="500" maxW={{ base: "110px", md: "180px" }}
+                aria-label={t("chat:tool_call_model", { defaultValue: "工具调用模型" })}
+                isDisabled={disabled || modelOptions.length === 0}>
+                <Text isTruncated>{selectedModelLabel}</Text>
+                <Box as="span" ml={1} aria-hidden="true">⌄</Box>
+              </Button>
+            ) : (
             <IconButton
               _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
               aria-label={t("chat:tool_call_model", { defaultValue: "工具调用模型" })}
@@ -114,6 +125,7 @@ const ModelCascader = ({
               minW="30px"
               variant="ghost"
             />
+            )}
           </MyTooltip>
         </Box>
       </PopoverTrigger>

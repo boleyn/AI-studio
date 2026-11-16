@@ -31,6 +31,7 @@ type LocalInputFile = ChatInputFile & {
 const ChatInput = ({
   placeholder,
   draftStorageKey,
+  workspaceLayout = false,
   isSending,
   model,
   modelOptions,
@@ -494,7 +495,7 @@ const ChatInput = ({
             : "0px 5px 16px -4px rgba(19, 51, 107, 0.08)"
         }
         direction="column"
-        minH="116px"
+        minH={workspaceLayout ? "94px" : "116px"}
         overflow="visible"
       >
         {previewFiles.length > 0 ? (
@@ -812,7 +813,7 @@ const ChatInput = ({
         </Flex>
 
         <Flex align="center" h="44px" justify="space-between" mt="auto" pb={2} pl={3} pr={3}>
-          <Flex align="center" gap={2} minW={0}>
+          <Flex align="center" gap={2} minW={0} flex={workspaceLayout ? 1 : undefined}>
             <Input
               ref={fileInputRef}
               display="none"
@@ -829,7 +830,9 @@ const ChatInput = ({
               variant="ghost"
               borderRadius="full"
             />
+            {workspaceLayout && <Box flex={1} />}
             <ModelCascader
+              showLabel={workspaceLayout}
               disabled={Boolean(modelLoading || isSending || isSubmitting)}
               loading={modelLoading}
               model={model}

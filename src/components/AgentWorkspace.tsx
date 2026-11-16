@@ -785,7 +785,7 @@ export default function AgentWorkspace({
                 key={activeProject.token}
                 token={activeProject.token}
                 hideHeader
-                emptyStateTitle="今天有什么可以帮你？"
+                emptyStateTitle="我们要做什么？"
                 hideSkillsManager
                 defaultHeaderTitle={activeProject.name}
                 completionsExtraBody={completionsExtraBody}

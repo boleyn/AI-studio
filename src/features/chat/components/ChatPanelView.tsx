@@ -87,7 +87,7 @@ const ChatPanelView = () => {
           ) : context.messages.length === 0 ? (
             <Flex align="center" color="gray.500" h="full" justify="center">
               <Box textAlign="center">
-                <Text as="h1" color="gray.900" fontSize={centeredComposer ? { base: "28px", md: "38px" } : "lg"} fontWeight="600" letterSpacing="-0.025em">
+                <Text as="h1" color="gray.900" fontSize={centeredComposer ? { base: "24px", md: "26px" } : "lg"} fontWeight={centeredComposer ? "500" : "600"} letterSpacing="-0.025em">
                   {context.emptyStateTitle ||
                     context.t("chat:ready_start", { defaultValue: "准备开始" })}
                 </Text>
@@ -133,6 +133,7 @@ const ChatPanelView = () => {
         />
 
         <ChatInput
+          workspaceLayout={context.hideHeader}
           key={context.hideHeader ? context.activeConversationId ?? "new-conversation" : "composer"}
           draftStorageKey={context.hideHeader && context.activeConversationId
             ? `aistudio:draft:${context.token}:${context.activeConversationId}`
