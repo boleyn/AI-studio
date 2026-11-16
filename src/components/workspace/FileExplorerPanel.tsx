@@ -827,9 +827,6 @@ const FileExplorerPanel = ({
               _hover={{ bg: "rgba(148,163,184,0.14)", color: "var(--ws-text-main)" }}
             />
             <MenuList minW={styles.sizes.createMenuListW}>
-              {workspaceMode === "skills" ? (
-                <MenuItem onClick={() => void handleCreateSkill()}>新建 Skill</MenuItem>
-              ) : null}
               <MenuItem onClick={() => openCreateFromSelection("file")}>新建文件</MenuItem>
               <MenuItem onClick={() => openCreateFromSelection("folder")}>新建文件夹</MenuItem>
               <MenuItem

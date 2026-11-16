@@ -2,7 +2,6 @@ import { Box, Flex, Spinner, Text } from "@chakra-ui/react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import ChatHeader from "./ChatHeader";
 import ChatInput from "./ChatInput";
-import SkillsManagerModal from "./SkillsManagerModal";
 import ChatInteractionSurface from "./message/ChatInteractionSurface";
 import ChatMessageTimeline from "./message/ChatMessageTimeline";
 
@@ -133,17 +132,6 @@ const ChatPanelView = () => {
           onStop={context.onStop}
         />
       </Flex>
-
-      {!context.hideSkillsManager ? (
-        <SkillsManagerModal
-          isOpen={context.isSkillsOpen}
-          onClose={context.onCloseSkills}
-          projectToken={context.token.startsWith("skill-studio:") ? "" : context.token}
-          onFilesApplied={context.onFilesApplied}
-          onCreateViaChat={context.onCreateSkillViaChat}
-          onUseSkill={context.onUseSkill}
-        />
-      ) : null}
     </Flex>
   );
 };

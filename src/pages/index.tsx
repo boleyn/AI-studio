@@ -1,15 +1,9 @@
-import { Flex } from "@chakra-ui/react";
 import type { GetServerSideProps } from "next";
-
-import ProjectList from "../components/ProjectList";
+import AgentWorkspace from "../components/AgentWorkspace";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
 
 const HomePage = () => {
-  return (
-    <Flex direction="column" minH="100vh" bg="transparent">
-      <ProjectList />
-    </Flex>
-  );
+  return <AgentWorkspace />;
 };
 
 export default HomePage;

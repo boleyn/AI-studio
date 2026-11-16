@@ -1,4 +1,4 @@
-import { getAgentRuntimeConfig } from '@aistudio/server/agent/runtimeConfig';
+import { getAgentRuntimeConfig } from '@/agent/app';
 import {
   getChatModelProfile,
 } from '@aistudio/server/aiProxy/catalogStore';

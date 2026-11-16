@@ -29,14 +29,11 @@
       "@aistudio/*": [
         "./src/*"
       ],
+      "@agent/*": [
+        "./src/agent/*"
+      ],
       "@server/*": [
         "./src/server/*"
-      ],
-      "@claude-code-best/builtin-tools/*": [
-        "./src/server/builtin-tools/*"
-      ],
-      "src/*": [
-        "./src/server/agent/*"
       ],
       "@features/*": [
         "./src/features/*"
@@ -53,18 +50,6 @@
       ],
       "@fastgpt/web/styles/theme": [
         "./src/styles/theme.ts"
-      ],
-      "bun:bundle": [
-        "./src/server/agent/shims/bun-bundle.ts"
-      ],
-      "bun:ffi": [
-        "./src/server/agent/shims/bun-ffi.ts"
-      ],
-      "@anthropic/ink": [
-        "./src/server/agent/shims/anthropic-ink.ts"
-      ],
-      "@alcalzone/ansi-tokenize": [
-        "./vendor/claude-packages/@alcalzone/ansi-tokenize/index.d.ts"
       ]
     }
   },
@@ -72,6 +57,8 @@
     "next-env.d.ts",
     "src/pages/**/*.ts",
     "src/pages/**/*.tsx",
+    "src/agent/**/*.ts",
+    "src/agent/**/*.tsx",
     "src/server/**/*.ts",
     "src/server/**/*.tsx",
     "src/features/**/*.ts",

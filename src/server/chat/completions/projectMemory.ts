@@ -2,7 +2,7 @@
 // @ts-nocheck
 import { promises as fs } from "fs";
 import path from "path";
-import { toSafeSegment } from "@server/agent/workspace/pathUtils";
+import { toSafeSegment } from "@/agent/sandbox";
 
 export type ProjectMemoryType = "user" | "feedback" | "project" | "reference";
 

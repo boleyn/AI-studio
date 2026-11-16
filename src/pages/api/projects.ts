@@ -14,7 +14,7 @@ import {
   deleteProject as deleteProjectStorage,
   type ProjectData,
 } from "@server/projects/projectStorage";
-import { purgeAllConversations } from "@server/conversations/conversationStorage";
+import { listConversations, purgeAllConversations } from "@server/conversations/conversationStorage";
 import { requireAuth } from "@server/auth/session";
 
 type ProjectListItem = {
@@ -56,7 +56,26 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     res.setHeader("Cache-Control", "private, no-store, must-revalidate");
     try {
       const projects = await listProjects(userId);
-      res.status(200).json(projects);
+      const includeConversations =
+        req.query.includeConversations === "1" || req.query.includeConversations === "true";
+      if (!includeConversations) {
+        res.status(200).json(projects);
+        return;
+      }
+      const enriched = await Promise.all(
+        projects.map(async (project) => {
+          const conversations = await listConversations(project.token).catch(() => []);
+          return {
+            ...project,
+            conversations: conversations.map((c) => ({
+              id: c.id,
+              title: c.title,
+              updatedAt: c.updatedAt,
+            })),
+          };
+        }),
+      );
+      res.status(200).json(enriched);
     } catch (error) {
       console.error("Failed to list projects:", error);
       res.status(500).json({ error: "获取项目列表失败" });

@@ -501,6 +501,10 @@ const ChatPanel = ({
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
   onOpenWorkspaceFile,
+  externalActiveConversationId,
+  externalNewConversationSignal,
+  onConversationsChanged,
+  hideHeader = false,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -524,6 +528,10 @@ const ChatPanel = ({
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
   onOpenWorkspaceFile?: (filePath: string) => boolean;
+  externalActiveConversationId?: string;
+  externalNewConversationSignal?: number;
+  onConversationsChanged?: () => void;
+  hideHeader?: boolean;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -540,6 +548,35 @@ const ChatPanel = ({
     deleteAllConversations,
     updateConversationTitle,
   } = useConversations(token, router, { autoCreateInitialConversation });
+
+  const lastExternalConvIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!isInitialized || !externalActiveConversationId) return;
+    if (externalActiveConversationId === activeConversation?.id) return;
+    if (lastExternalConvIdRef.current === externalActiveConversationId) return;
+    lastExternalConvIdRef.current = externalActiveConversationId;
+    void loadConversation(externalActiveConversationId);
+  }, [activeConversation?.id, externalActiveConversationId, isInitialized, loadConversation]);
+
+  const lastNewConvSignalRef = useRef(externalNewConversationSignal ?? 0);
+  useEffect(() => {
+    if (!isInitialized || !externalNewConversationSignal) return;
+    if (externalNewConversationSignal === lastNewConvSignalRef.current) return;
+    lastNewConvSignalRef.current = externalNewConversationSignal;
+    void createNewConversation().then(() => {
+      onConversationsChanged?.();
+    });
+  }, [createNewConversation, externalNewConversationSignal, isInitialized, onConversationsChanged]);
+
+  const conversationsSignature = conversations.map((c) => `${c.id}:${c.title}:${c.updatedAt}`).join("|");
+  const prevConversationsSigRef = useRef("");
+  useEffect(() => {
+    if (!isInitialized) return;
+    if (prevConversationsSigRef.current && prevConversationsSigRef.current !== conversationsSignature) {
+      onConversationsChanged?.();
+    }
+    prevConversationsSigRef.current = conversationsSignature;
+  }, [conversationsSignature, isInitialized, onConversationsChanged]);
 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -2070,18 +2107,7 @@ const ChatPanel = ({
     setSelectedSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]));
   }, []);
 
-  const handleCreateSkillViaChat = useCallback(() => {
-    const projectToken = token.startsWith("skill-studio:") ? "" : token;
-    const params = new URLSearchParams();
-    const currentPath = typeof router.asPath === "string" ? router.asPath : "";
-    if (projectToken) params.set("projectToken", projectToken);
-    if (currentPath.startsWith("/") && !currentPath.startsWith("/skills/create")) {
-      params.set("returnTo", currentPath);
-    }
-    void router.push(
-      params.toString() ? `/skills/create?${params.toString()}` : "/skills/create"
-    );
-  }, [router, token]);
+  const handleCreateSkillViaChat = useCallback(() => {}, []);
   const showInitialLoading = !isInitialized && messages.length === 0;
 
   const chatPanelViewContextValue = useMemo(

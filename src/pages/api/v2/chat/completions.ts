@@ -3,7 +3,7 @@ import path from "node:path";
 import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
-import { getAgentRuntimeConfig } from "@server/agent/runtimeConfig";
+import { getAgentRuntimeConfig } from "@/agent/app";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile } from "@server/projects/projectStorage";
@@ -23,8 +23,7 @@ import {
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
 import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnectionLifecycle";
-import { runClaudeQueryAdapter } from "@server/agent/runtime/claudeQueryAdapter";
-import { resolveRuntimeStrategy } from "@server/agent/runtime/runtimeStrategy";
+import { runAgentGateway, resolveRuntimeStrategy } from "@/agent/gateway";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import {
@@ -615,7 +614,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: incomingUserMessages,
     });
 
-    const runResult = await runClaudeQueryAdapter({
+    const runResult = await runAgentGateway({
       token,
       chatId,
       selectedModel,
@@ -623,6 +622,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       historyMessages: persistedHistoryMessages,
       projectFiles: projectFilesForRun,
       permissionMode,
+      sandboxKind: req.body?.sandboxKind,
+      connector: req.body?.connector,
       messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,
       onEvent: (event, data) => {
