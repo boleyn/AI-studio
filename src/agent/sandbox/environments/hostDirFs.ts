@@ -1,7 +1,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import type { SandboxDirEntry, SandboxFileSystem } from "../types";
-import { isExportableProjectPath, isLikelyBinary, normalizeVirtualPath, resolveInsideRoot, toVirtualPath } from "../paths";
+import { isExportableProjectPath, encodeProjectFile, normalizeVirtualPath, resolveInsideRoot, toVirtualPath } from "../paths";
 
 /** 基于宿主机目录的文件系统实现（local / remote-vm 共用：remote-vm 在本地保存镜像目录）。 */
 export class HostDirFileSystem implements SandboxFileSystem {
@@ -89,8 +89,7 @@ export class HostDirFileSystem implements SandboxFileSystem {
           const st = await fsp.stat(absolute);
           if (st.size > maxFileBytes) continue;
           const buffer = await fsp.readFile(absolute);
-          if (isLikelyBinary(buffer)) continue;
-          files[virtualPath] = { code: buffer.toString("utf8") };
+          files[virtualPath] = { code: encodeProjectFile(buffer) };
         } catch {
           // 文件可能在遍历期间被删除
         }

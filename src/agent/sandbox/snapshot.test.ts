@@ -118,3 +118,22 @@ describe('agent sandbox workspace synchronization', () => {
     }
   })
 })
+
+test('exports a generated binary artifact without changing its bytes', async () => {
+  const { HostDirFileSystem } = await import('./environments/hostDirFs')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aistudio-artifact-'))
+  try {
+    // Invalid UTF-8 without a NUL byte still needs binary encoding.
+    const original = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+    fs.writeFileSync(path.join(root, 'output.jpg'), original)
+    fs.writeFileSync(path.join(root, 'summary.md'), '工作成果\n')
+
+    const exported = await new HostDirFileSystem(root).exportTextFiles()
+    const encoded = exported['/output.jpg'].code
+    expect(encoded).toStartWith('data:application/octet-stream;base64,')
+    expect(Buffer.from(encoded.split(',')[1], 'base64')).toEqual(original)
+    expect(exported['/summary.md'].code).toBe('工作成果\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

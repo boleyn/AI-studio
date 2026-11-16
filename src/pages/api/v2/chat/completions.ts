@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import "module-alias/register";
 import path from "node:path";
 import type {
@@ -6,7 +7,7 @@ import type {
 import { getAgentRuntimeConfig } from "@/agent/app";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
-import { getProject, updateFile } from "@server/projects/projectStorage";
+import { getProject, updateFile, updateBinaryFile, saveProjectArtifactVersion } from "@server/projects/projectStorage";
 import { getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
 import {
   toPublicSkillRuntimeFiles,
@@ -656,6 +657,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           )),
     };
 
+    const artifactVersion = isProjectToken && conversationId && Object.keys(updatedFiles).length > 0
+      ? randomBytes(16).toString("hex")
+      : undefined;
     if (Object.keys(updatedFiles).length > 0) {
       const assistantMessageIdForSnapshot =
         typeof runResult.assistantMessage?.uuid === "string" && runResult.assistantMessage.uuid.trim()
@@ -669,9 +673,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       if (isProjectToken) {
         await Promise.all(
-          Object.entries(updatedFiles).map(([filePath, file]) =>
-            updateFile(token, filePath, file.code)
-          )
+          Object.entries(updatedFiles).map(async ([filePath, file]) => {
+            const encoded = /^data:application\/octet-stream;base64,([A-Za-z0-9+/=]+)$/.exec(file.code);
+            const bytes = encoded ? Buffer.from(encoded[1], "base64") : null;
+            if (artifactVersion) await saveProjectArtifactVersion(token, artifactVersion, filePath, bytes ?? file.code);
+            if (bytes) return updateBinaryFile(token, filePath, bytes);
+            return updateFile(token, filePath, file.code);
+          })
         );
       } else {
         const nextSkillFiles: Record<string, { code: string }> = {
@@ -691,6 +699,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       streamEvent(res, SdkStreamEventEnum.streamEvent, {
         subtype: "files_updated",
+        persisted: true,
+        artifactVersion,
         files: isProjectToken ? updatedFiles : toPublicSkillRuntimeFiles(updatedFiles),
       });
     }
@@ -713,6 +723,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .filter((message) => (message.message?.role || "user") === "user")
         .map(toConversationMessage);
       const assistantStored = toConversationMessage(runResult.assistantMessage);
+      if (isProjectToken && Object.keys(updatedFiles).length > 0) {
+        assistantStored.additional_kwargs = {
+          ...assistantStored.additional_kwargs,
+          workspaceArtifactPaths: Object.keys(updatedFiles).sort(),
+          workspaceArtifactVersion: artifactVersion,
+        };
+      }
       await appendConversationMessages(token, conversationId, [
         ...incomingMessages,
         assistantStored,

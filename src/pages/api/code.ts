@@ -6,7 +6,9 @@ import JSZip from "jszip";
 import {
   createProjectFileViewUrl,
   getProject,
+  getProjectAccessState,
   readProjectFile,
+  readProjectArtifactVersion,
   updateProjectMeta,
   updateFile,
   updateFiles,
@@ -98,17 +100,16 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
 
   if (req.method === "GET") {
     try {
-      const project = await getProject(token);
-      if (!project) {
-        res.status(404).json({ error: "项目不存在" });
-        return;
-      }
-      if (project.userId && project.userId !== userId) {
-        res.status(403).json({ error: "无权访问该项目" });
-        return;
-      }
-
       const action = typeof req.query.action === "string" ? req.query.action : "";
+      if (action === "view" || action === "view-url") {
+        const access = await getProjectAccessState(token, userId, { allowOwnerless: action === "view-url" || !req.query.version });
+        if (access !== "ok") {
+          res.status(access === "not_found" ? 404 : 403).json({
+            error: access === "not_found" ? "项目不存在" : "无权访问该项目",
+          });
+          return;
+        }
+      }
 
       if (action === "view") {
         const filePath = typeof req.query.path === "string" ? req.query.path : "";
@@ -117,7 +118,10 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           return;
         }
         try {
-          const { buffer, contentType, contentLength } = await readProjectFile(token, filePath);
+          const version = typeof req.query.version === "string" ? req.query.version : "";
+          const { buffer, contentType, contentLength } = version
+            ? await readProjectArtifactVersion(token, version, filePath)
+            : await readProjectFile(token, filePath);
           res.setHeader("Cache-Control", "private, no-store, must-revalidate");
           res.setHeader("Content-Type", contentType || "application/octet-stream");
           if (typeof contentLength === "number" && contentLength >= 0) {
@@ -144,6 +148,16 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         } catch {
           res.status(404).json({ error: "文件不存在" });
         }
+        return;
+      }
+
+      const project = await getProject(token);
+      if (!project) {
+        res.status(404).json({ error: "项目不存在" });
+        return;
+      }
+      if (project.userId && project.userId !== userId) {
+        res.status(403).json({ error: "无权访问该项目" });
         return;
       }
 

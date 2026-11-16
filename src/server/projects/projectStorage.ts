@@ -521,6 +521,30 @@ export async function deleteFile(token: string, filePath: string): Promise<void>
   if (result.matchedCount === 0) throw new Error("项目不存在");
 }
 
+function getArtifactVersionPrefix(token: string) {
+  return `${path.posix.join(PROJECT_STORAGE_PREFIX, token, "artifact-versions")}/`;
+}
+
+function getArtifactVersionKey(token: string, version: string, filePath: string) {
+  if (!/^[a-f0-9]{32}$/.test(version)) throw new Error("无效的成果版本");
+  const projectKey = toProjectStorageFileKey(token, filePath);
+  const relativePath = projectKey.slice(getProjectStoragePrefix(token).length + 1);
+  return `${getArtifactVersionPrefix(token)}${version}/${relativePath}`;
+}
+
+export async function saveProjectArtifactVersion(token: string, version: string, filePath: string, body: Buffer | string) {
+  await uploadObjectToStorage({
+    key: getArtifactVersionKey(token, version, filePath),
+    body,
+    contentType: typeof body === "string" ? "text/plain; charset=utf-8" : "application/octet-stream",
+    bucketType: "private",
+  });
+}
+
+export async function readProjectArtifactVersion(token: string, version: string, filePath: string) {
+  return getObjectFromStorage({ key: getArtifactVersionKey(token, version, filePath), bucketType: "private" });
+}
+
 export async function readProjectFile(
   token: string,
   filePath: string
@@ -668,7 +692,8 @@ export async function listProjectOverviewItems(userId: string): Promise<ProjectO
 
 export async function getProjectAccessState(
   token: string,
-  userId: string
+  userId: string,
+  { allowOwnerless = false }: { allowOwnerless?: boolean } = {},
 ): Promise<"ok" | "not_found" | "forbidden"> {
   const safeToken = typeof token === "string" ? token.trim() : "";
   const safeUserId = typeof userId === "string" ? userId.trim() : "";
@@ -681,7 +706,7 @@ export async function getProjectAccessState(
   if (!doc) {
     return "not_found";
   }
-  if (doc.userId !== safeUserId) {
+  if (doc.userId !== safeUserId && !(allowOwnerless && !doc.userId)) {
     return "forbidden";
   }
   return "ok";
@@ -695,6 +720,11 @@ export async function deleteProject(token: string): Promise<boolean> {
   const result = await coll.deleteOne({ token });
   const keys = await listProjectStorageKeys(token);
   await deleteProjectStorageFilesByKeys(keys);
+  const artifactKeys = await listStorageObjectKeysByPrefix({
+    prefix: getArtifactVersionPrefix(token),
+    bucketType: "private",
+  });
+  if (artifactKeys.length) await deleteProjectStorageFilesByKeys(artifactKeys);
   await deleteChatUploadStorageByToken(token);
   await cleanupLegacyDir(token);
   return result.deletedCount > 0;

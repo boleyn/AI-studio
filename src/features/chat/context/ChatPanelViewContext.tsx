@@ -11,6 +11,7 @@ import type { UploadedFileArtifact } from "../types/fileArtifact";
 
 export type ChatPanelViewContextValue = {
   height: string;
+  hideHeader: boolean;
   t: TFunction;
   activeConversationId?: string;
   conversations: ConversationSummary[];
@@ -69,7 +70,7 @@ export type ChatPanelViewContextValue = {
   onCloseSkills: () => void;
   token: string;
   onFilesApplied?: (files: Record<string, { code: string }>) => void;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   onCreateSkillViaChat: () => void;
   onUseSkill: (skillName: string) => void;
 };

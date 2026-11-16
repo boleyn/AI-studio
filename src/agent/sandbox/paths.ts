@@ -58,3 +58,9 @@ export const isLikelyBinary = (buffer: Buffer): boolean => {
   for (const byte of sample) if (byte === 0) return true;
   return false;
 };
+
+export const encodeProjectFile = (buffer: Buffer): string => {
+  const text = buffer.toString("utf8");
+  if (!isLikelyBinary(buffer) && Buffer.from(text, "utf8").equals(buffer)) return text;
+  return `data:application/octet-stream;base64,${buffer.toString("base64")}`;
+};

@@ -118,7 +118,7 @@ const ChatMessageTimeline = ({
   onDelete: (messageId: string) => void;
   onRate: (messageId: string, rating: MessageRating) => void;
   onRegenerate: (messageId: string) => void;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   chatInteractionContextValue: ChatInteractionContextValue;
 }) => {
   const rows = buildChatRows({

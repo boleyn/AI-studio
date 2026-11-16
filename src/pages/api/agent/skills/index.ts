@@ -1,5 +1,5 @@
-import { getSkillSnapshot } from "@server/agent/skills/registry";
-import { collectProjectRuntimeSkills } from "@server/agent/skills/projectRuntimeSkills";
+import { getSkillSnapshot } from "@/agent/skills/registry";
+import { collectProjectRuntimeSkills } from "@/agent/skills/projectRuntimeSkills";
 import { requireAuth } from "@server/auth/session";
 import { getProject } from "@server/projects/projectStorage";
 import type { NextApiRequest, NextApiResponse } from "next";

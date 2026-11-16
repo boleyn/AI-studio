@@ -1,4 +1,4 @@
-import { Box, Image, Spinner, Text } from "@chakra-ui/react";
+import { Box, Image, Select, Spinner, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -92,37 +92,32 @@ const isLikelyPublicHttpsUrl = (value: string) => {
   }
 };
 
-const buildContentFingerprint = (value: string) => {
-  const len = value.length;
-  if (len === 0) return "0::";
-  const head = value.slice(0, 64);
-  const tail = value.slice(-64);
-  return `${len}:${head}:${tail}`;
-};
-
 type FilePreviewPanelProps = {
   token: string;
   activeFile: string;
   sourceCode: string;
+  localOnly?: boolean;
+  version?: string;
 };
+
+type PreviewSheet = { name: string; rows: string[][] };
 
 type PreviewCacheEntry =
   | { kind: "pdf"; binaryObjectUrl: string }
   | { kind: "docx"; docxHtml: string }
-  | { kind: "spreadsheet"; officePreviewUrl: string; sheetName: string; sheetRows: string[][] }
+  | { kind: "spreadsheet"; officePreviewUrl: string; sheets: PreviewSheet[] }
   | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
 
-const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelProps) => {
+const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
-  const previewCacheKey = `${token}::${activeFile}`;
-  const sourceFingerprint = useMemo(() => buildContentFingerprint(sourceCode), [sourceCode]);
+  const previewCacheKey = `${token}::${version ?? ""}::${activeFile}`;
   const viewBinaryUrl = useMemo(
     () =>
       token && activeFile
-        ? `/api/code?token=${encodeURIComponent(token)}&action=view&path=${encodeURIComponent(activeFile)}&v=${sourceHash}`
+        ? `/api/code?token=${encodeURIComponent(token)}&action=view&path=${encodeURIComponent(activeFile)}&v=${sourceHash}${version ? `&version=${encodeURIComponent(version)}` : ""}`
         : "",
-    [token, activeFile, sourceHash]
+    [token, activeFile, sourceHash, version]
   );
   const viewSignedUrlApi = useMemo(
     () =>
@@ -140,12 +135,13 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
   const [binaryObjectUrl, setBinaryObjectUrl] = useState("");
   const [officePreviewUrl, setOfficePreviewUrl] = useState("");
   const [sheetName, setSheetName] = useState("");
-  const [sheetRows, setSheetRows] = useState<string[][]>([]);
+  const [sheets, setSheets] = useState<PreviewSheet[]>([]);
+  const sheetRows = sheets.find((sheet) => sheet.name === sheetName)?.rows ?? [];
   const [pptSlides, setPptSlides] = useState<string[][]>([]);
   const docxContainerRef = useRef<HTMLDivElement | null>(null);
   const previewCacheRef = useRef<Map<string, PreviewCacheEntry>>(new Map());
   const cachedBlobUrlsRef = useRef<Set<string>>(new Set());
-  const fileFingerprintRef = useRef<Map<string, string>>(new Map());
+  const cachedSourceRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     return () => {
@@ -161,17 +157,18 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
     let cancelled = false;
     let objectUrl = "";
     let shouldRevokeObjectUrl = false;
+    const controller = new AbortController();
 
     if (previewKind === "pdf" || previewKind === "docx" || previewKind === "spreadsheet" || previewKind === "presentation") {
-      const prevFingerprint = fileFingerprintRef.current.get(previewCacheKey);
-      if (prevFingerprint !== sourceFingerprint) {
+      const previousSource = cachedSourceRef.current.get(previewCacheKey);
+      if (previousSource !== sourceCode) {
         const stale = previewCacheRef.current.get(previewCacheKey);
         if (stale && stale.kind === "pdf") {
           URL.revokeObjectURL(stale.binaryObjectUrl);
           cachedBlobUrlsRef.current.delete(stale.binaryObjectUrl);
         }
         previewCacheRef.current.delete(previewCacheKey);
-        fileFingerprintRef.current.set(previewCacheKey, sourceFingerprint);
+        cachedSourceRef.current.set(previewCacheKey, sourceCode);
       }
     }
 
@@ -182,8 +179,8 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         setDocLoading(false);
         setBinaryObjectUrl(cached.kind === "pdf" ? cached.binaryObjectUrl : "");
         setOfficePreviewUrl(cached.kind === "spreadsheet" || cached.kind === "presentation" ? cached.officePreviewUrl : "");
-        setSheetName(cached.kind === "spreadsheet" ? cached.sheetName : "");
-        setSheetRows(cached.kind === "spreadsheet" ? cached.sheetRows : []);
+        setSheetName(cached.kind === "spreadsheet" ? cached.sheets[0]?.name ?? "" : "");
+        setSheets(cached.kind === "spreadsheet" ? cached.sheets : []);
         setPptSlides(cached.kind === "presentation" ? cached.pptSlides : []);
         if (docxContainerRef.current) {
           docxContainerRef.current.innerHTML = cached.kind === "docx" ? cached.docxHtml : "";
@@ -199,7 +196,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
     setBinaryObjectUrl("");
     setOfficePreviewUrl("");
     setSheetName("");
-    setSheetRows([]);
+    setSheets([]);
     setPptSlides([]);
     if (docxContainerRef.current) {
       docxContainerRef.current.innerHTML = "";
@@ -216,11 +213,14 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
             setImageSrc(inlineImageUrl);
             return;
           }
-          const res = await fetch(viewBinaryUrl, { headers: withAuthHeaders(), credentials: "include" });
+          const res = await fetch(viewBinaryUrl, { headers: withAuthHeaders(), credentials: "include", signal: controller.signal });
           if (!res.ok) throw new Error(`图片加载失败: ${res.status}`);
           const type = (res.headers.get("content-type") || "").toLowerCase();
-          if (type.startsWith("image/")) {
-            const blob = await res.blob();
+          if (type.startsWith("image/") || type.startsWith("application/octet-stream")) {
+            const bytes = await res.arrayBuffer();
+            if (cancelled) return;
+            const extension = activeFile.split(".").pop()?.toLowerCase() || "";
+            const blob = new Blob([bytes], { type: imageMimeByExt[extension] || type });
             objectUrl = URL.createObjectURL(blob);
             shouldRevokeObjectUrl = true;
             if (!cancelled) setImageSrc(objectUrl);
@@ -234,11 +234,13 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         }
 
         setDocLoading(true);
-        const response = await fetch(viewBinaryUrl, { headers: withAuthHeaders(), credentials: "include" });
+        const response = await fetch(viewBinaryUrl, { headers: withAuthHeaders(), credentials: "include", signal: controller.signal });
         if (!response.ok) throw new Error(`加载失败: ${response.status}`);
 
         if (previewKind === "pdf") {
-          const blob = await response.blob();
+          const bytes = await response.arrayBuffer();
+          if (cancelled) return;
+          const blob = new Blob([bytes], { type: "application/pdf" });
           objectUrl = URL.createObjectURL(blob);
           if (!cancelled) {
             setBinaryObjectUrl(objectUrl);
@@ -251,7 +253,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
           return;
         }
 
-        if (previewKind === "spreadsheet" || previewKind === "presentation") {
+        if (!localOnly && (previewKind === "spreadsheet" || previewKind === "presentation")) {
           try {
             const signedRes = await fetch(viewSignedUrlApi, {
               headers: withAuthHeaders(),
@@ -268,8 +270,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
                     previewCacheRef.current.set(previewCacheKey, {
                       kind: "spreadsheet",
                       officePreviewUrl: embedUrl,
-                      sheetName: "",
-                      sheetRows: [],
+                      sheets: [],
                     });
                   } else {
                     previewCacheRef.current.set(previewCacheKey, {
@@ -291,9 +292,9 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         if (previewKind === "docx") {
           const container = docxContainerRef.current;
           if (!container) throw new Error("Word 预览容器未就绪");
-          container.innerHTML = "";
+          const renderedDocument = document.createElement("div");
           const docxPreview = await import("docx-preview");
-          await docxPreview.renderAsync(arrayBuffer, container, undefined, {
+          await docxPreview.renderAsync(arrayBuffer, renderedDocument, undefined, {
             ignoreWidth: false,
             ignoreHeight: true,
             breakPages: true,
@@ -301,6 +302,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
             inWrapper: true,
           });
           if (!cancelled) {
+            container.replaceChildren(...renderedDocument.childNodes);
             previewCacheRef.current.set(previewCacheKey, {
               kind: "docx",
               docxHtml: container.innerHTML,
@@ -310,19 +312,22 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
         }
         if (previewKind === "spreadsheet") {
           const XLSX = await import("xlsx");
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
-          const firstName = workbook.SheetNames[0] || "";
-          const firstSheet = firstName ? workbook.Sheets[firstName] : null;
-          const rowsRaw = firstSheet ? (XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false }) as unknown[][]) : [];
-          const rows = rowsRaw.slice(0, 200).map((row) => row.map((cell) => (cell == null ? "" : String(cell))));
+          const workbook = XLSX.read(arrayBuffer, { type: "array", sheetRows: 200 });
+          const parsedSheets = workbook.SheetNames.map((name) => {
+            const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], {
+              header: 1,
+              raw: false,
+              defval: "",
+            });
+            return { name, rows: rows.map((row) => row.map(String)) };
+          });
           if (!cancelled) {
-            setSheetName(firstName);
-            setSheetRows(rows);
+            setSheetName(parsedSheets[0]?.name ?? "");
+            setSheets(parsedSheets);
             previewCacheRef.current.set(previewCacheKey, {
               kind: "spreadsheet",
               officePreviewUrl: "",
-              sheetName: firstName,
-              sheetRows: rows,
+              sheets: parsedSheets,
             });
           }
           return;
@@ -363,9 +368,10 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
 
     return () => {
       cancelled = true;
+      controller.abort();
       if (shouldRevokeObjectUrl && objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeFile, inlineImageSrc, inlineImageUrl, previewKind, previewCacheKey, sourceFingerprint, viewBinaryUrl, viewSignedUrlApi]);
+  }, [activeFile, inlineImageSrc, inlineImageUrl, previewKind, previewCacheKey, sourceCode, viewBinaryUrl, viewSignedUrlApi, localOnly]);
 
   if (previewKind === "unknown") {
     return (
@@ -405,7 +411,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
   if (previewKind === "pdf") {
     return (
       <Box h="100%" bg="#f8fafc">
-        {docLoading ? (
+        {docLoading || (!binaryObjectUrl && !docError) ? (
           <Box h="100%" display="flex" alignItems="center" justifyContent="center" gap={2}>
             <Spinner size="sm" />
             <Text fontSize="sm" color="gray.600">
@@ -419,7 +425,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
             </Text>
           </Box>
         ) : (
-          <iframe src={binaryObjectUrl} title={activeFile} style={{ width: "100%", height: "100%", border: "none" }} />
+          <Box as="iframe" src={binaryObjectUrl} title={activeFile} w="full" h="full" minH="360px" border={0} />
         )}
       </Box>
     );
@@ -498,8 +504,13 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode }: FilePreviewPanelPro
           </Box>
         ) : (
           <Box>
-            <Text fontSize="sm" color="gray.700" mb={2}>
-              工作表：{sheetName || "未命名"}（最多显示 200 行）
+            {sheets.length > 0 && (
+              <Select aria-label="工作表" size="sm" value={sheetName} onChange={(event) => setSheetName(event.target.value)}>
+                {sheets.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+              </Select>
+            )}
+            <Text fontSize="xs" color="gray.600" my={2}>
+              {sheetRows.length ? "最多显示 200 行" : "此工作表没有可预览的数据"}
             </Text>
             <Box border="1px solid #e2e8f0" borderRadius="md" overflow="auto" bg="white">
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>

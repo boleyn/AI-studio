@@ -34,8 +34,9 @@ const ChatItem = ({
   requestContent?: string;
   isLatestRun?: boolean;
   hideInteractiveCards?: boolean;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
+  const [activityExpanded, setActivityExpanded] = React.useState(false);
   const { copyData } = useCopyData();
   const {
     content,
@@ -72,9 +73,49 @@ const ChatItem = ({
     messageId,
   });
 
+  const artifactVersion = message.additional_kwargs?.workspaceArtifactVersion;
+  const artifactPaths = message.additional_kwargs?.workspaceArtifactPaths;
+  const workspaceArtifacts = Array.isArray(artifactPaths)
+    ? [...new Set(artifactPaths.filter((path): path is string => typeof path === "string" && path.length > 0))]
+    : [];
+
+  const openReplyArtifact = (path: string) => {
+    if (!onOpenWorkspaceFile) return false;
+    if (typeof artifactVersion === "string") {
+      let decodedPath = path;
+      try {
+        decodedPath = decodeURIComponent(path);
+      } catch {
+        // Tool paths can contain literal percent signs.
+      }
+      const candidates = [path, decodedPath];
+      for (const candidate of [path, decodedPath]) {
+        const normalized = `/${candidate.replace(/^\/+/, "")}`;
+        candidates.push(normalized);
+        if (normalized.startsWith("/mnt/data/")) {
+          candidates.push(normalized.slice("/mnt/data".length));
+        }
+      }
+      const artifact = candidates.find((candidate) => workspaceArtifacts.includes(candidate));
+      if (artifact) return onOpenWorkspaceFile(artifact, artifactVersion);
+    }
+    return onOpenWorkspaceFile(path);
+  };
+
+  const isWorkspaceChat = Boolean(onOpenWorkspaceFile);
+  const visibleToolCount = timelineItems.filter((item) =>
+    item.type === "tool" && !PLAN_MODE_TOOL_NAMES.has((item.toolName || "").trim().toLowerCase()),
+  ).length;
+  const hasActivity = Boolean(planProgress) || timelineItems.some((item) =>
+    item.type !== "answer" &&
+    (!isWorkspaceChat || (item.type !== "reasoning" && item.type !== "compact") || Boolean(isStreaming)) &&
+    (item.type !== "tool" || !PLAN_MODE_TOOL_NAMES.has((item.toolName || "").trim().toLowerCase())),
+  );
+
+  const usePlainAnswer = isWorkspaceChat && isAssistant;
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
 
-  if (!content.trim() && !isStreaming && files.length === 0 && timelineItems.length === 0) return null;
+  if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
 
   const markdownSx = {
     "& .markdown p": { marginTop: "8px", marginBottom: "8px" },
@@ -87,18 +128,18 @@ const ChatItem = ({
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="full">
       <Box
-        bg={isUser ? "white" : isSystem ? "transparent" : "myWhite.100"}
-        border={isUser || isAssistant ? "1px solid" : "none"}
+        bg={isWorkspaceChat && isUser ? "gray.100" : isUser ? "white" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
+        border={!isWorkspaceChat && (isUser || isAssistant) ? "1px solid" : "none"}
         borderColor={isUser ? "myGray.300" : isAssistant ? "myGray.200" : "transparent"}
         borderRadius={isUser ? "16px 16px 6px 16px" : isAssistant ? "16px 16px 16px 6px" : 0}
-        boxShadow={isUser || isAssistant ? "sm" : "none"}
+        boxShadow={!isWorkspaceChat && (isUser || isAssistant) ? "sm" : "none"}
         className="chat-message"
         color="myGray.700"
         fontSize="sm"
         maxW="100%"
-        w={isUser || isAssistant ? "fit-content" : "full"}
+        w={isUser || (isAssistant && !usePlainAnswer) ? "fit-content" : "full"}
         minW={isUser ? "88px" : isAssistant ? "200px" : 0}
-        px={isUser || isAssistant ? 4 : 0}
+        px={isUser || (isAssistant && !usePlainAnswer) ? 4 : 0}
         py={isUser || isAssistant ? 3 : 0}
         sx={markdownSx}
       >
@@ -151,6 +192,31 @@ const ChatItem = ({
           <Text color="myGray.500" fontSize="xs">{content}</Text>
         ) : (
           <Flex direction="column" gap={2}>
+            {isWorkspaceChat && isStreaming && !hasActivity && !content.trim() && (
+              <Flex role="status" align="center" gap={2} py={2} color="gray.600">
+                <Spinner size="xs" aria-hidden="true" />
+                <Text fontSize="sm">正在处理</Text>
+              </Flex>
+            )}
+            {hasActivity && (
+              <Button
+                alignSelf="flex-start"
+                aria-expanded={activityExpanded}
+                onClick={() => setActivityExpanded((expanded) => !expanded)}
+                rightIcon={<Icon as={ChevronDownIcon} transform={activityExpanded ? "rotate(180deg)" : undefined} />}
+                size="sm"
+                variant="ghost"
+                color="gray.600"
+              >
+                {isStreaming ? "正在处理" : "工作过程"}
+                {!isStreaming && visibleToolCount > 0 && (
+                  <Text as="span" ml={2} fontWeight="normal" color="gray.500">
+                    {visibleToolCount} 次工具调用
+                  </Text>
+                )}
+              </Button>
+            )}
+            <Box hidden={!activityExpanded}>
             {planProgress ? (
               <Box bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="10px" p={3}>
                 <Flex align="center" gap={2} mb={2}>
@@ -191,10 +257,13 @@ const ChatItem = ({
               </Box>
             ) : null}
 
+            </Box>
             {timelineItems.length > 0 ? (
               <Box>
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
+                    if (!activityExpanded && item.type !== "answer") return null;
+
                     if (item.type === "agent") {
                       return (
                         <AgentTimelineCard
@@ -210,6 +279,7 @@ const ChatItem = ({
                     }
 
                     if (item.type === "reasoning") {
+                      if (isWorkspaceChat) return null;
                       const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
                       const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
                       const reasoningPhaseText = getReasoningPhaseText(index);
@@ -267,7 +337,7 @@ const ChatItem = ({
                           isExpanded={Boolean(expandedTimelineToolKeys[toolKey])}
                           isStreaming={isStreaming}
                           item={item}
-                          onOpenWorkspaceFile={onOpenWorkspaceFile}
+                          onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
                           onOpenToolDetailModal={openToolDetailModal}
                           onToggle={() => toggleTimelineToolDetails(toolKey)}
                         />
@@ -275,6 +345,7 @@ const ChatItem = ({
                     }
 
                     if (item.type === "compact") {
+                      if (isWorkspaceChat) return null;
                       const compact = item.compact || { trigger: "auto" as const };
                       const preText =
                         typeof compact.preTokens === "number"
@@ -321,7 +392,7 @@ const ChatItem = ({
 
                     return (
                       <Box key={`${messageId}-timeline-answer-${index}`} pl={timelineStepIndexes.length > 0 ? "20px" : 0}>
-                        <Markdown showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />
+                        <Markdown onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined} showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />
                       </Box>
                     );
                   })}
@@ -330,10 +401,21 @@ const ChatItem = ({
             ) : null}
 
             {(!timelineHasAnswer || timelineItems.length === 0) && content ? (
-              <Markdown showAnimation={showAssistantAnimation} source={content} />
+              <Markdown onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined} showAnimation={showAssistantAnimation} source={content} />
             ) : null}
 
-            {shouldShowExecutionMeta && timelineItems.every((item) => item.type !== "agent") ? (
+            {onOpenWorkspaceFile && workspaceArtifacts.length > 0 && (
+              <Flex gap={2} wrap="wrap" aria-label="此回复生成的文件">
+                {workspaceArtifacts.map((path) => (
+                  <Button key={path} size="sm" variant="outline" maxW="100%"
+                    title={path} onClick={() => openReplyArtifact(path)}>
+                    <Text isTruncated>{path.split("/").pop() || path}</Text>
+                  </Button>
+                ))}
+              </Flex>
+            )}
+
+            {activityExpanded && shouldShowExecutionMeta && timelineItems.every((item) => item.type !== "agent") ? (
               <Flex align="center" borderTop="1px solid" borderColor="myGray.200" color="myGray.600" fontSize="11px" gap={3} mt={1} pt={2} wrap="wrap">
                 <Text>调用工具: {executionSummary?.nodeCount ?? 0}</Text>
                 {executionSummary?.durationSeconds !== undefined ? (

@@ -39,6 +39,9 @@ export type RunHermesAgentResult = {
   updatedFiles?: Record<string, { code: string }>;
 };
 
+const comparableProjectContent = (code: string) =>
+  code.replace(/^data:[^;,]*;base64,/i, "data:application/octet-stream;base64,");
+
 const diffProjectFiles = (
   before: ProjectFiles | undefined,
   after: Record<string, { code: string }>,
@@ -46,19 +49,19 @@ const diffProjectFiles = (
 ): Record<string, { code: string }> => {
   const beforeMap = new Map<string, string>();
   for (const [rawPath, file] of Object.entries(before || {})) {
-    beforeMap.set(normalizeVirtualPath(rawPath), typeof file?.code === "string" ? file.code : "");
+    beforeMap.set(normalizeVirtualPath(rawPath), comparableProjectContent(typeof file?.code === "string" ? file.code : ""));
   }
   const ignoredMap = new Map<string, string>();
   for (const [rawPath, file] of Object.entries(ignoredBaseline || {})) {
-    ignoredMap.set(normalizeVirtualPath(rawPath), typeof file?.code === "string" ? file.code : "");
+    ignoredMap.set(normalizeVirtualPath(rawPath), comparableProjectContent(typeof file?.code === "string" ? file.code : ""));
   }
 
   const changed: Record<string, { code: string }> = {};
   for (const [rawPath, file] of Object.entries(after)) {
     const normalizedPath = normalizeVirtualPath(rawPath);
     if (!isExportableProjectPath(normalizedPath) && !beforeMap.has(normalizedPath)) continue;
-    if (beforeMap.get(normalizedPath) === file.code) continue;
-    if (!beforeMap.has(normalizedPath) && ignoredMap.get(normalizedPath) === file.code) continue;
+    if (beforeMap.get(normalizedPath) === comparableProjectContent(file.code)) continue;
+    if (!beforeMap.has(normalizedPath) && ignoredMap.get(normalizedPath) === comparableProjectContent(file.code)) continue;
     changed[normalizedPath] = { code: file.code };
   }
   return changed;
@@ -135,7 +138,7 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
     await sandbox.persist();
 
     let updatedFiles: Record<string, { code: string }> | undefined;
-    if (input.projectFiles && Object.keys(input.projectFiles).length > 0) {
+    if (input.projectFiles) {
       const snapshot = await sandbox.exportProjectFiles();
       const diff = diffProjectFiles(input.projectFiles, snapshot, systemSkillFiles);
       if (Object.keys(diff).length > 0) {

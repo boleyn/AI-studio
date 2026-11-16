@@ -49,6 +49,8 @@ export interface ChatInputModelGroup {
 }
 
 export interface ChatInputProps {
+  placeholder?: string;
+  draftStorageKey?: string;
   isSending: boolean;
   model: string;
   modelOptions: ChatInputModelOption[];

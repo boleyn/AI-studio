@@ -17,6 +17,7 @@ import type { AccountPanelTab } from "./AccountModal";
 type UserAccountMenuProps = {
   user: AuthUser | null;
   loadingUser: boolean;
+  showWorkspaceSettings?: boolean;
 };
 
 const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
@@ -27,7 +28,7 @@ const normalizeAvatar = (value?: string) => {
   return raw;
 };
 
-export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
+export function UserAccountMenu({ user, loadingUser, showWorkspaceSettings }: UserAccountMenuProps) {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState<AccountPanelTab>("account");
 
@@ -53,10 +54,10 @@ export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
             gap={3}
             p={2.5}
             borderRadius="lg"
-            bg="rgba(255,255,255,0.7)"
-            border="1px solid var(--ws-border)"
+            bg={showWorkspaceSettings ? "transparent" : "rgba(255,255,255,0.7)"}
+            border={showWorkspaceSettings ? "none" : "1px solid var(--ws-border)"}
             transition="all 0.15s ease"
-            _hover={{ boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
+            _hover={showWorkspaceSettings ? { bg: "gray.100" } : { boxShadow: "0 8px 20px rgba(17, 24, 36, 0.08)" }}
             _active={{ transform: "scale(0.995)" }}
           >
             <Avatar
@@ -85,7 +86,7 @@ export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
             boxShadow="0 12px 24px rgba(17, 24, 36, 0.12)"
           >
             <MenuItem fontSize="sm" px={3} py={2} borderRadius="sm" onClick={() => openAccountModal("account")}>
-              账号管理
+              {showWorkspaceSettings ? "设置" : "账号管理"}
             </MenuItem>
             <MenuItem fontSize="sm" px={3} py={2} borderRadius="sm" onClick={() => openAccountModal("password")}>
               修改密码
@@ -109,6 +110,7 @@ export function UserAccountMenu({ user, loadingUser }: UserAccountMenuProps) {
         isOpen={accountModalOpen}
         onClose={() => setAccountModalOpen(false)}
         panel={accountPanel}
+        showWorkspaceSettings={showWorkspaceSettings}
       />
     </>
   );

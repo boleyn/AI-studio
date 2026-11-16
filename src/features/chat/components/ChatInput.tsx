@@ -29,6 +29,8 @@ type LocalInputFile = ChatInputFile & {
 };
 
 const ChatInput = ({
+  placeholder,
+  draftStorageKey,
   isSending,
   model,
   modelOptions,
@@ -60,6 +62,25 @@ const ChatInput = ({
   const chatInputTheme = theme?.workspace?.chatInput || {};
   const skillTheme = chatInputTheme?.skillMention || {};
   const [text, setText] = useState("");
+  const [loadedDraftKey, setLoadedDraftKey] = useState<string>();
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    try {
+      setText(sessionStorage.getItem(draftStorageKey) ?? "");
+    } catch {
+      // Storage can be unavailable in restricted browser sessions.
+    }
+    setLoadedDraftKey(draftStorageKey);
+  }, [draftStorageKey]);
+  useEffect(() => {
+    if (!draftStorageKey || loadedDraftKey !== draftStorageKey) return;
+    try {
+      if (text) sessionStorage.setItem(draftStorageKey, text);
+      else sessionStorage.removeItem(draftStorageKey);
+    } catch {
+      // Draft editing still works without browser storage.
+    }
+  }, [draftStorageKey, loadedDraftKey, text]);
   const [files, setFiles] = useState<LocalInputFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -196,10 +217,10 @@ const ChatInput = ({
     if (isSending) {
       return t("chat:generating", { defaultValue: "正在生成回复..." });
     }
-    return t("chat:input_placeholder", {
+    return placeholder ?? t("chat:input_placeholder", {
       defaultValue: "输入你的问题，按 Enter 发送，Shift + Enter 换行",
     });
-  }, [isSending, t]);
+  }, [isSending, placeholder, t]);
   const previewFiles = useMemo(
     () =>
       files.map((item) => {
@@ -466,14 +487,14 @@ const ChatInput = ({
         bg="white"
         border="0.5px solid"
         borderColor={isFocused ? "rgba(0,0,0,0.24)" : "rgba(0,0,0,0.18)"}
-        borderRadius="18px"
+        borderRadius="26px"
         boxShadow={
           isFocused
             ? "0px 5px 20px -4px rgba(19, 51, 107, 0.13)"
             : "0px 5px 16px -4px rgba(19, 51, 107, 0.08)"
         }
         direction="column"
-        minH="108px"
+        minH="116px"
         overflow="visible"
       >
         {previewFiles.length > 0 ? (
@@ -639,13 +660,13 @@ const ChatInput = ({
                 </Flex>
               </Flex>
             ) : null}
-            <Flex align="center" gap={2} px={2} pt={2}>
+            <Flex align="center" gap={2} px={3} pt={3}>
               <Textarea
                 ref={textAreaRef}
                 _focusVisible={{ border: "none", boxShadow: "none" }}
                 _placeholder={{
                   color: "#707070",
-                  fontSize: "13px",
+                  fontSize: "15px",
                 }}
                 border="none"
                 color="myGray.700"
@@ -761,6 +782,7 @@ const ChatInput = ({
                 }}
                 overflowX="hidden"
                 overflowY="hidden"
+                aria-label={placeholder ?? t("chat:ready_start", { defaultValue: "输入消息" })}
                 placeholder={inputPlaceholder}
                 px={2}
                 resize="none"
@@ -791,6 +813,22 @@ const ChatInput = ({
 
         <Flex align="center" h="44px" justify="space-between" mt="auto" pb={2} pl={3} pr={3}>
           <Flex align="center" gap={2} minW={0}>
+            <Input
+              ref={fileInputRef}
+              display="none"
+              onChange={(event) => onPickFiles(event.target.files)}
+              type="file"
+              multiple
+            />
+            <IconButton
+              aria-label="添加文件"
+              icon={<Box as="span" fontSize="22px" lineHeight="1">+</Box>}
+              isDisabled={isSending || isSubmitting}
+              onClick={() => fileInputRef.current?.click()}
+              size="sm"
+              variant="ghost"
+              borderRadius="full"
+            />
             <ModelCascader
               disabled={Boolean(modelLoading || isSending || isSubmitting)}
               loading={modelLoading}
@@ -912,40 +950,15 @@ const ChatInput = ({
           </Flex>
 
           <Flex align="center" gap={1}>
-            <Input
-              ref={fileInputRef}
-              display="none"
-              onChange={(event) => onPickFiles(event.target.files)}
-              type="file"
-              multiple
-            />
-            <Flex
-              _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
-              align="center"
-              borderRadius="6px"
-              cursor={isSending || isSubmitting ? "not-allowed" : "pointer"}
-              h="36px"
-              justify="center"
-              onClick={() => {
-                if (isSending || isSubmitting) return;
-                fileInputRef.current?.click();
-              }}
-              w="36px"
-            >
-              <Box alt="attach" as="img" h="16px" opacity={0.75} src="/icons/chat/fileSelect.svg" w="16px" />
-            </Flex>
-
-            <Box bg="myGray.200" h="20px" mx={1} w="2px" />
-
             <IconButton
-              _hover={{ bg: isSending ? "primary.100" : canSend ? "#2563EB" : "rgba(17, 24, 36, 0.1)" }}
+              _hover={{ bg: isSending ? "primary.100" : canSend ? "gray.700" : "rgba(17, 24, 36, 0.1)" }}
               aria-label={
                 isSending
                   ? t("chat:stop_generating", { defaultValue: "停止生成" })
                   : t("common:Send", { defaultValue: "发送" })
               }
-              bg={isSending ? "primary.50" : canSend ? "primary.500" : "rgba(17, 24, 36, 0.1)"}
-              borderRadius="12px"
+              bg={isSending ? "primary.50" : canSend ? "gray.900" : "rgba(17, 24, 36, 0.1)"}
+              borderRadius="full"
               h="36px"
               icon={
                 <Box

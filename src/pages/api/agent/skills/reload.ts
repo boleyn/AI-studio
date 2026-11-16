@@ -1,4 +1,4 @@
-import { reloadSkillSnapshot } from "@server/agent/skills/registry";
+import { reloadSkillSnapshot } from "@/agent/skills/registry";
 import { requireAuth } from "@server/auth/session";
 import type { NextApiRequest, NextApiResponse } from "next";
 

@@ -1,4 +1,4 @@
-import { getRuntimeSkillByName, sampleSkillFiles } from "@server/agent/skills/registry";
+import { getRuntimeSkillByName, sampleSkillFiles } from "@/agent/skills/registry";
 import { requireAuth } from "@server/auth/session";
 import type { NextApiRequest, NextApiResponse } from "next";
 

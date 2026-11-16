@@ -60,6 +60,8 @@ export const getS3Client = () => {
     endpoint: STORAGE_S3_ENDPOINT || undefined,
     forcePathStyle: STORAGE_S3_FORCE_PATH_STYLE,
     maxAttempts: STORAGE_S3_MAX_RETRIES,
+    // Presigned PUTs are signed before the browser supplies the file bytes.
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: STORAGE_ACCESS_KEY_ID,
       secretAccessKey: STORAGE_SECRET_ACCESS_KEY,

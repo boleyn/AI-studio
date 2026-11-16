@@ -48,6 +48,7 @@ type Props = {
   isDisabled?: boolean;
   forbidZhFormat?: boolean;
   dataId?: string;
+  onOpenWorkspaceFile?: (path: string) => boolean;
 } & AProps;
 const Markdown = (props: Props) => {
   return <MarkdownRender {...props} />;
@@ -59,7 +60,8 @@ const MarkdownRender = ({
   forbidZhFormat,
   dataId,
   chatAuthData,
-  onOpenCiteModal
+  onOpenCiteModal,
+  onOpenWorkspaceFile
 }: Props) => {
   // 稳定的组件映射，避免因依赖变动导致整体重建
   const components = useMemo(() => {
@@ -86,16 +88,27 @@ const MarkdownRender = ({
           </Box>
         );
       },
-      a: (props: any) => (
+      a: (props: any) => {
+        if (onOpenWorkspaceFile && typeof props.href === 'string' && props.href.startsWith('sandbox:/')) {
+          const href: string = props.href;
+          return (
+            <Box as="button" type="button" textDecoration="underline" color="blue.700"
+              onClick={() => onOpenWorkspaceFile(href.slice('sandbox:'.length))}>
+              {props.children}
+            </Box>
+          );
+        }
+        return (
         <A
           {...props}
           showAnimation={showAnimation}
           chatAuthData={chatAuthData}
           onOpenCiteModal={onOpenCiteModal}
         />
-      )
+        );
+      }
     };
-  }, []);
+  }, [onOpenWorkspaceFile]);
 
   const formatSource = useMemo(() => {
     if (showAnimation || forbidZhFormat) return source;

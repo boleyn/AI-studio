@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { UserAccountMenu } from "./UserAccountMenu";
 import {
   Box,
   Button,
@@ -34,16 +35,12 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import {
-  Activity,
   ChevronDown,
   ChevronRight,
-  Cpu,
   Folder,
   FolderOpen,
   FolderPlus,
   HardDrive,
-  Home,
-  LogOut,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -51,15 +48,16 @@ import {
   Search,
   Server,
   Trash2,
-  User as UserIcon,
 } from "lucide-react";
+import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
+import { withAuthHeaders } from "@features/auth/client/authClient";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { useAuth } from "../contexts/AuthContext";
 
 async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${url}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers || {}) },
+    headers: withAuthHeaders({ "content-type": "application/json", ...(init?.headers || {}) }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -96,17 +94,24 @@ export default function AgentWorkspace({
   initialProjectToken,
   initialFiles = {},
 }: AgentWorkspaceProps) {
-  const router = useRouter();
   const toast = useToast();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const [projects, setProjects] = useState<ProjectWithConversations[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => { setSidebarOpen(window.matchMedia("(min-width: 768px)").matches); }, []);
+  const closeMobileSidebar = () => {
+    if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(false);
+  };
 
   const [activeToken, setActiveToken] = useState<string>(initialProjectToken || "");
   const [activeChatId, setActiveChatId] = useState<string | undefined>(undefined);
+  const { query } = useRouter();
+  const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
+  const visibleChatIdRef = useRef(visibleChatId);
+  visibleChatIdRef.current = visibleChatId;
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -114,8 +119,33 @@ export default function AgentWorkspace({
 
   // 工作区文件抽屉（按需展开，默认关闭以保持传统会话体验）
   const [filesDrawerOpen, setFilesDrawerOpen] = useState(false);
-  const [workspaceFiles, setWorkspaceFiles] = useState<Record<string, { code: string }>>(initialFiles);
+  const [filesByProject, setFilesByProject] = useState<Record<string, Record<string, { code: string }>>>(
+    initialProjectToken ? { [initialProjectToken]: initialFiles } : {},
+  );
+  const workspaceFiles = filesByProject[activeToken] || {};
+
+  useEffect(() => {
+    if (!activeToken) return;
+    let cancelled = false;
+    void apiJson<{ files: Record<string, { code: string }> }>(`/code?token=${encodeURIComponent(activeToken)}`)
+      .then(({ files }) => {
+        if (!cancelled) setFilesByProject((prev) => ({
+          ...prev, [activeToken]: { ...files, ...prev[activeToken] },
+        }));
+      })
+      .catch((error) => {
+        if (!cancelled) toast({ title: "加载工作区文件失败", description: String(error), status: "error" });
+      });
+    return () => { cancelled = true; };
+  }, [activeToken, toast]);
+  const [artifactVersion, setArtifactVersion] = useState<string>();
   const [selectedFilePath, setSelectedFilePath] = useState<string>("");
+
+  useEffect(() => {
+    setSelectedFilePath("");
+    setArtifactVersion(undefined);
+    setFilesDrawerOpen(false);
+  }, [activeToken, activeChatId, newConvSignal]);
 
   // 沙盒 / 本机连接器模式
   const [sandboxKind, setSandboxKind] = useState<"remote-vm" | "connector">("remote-vm");
@@ -133,15 +163,14 @@ export default function AgentWorkspace({
       const data = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
       setProjects(Array.isArray(data) ? data : []);
       if (Array.isArray(data) && data.length > 0) {
-        setActiveToken((prev) => {
-          if (prev && data.some((p) => p.token === prev)) return prev;
-          return initialProjectToken && data.some((p) => p.token === initialProjectToken)
-            ? initialProjectToken
-            : data[0].token;
-        });
+        const explicitProject = data.find((project) => project.token === initialProjectToken);
+        const linkedProject = data.find((project) =>
+          project.conversations.some((conversation) => conversation.id === visibleChatIdRef.current),
+        );
+        const target = (explicitProject ?? linkedProject ?? data[0]).token;
+        setActiveToken((prev) => prev && data.some((project) => project.token === prev) ? prev : target);
         setExpandedProjects((prev) => {
           const next = { ...prev };
-          const target = initialProjectToken || data[0].token;
           if (target && next[target] === undefined) next[target] = true;
           return next;
         });
@@ -170,11 +199,11 @@ export default function AgentWorkspace({
   }, [initialProjectToken]);
 
   useEffect(() => {
-    if (!selectedFilePath) {
-      const first = Object.keys(workspaceFiles)[0];
+    if (!artifactVersion && (!selectedFilePath || !workspaceFiles[selectedFilePath])) {
+      const first = Object.keys(workspaceFiles).find((path) => !/^\/*\.files(?:\/|$)/.test(path));
       if (first) setSelectedFilePath(first);
     }
-  }, [selectedFilePath, workspaceFiles]);
+  }, [selectedFilePath, workspaceFiles, artifactVersion]);
 
   const activeProject = useMemo(
     () => projects.find((p) => p.token === activeToken) || null,
@@ -202,26 +231,27 @@ export default function AgentWorkspace({
   };
 
   const handleSelectProject = (token: string) => {
+    closeMobileSidebar();
+    setNewConvSignal(0);
     setActiveToken(token);
     setActiveChatId(undefined);
     setExpandedProjects((prev) => ({ ...prev, [token]: true }));
   };
 
   const handleSelectConversation = (token: string, chatId: string) => {
+    closeMobileSidebar();
+    setNewConvSignal(0);
     setActiveToken(token);
     setActiveChatId(chatId);
     setExpandedProjects((prev) => ({ ...prev, [token]: true }));
   };
 
   const handleNewConversationInProject = (token: string) => {
+    closeMobileSidebar();
     setExpandedProjects((prev) => ({ ...prev, [token]: true }));
-    if (activeToken !== token) {
-      setActiveToken(token);
-      setActiveChatId(undefined);
-      setTimeout(() => setNewConvSignal((n) => n + 1), 80);
-    } else {
-      setNewConvSignal((n) => n + 1);
-    }
+    setActiveToken(token);
+    setActiveChatId(undefined);
+    setNewConvSignal((n) => n + 1);
   };
 
   const handleCreateProject = async () => {
@@ -236,6 +266,7 @@ export default function AgentWorkspace({
       setNewProjectName("");
       createModal.onClose();
       await fetchProjects();
+      setNewConvSignal(0);
       setActiveToken(created.token);
       setActiveChatId(undefined);
       setExpandedProjects((prev) => ({ ...prev, [created.token]: true }));
@@ -256,6 +287,7 @@ export default function AgentWorkspace({
       setProjects((prev) => prev.filter((p) => p.token !== token));
       if (activeToken === token) {
         const remaining = projects.filter((p) => p.token !== token);
+        setNewConvSignal(0);
         setActiveToken(remaining[0]?.token || "");
         setActiveChatId(undefined);
       }
@@ -318,87 +350,63 @@ export default function AgentWorkspace({
     [connectorToken, connectorUrl, sandboxKind],
   );
 
+  const openWorkspaceFile = useCallback((filePath: string, version?: string) => {
+    if (version) {
+      setArtifactVersion(version);
+      setSelectedFilePath(filePath);
+      setFilesDrawerOpen(true);
+      return true;
+    }
+    let decodedPath = filePath;
+    try {
+      decodedPath = decodeURIComponent(filePath);
+    } catch {
+      // File paths from tool results can contain a literal percent sign.
+    }
+    const candidates = [filePath, decodedPath];
+    for (const path of [filePath, decodedPath]) {
+      const relativePath = path.replace(/^\/+/, "");
+      candidates.push(`/${relativePath}`, relativePath);
+      if (relativePath.startsWith("mnt/data/")) {
+        const name = relativePath.slice("mnt/data/".length);
+        candidates.push(`/${name}`, name);
+      }
+    }
+    const match = candidates.find((path) => Object.hasOwn(workspaceFiles, path));
+    if (!match) {
+      if (filePath.startsWith("/mnt/data/")) {
+        toast({ title: "此文件不在当前工作成果中", status: "info" });
+      }
+      return false;
+    }
+    setArtifactVersion(undefined);
+    setSelectedFilePath(match);
+    setFilesDrawerOpen(true);
+    return true;
+  }, [toast, workspaceFiles]);
+
   const fileKeys = useMemo(() => Object.keys(workspaceFiles).sort(), [workspaceFiles]);
+  const artifactFiles = useMemo(
+    () => Object.fromEntries(Object.entries(workspaceFiles).filter(([path]) => !/^\/*\.files(?:\/|$)/.test(path))),
+    [workspaceFiles],
+  );
+  const artifactCount = Object.keys(artifactFiles).length;
+
 
   return (
-    <Flex h="100vh" w="100vw" overflow="hidden" bg="#ffffff" color="#1f2328">
-      {/* 最左侧窄导航栏 */}
-      <Flex
-        w="52px"
-        flexShrink={0}
-        direction="column"
-        align="center"
-        justify="space-between"
-        py={3}
-        bg="#f3f4f6"
-        borderRight="1px solid"
-        borderColor="#e5e7eb"
-      >
-        <VStack spacing={3}>
-          <Tooltip label="会话工作台" placement="right">
-            <IconButton
-              aria-label="工作台"
-              icon={<Home size={18} />}
-              size="sm"
-              variant="ghost"
-              bg="#e5e7eb"
-              color="#111827"
-              onClick={() => void router.push("/")}
-            />
-          </Tooltip>
-          <Tooltip label="模型管理" placement="right">
-            <IconButton
-              aria-label="模型管理"
-              icon={<Cpu size={18} />}
-              size="sm"
-              variant="ghost"
-              color="#4b5563"
-              onClick={() => void router.push("/models")}
-            />
-          </Tooltip>
-          <Tooltip label="用量统计" placement="right">
-            <IconButton
-              aria-label="用量统计"
-              icon={<Activity size={18} />}
-              size="sm"
-              variant="ghost"
-              color="#4b5563"
-              onClick={() => void router.push("/model-usage")}
-            />
-          </Tooltip>
-        </VStack>
-
-        <VStack spacing={2}>
-          <Tooltip label={user?.username || "个人中心"} placement="right">
-            <IconButton
-              aria-label="个人中心"
-              icon={<UserIcon size={18} />}
-              size="sm"
-              variant="ghost"
-              color="#4b5563"
-              onClick={() => void router.push("/account")}
-            />
-          </Tooltip>
-          <Tooltip label="退出登录" placement="right">
-            <IconButton
-              aria-label="退出登录"
-              icon={<LogOut size={17} />}
-              size="sm"
-              variant="ghost"
-              color="#6b7280"
-              onClick={() => void logout()}
-            />
-          </Tooltip>
-        </VStack>
-      </Flex>
-
+    <Flex h="100dvh" w="100%" overflow="hidden" bg="#ffffff" color="#1f2328">
       {/* 项目文件夹 + 多会话树形侧边栏 */}
       {sidebarOpen ? (
         <Flex
-          w="276px"
+          position={{ base: "absolute", md: "relative" }}
+          insetY={0}
+          left={0}
+          zIndex={3}
+          boxShadow={{ base: "xl", md: "none" }}
+          w={{ base: "min(280px, 85vw)", md: "260px" }}
           flexShrink={0}
           direction="column"
-          bg="#f9fafb"
+          bg="#f7f7f7"
           borderRight="1px solid"
           borderColor="#e5e7eb"
         >
@@ -428,6 +436,22 @@ export default function AgentWorkspace({
             </HStack>
           </Flex>
 
+          <Box px={2} pb={2}>
+            {activeProject ? (
+              <Button
+                size="sm"
+                w="full"
+                justifyContent="flex-start"
+                fontWeight="500"
+                variant="ghost"
+                leftIcon={<Plus size={13} />}
+                onClick={() => handleNewConversationInProject(activeProject.token)}
+              >
+                新建对话
+              </Button>
+            ) : null}
+          </Box>
+
           <Box px={3} pb={2}>
             <InputGroup size="sm">
               <InputLeftElement pointerEvents="none">
@@ -453,7 +477,7 @@ export default function AgentWorkspace({
             ) : filteredProjects.length === 0 ? (
               <VStack py={10} spacing={3} px={4} textAlign="center">
                 <Text fontSize="13px" color="gray.500">
-                  暂无项目，创建一个项目来开始多会话对话
+                  {searchQuery.trim() ? "没有找到匹配的项目或会话" : "创建项目，开始新的工作"}
                 </Text>
                 <Button size="sm" leftIcon={<Plus size={14} />} onClick={createModal.onOpen}>
                   新建项目
@@ -467,7 +491,7 @@ export default function AgentWorkspace({
                     : Boolean(expandedProjects[project.token]);
                   const isActiveProject = activeToken === project.token;
                   const showAll = Boolean(showAllConvsByProject[project.token]);
-                  const visibleConvs = showAll
+                  const visibleConvs = showAll || searchQuery.trim()
                     ? project.conversations
                     : project.conversations.slice(0, MAX_COLLAPSED_CONVERSATIONS);
                   const hiddenCount = project.conversations.length - visibleConvs.length;
@@ -482,7 +506,7 @@ export default function AgentWorkspace({
                         py={1.5}
                         borderRadius="8px"
                         cursor="pointer"
-                        bg={isActiveProject && !activeChatId ? "#eceef2" : "transparent"}
+                        bg={isActiveProject && !visibleChatId ? "#eceef2" : "transparent"}
                         _hover={{ bg: "#eceef2", "& .proj-actions": { opacity: 1 } }}
                         onClick={() => toggleProjectExpand(project.token)}
                       >
@@ -555,7 +579,7 @@ export default function AgentWorkspace({
                           ) : (
                             visibleConvs.map((conv) => {
                               const selected =
-                                isActiveProject && activeChatId === conv.id;
+                                isActiveProject && visibleChatId === conv.id;
                               return (
                                 <Flex
                                   key={conv.id}
@@ -645,6 +669,9 @@ export default function AgentWorkspace({
               </VStack>
             )}
           </Box>
+          <Box px={2} py={2} borderTop="1px solid" borderColor="gray.200">
+            <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings />
+          </Box>
         </Flex>
       ) : null}
 
@@ -652,12 +679,15 @@ export default function AgentWorkspace({
       <Flex flex="1" direction="column" minW={0} bg="#ffffff">
         {/* 顶部轻量栏 */}
         <Flex
-          h="48px"
+          minH="56px"
+          flexWrap="wrap"
+          gap={2}
+          py={2}
           px={4}
           align="center"
           justify="space-between"
           borderBottom="1px solid"
-          borderColor="#f0f1f3"
+          borderColor="transparent"
           flexShrink={0}
         >
           <HStack spacing={2}>
@@ -673,16 +703,10 @@ export default function AgentWorkspace({
             <Text fontSize="14px" fontWeight="600" color="#111827">
               {activeProject ? activeProject.name : "请选择或创建项目"}
             </Text>
-            {activeProject ? (
-              <Button
-                size="xs"
-                variant="ghost"
-                leftIcon={<Plus size={13} />}
-                onClick={() => handleNewConversationInProject(activeProject.token)}
-              >
-                新会话
-              </Button>
-            ) : null}
+            {activeProject && !sidebarOpen && (
+              <IconButton aria-label="新建对话" icon={<Plus size={17} />} size="sm" variant="ghost"
+                onClick={() => handleNewConversationInProject(activeProject.token)} />
+            )}
           </HStack>
 
           <HStack spacing={2}>
@@ -748,18 +772,20 @@ export default function AgentWorkspace({
               variant={filesDrawerOpen ? "solid" : "outline"}
               onClick={() => setFilesDrawerOpen((v) => !v)}
             >
-              工作区文件 ({fileKeys.length})
+              工作成果 ({artifactCount})
             </Button>
           </HStack>
         </Flex>
 
         {/* 对话内容区 + 可选右侧文件抽屉 */}
-        <Flex flex="1" minH={0} overflow="hidden">
-          <Box flex="1" minW={0} h="100%">
+        <Flex flex="1" minH={0} overflow="hidden" position="relative">
+          <Box flex="1" minW={0} h="100%" position="relative" zIndex={0}>
             {activeProject ? (
               <ChatPanel
                 key={activeProject.token}
                 token={activeProject.token}
+                hideHeader
+                emptyStateTitle="今天有什么可以帮你？"
                 hideSkillsManager
                 defaultHeaderTitle={activeProject.name}
                 completionsExtraBody={completionsExtraBody}
@@ -767,13 +793,9 @@ export default function AgentWorkspace({
                 externalNewConversationSignal={newConvSignal}
                 onConversationsChanged={() => void fetchProjects()}
                 onFilesUpdated={(files) => {
-                  setWorkspaceFiles((prev) => ({ ...prev, ...files }));
+                  setFilesByProject((prev) => ({ ...prev, [activeProject.token]: { ...prev[activeProject.token], ...files } }));
                 }}
-                onOpenWorkspaceFile={(filePath) => {
-                  setSelectedFilePath(filePath);
-                  setFilesDrawerOpen(true);
-                  return true;
-                }}
+                onOpenWorkspaceFile={openWorkspaceFile}
                 fileOptions={fileKeys}
                 height="100%"
               />
@@ -789,57 +811,10 @@ export default function AgentWorkspace({
             )}
           </Box>
 
-          {/* 按需展开的轻量文件查看抽屉 */}
-          {filesDrawerOpen ? (
-            <Flex
-              w="380px"
-              flexShrink={0}
-              direction="column"
-              borderLeft="1px solid"
-              borderColor="#e5e7eb"
-              bg="#fafafa"
-            >
-              <Flex px={3} py={2} borderBottom="1px solid" borderColor="#e5e7eb" justify="space-between" align="center">
-                <Text fontSize="13px" fontWeight="600">
-                  工作区变更文件
-                </Text>
-                <Text fontSize="12px" color="gray.500">
-                  {fileKeys.length} 个文件
-                </Text>
-              </Flex>
-              <Box maxH="180px" overflowY="auto" borderBottom="1px solid" borderColor="#e5e7eb" p={1.5}>
-                {fileKeys.length === 0 ? (
-                  <Text fontSize="12px" color="gray.400" p={2}>
-                    当前会话暂无项目文件变更
-                  </Text>
-                ) : (
-                  fileKeys.map((p) => (
-                    <Text
-                      key={p}
-                      fontSize="12px"
-                      px={2}
-                      py={1}
-                      borderRadius="6px"
-                      cursor="pointer"
-                      bg={selectedFilePath === p ? "#e5e7eb" : "transparent"}
-                      fontWeight={selectedFilePath === p ? "600" : "400"}
-                      noOfLines={1}
-                      onClick={() => setSelectedFilePath(p)}
-                    >
-                      {p}
-                    </Text>
-                  ))
-                )}
-              </Box>
-              <Box flex="1" overflow="auto" p={3} bg="#ffffff">
-                <Box as="pre" fontSize="12px" fontFamily="mono" whiteSpace="pre-wrap" wordBreak="break-word">
-                  {selectedFilePath && workspaceFiles[selectedFilePath]
-                    ? workspaceFiles[selectedFilePath].code
-                    : "// 选择上方文件查看内容"}
-                </Box>
-              </Box>
-            </Flex>
-          ) : null}
+          {filesDrawerOpen && (
+            <WorkspaceFilesPanel token={activeToken} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
+              onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
+          )}
         </Flex>
       </Flex>
 

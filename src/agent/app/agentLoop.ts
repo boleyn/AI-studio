@@ -1,3 +1,4 @@
+import { encodeProjectFile } from "../sandbox/paths";
 import { randomUUID } from "node:crypto";
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -314,7 +315,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
           const normalized = normalizeVirtualPath(changedPath);
           if (!isExportableProjectPath(normalized) && !input.inputProjectPaths.has(normalized)) continue;
           try {
-            updatedFiles[normalized] = { code: await input.sandbox.fs.readText(normalized) };
+            updatedFiles[normalized] = { code: encodeProjectFile(await input.sandbox.fs.readFile(normalized)) };
           } catch {
             // 忽略读取失败
           }

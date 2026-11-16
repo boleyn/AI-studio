@@ -527,7 +527,7 @@ const ChatPanel = ({
   openSkillsSignal?: number;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   externalActiveConversationId?: string;
   externalNewConversationSignal?: number;
   onConversationsChanged?: () => void;
@@ -558,7 +558,7 @@ const ChatPanel = ({
     void loadConversation(externalActiveConversationId);
   }, [activeConversation?.id, externalActiveConversationId, isInitialized, loadConversation]);
 
-  const lastNewConvSignalRef = useRef(externalNewConversationSignal ?? 0);
+  const lastNewConvSignalRef = useRef(0);
   useEffect(() => {
     if (!isInitialized || !externalNewConversationSignal) return;
     if (externalNewConversationSignal === lastNewConvSignalRef.current) return;
@@ -1104,6 +1104,27 @@ const ChatPanel = ({
         payload.planQuestionResponse || payload.planModeApprovalResponse || payload.permissionApprovalResponse
       );
       const assistantMessageId = continuedAssistantMessage?.id || createDataId();
+      const previousArtifactPaths = continuedAssistantMessage?.additional_kwargs?.workspaceArtifactPaths;
+      const artifactPaths = new Set<string>(
+        Array.isArray(previousArtifactPaths)
+          ? previousArtifactPaths.filter((path): path is string => typeof path === "string")
+          : [],
+      );
+      let artifactVersion = typeof continuedAssistantMessage?.additional_kwargs?.workspaceArtifactVersion === "string"
+        ? continuedAssistantMessage.additional_kwargs.workspaceArtifactVersion
+        : undefined;
+      const publishArtifactPaths = (files: Record<string, { code: string }>, version?: string) => {
+        if (version && version !== artifactVersion) artifactPaths.clear();
+        artifactVersion = version ?? artifactVersion;
+        for (const path of Object.keys(files)) artifactPaths.add(path);
+        const paths = [...artifactPaths].sort();
+        setMessages((previous) => previous.map((message) =>
+          message.id === assistantMessageId
+            ? { ...message, additional_kwargs: { ...message.additional_kwargs, workspaceArtifactPaths: paths, workspaceArtifactVersion: artifactVersion } }
+            : message,
+        ));
+      };
+
       const assistantCreatedAt = continuedAssistantMessage?.time || new Date().toISOString();
       const existingAssistantContent = continuedAssistantMessage
         ? extractText(continuedAssistantMessage.content)
@@ -1357,6 +1378,8 @@ const ChatPanel = ({
                 input?: unknown;
                 content?: unknown;
                 files?: unknown;
+                persisted?: unknown;
+                artifactVersion?: unknown;
                 parent_agent_tool_use_id?: unknown;
                 is_error?: unknown;
                 trigger?: unknown;
@@ -1531,9 +1554,12 @@ const ChatPanel = ({
                   }
                 }
               }
-              if (subtype === "files_updated" && onFilesUpdated) {
+              if (subtype === "files_updated") {
                 const files = toUpdatedFilesMap(payload.files);
-                if (files) onFilesUpdated(files);
+                if (files) {
+                  onFilesUpdated?.(files);
+                  if (payload.persisted === true && onOpenWorkspaceFile) publishArtifactPaths(files, typeof payload.artifactVersion === "string" ? payload.artifactVersion : undefined);
+                }
                 return;
               }
               if (subtype === "compact_boundary") {
@@ -1975,6 +2001,7 @@ const ChatPanel = ({
                 ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: {
                   ...kwargs,
+                  ...(artifactPaths.size ? { workspaceArtifactPaths: [...artifactPaths].sort(), workspaceArtifactVersion: artifactVersion } : {}),
                   ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
                   ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
                 },
@@ -2040,6 +2067,7 @@ const ChatPanel = ({
       completionsPath,
       completionsStream,
       onFilesUpdated,
+      onOpenWorkspaceFile,
       onAttachmentsAvailable,
       token,
       updateConversationTitle,
@@ -2113,6 +2141,7 @@ const ChatPanel = ({
   const chatPanelViewContextValue = useMemo(
     () => ({
       height,
+      hideHeader,
       t,
       activeConversationId: activeConversation?.id,
       conversations,
@@ -2177,6 +2206,7 @@ const ChatPanel = ({
     }),
     [
       height,
+      hideHeader,
       t,
       activeConversation?.id,
       conversations,

@@ -13,7 +13,7 @@ import AuthGuard from "../components/auth/AuthGuard";
 const App = ({ Component, pageProps }: AppProps) => {
   const router = useRouter();
   const isWorkspaceRoute =
-    router.pathname === "/project/[di]" || router.pathname === "/skills/create";
+    router.pathname === "/" || router.pathname === "/project/[di]" || router.pathname === "/skills/create";
 
   return (
     <ChakraProvider theme={theme}>

@@ -134,10 +134,22 @@ const ToolTimelineCard = ({
   isStreaming?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   onOpenToolDetailModal: (title: string, content?: string) => void;
 }) => {
   const normalizedToolName = (item.toolName || "").trim().toLowerCase();
+  const actionLabels: Record<string, string> = {
+    read: "读取文件",
+    glob: "查找文件",
+    grep: "搜索内容",
+    write: "写入文件",
+    edit: "编辑文件",
+    bash: "运行命令",
+    websearch: "搜索网页",
+    webfetch: "读取网页",
+  };
+  const actionLabel = onOpenWorkspaceFile ? actionLabels[normalizedToolName] : undefined;
+
   const toolParams = parseJsonObject(item.params);
   const filePath = typeof toolParams.file_path === "string" ? toolParams.file_path : "";
   const fileName = getFileName(filePath);
@@ -271,7 +283,7 @@ const ToolTimelineCard = ({
     return (
       <Box borderLeft="2px solid" borderLeftColor={leftBorderColor} key={`tool-read-${item.id || index}`} pl={3} py={1}>
         <Flex align="center" gap={2}>
-          <Text color="myGray.500" fontSize="12px">Read</Text>
+          <Text color="myGray.500" fontSize="12px">{actionLabel || "Read"}</Text>
           <Text color="myGray.350" fontSize="11px">/</Text>
           <Button
             color="myGray.800"
@@ -315,7 +327,7 @@ const ToolTimelineCard = ({
     return (
       <Box borderLeft="2px solid" borderLeftColor={leftBorderColor} key={`tool-compact-${item.id || index}`} pl={3} py={1}>
         <Flex align="center" gap={2}>
-          <Text color="myGray.500" fontSize="12px">Glob</Text>
+          <Text color="myGray.500" fontSize="12px">{actionLabel || "Glob"}</Text>
           <Text color="myGray.350" fontSize="11px">/</Text>
           <Button
             color="myGray.800"
@@ -417,12 +429,12 @@ const ToolTimelineCard = ({
     );
   }
 
-  const toolLabel = isWriteTool ? "Write" : isEditTool ? "Edit" : item.toolName || "工具";
+  const toolLabel = actionLabel || (isWriteTool ? "Write" : isEditTool ? "Edit" : item.toolName || "工具");
   const title = isWriteTool
     ? fileName || filePath || "新建文件"
     : isEditTool
     ? fileName || filePath || "编辑文件"
-    : item.toolName || `工具 ${index + 1}`;
+    : actionLabel || item.toolName || `工具 ${index + 1}`;
   const oldString = typeof toolParams.old_string === "string" ? toolParams.old_string : "";
   const newString =
     typeof toolParams.new_string === "string"

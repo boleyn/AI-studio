@@ -20,7 +20,7 @@ interface ChatMessageBlockProps {
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onRate?: (messageId: string, rating: MessageRating) => void;
-  onOpenWorkspaceFile?: (filePath: string) => boolean;
+  onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }
 
 const ChatMessageBlock = ({
@@ -41,6 +41,7 @@ const ChatMessageBlock = ({
   const { hideInteractiveCards } = useChatInteractionContext();
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  const inlineActions = Boolean(onOpenWorkspaceFile);
   const canShowActions = (message.role === "user" || message.role === "assistant") && !isStreaming;
 
   return (
@@ -52,11 +53,11 @@ const ChatMessageBlock = ({
       zIndex={1}
       sx={{
         ".message-action-anchor": {
-          opacity: 0,
+          opacity: inlineActions && isAssistant ? 1 : 0,
           pointerEvents: "auto",
           transition: "opacity 0.18s ease",
         },
-        "&:hover .message-action-anchor, .message-action-anchor:hover": {
+        "&:hover .message-action-anchor, &:focus-within .message-action-anchor, .message-action-anchor:hover": {
           opacity: 1,
         },
         "&:hover": {
@@ -64,14 +65,27 @@ const ChatMessageBlock = ({
         },
       }}
     >
+      <ChatItem
+        executionSummary={summary}
+        isLatestRun={isLatestRun}
+        isStreaming={isStreaming}
+        message={message}
+        messageId={messageId}
+        requestMessage={requestMessage}
+        requestContent={requestContent}
+        hideInteractiveCards={hideInteractiveCards}
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
+      />
+
       {canShowActions ? (
         <Box
           className="message-action-anchor"
-          position="absolute"
+          position={inlineActions ? "static" : "absolute"}
+          mt={inlineActions ? 1 : 0}
           left={isUser ? "auto" : 0}
           right={isUser ? 0 : "auto"}
           top={0}
-          transform="translateY(calc(-100% - 6px))"
+          transform={inlineActions ? undefined : "translateY(calc(-100% - 6px))"}
           zIndex={60}
         >
           <MessageActionBar
@@ -88,17 +102,6 @@ const ChatMessageBlock = ({
         </Box>
       ) : null}
 
-      <ChatItem
-        executionSummary={summary}
-        isLatestRun={isLatestRun}
-        isStreaming={isStreaming}
-        message={message}
-        messageId={messageId}
-        requestMessage={requestMessage}
-        requestContent={requestContent}
-        hideInteractiveCards={hideInteractiveCards}
-        onOpenWorkspaceFile={onOpenWorkspaceFile}
-      />
     </Flex>
   );
 };

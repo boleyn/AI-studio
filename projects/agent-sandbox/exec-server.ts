@@ -441,6 +441,6 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.FASTGPT_EXEC_HOST || '0.0.0.0', () => {
   process.stdout.write(`[agent-sandbox] exec server listening on ${PORT}\n`)
 })
