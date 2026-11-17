@@ -135,8 +135,9 @@ function SpreadsheetGrid({ rows }: { rows: string[][] }) {
         />
       </Flex>
       <Box flex="1" minH={0} overflow="auto">
-        <Box as="table" fontSize="xs" borderSpacing={0} minW="100%"
+        <Box as="table" fontSize="xs" minW="100%"
           sx={{
+            borderSpacing: 0,
             "th, td": { borderRight: "1px solid", borderBottom: "1px solid", borderColor: "gray.200" },
             th: { bg: "gray.50", color: "gray.600", fontWeight: "normal" },
             "thead th": { position: "sticky", top: 0, zIndex: 2, height: "24px" },
