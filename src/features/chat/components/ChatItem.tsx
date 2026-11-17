@@ -206,7 +206,7 @@ const ChatItem = ({
   } as const;
 
   return (
-    <Flex justify={isUser ? "flex-end" : "flex-start"} w="full">
+    <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
       <Box
         bg={isWorkspaceChat && isUser ? "#f4f4f4" : isUser ? "white" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
         border={!isWorkspaceChat && (isUser || isAssistant) ? "1px solid" : "none"}
@@ -226,7 +226,7 @@ const ChatItem = ({
         fontSize={isWorkspaceChat ? "15px" : "sm"}
         lineHeight={isWorkspaceChat ? "1.7" : undefined}
         maxW={isWorkspaceChat && isUser ? { base: "88%", md: "74%" } : "100%"}
-        w={isUser ? "auto" : "full"}
+        w={isUser ? "fit-content" : "100%"}
         minW={isUser ? "64px" : isAssistant ? "200px" : 0}
         px={isUser || (isAssistant && !isWorkspaceChat && !usePlainAnswer) ? 4 : 0}
         py={isWorkspaceChat && isUser ? 2.5 : isUser || isAssistant ? 3 : 0}
@@ -280,7 +280,7 @@ const ChatItem = ({
         ) : isSystem ? (
           <Text color="myGray.500" fontSize="xs">{content}</Text>
         ) : (
-          <Flex direction="column" gap={2} w="full">
+          <Flex direction="column" gap={2} w="100%">
             {isStreaming && openingAnswer && (
               isWorkspaceChat ? (
                 <StreamdownMarkdown
@@ -365,8 +365,8 @@ const ChatItem = ({
 
             </Box>
             {timelineItems.length > 0 ? (
-              <Box w="full">
-                <Flex direction="column" gap={2} w="full">
+              <Box w="100%">
+                <Flex direction="column" gap={2} w="100%">
                   {timelineItems.map((item, index) => {
                     if (index === 0 && openingAnswer && (isStreaming || (!activityExpanded && latestAnswerIndex > 0))) return null;
                     if (!activityExpanded && item.type !== "answer") return null;
@@ -498,7 +498,7 @@ const ChatItem = ({
                     }
 
                     return (
-                      <Box key={`${messageId}-timeline-answer-${index}`} pl={0} w="full">
+                      <Box key={`${messageId}-timeline-answer-${index}`} pl={0} w="100%">
                         {isWorkspaceChat ? (
                           <StreamdownMarkdown
                             onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}

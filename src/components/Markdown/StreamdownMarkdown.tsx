@@ -51,7 +51,8 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
 
   return (
     <Box
-      w="full"
+      w="100%"
+      minW={0}
       color="#0d0d0d"
       fontSize="15px"
       lineHeight="1.75"
