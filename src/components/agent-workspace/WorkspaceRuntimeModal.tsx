@@ -24,7 +24,7 @@ import {
   EyeOff,
   HardDrive,
   RefreshCw,
-  Server,
+  Cloud,
   Sparkles,
   Wifi,
   WifiOff,
@@ -367,13 +367,13 @@ export default function WorkspaceRuntimeModal({
       size="lg"
       title={
         <HStack spacing={2}>
-          <Text>项目执行环境</Text>
+          <Text>执行主机与连接管理</Text>
           <Badge bg="surface.hover" color="ink.secondary" fontWeight="500" fontSize="11px" px={2} py={0.5}>
             {projectName}
           </Badge>
         </HStack>
       }
-      subtitle="每个项目可独立绑定运行环境，切换项目时会自动恢复对应配置。"
+      subtitle="选择默认云电脑，或连接你的本地电脑（Mac / Windows），支持随时切换。"
       onSubmit={handleSubmit}
       footer={
         <>
@@ -405,15 +405,15 @@ export default function WorkspaceRuntimeModal({
           >
             <HStack justify="space-between" mb={1.5}>
               <HStack spacing={2}>
-                <Server size={16} color={draft.sandboxKind === "remote-vm" ? "#0d0d0d" : "#5d5d5d"} />
+                <Cloud size={16} color={draft.sandboxKind === "remote-vm" ? "#0d0d0d" : "#5d5d5d"} />
                 <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                  远程虚拟机
+                  云电脑
                 </Text>
               </HStack>
               {draft.sandboxKind === "remote-vm" && <CheckCircle2 size={15} color="#0d0d0d" />}
             </HStack>
             <Text fontSize="12px" color="ink.secondary" lineHeight="1.45">
-              每账号分配专属云主机（/home/user），各项目按文件夹隔离，CLI、依赖与 Skills 跨项目复用。
+              每账号专属云电脑（/home/user），各项目按文件夹隔离，CLI、依赖与 Skills 跨项目复用。
             </Text>
           </Box>
 
@@ -435,13 +435,13 @@ export default function WorkspaceRuntimeModal({
               <HStack spacing={2}>
                 <HardDrive size={16} color={draft.sandboxKind === "connector" ? "#0d0d0d" : "#5d5d5d"} />
                 <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                  本机连接器
+                  本地电脑
                 </Text>
               </HStack>
               {draft.sandboxKind === "connector" && <CheckCircle2 size={15} color="#0d0d0d" />}
             </HStack>
             <Text fontSize="12px" color="ink.secondary" lineHeight="1.45">
-              挂载你自己的电脑目录，Agent 直接在本机读写代码与运行命令。
+              挂载你的本地电脑目录，伯仁直接在本机读写代码与运行命令。
             </Text>
           </Box>
         </HStack>
@@ -453,7 +453,7 @@ export default function WorkspaceRuntimeModal({
               <AppSectionCard>
                 <HStack justify="space-between" mb={1.5}>
                   <Text fontSize="13px" fontWeight="600" color="ink.primary">
-                    专属云主机实例
+                    专属云电脑
                   </Text>
                   <Badge
                     colorScheme={cloudMeta.badgeScheme}
@@ -468,7 +468,7 @@ export default function WorkspaceRuntimeModal({
                   项目目录：<Code fontSize="11px">/home/user/projects/{projectName || projectToken || "default"}</Code>
                 </Text>
                 <Text fontSize="12px" color="ink.muted" mt={1}>
-                  登录即分配云主机，运行期间直接读写持久化目录；退出登录或超时空闲后自动归档休眠。
+                  登录即分配云电脑，运行期间直接读写持久化目录；退出登录或超时空闲后自动归档休眠。
                 </Text>
               </AppSectionCard>
             );

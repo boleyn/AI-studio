@@ -19,11 +19,6 @@ import {
   MenuDivider,
   MenuItem,
   MenuList,
-  Popover,
-  PopoverBody,
-  PopoverContent,
-  PopoverTrigger,
-  Portal,
   Spinner,
   Text,
   Textarea,
@@ -51,12 +46,10 @@ import {
   Pencil,
   Plus,
   Search,
-  Server,
   SlidersHorizontal,
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { AccountModal } from "./AccountModal";
 import { AppDialog } from "./ui";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
 import WorkspaceRuntimeModal, {
@@ -191,7 +184,6 @@ export default function AgentWorkspace({
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const [usageModalOpen, setUsageModalOpen] = useState(false);
   const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects">("chat");
   const [pinnedProjectTokens, setPinnedProjectTokens] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -415,7 +407,7 @@ export default function AgentWorkspace({
     saveProjectRuntimeConfig(projectToken, next);
     setRuntimeByProject((prev) => ({ ...prev, [projectToken]: next }));
     toast({
-      title: next.sandboxKind === "connector" ? "已切换为本机连接器" : "已切换为远程虚拟机",
+      title: next.sandboxKind === "connector" ? "已切换为本地电脑" : "已切换为云电脑",
       status: "success",
       duration: 2000,
     });
@@ -641,73 +633,6 @@ export default function AgentWorkspace({
         </VStack>
 
         <VStack spacing={2.5}>
-          {/* 圆形用量指示器（1:1 对齐 ChatGPT 左下角环形浮层） */}
-          <Popover placement="right-end" gutter={10}>
-            <PopoverTrigger>
-              <Box
-                as="button"
-                type="button"
-                aria-label="用量概览"
-                w="34px"
-                h="34px"
-                borderRadius="full"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                _hover={{ bg: "surface.active" }}
-                transition="background 0.15s"
-              >
-                <Box
-                  w="20px"
-                  h="20px"
-                  borderRadius="full"
-                  border="2px solid"
-                  borderColor="ink.secondary"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  <Box w="6px" h="6px" borderRadius="full" bg="ink.secondary" />
-                </Box>
-              </Box>
-            </PopoverTrigger>
-            <Portal>
-              <PopoverContent w="232px" p={1} borderRadius="18px" zIndex={1500}>
-                <PopoverBody p={2.5}>
-                  <Text fontSize="12px" color="ink.muted" mb={2}>
-                    Usage source: Bore
-                  </Text>
-                  <Divider borderColor="stroke.light" mb={2.5} />
-                  <VStack align="stretch" spacing={2} fontSize="13px">
-                    <HStack justify="space-between">
-                      <Text color="ink.primary">项目数量</Text>
-                      <Text color="ink.primary" fontWeight="500">{projects.length}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="ink.primary">当前环境</Text>
-                      <Text color="ink.primary" fontWeight="500">
-                        {activeRuntime.sandboxKind === "connector" ? "本机连接器" : "远程虚拟机"}
-                      </Text>
-                    </HStack>
-                  </VStack>
-                  <Divider borderColor="stroke.light" my={2.5} />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    w="full"
-                    justifyContent="flex-start"
-                    px={1.5}
-                    fontWeight="400"
-                    fontSize="13px"
-                    onClick={() => setUsageModalOpen(true)}
-                  >
-                    管理用量
-                  </Button>
-                </PopoverBody>
-              </PopoverContent>
-            </Portal>
-          </Popover>
-
           <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings compact />
         </VStack>
       </Flex>
@@ -1191,50 +1116,6 @@ export default function AgentWorkspace({
           </HStack>
 
           <HStack spacing={2}>
-            {/* 执行环境胶囊（对齐 ChatGPT 右上角胶囊下拉风格） */}
-            {activeProject ? (
-              <Tooltip
-                label={
-                  activeRuntime.sandboxKind === "connector"
-                    ? `本机连接器 (${activeRuntime.connectorUrl}) — 点击配置`
-                    : "远程虚拟机（按项目分配）— 点击切换或配置"
-                }
-              >
-                <Button
-                  size="sm"
-                  h="32px"
-                  variant="outline"
-                  borderRadius="full"
-                  px={3}
-                  fontSize="13px"
-                  fontWeight="500"
-                  borderColor="stroke.subtle"
-                  bg="white"
-                  _hover={{ bg: "surface.hover" }}
-                  leftIcon={
-                    activeRuntime.sandboxKind === "connector" ? (
-                      <HardDrive size={14} />
-                    ) : (
-                      <Server size={14} />
-                    )
-                  }
-                  rightIcon={<ChevronDown size={13} color="#8f8f8f" />}
-                  onClick={() => {
-                    setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                    runtimeModal.onOpen();
-                  }}
-                >
-                  {activeRuntime.sandboxKind === "connector"
-                    ? activeRuntime.deviceId && activeRuntime.grantId
-                      ? `本机 · ${activeRuntime.deviceName || "已授权"}`
-                      : activeRuntime.connectorTested
-                        ? "本机电脑 · 已连"
-                        : "本机连接器"
-                    : "远程虚拟机"}
-                </Button>
-              </Tooltip>
-            ) : null}
-
             <Tooltip label={filesDrawerOpen ? "关闭文件预览" : floatingResourcesOpen ? "收起输出与来源" : `输出与来源 (${artifactCount})`}>
               <IconButton
                 aria-label="切换输出与来源窗口"
@@ -1504,14 +1385,6 @@ export default function AgentWorkspace({
         onClose={settingsModal.onClose}
         project={editingProject}
         onSave={handleSaveProjectSettings}
-      />
-
-      {/* 用量管理弹窗 */}
-      <AccountModal
-        isOpen={usageModalOpen}
-        onClose={() => setUsageModalOpen(false)}
-        panel="usage"
-        showWorkspaceSettings
       />
     </Flex>
   );
