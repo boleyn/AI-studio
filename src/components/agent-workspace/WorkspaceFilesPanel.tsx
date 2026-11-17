@@ -130,10 +130,10 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
           }}
         />
       )}
-      <Flex px={4} py={3} align="center" gap={2} borderBottom="1px solid" borderColor="gray.100">
+      <Flex px={{ base: 2, md: 4 }} py={3} align="center" gap={{ base: 1, md: 2 }} borderBottom="1px solid" borderColor="gray.100">
         <Menu>
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
-            minW={0} flexShrink={1} aria-label="选择工作成果" title={selectedPath}>
+            minW={0} flex="1 1 auto" aria-label="选择工作成果" title={selectedPath}>
             <Text isTruncated>{selectedPath.split("/").pop() || "工作成果"}</Text>
           </MenuButton>
           <MenuList maxH="min(45vh, 320px)" overflowY="auto" maxW="min(84vw, 460px)">
@@ -146,16 +146,15 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
           </MenuList>
         </Menu>
         {version && <Text fontSize="xs" color="gray.500" flexShrink={0}>回复版本</Text>}
-        <Box flex={1} />
         {selected && isSpreadsheet && !version && (
-          <Button size="sm" variant="ghost" aria-pressed={revisionTarget === fileUrl}
+          <Button size="sm" variant="ghost" flexShrink={0} px={2} aria-pressed={revisionTarget === fileUrl}
             onClick={() => setRevisionTarget(revisionTarget === fileUrl ? undefined : fileUrl)}>
             请求修改
           </Button>
         )}
         {selected && isSpreadsheet && (
           <Menu>
-            <MenuButton as={Button} variant="ghost" size="sm"
+            <MenuButton as={Button} variant="ghost" size="sm" flexShrink={0} px={2}
               aria-label={`表格缩放 ${spreadsheetZoom}%`} rightIcon={<ChevronDown size={14} />}>
               {spreadsheetZoom}%
             </MenuButton>
