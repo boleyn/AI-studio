@@ -76,9 +76,17 @@ const ChatInput = ({
   }, [draftStorageKey]);
   useEffect(() => {
     if (!artifactRevision) return;
-    setText((draft) => draft ? `${artifactRevision.text}\n${draft}` : artifactRevision.text);
+    setText((draft) => draft ? `${draft}\n\n${artifactRevision.text}` : artifactRevision.text);
     const frame = requestAnimationFrame(() => {
-      textAreaRef.current?.focus();
+      const textarea = textAreaRef.current;
+      if (textarea) {
+        textarea.focus();
+        const end = textarea.value.length;
+        textarea.setSelectionRange(end, end);
+        textarea.style.height = `${inputBaseHeight}px`;
+        textarea.style.height = `${Math.max(inputBaseHeight, Math.min(textarea.scrollHeight, 128))}px`;
+        textarea.style.overflowY = textarea.scrollHeight > 128 ? "auto" : "hidden";
+      }
       artifactRevision.onApplied();
     });
     return () => cancelAnimationFrame(frame);
