@@ -4,6 +4,8 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { ArtifactFileIcon } from "@/components/workspace/ArtifactFileIcon";
+import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
+import FilePreviewPanel, { isSpreadsheetFile } from "@/components/workspace/FilePreviewPanel";
 import ExtendedFilePreview from "@/components/workspace/ExtendedFilePreview";
 
 export default function SharedArtifactPage() {
@@ -12,6 +14,7 @@ export default function SharedArtifactPage() {
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
   const [result, setResult] = useState<{ id: string; filename?: string; error?: string; needsLogin?: boolean }>();
   const [attempt, setAttempt] = useState(0);
+  const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
   const current = result?.id === id ? result : undefined;
 
   useEffect(() => {
@@ -44,14 +47,22 @@ export default function SharedArtifactPage() {
   }
 
   const url = `${endpoint}&file=1`;
+  const isSpreadsheet = isSpreadsheetFile(current.filename);
+  const retry = () => setAttempt((value) => value + 1);
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
       <ArtifactFileIcon name={current.filename} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
+      {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
       <Button as="a" href={url} download={current.filename} leftIcon={<Download size={16} />} size="sm" variant="ghost">下载</Button>
     </Flex>
     <Box flex={1} minH={0}>
-      <ExtendedFilePreview key={`${id}:${attempt}`} url={url} name={current.filename} onRetry={() => setAttempt((value) => value + 1)} />
+      {isSpreadsheet ? (
+        <FilePreviewPanel key={`${id}:${attempt}`} binaryUrl={url} activeFile={current.filename} token="" sourceCode=""
+          localOnly onRetry={retry} spreadsheetZoom={spreadsheetZoom} />
+      ) : (
+        <ExtendedFilePreview key={`${id}:${attempt}`} url={url} name={current.filename} onRetry={retry} />
+      )}
     </Box>
   </Flex>;
 }

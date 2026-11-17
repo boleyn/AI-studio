@@ -102,6 +102,7 @@ type FilePreviewPanelProps = {
   spreadsheetZoom?: number;
   onSelectSpreadsheetCell?: (sheet: string, address: string) => void;
   version?: string;
+  binaryUrl?: string;
 };
 
 type PreviewCacheEntry =
@@ -110,16 +111,16 @@ type PreviewCacheEntry =
   | { kind: "spreadsheet"; officePreviewUrl: string; sheets: PreviewSheet[] }
   | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
 
-const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry, spreadsheetZoom = 100, onSelectSpreadsheetCell }: FilePreviewPanelProps) => {
+const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, binaryUrl, onRetry, spreadsheetZoom = 100, onSelectSpreadsheetCell }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
-  const previewCacheKey = `${token}::${version ?? ""}::${activeFile}`;
+  const previewCacheKey = binaryUrl ?? `${token}::${version ?? ""}::${activeFile}`;
   const viewBinaryUrl = useMemo(
     () =>
-      token && activeFile
+      binaryUrl ?? (token && activeFile
         ? `/api/code?token=${encodeURIComponent(token)}&action=view&path=${encodeURIComponent(activeFile)}&v=${sourceHash}${version ? `&version=${encodeURIComponent(version)}` : ""}`
-        : "",
-    [token, activeFile, sourceHash, version]
+        : ""),
+    [token, activeFile, sourceHash, version, binaryUrl]
   );
   const viewSignedUrlApi = useMemo(
     () =>
@@ -603,5 +604,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
 };
 
 export const isPreviewableFile = (filePath: string) => getPreviewKind(filePath) !== "unknown";
+
+export const isSpreadsheetFile = (name: string) => getPreviewKind(name) === "spreadsheet";
 
 export default FilePreviewPanel;

@@ -5,7 +5,7 @@ import { ArtifactFileIcon, artifactFileType } from "../workspace/ArtifactFileIco
 import { PreviewZoomMenu } from "../workspace/PreviewZoomMenu";
 import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
 import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
-import FilePreviewPanel from "../workspace/FilePreviewPanel";
+import FilePreviewPanel, { isSpreadsheetFile } from "../workspace/FilePreviewPanel";
 import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -103,7 +103,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   const query = new URLSearchParams({ token, action: "view", path: selectedPath });
   if (version) query.set("version", version);
   const fileUrl = `/api/code?${query}`;
-  const isSpreadsheet = /\.(xlsx?|csv)$/i.test(selectedPath);
+  const isSpreadsheet = isSpreadsheetFile(selectedPath);
   const showDocumentZoom = /\.docx$/i.test(selectedPath);
   const onDocumentStateChange = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
     const percent = state.zoom ? Math.round(state.zoom.scale * 100) : 100;
