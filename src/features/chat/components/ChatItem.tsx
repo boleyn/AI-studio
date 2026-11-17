@@ -150,6 +150,9 @@ const ChatItem = ({
     : planProgress ? "正在执行计划" : "正在思考";
 
   const usePlainAnswer = isWorkspaceChat && isAssistant;
+  const openingAnswer = isWorkspaceChat && hasActivity && timelineItems[0]?.type === "answer"
+    ? timelineItems[0]
+    : undefined;
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
 
   if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
@@ -235,6 +238,13 @@ const ChatItem = ({
                 <Text fontSize="sm">{runningActivityLabel}</Text>
               </Flex>
             )}
+            {openingAnswer && (
+              <Markdown
+                onOpenWorkspaceFile={openReplyArtifact}
+                showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
+                source={openingAnswer.text || ""}
+              />
+            )}
             {hasActivity && (
               <Button
                 alignSelf="flex-start"
@@ -300,6 +310,7 @@ const ChatItem = ({
               <Box>
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
+                    if (index === 0 && openingAnswer) return null;
                     if (!activityExpanded && item.type !== "answer") return null;
 
                     if (item.type === "agent") {
