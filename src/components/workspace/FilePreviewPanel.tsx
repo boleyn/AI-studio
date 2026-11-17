@@ -1,4 +1,4 @@
-import { Box, Image, Select, Spinner, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Image, Select, Spinner, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -97,6 +97,7 @@ type FilePreviewPanelProps = {
   activeFile: string;
   sourceCode: string;
   localOnly?: boolean;
+  onRetry?: () => void;
   version?: string;
 };
 
@@ -108,7 +109,7 @@ type PreviewCacheEntry =
   | { kind: "spreadsheet"; officePreviewUrl: string; sheets: PreviewSheet[] }
   | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
 
-const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version }: FilePreviewPanelProps) => {
+const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
   const previewCacheKey = `${token}::${version ?? ""}::${activeFile}`;
@@ -372,6 +373,15 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
       if (shouldRevokeObjectUrl && objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [activeFile, inlineImageSrc, inlineImageUrl, previewKind, previewCacheKey, sourceCode, viewBinaryUrl, viewSignedUrlApi, localOnly]);
+
+  if (docError && onRetry) {
+    return (
+      <Flex direction="column" align="center" justify="center" h="full" gap={3} role="status">
+        <Text fontSize="sm" color="gray.600">无法加载此文件</Text>
+        <Button size="sm" variant="outline" onClick={onRetry}>重试</Button>
+      </Flex>
+    );
+  }
 
   if (previewKind === "unknown") {
     return (

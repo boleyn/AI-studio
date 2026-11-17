@@ -16,6 +16,11 @@ type Props = {
 };
 
 export default function WorkspaceFilesPanel({ token, version, files, selectedPath, onSelect, onClose }: Props) {
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+  const retryPreview = () => {
+    setHistoricalResult(undefined);
+    setPreviewAttempt((attempt) => attempt + 1);
+  };
   const [expanded, setExpanded] = useState(false);
   const [paneWidth, setPaneWidth] = useState(58);
   const panelRef = useRef<HTMLElement>(null);
@@ -57,7 +62,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
       })
       .catch(() => { if (!controller.signal.aborted) setHistoricalResult({ url: fileUrl, error: true }); });
     return () => controller.abort();
-  }, [fileUrl, previewable, version]);
+  }, [fileUrl, previewable, version, previewAttempt]);
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
 
@@ -155,9 +160,14 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
       </Flex>
       <Box flex={1} overflow="auto" p={4}>
         {version && !previewable && historicalStatus !== "ready" ? (
-          <Text fontSize="sm">{historicalStatus === "loading" ? "正在加载回复版本…" : "无法读取此版本"}</Text>
+          historicalStatus === "loading" ? <Text fontSize="sm">正在加载回复版本…</Text> : (
+            <Flex direction="column" align="center" justify="center" h="full" gap={3} role="status">
+              <Text fontSize="sm" color="gray.600">无法加载此文件</Text>
+              <Button size="sm" variant="outline" onClick={retryPreview}>重试</Button>
+            </Flex>
+          )
         ) : selected && previewable ? (
-          <FilePreviewPanel key={fileUrl} localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
+          <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
         ) : selected && /\.(md|markdown)$/i.test(selectedPath) ? (
           <Box lineHeight="1.7" overflowWrap="anywhere" sx={{
             "& h1, & h2, & h3": { fontWeight: 600, mt: 4, mb: 2 },
