@@ -15,8 +15,9 @@ import { clearAuthToken, getAuthToken, setAuthToken, withAuthHeaders } from "@fe
 
 const getLastRoute = (value: string | string[] | undefined) => {
   if (!value) return "";
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw.includes("?lastRoute=") ? raw.split("?lastRoute=")[0] : raw;
+  const raw = (Array.isArray(value) ? value[0] : value)?.trim();
+  if (!raw?.startsWith("/") || raw.startsWith("//") || /[\\\x00-\x1f\x7f]/.test(raw)) return "";
+  return raw.split("?lastRoute=")[0];
 };
 
 const pageMetaMap: Record<
@@ -102,6 +103,7 @@ const Login = () => {
     [lastRoute, redirectWithReload]
   );
 
+  const safeLastRoute = getLastRoute(lastRoute);
   const currentMeta = pageMetaMap[pageType] || pageMetaMap[LoginPageTypeEnum.password];
 
   const DynamicComponent = useMemo(() => {
@@ -109,13 +111,13 @@ const Login = () => {
       return <RegisterForm setPageType={setPageType} onSuccess={loginSuccess} />;
     }
     if (pageType === LoginPageTypeEnum.feishu) {
-      return <FeishuForm setPageType={setPageType} lastRoute={lastRoute || "/"} />;
+      return <FeishuForm setPageType={setPageType} lastRoute={safeLastRoute || "/"} />;
     }
     if (pageType === LoginPageTypeEnum.forgot) {
       return <ForgetPasswordForm setPageType={setPageType} />;
     }
     return <LoginForm setPageType={setPageType} onSuccess={loginSuccess} />;
-  }, [pageType, loginSuccess, lastRoute]);
+  }, [pageType, loginSuccess, safeLastRoute]);
 
   return (
     <>
