@@ -95,7 +95,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
       event.preventDefault();
       onClose();
     }} position={{ base: "absolute", lg: expanded ? "absolute" : "relative" }}
-      inset={{ base: 0, lg: expanded ? 0 : "auto" }} zIndex={2} w={{ base: "full", lg: expanded ? "full" : `${paneWidth}%` }}
+      inset={{ base: 0, lg: expanded ? 0 : "auto" }} zIndex={{ base: 4, md: 2 }} w={{ base: "full", lg: expanded ? "full" : `${paneWidth}%` }}
       minW={{ lg: "360px" }} maxW={{ lg: expanded ? "none" : "900px" }} direction="column" bg="white"
       borderLeftWidth={{ base: 0, lg: "1px" }} borderColor="gray.200" minH={0}>
       {!expanded && (
