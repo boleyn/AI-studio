@@ -183,10 +183,10 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
           </MenuList>
         </Menu>
         {selected && (
-          <Menu onOpen={() => void loadVersions()}>
+          <Menu placement="bottom-end" onOpen={() => void loadVersions()}>
             <MenuButton as={IconButton} aria-label="版本历史" title={version ? `正在查看${selectedVersionLabel}` : "版本历史"}
               icon={<History size={17} />} size="sm" variant={version ? "solid" : "ghost"} />
-            <MenuList>
+            <MenuList maxH="min(50vh, 360px)" overflowY="auto" maxW="calc(100vw - 24px)">
               {files[selectedPath] && (
                 <MenuItem onClick={() => onSelectVersion()} aria-current={version ? undefined : "true"} fontWeight={version ? "normal" : "semibold"}>
                   当前文件
