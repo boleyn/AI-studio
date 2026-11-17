@@ -1560,8 +1560,11 @@ const ChatPanel = ({
               if (subtype === "files_updated") {
                 const files = toUpdatedFilesMap(payload.files);
                 if (files) {
-                  onFilesUpdated?.(files);
-                  if (payload.persisted === true && onOpenWorkspaceFile) publishArtifactPaths(files, typeof payload.artifactVersion === "string" ? payload.artifactVersion : undefined);
+                  const persisted = payload.persisted === true;
+                  if (persisted || !onOpenWorkspaceFile) onFilesUpdated?.(files);
+                  if (persisted && onOpenWorkspaceFile) {
+                    publishArtifactPaths(files, typeof payload.artifactVersion === "string" ? payload.artifactVersion : undefined);
+                  }
                 }
                 return;
               }
