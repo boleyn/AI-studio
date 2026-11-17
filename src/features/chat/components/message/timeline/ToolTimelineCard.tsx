@@ -615,12 +615,9 @@ const ToolTimelineCard = ({
           ) : null}
 
           {!(isEditTool || isWriteTool) || status !== "completed" ? (
-            <Box pt={2}>
-              <Flex align="center" justify="space-between" mb={1.5}>
-                <Text color="#52525b" fontSize="11.5px" fontWeight="500">
-                  执行输出
-                </Text>
-                {responseTruncated ? (
+            <Box pt={1}>
+              {responseTruncated ? (
+                <Flex align="center" justify="flex-end" mb={1}>
                   <Button
                     color="#2563eb"
                     h="22px"
@@ -632,13 +629,14 @@ const ToolTimelineCard = ({
                   >
                     查看完整
                   </Button>
-                ) : null}
-              </Flex>
+                </Flex>
+              ) : null}
               <Box
-                bg="#f9f9fa"
-                border="1px solid rgba(0, 0, 0, 0.06)"
+                bg="#f7f7f8"
+                border="none"
                 borderRadius="10px"
-                p={2.5}
+                px={3.5}
+                py={2.5}
               >
                 {truncatedResponse ? (
                   <ToolStreamText color="#18181b" fontSize="12.5px" isStreaming={isStreaming} value={truncatedResponse} />

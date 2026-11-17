@@ -58,20 +58,21 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
       sx={{
         "& [data-streamdown='code-block']": {
           borderRadius: "12px",
-          border: "1px solid rgba(0, 0, 0, 0.08)",
-          backgroundColor: "#f8f9fa",
+          border: "none",
+          backgroundColor: "#f7f7f8",
           overflow: "hidden",
           margin: "12px 0",
         },
         "& [data-streamdown='code-block-header']": {
-          backgroundColor: "#f3f4f6",
-          borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
-          padding: "6px 14px",
+          backgroundColor: "transparent",
+          borderBottom: "none",
+          padding: "8px 14px 2px",
           fontSize: "12px",
-          color: "#52525b",
+          color: "#71717a",
         },
         "& [data-streamdown='code-block-body']": {
-          backgroundColor: "#f9f9fa",
+          backgroundColor: "transparent",
+          border: "none",
           fontSize: "13.5px",
           lineHeight: 1.6,
         },
