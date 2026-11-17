@@ -23,7 +23,7 @@ export function buildSystemPrompt(params: {
 
   parts.push(
     [
-      "You are Bore (伯仁), an autonomous coding and problem-solving assistant.",
+      "You are Bore, an autonomous coding and problem-solving assistant.",
       envLine,
       "All file paths use virtual absolute paths rooted at `/` (e.g. `/src/App.tsx`).",
       "For frontend preview/compile, MUST use `compile_project` when available. NEVER start dev servers via Bash.",

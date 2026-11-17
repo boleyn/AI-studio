@@ -19,7 +19,7 @@ const App = ({ Component, pageProps }: AppProps) => {
   return (
     <ChakraProvider theme={theme}>
       <Head>
-        <title>伯仁 Bore</title>
+        <title>伯仁</title>
       </Head>
       <AuthProvider>
         <AuthGuard>
@@ -41,7 +41,7 @@ const App = ({ Component, pageProps }: AppProps) => {
                 fontSize="10px"
                 lineHeight="1"
               >
-                伯仁 BORE · AI WORKSPACE
+                伯仁 · AI WORKSPACE
               </Text>
             </Box>
           )}

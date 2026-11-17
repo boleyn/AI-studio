@@ -768,9 +768,9 @@ export default function AgentWorkspace({
         >
           <Flex px={3.5} pt={3} pb={2} align="center" justify="space-between">
             <HStack spacing={2} minW={0}>
-              <Box as="img" src="/icon/logo.svg" w="20px" h="20px" borderRadius="5px" alt="伯仁 Bore" flexShrink={0} />
+              <Box as="img" src="/icon/logo.svg" w="20px" h="20px" borderRadius="5px" alt="伯仁" flexShrink={0} />
               <Text fontWeight="600" fontSize="15px" color="ink.primary" noOfLines={1}>
-                伯仁 Bore
+                伯仁
               </Text>
             </HStack>
             <HStack spacing={0.5}>
