@@ -126,6 +126,7 @@ function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
 }) {
   const { rows, firstRow, firstColumn, formulas } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
+  const gridRef = useRef<HTMLTableElement>(null);
   const columnCount = Math.max(0, ...rows.map((row) => row.length));
 
   const activeAddress = spreadsheetColumnLabel(firstColumn + activeCell.column) + (firstRow + activeCell.row + 1);
@@ -151,7 +152,7 @@ function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
         />
       </Flex>
       <Box flex="1" minH={0} overflow="auto">
-        <Box as="table" fontSize="xs" minW="100%"
+        <Box as="table" ref={gridRef} fontSize="xs" minW="100%"
           sx={{
             borderSpacing: 0,
             zoom: zoom / 100,
@@ -179,6 +180,19 @@ function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
                     <Box
                       as="button"
                       type="button"
+                      tabIndex={activeCell.row === rowIndex && activeCell.column === column ? 0 : -1}
+                      data-cell={`${rowIndex}:${column}`}
+                      onKeyDown={(event) => {
+                        const direction = {
+                          ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
+                        }[event.key];
+                        if (!direction) return;
+                        event.preventDefault();
+                        const row = Math.max(0, Math.min(rows.length - 1, rowIndex + direction[0]));
+                        const nextColumn = Math.max(0, Math.min(columnCount - 1, column + direction[1]));
+                        setActiveCell({ row, column: nextColumn });
+                        gridRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${row}:${nextColumn}"]`)?.focus();
+                      }}
                       aria-label={`${spreadsheetColumnLabel(firstColumn + column)}${firstRow + rowIndex + 1} ${row[column] ?? ""}`.trim()}
                       onClick={() => {
                         setActiveCell({ row: rowIndex, column });
