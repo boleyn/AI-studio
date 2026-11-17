@@ -126,18 +126,38 @@ function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
 }) {
   const { rows, firstRow, firstColumn, formulas } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
+  const [selectionStart, setSelectionStart] = useState<typeof activeCell>();
   const gridRef = useRef<HTMLTableElement>(null);
   const columnCount = Math.max(0, ...rows.map((row) => row.length));
 
-  const activeAddress = spreadsheetColumnLabel(firstColumn + activeCell.column) + (firstRow + activeCell.row + 1);
+  const addressOf = ({ row, column }: typeof activeCell) =>
+    spreadsheetColumnLabel(firstColumn + column) + (firstRow + row + 1);
+  const activeAddress = addressOf(activeCell);
+  const anchor = selectionStart ?? activeCell;
+  const top = Math.min(anchor.row, activeCell.row);
+  const bottom = Math.max(anchor.row, activeCell.row);
+  const left = Math.min(anchor.column, activeCell.column);
+  const right = Math.max(anchor.column, activeCell.column);
+  const selectedAddress = top === bottom && left === right
+    ? activeAddress
+    : `${addressOf({ row: top, column: left })}:${addressOf({ row: bottom, column: right })}`;
+  const selectCell = (cell: typeof activeCell, extend: boolean) => {
+    setSelectionStart(extend ? (previous) => previous ?? activeCell : undefined);
+    setActiveCell(cell);
+  };
 
   if (!columnCount) return <Text p={4} fontSize="sm">此工作表没有可预览的数据</Text>;
 
   return (
     <>
-      {onSelectCell && <Text px={3} py={2} fontSize="sm" role="status">选中单元格并提出修改要求</Text>}
+      {onSelectCell && (
+        <Flex px={3} py={2} align="center" gap={2} justify="space-between" wrap="wrap">
+          <Text fontSize="sm">选中单元格，按 Shift 扩展选区</Text>
+          <Button size="sm" onClick={() => onSelectCell(sheet.name, selectedAddress)}>修改 {selectedAddress}</Button>
+        </Flex>
+      )}
       <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
-        <Text px={3} minW="64px">{activeAddress}</Text>
+        <Text px={3} minW="64px">{selectedAddress}</Text>
         <Box
           as="input"
           aria-label="单元格内容"
@@ -190,14 +210,12 @@ function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
                         event.preventDefault();
                         const row = Math.max(0, Math.min(rows.length - 1, rowIndex + direction[0]));
                         const nextColumn = Math.max(0, Math.min(columnCount - 1, column + direction[1]));
-                        setActiveCell({ row, column: nextColumn });
+                        selectCell({ row, column: nextColumn }, event.shiftKey);
                         gridRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${row}:${nextColumn}"]`)?.focus();
                       }}
                       aria-label={`${spreadsheetColumnLabel(firstColumn + column)}${firstRow + rowIndex + 1} ${row[column] ?? ""}`.trim()}
-                      onClick={() => {
-                        setActiveCell({ row: rowIndex, column });
-                        onSelectCell?.(sheet.name, spreadsheetColumnLabel(firstColumn + column) + (firstRow + rowIndex + 1));
-                      }}
+                      onClick={(event) => selectCell({ row: rowIndex, column }, event.shiftKey)}
+                      bg={rowIndex >= top && rowIndex <= bottom && column >= left && column <= right ? "blue.50" : undefined}
                       textAlign="left"
                       px={2}
                       minW="88px"

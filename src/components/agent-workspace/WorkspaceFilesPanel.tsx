@@ -248,7 +248,7 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
             onSelectSpreadsheetCell={revisionTarget === fileUrl
               ? (sheet, address) => {
                 setRevisionTarget(undefined);
-                onRequestRevision(`请修改文件「${selectedPath}」的工作表「${sheet}」中 ${address} 单元格：`);
+                onRequestRevision(`请修改文件「${selectedPath}」的工作表「${sheet}」中 ${address} ${address.includes(":") ? "单元格区域" : "单元格"}：`);
               }
               : undefined}
             localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
