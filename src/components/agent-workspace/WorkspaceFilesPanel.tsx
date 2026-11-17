@@ -52,6 +52,18 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
   const panelRef = useRef<HTMLElement>(null);
   const resizePane = (width: number) => setPaneWidth(Math.max(35, Math.min(75, width)));
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const backButtonRef = useRef<HTMLButtonElement>(null);
+  const listButtons = useRef(new Map<string, HTMLButtonElement>());
+  const listFocusPath = useRef<string>();
+  useEffect(() => {
+    if (selectedPath) {
+      if (listFocusPath.current === selectedPath) backButtonRef.current?.focus();
+      return;
+    }
+    const path = listFocusPath.current;
+    if (path) listButtons.current.get(path)?.focus();
+    listFocusPath.current = undefined;
+  }, [selectedPath]);
   useEffect(() => {
     const previousFocus = document.activeElement;
     closeButtonRef.current?.focus();
@@ -168,8 +180,8 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
       )}
       <Flex px={{ base: 2, md: 4 }} py={3} align="center" gap={{ base: 1, md: 2 }} borderBottom="1px solid" borderColor="gray.100">
         {selected ? <>
-          <IconButton aria-label="返回工作成果列表" icon={<ArrowLeft size={16} />} size="sm" variant="ghost"
-            onClick={() => { setExpanded(false); onShowList(); }} />
+          <IconButton ref={backButtonRef} aria-label="返回工作成果列表" icon={<ArrowLeft size={16} />} size="sm" variant="ghost"
+            onClick={() => { listFocusPath.current = selectedPath; setExpanded(false); onShowList(); }} />
           <Menu>
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
             leftIcon={<ArtifactFileIcon name={selectedPath} compact />}
@@ -281,7 +293,12 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
               const name = path.split("/").pop() || path;
               return (
                 <Flex as="button" type="button" key={path} align="center" textAlign="left" gap={3} px={2} py={2}
-                  w="full" borderRadius="lg" title={path} _hover={{ bg: "gray.50" }} onClick={() => onSelect(path)}>
+                  w="full" borderRadius="lg" title={path} _hover={{ bg: "gray.50" }}
+                  ref={(button: HTMLButtonElement | null) => {
+                    if (button) listButtons.current.set(path, button);
+                    else listButtons.current.delete(path);
+                  }}
+                  onClick={() => { listFocusPath.current = path; onSelect(path); }}>
                   <ArtifactFileIcon name={name} />
                   <Box flex={1} minW={0}>
                     <Text isTruncated fontSize="sm" fontWeight={500}>{name}</Text>
