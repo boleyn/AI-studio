@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Input, Text } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 
 export type PreviewSheet = {
@@ -28,6 +28,8 @@ export default function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
 }) {
   const { rowCount, columnCount, firstRow, firstColumn, cells } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
+  const [addressDraft, setAddressDraft] = useState<string>();
+  const [addressError, setAddressError] = useState(false);
   const [selectionStart, setSelectionStart] = useState<typeof activeCell>();
   const gridRef = useRef<HTMLTableElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -59,6 +61,34 @@ export default function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
     setActiveCell(cell);
   };
 
+  const focusCell = (cell: typeof activeCell) => {
+    requestAnimationFrame(() => {
+      gridRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${cell.row}:${cell.column}"]`)?.focus();
+    });
+  };
+  const parseAddress = (input: string) => {
+    const match = /^\$?([A-Z]{1,3})\$?([1-9][0-9]{0,6})$/i.exec(input.trim());
+    if (!match) return undefined;
+    const absoluteColumn = [...match[1].toUpperCase()]
+      .reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+    const cell = { row: Number(match[2]) - firstRow - 1, column: absoluteColumn - firstColumn };
+    return cell.row >= 0 && cell.row < rowCount && cell.column >= 0 && cell.column < columnCount ? cell : undefined;
+  };
+  const jumpToAddress = () => {
+    const entries = (addressDraft ?? selectedAddress).split(":");
+    const start = parseAddress(entries[0]);
+    const end = entries.length === 2 ? parseAddress(entries[1]) : undefined;
+    if (!start || entries.length > 2 || (entries.length === 2 && !end)) {
+      setAddressError(true);
+      return;
+    }
+    setAddressDraft(undefined);
+    setAddressError(false);
+    setSelectionStart(end ? start : undefined);
+    setActiveCell(end ?? start);
+    focusCell(end ?? start);
+  };
+
   if (!rowCount || !columnCount) return <Text p={4} fontSize="sm">此工作表没有可预览的数据</Text>;
 
   return (
@@ -70,7 +100,17 @@ export default function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
         </Flex>
       )}
       <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
-        <Text px={3} minW="64px">{selectedAddress}</Text>
+        <Input size="xs" aria-label="单元格地址或范围" value={addressDraft ?? selectedAddress}
+          w={selectedAddress.includes(":") ? "115px" : "74px"} px={3} border={0} borderRadius={0}
+          isInvalid={addressError} onFocus={(event) => event.currentTarget.select()}
+          onChange={(event) => { setAddressDraft(event.target.value); setAddressError(false); }}
+          onBlur={() => { setAddressDraft(undefined); setAddressError(false); }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              jumpToAddress();
+            }
+          }} />
         <Box
           as="input"
           aria-label="单元格内容"
@@ -84,6 +124,7 @@ export default function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
           borderColor="gray.200"
         />
       </Flex>
+      {addressError && <Text px={3} py={1} fontSize="xs" color="red.600" role="alert">请输入工作表范围内的单元格地址。</Text>}
       <Box ref={scrollRef} flex="1" minH={0} overflow="auto">
         <Box as="table" ref={gridRef} fontSize="xs" minW="100%"
           sx={{
@@ -126,9 +167,7 @@ export default function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
                         const row = Math.max(0, Math.min(rowCount - 1, rowIndex + direction[0]));
                         const nextColumn = Math.max(0, Math.min(columnCount - 1, column + direction[1]));
                         selectCell({ row, column: nextColumn }, event.shiftKey);
-                        requestAnimationFrame(() => {
-                          gridRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${row}:${nextColumn}"]`)?.focus();
-                        });
+                        focusCell({ row, column: nextColumn });
                       }}
                       aria-label={`${address} ${value}`.trim()}
                       onClick={(event) => selectCell({ row: rowIndex, column }, event.shiftKey)}
