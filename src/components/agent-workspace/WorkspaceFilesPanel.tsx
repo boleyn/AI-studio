@@ -1,12 +1,13 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ArtifactSection } from "../workspace/ArtifactSection";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import { ArtifactFileIcon, artifactFileType } from "../workspace/ArtifactFileIcon";
 import { PreviewZoomMenu } from "../workspace/PreviewZoomMenu";
 import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
 import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
 import FilePreviewPanel, { isSpreadsheetFile } from "../workspace/FilePreviewPanel";
-import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
+import { Accordion, Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { getConversation } from "@features/chat/services/conversations";
@@ -316,9 +317,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
             viewerRef={showDocumentZoom ? setViewerHandle : undefined}
             onStateChange={showDocumentZoom ? onDocumentStateChange : undefined} />
         ) : (
-          <Box px={4} py={3}>
-            <Text as="h2" px={2} py={2} fontSize="sm" fontWeight={600}>输出</Text>
-            {paths.length ? paths.map((path) => {
+          <Accordion allowMultiple defaultIndex={[0, 1]} px={4} py={3}>
+            <ArtifactSection label="输出">
+              {paths.length ? paths.map((path) => {
               const name = path.split("/").pop() || path;
               return (
                 <Flex as="button" type="button" key={path} align="center" textAlign="left" gap={3} px={2} py={2}
@@ -337,9 +338,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
                 </Flex>
               );
             }) : <Text px={2} py={3} fontSize="sm" color="gray.500">暂无工作成果</Text>}
+            </ArtifactSection>
             {sources.length > 0 && conversationId && (
-              <Box borderTop="1px solid" borderColor="gray.100" mt={3} pt={2}>
-                <Text as="h2" px={2} py={2} fontSize="sm" fontWeight={600}>来源</Text>
+              <ArtifactSection label="来源">
                 {sources.map((file) => (
                   <Flex as="a" key={file.storagePath} href={buildDownloadUrl({ storagePath: file.storagePath!, token, chatId: conversationId })}
                     align="center" gap={3} px={2} py={2} borderRadius="lg" _hover={{ bg: "gray.50" }}
@@ -349,9 +350,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
                     <Download size={16} aria-hidden="true" />
                   </Flex>
                 ))}
-              </Box>
+              </ArtifactSection>
             )}
-          </Box>
+          </Accordion>
         )}
       </Box>
       {sharingFile === fileUrl && selected && (
