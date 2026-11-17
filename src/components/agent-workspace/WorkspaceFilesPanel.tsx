@@ -17,6 +17,9 @@ type Props = {
 
 export default function WorkspaceFilesPanel({ token, version, files, selectedPath, onSelect, onClose }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [paneWidth, setPaneWidth] = useState(58);
+  const panelRef = useRef<HTMLElement>(null);
+  const resizePane = (width: number) => setPaneWidth(Math.max(35, Math.min(75, width)));
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -78,14 +81,46 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
   };
 
   return (
-    <Flex as="aside" aria-label="工作成果" onKeyDown={(event) => {
+    <Flex as="aside" ref={panelRef} aria-label="工作成果" onKeyDown={(event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       onClose();
     }} position={{ base: "absolute", lg: expanded ? "absolute" : "relative" }}
-      inset={{ base: 0, lg: expanded ? 0 : "auto" }} zIndex={2} w={{ base: "full", lg: expanded ? "full" : "50%" }}
+      inset={{ base: 0, lg: expanded ? 0 : "auto" }} zIndex={2} w={{ base: "full", lg: expanded ? "full" : `${paneWidth}%` }}
       minW={{ lg: "360px" }} maxW={{ lg: expanded ? "none" : "900px" }} direction="column" bg="white"
       borderLeftWidth={{ base: 0, lg: "1px" }} borderColor="gray.200" minH={0}>
+      {!expanded && (
+        <Box
+          role="separator"
+          aria-label="调整成果面板宽度"
+          aria-orientation="vertical"
+          aria-valuemin={35}
+          aria-valuemax={75}
+          aria-valuenow={paneWidth}
+          tabIndex={0}
+          display={{ base: "none", lg: "block" }}
+          position="absolute"
+          insetY={0}
+          left="-4px"
+          w="8px"
+          zIndex={1}
+          cursor="col-resize"
+          sx={{ touchAction: "none" }}
+          _hover={{ bg: "gray.200" }}
+          _focusVisible={{ bg: "gray.200", outline: "none" }}
+          onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+          onPointerMove={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            const bounds = panelRef.current?.parentElement?.getBoundingClientRect();
+            if (bounds?.width) resizePane(Math.round((bounds.right - event.clientX) / bounds.width * 100));
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            resizePane(paneWidth + (event.key === "ArrowLeft" ? 5 : -5));
+          }}
+        />
+      )}
       <Flex px={4} py={3} align="center" gap={2} borderBottom="1px solid" borderColor="gray.100">
         <Menu>
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
