@@ -1,6 +1,9 @@
-import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text } from "@chakra-ui/react";
+import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
+import { Download } from "lucide-react";
+import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
+import { downloadWorkspaceArtifact } from "../services/files";
 import Markdown from "@/components/Markdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
 import { useCopyData } from "@/hooks/useCopyData";
@@ -14,6 +17,36 @@ import {
 } from "../utils/chatItemParsers";
 
 import type { ConversationMessage } from "@/types/conversation";
+
+function ReplyArtifact({ path, version, onOpen }: {
+  path: string;
+  version?: string;
+  onOpen: () => void;
+}) {
+  const { token } = useChatPanelViewContext();
+  const toast = useToast();
+  const [downloading, setDownloading] = React.useState(false);
+  const name = path.split("/").pop() || path;
+
+  return (
+    <Flex maxW="100%" border="1px solid" borderColor="gray.200" borderRadius="md">
+      <Button size="sm" variant="ghost" minW={0} title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
+        <Text isTruncated>{name}</Text>
+      </Button>
+      <IconButton size="sm" variant="ghost" flexShrink={0} icon={<Download size={15} />}
+        aria-label={`下载 ${name}`} isLoading={downloading} onClick={async () => {
+          setDownloading(true);
+          try {
+            await downloadWorkspaceArtifact(token, path, version);
+          } catch {
+            toast({ title: "无法下载文件，请稍后重试", status: "error" });
+          } finally {
+            setDownloading(false);
+          }
+        }} />
+    </Flex>
+  );
+}
 
 const ChatItem = ({
   message,
@@ -408,10 +441,8 @@ const ChatItem = ({
             {onOpenWorkspaceFile && workspaceArtifacts.length > 0 && (
               <Flex gap={2} wrap="wrap" aria-label="此回复生成的文件">
                 {workspaceArtifacts.map((path) => (
-                  <Button key={path} size="sm" variant="outline" maxW="100%"
-                    title={path} onClick={() => openReplyArtifact(path)}>
-                    <Text isTruncated>{path.split("/").pop() || path}</Text>
-                  </Button>
+                  <ReplyArtifact key={path} path={path} version={typeof artifactVersion === "string" ? artifactVersion : undefined}
+                    onOpen={() => openReplyArtifact(path)} />
                 ))}
               </Flex>
             )}

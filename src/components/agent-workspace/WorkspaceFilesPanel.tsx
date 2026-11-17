@@ -4,6 +4,7 @@ import FilePreviewPanel, { isPreviewableFile } from "../workspace/FilePreviewPan
 import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuItemOption, MenuList, MenuOptionGroup, Text, useToast } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { ChevronDown, Download, Maximize2, Minimize2, X } from "lucide-react";
 
 type Props = {
@@ -74,14 +75,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
     if (!selected || downloading) return;
     setDownloading(true);
     try {
-      const response = await fetch(fileUrl, { headers: withAuthHeaders() });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = selectedPath.split("/").pop() || "file";
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadWorkspaceArtifact(token, selectedPath, version);
     } catch {
       toast({ title: "无法下载文件，请稍后重试", status: "error" });
     } finally {
