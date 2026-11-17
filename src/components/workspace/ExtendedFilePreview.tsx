@@ -19,6 +19,7 @@ const options = {
 const imageOptions: FileViewerProps["options"] = {
   ...options,
   toolbar: { ...options.toolbar, zoom: false, search: false },
+  image: { rotation: false },
 };
 
 export default function ExtendedFilePreview({ url, name, onRetry }: {
