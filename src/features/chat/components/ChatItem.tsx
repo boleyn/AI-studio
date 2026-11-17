@@ -6,6 +6,7 @@ import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import { downloadWorkspaceArtifact } from "../services/files";
 import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
+import StreamdownMarkdown from "@/components/Markdown/StreamdownMarkdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
 import { useCopyData } from "@/hooks/useCopyData";
 import { ToolStreamText, useChatItemViewModel } from "../hooks/useChatItemViewModel";
@@ -281,11 +282,19 @@ const ChatItem = ({
         ) : (
           <Flex direction="column" gap={2}>
             {isStreaming && openingAnswer && (
-              <Markdown
-                onOpenWorkspaceFile={openReplyArtifact}
-                showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
-                source={openingAnswer.text || ""}
-              />
+              isWorkspaceChat ? (
+                <StreamdownMarkdown
+                  onOpenWorkspaceFile={openReplyArtifact}
+                  showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
+                  source={openingAnswer.text || ""}
+                />
+              ) : (
+                <Markdown
+                  onOpenWorkspaceFile={openReplyArtifact}
+                  showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
+                  source={openingAnswer.text || ""}
+                />
+              )
             )}
             {hasActivity && (
               <Button
@@ -490,7 +499,19 @@ const ChatItem = ({
 
                     return (
                       <Box key={`${messageId}-timeline-answer-${index}`} pl={0}>
-                        <Markdown onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined} showAnimation={showAssistantAnimation && index === latestAnswerIndex} source={item.text || ""} />
+                        {isWorkspaceChat ? (
+                          <StreamdownMarkdown
+                            onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                            showAnimation={showAssistantAnimation && index === latestAnswerIndex}
+                            source={item.text || ""}
+                          />
+                        ) : (
+                          <Markdown
+                            onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                            showAnimation={showAssistantAnimation && index === latestAnswerIndex}
+                            source={item.text || ""}
+                          />
+                        )}
                       </Box>
                     );
                   })}
@@ -499,7 +520,19 @@ const ChatItem = ({
             ) : null}
 
             {(!timelineHasAnswer || timelineItems.length === 0) && content ? (
-              <Markdown onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined} showAnimation={showAssistantAnimation} source={content} />
+              isWorkspaceChat ? (
+                <StreamdownMarkdown
+                  onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                  showAnimation={showAssistantAnimation}
+                  source={content}
+                />
+              ) : (
+                <Markdown
+                  onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                  showAnimation={showAssistantAnimation}
+                  source={content}
+                />
+              )
             ) : null}
 
             {isWorkspaceChat && isStreaming && !hasActivity && (

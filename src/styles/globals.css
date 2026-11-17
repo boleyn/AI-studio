@@ -1,5 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
+@tailwind components;
+@tailwind utilities;
+
 html,
 body,
 #__next {
@@ -241,6 +244,13 @@ dialog.app-dialog[open]:where(:not([data-closing]))::backdrop {
 }
 
 :root {
+  --background: #ffffff;
+  --foreground: #0d0d0d;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --border: rgba(0, 0, 0, 0.08);
   interpolate-size: allow-keywords;
   --scrollbar-thumb: rgba(0, 0, 0, 0.22);
   --scrollbar-track: transparent;

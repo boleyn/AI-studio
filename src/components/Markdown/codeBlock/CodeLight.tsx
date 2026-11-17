@@ -340,11 +340,11 @@ const CodeLight = ({
       >
         <Flex
           className="code-header"
-          py={2}
+          pt={2.5}
+          pb={0.5}
           px={4}
-          bg="#f3f4f6"
-          borderBottom="1px solid rgba(0, 0, 0, 0.06)"
-          color="#52525b"
+          bg="transparent"
+          color="#71717a"
           fontSize="12px"
           fontWeight="500"
           align="center"
