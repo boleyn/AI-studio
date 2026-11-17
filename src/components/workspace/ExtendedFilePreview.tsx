@@ -2,6 +2,7 @@ import { Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { isArtifactImage } from "./ArtifactFileIcon";
 import type { FileViewerProps } from "@file-viewer/react-full";
 
 const FileViewer = dynamic<FileViewerProps>(
@@ -9,10 +10,15 @@ const FileViewer = dynamic<FileViewerProps>(
   { ssr: false, loading: () => <Spinner size="sm" aria-label="正在加载预览器" /> },
 );
 
-const options: FileViewerProps["options"] = {
+const options = {
   locale: "zh-CN",
   theme: "light",
   toolbar: { download: false, print: false, exportHtml: false, theme: false },
+} satisfies FileViewerProps["options"];
+
+const imageOptions: FileViewerProps["options"] = {
+  ...options,
+  toolbar: { ...options.toolbar, zoom: false, search: false },
 };
 
 export default function ExtendedFilePreview({ url, name, onRetry }: {
@@ -48,5 +54,5 @@ export default function ExtendedFilePreview({ url, name, onRetry }: {
     </Flex>;
   }
 
-  return <FileViewer file={result.file} options={options} style={{ width: "100%", height: "100%" }} />;
+  return <FileViewer file={result.file} options={isArtifactImage(name) ? imageOptions : options} style={{ width: "100%", height: "100%" }} />;
 }
