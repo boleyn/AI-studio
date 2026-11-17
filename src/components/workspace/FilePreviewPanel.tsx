@@ -98,6 +98,7 @@ type FilePreviewPanelProps = {
   sourceCode: string;
   localOnly?: boolean;
   onRetry?: () => void;
+  spreadsheetZoom?: number;
   version?: string;
 };
 
@@ -117,7 +118,7 @@ function spreadsheetColumnLabel(index: number) {
   return label;
 }
 
-function SpreadsheetGrid({ sheet }: { sheet: PreviewSheet }) {
+function SpreadsheetGrid({ sheet, zoom }: { sheet: PreviewSheet; zoom: number }) {
   const { rows, firstRow, firstColumn, formulas } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
   const columnCount = Math.max(0, ...rows.map((row) => row.length));
@@ -147,6 +148,7 @@ function SpreadsheetGrid({ sheet }: { sheet: PreviewSheet }) {
         <Box as="table" fontSize="xs" minW="100%"
           sx={{
             borderSpacing: 0,
+            zoom: zoom / 100,
             "th, td": { borderRight: "1px solid", borderBottom: "1px solid", borderColor: "gray.200" },
             th: { bg: "gray.50", color: "gray.600", fontWeight: "normal" },
             "thead th": { position: "sticky", top: 0, zIndex: 2, height: "24px" },
@@ -201,7 +203,7 @@ type PreviewCacheEntry =
   | { kind: "spreadsheet"; officePreviewUrl: string; sheets: PreviewSheet[] }
   | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
 
-const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry }: FilePreviewPanelProps) => {
+const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry, spreadsheetZoom = 100 }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
   const previewCacheKey = `${token}::${version ?? ""}::${activeFile}`;
@@ -612,7 +614,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
           </Box>
         ) : (
           <Flex direction="column" h="100%" minH={0} bg="white">
-            {activeSheet && <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} sheet={activeSheet} />}
+            {activeSheet && <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} sheet={activeSheet} zoom={spreadsheetZoom} />}
             <Flex as="nav" aria-label="工作表" overflowX="auto" flexShrink={0} borderTop="1px solid" borderColor="gray.200" px={2}>
               {sheets.map(({ name }) => (
                 <Button

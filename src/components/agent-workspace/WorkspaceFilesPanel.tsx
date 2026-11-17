@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import FilePreviewPanel, { isPreviewableFile } from "../workspace/FilePreviewPanel";
-import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
+import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuItemOption, MenuList, MenuOptionGroup, Text, useToast } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { ChevronDown, Download, Maximize2, Minimize2, X } from "lucide-react";
@@ -21,6 +21,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
     setHistoricalResult(undefined);
     setPreviewAttempt((attempt) => attempt + 1);
   };
+  const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
   const [expanded, setExpanded] = useState(false);
   const [paneWidth, setPaneWidth] = useState(58);
   const panelRef = useRef<HTMLElement>(null);
@@ -42,6 +43,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
   if (version) query.set("version", version);
   const fileUrl = `/api/code?${query}`;
   const previewable = isPreviewableFile(selectedPath);
+  const isSpreadsheet = /\.(xlsx?|csv)$/i.test(selectedPath);
   const historical = historicalResult?.url === fileUrl ? historicalResult : undefined;
   const historicalStatus = !historical ? "loading" : "error" in historical ? "error" : "ready";
   const selected = version
@@ -143,6 +145,21 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         </Menu>
         {version && <Text fontSize="xs" color="gray.500" flexShrink={0}>回复版本</Text>}
         <Box flex={1} />
+        {selected && isSpreadsheet && (
+          <Menu>
+            <MenuButton as={Button} variant="ghost" size="sm"
+              aria-label={`表格缩放 ${spreadsheetZoom}%`} rightIcon={<ChevronDown size={14} />}>
+              {spreadsheetZoom}%
+            </MenuButton>
+            <MenuList minW="120px">
+              <MenuOptionGroup type="radio" value={String(spreadsheetZoom)} onChange={(value) => setSpreadsheetZoom(Number(value))}>
+                {[50, 75, 100, 125, 150, 200].map((zoom) => (
+                  <MenuItemOption key={zoom} value={String(zoom)}>{zoom}%</MenuItemOption>
+                ))}
+              </MenuOptionGroup>
+            </MenuList>
+          </Menu>
+        )}
         {selected && (
           <IconButton aria-label="下载文件" title="下载文件" icon={<Download size={15} />}
             size="sm" variant="ghost" isLoading={downloading} onClick={() => void download()} />
@@ -158,7 +175,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         />
         <IconButton ref={closeButtonRef} aria-label="关闭工作成果" icon={<X size={16} />} size="sm" variant="ghost" onClick={onClose} />
       </Flex>
-      <Box flex={1} minH={0} overflow="auto" p={previewable && /\.(xlsx?|csv)$/i.test(selectedPath) ? 0 : 4}>
+      <Box flex={1} minH={0} overflow="auto" p={isSpreadsheet ? 0 : 4}>
         {version && !previewable && historicalStatus !== "ready" ? (
           historicalStatus === "loading" ? <Text fontSize="sm">正在加载回复版本…</Text> : (
             <Flex direction="column" align="center" justify="center" h="full" gap={3} role="status">
@@ -167,7 +184,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
             </Flex>
           )
         ) : selected && previewable ? (
-          <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
+          <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} spreadsheetZoom={spreadsheetZoom} localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
         ) : selected && /\.(md|markdown)$/i.test(selectedPath) ? (
           <Box lineHeight="1.7" overflowWrap="anywhere" sx={{
             "& h1, & h2, & h3": { fontWeight: 600, mt: 4, mb: 2 },
