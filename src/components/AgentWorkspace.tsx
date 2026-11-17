@@ -199,12 +199,6 @@ export default function AgentWorkspace({
     }
   }, [initialProjectToken]);
 
-  useEffect(() => {
-    if (!artifactVersion && (!selectedFilePath || !workspaceFiles[selectedFilePath])) {
-      const first = Object.keys(workspaceFiles).find((path) => !/^\/*\.files(?:\/|$)/.test(path));
-      if (first) setSelectedFilePath(first);
-    }
-  }, [selectedFilePath, workspaceFiles, artifactVersion]);
 
   const activeProject = useMemo(
     () => projects.find((p) => p.token === activeToken) || null,
@@ -771,7 +765,15 @@ export default function AgentWorkspace({
             <Button
               size="xs"
               variant={filesDrawerOpen ? "solid" : "outline"}
-              onClick={() => setFilesDrawerOpen((v) => !v)}
+              onClick={() => {
+                if (!filesDrawerOpen || selectedFilePath) {
+                  setArtifactVersion(undefined);
+                  setSelectedFilePath("");
+                  setFilesDrawerOpen(true);
+                } else {
+                  setFilesDrawerOpen(false);
+                }
+              }}
             >
               工作成果 ({artifactCount})
             </Button>
@@ -816,6 +818,7 @@ export default function AgentWorkspace({
           {filesDrawerOpen && (
             <WorkspaceFilesPanel token={activeToken} onSelectVersion={setArtifactVersion} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
               onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
+              onShowList={() => { setArtifactVersion(undefined); setSelectedFilePath(""); }}
               onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
           )}
         </Flex>

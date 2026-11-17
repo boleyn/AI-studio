@@ -1,6 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArtifactFileIcon } from "../workspace/ArtifactFileIcon";
+import { ArtifactFileIcon, artifactFileType } from "../workspace/ArtifactFileIcon";
 import { PreviewZoomMenu } from "../workspace/PreviewZoomMenu";
 import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
 import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
@@ -9,7 +9,7 @@ import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Te
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { downloadWorkspaceArtifact } from "@features/chat/services/files";
-import { ChevronDown, Download, History, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Download, History, Maximize2, Minimize2, X } from "lucide-react";
 
 type Props = {
   token: string;
@@ -18,11 +18,12 @@ type Props = {
   files: Record<string, { code: string }>;
   selectedPath: string;
   onSelect: (path: string) => void;
+  onShowList: () => void;
   onRequestRevision: (text: string) => void;
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, onSelectVersion, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
+export default function WorkspaceFilesPanel({ token, version, onSelectVersion, files, selectedPath, onSelect, onShowList, onRequestRevision, onClose }: Props) {
   const versionScope = JSON.stringify([token, selectedPath]);
   const [versionResult, setVersionResult] = useState<{
     scope: string;
@@ -166,7 +167,10 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
         />
       )}
       <Flex px={{ base: 2, md: 4 }} py={3} align="center" gap={{ base: 1, md: 2 }} borderBottom="1px solid" borderColor="gray.100">
-        <Menu>
+        {selected ? <>
+          <IconButton aria-label="返回工作成果列表" icon={<ArrowLeft size={16} />} size="sm" variant="ghost"
+            onClick={() => { setExpanded(false); onShowList(); }} />
+          <Menu>
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
             leftIcon={<ArtifactFileIcon name={selectedPath} compact />}
             minW={0} flex="1 1 auto" aria-label="选择工作成果" title={selectedPath}>
@@ -181,7 +185,8 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
               </MenuItem>
             )) : <MenuItem isDisabled>暂无工作成果</MenuItem>}
           </MenuList>
-        </Menu>
+          </Menu>
+        </> : <Text flex={1} pl={2} fontSize="sm" fontWeight={600}>工作成果</Text>}
         {selected && (
           <Menu placement="bottom-end" onOpen={() => void loadVersions()}>
             <MenuButton as={IconButton} aria-label="版本历史" title={version ? `正在查看${selectedVersionLabel}` : "版本历史"}
@@ -224,7 +229,7 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
           <IconButton aria-label="下载文件" title="下载文件" icon={<Download size={15} />}
             size="sm" variant="ghost" isLoading={downloading} onClick={() => void download()} />
         )}
-        <IconButton
+        {selected && <IconButton
           display={{ base: "none", lg: "inline-flex" }}
           aria-label={expanded ? "退出完整视图" : "进入完整视图"}
           aria-pressed={expanded}
@@ -232,7 +237,7 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
           size="sm"
           variant="ghost"
           onClick={() => setExpanded((value) => !value)}
-        />
+        />}
         <IconButton ref={closeButtonRef} aria-label="关闭工作成果" icon={<X size={16} />} size="sm" variant="ghost" onClick={onClose} />
       </Flex>
       <Box flex={1} minH={0} overflow="auto" p={showMarkdown ? 4 : 0}>
@@ -270,7 +275,24 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
             name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview}
             viewerRef={showDocumentZoom ? setViewerHandle : undefined}
             onStateChange={showDocumentZoom ? onDocumentStateChange : undefined} />
-        ) : <Text p={4} fontSize="sm" color="gray.500">选择文件查看内容</Text>}
+        ) : (
+          <Box px={4} py={3}>
+            {paths.length ? paths.map((path) => {
+              const name = path.split("/").pop() || path;
+              return (
+                <Flex as="button" type="button" key={path} align="center" textAlign="left" gap={3} px={2} py={2}
+                  w="full" borderRadius="lg" title={path} _hover={{ bg: "gray.50" }} onClick={() => onSelect(path)}>
+                  <ArtifactFileIcon name={name} />
+                  <Box flex={1} minW={0}>
+                    <Text isTruncated fontSize="sm" fontWeight={500}>{name}</Text>
+                    <Text fontSize="xs" color="gray.500">{artifactFileType(name).label}</Text>
+                  </Box>
+                  <ChevronRight size={16} aria-hidden="true" />
+                </Flex>
+              );
+            }) : <Text px={2} py={3} fontSize="sm" color="gray.500">暂无工作成果</Text>}
+          </Box>
+        )}
       </Box>
     </Flex>
   );
