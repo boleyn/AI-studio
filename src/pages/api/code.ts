@@ -9,6 +9,7 @@ import {
   getProjectAccessState,
   readProjectFile,
   readProjectArtifactVersion,
+  listProjectArtifactVersions,
   updateProjectMeta,
   updateFile,
   updateFiles,
@@ -101,14 +102,25 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === "GET") {
     try {
       const action = typeof req.query.action === "string" ? req.query.action : "";
-      if (action === "view" || action === "view-url") {
-        const access = await getProjectAccessState(token, userId, { allowOwnerless: action === "view-url" || !req.query.version });
+      if (action === "view" || action === "view-url" || action === "versions") {
+        const access = await getProjectAccessState(token, userId, { allowOwnerless: action === "view-url" || (action === "view" && !req.query.version) });
         if (access !== "ok") {
           res.status(access === "not_found" ? 404 : 403).json({
             error: access === "not_found" ? "项目不存在" : "无权访问该项目",
           });
           return;
         }
+      }
+
+      if (action === "versions") {
+        const filePath = typeof req.query.path === "string" ? req.query.path : "";
+        if (!filePath) {
+          res.status(400).json({ error: "缺少 path 参数" });
+          return;
+        }
+        res.setHeader("Cache-Control", "private, no-store");
+        res.status(200).json({ versions: await listProjectArtifactVersions(token, filePath) });
+        return;
       }
 
       if (action === "view") {

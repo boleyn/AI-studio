@@ -11,6 +11,7 @@ import {
   deleteStorageObjects,
   getObjectFromStorage,
   listStorageObjectKeysByPrefix,
+  listStorageObjectsByPrefix,
   uploadObjectToStorage,
 } from "../storage/s3";
 
@@ -539,6 +540,25 @@ export async function saveProjectArtifactVersion(token: string, version: string,
     contentType: typeof body === "string" ? "text/plain; charset=utf-8" : "application/octet-stream",
     bucketType: "private",
   });
+}
+
+export async function listProjectArtifactVersions(token: string, filePath: string) {
+  const prefix = getArtifactVersionPrefix(token);
+  const projectKey = toProjectStorageFileKey(token, filePath);
+  const relativePath = projectKey.slice(getProjectStoragePrefix(token).length + 1);
+  const objects = await listStorageObjectsByPrefix({ prefix, bucketType: "private" });
+  const revisions: { id: string; time?: Date }[] = [];
+
+  for (const { key, lastModified } of objects) {
+    const suffix = key.slice(prefix.length);
+    const separator = suffix.indexOf("/");
+    const id = suffix.slice(0, separator);
+    if (/^[a-f0-9]{32}$/.test(id) && suffix.slice(separator + 1) === relativePath) {
+      revisions.push({ id, time: lastModified });
+    }
+  }
+
+  return revisions.sort((a, b) => (b.time?.getTime() ?? 0) - (a.time?.getTime() ?? 0) || b.id.localeCompare(a.id));
 }
 
 export async function readProjectArtifactVersion(token: string, version: string, filePath: string) {

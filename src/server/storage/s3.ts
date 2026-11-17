@@ -172,7 +172,7 @@ export const getObjectFromStorage = async ({
   };
 };
 
-export const listStorageObjectKeysByPrefix = async ({
+export const listStorageObjectsByPrefix = async ({
   prefix,
   bucketType = "private",
 }: {
@@ -182,7 +182,7 @@ export const listStorageObjectKeysByPrefix = async ({
   const client = getS3Client();
   const normalizedPrefix = normalizeStorageKey(prefix).replace(/\/+$/, "") + "/";
   const bucket = getBucketName(bucketType);
-  const keys: string[] = [];
+  const objects: { key: string; lastModified?: Date }[] = [];
   let continuationToken: string | undefined;
 
   do {
@@ -196,14 +196,17 @@ export const listStorageObjectKeysByPrefix = async ({
     const contents = response.Contents || [];
     for (const item of contents) {
       if (item.Key) {
-        keys.push(item.Key);
+        objects.push({ key: item.Key, lastModified: item.LastModified });
       }
     }
     continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
   } while (continuationToken);
 
-  return keys;
+  return objects;
 };
+
+export const listStorageObjectKeysByPrefix = async (options: Parameters<typeof listStorageObjectsByPrefix>[0]) =>
+  (await listStorageObjectsByPrefix(options)).map(({ key }) => key);
 
 export const deleteStorageObjects = async ({
   keys,

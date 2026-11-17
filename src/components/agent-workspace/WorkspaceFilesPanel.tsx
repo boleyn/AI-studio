@@ -8,14 +8,12 @@ import FilePreviewPanel from "../workspace/FilePreviewPanel";
 import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { getConversation } from "@features/chat/services/conversations";
 import { downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { ChevronDown, Download, History, Maximize2, Minimize2, X } from "lucide-react";
 
 type Props = {
   token: string;
   version?: string;
-  conversationId?: string;
   onSelectVersion: (version?: string) => void;
   files: Record<string, { code: string }>;
   selectedPath: string;
@@ -24,8 +22,8 @@ type Props = {
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, conversationId, onSelectVersion, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
-  const versionScope = JSON.stringify([token, conversationId, selectedPath]);
+export default function WorkspaceFilesPanel({ token, version, onSelectVersion, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
+  const versionScope = JSON.stringify([token, selectedPath]);
   const [versionResult, setVersionResult] = useState<{
     scope: string;
     items?: { id: string; time?: string | Date }[];
@@ -78,25 +76,17 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   }, [fileUrl]);
   const showMarkdown = /\.(md|markdown)$/i.test(selectedPath);
   const loadVersions = async () => {
-    if (!conversationId) return;
     const request = ++versionRequest.current;
     if (versionError) setVersionResult(undefined);
-    const conversation = await getConversation(token, conversationId);
-    if (request !== versionRequest.current) return;
-    if (!conversation) {
-      setVersionResult({ scope: versionScope });
-      return;
+    const query = new URLSearchParams({ token, action: "versions", path: selectedPath });
+    try {
+      const response = await fetch(`/api/code?${query}`, { headers: withAuthHeaders() });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const { versions } = await response.json() as { versions: { id: string; time?: string }[] };
+      if (request === versionRequest.current) setVersionResult({ scope: versionScope, items: versions });
+    } catch {
+      if (request === versionRequest.current) setVersionResult({ scope: versionScope });
     }
-    const revisions = new Map<string, { id: string; time?: string | Date }>();
-    for (const message of [...conversation.messages].reverse()) {
-      const id = message.additional_kwargs?.workspaceArtifactVersion;
-      const paths = message.additional_kwargs?.workspaceArtifactPaths;
-      if (message.role === "assistant" && typeof id === "string"
-        && Array.isArray(paths) && paths.includes(selectedPath) && !revisions.has(id)) {
-        revisions.set(id, { id, time: message.time });
-      }
-    }
-    setVersionResult({ scope: versionScope, items: [...revisions.values()] });
   };
   const historical = historicalResult?.url === fileUrl ? historicalResult : undefined;
   const historicalStatus = !historical ? "loading" : "error" in historical ? "error" : "ready";
@@ -192,7 +182,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
             )) : <MenuItem isDisabled>暂无工作成果</MenuItem>}
           </MenuList>
         </Menu>
-        {selected && conversationId && (
+        {selected && (
           <Menu onOpen={() => void loadVersions()}>
             <MenuButton as={IconButton} aria-label="版本历史" title={version ? `正在查看${selectedVersionLabel}` : "版本历史"}
               icon={<History size={17} />} size="sm" variant={version ? "solid" : "ghost"} />
