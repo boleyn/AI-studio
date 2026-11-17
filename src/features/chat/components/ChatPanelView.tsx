@@ -135,6 +135,7 @@ const ChatPanelView = () => {
         <ChatInput
           workspaceLayout={context.hideHeader}
           key={context.hideHeader ? context.activeConversationId ?? "new-conversation" : "composer"}
+          artifactRevision={context.artifactRevision}
           draftStorageKey={context.hideHeader && context.activeConversationId
             ? `aistudio:draft:${context.token}:${context.activeConversationId}`
             : undefined}

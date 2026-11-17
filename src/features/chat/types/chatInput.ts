@@ -50,6 +50,7 @@ export interface ChatInputModelGroup {
 
 export interface ChatInputProps {
   placeholder?: string;
+  artifactRevision?: { text: string; onApplied: () => void };
   draftStorageKey?: string;
   workspaceLayout?: boolean;
   isSending: boolean;

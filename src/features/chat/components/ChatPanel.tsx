@@ -500,6 +500,7 @@ const ChatPanel = ({
   openSkillsSignal = 0,
   thinkingTooltipEnabled,
   thinkingTooltipDisabled,
+  artifactRevision,
   onOpenWorkspaceFile,
   externalActiveConversationId,
   externalNewConversationSignal,
@@ -527,6 +528,7 @@ const ChatPanel = ({
   openSkillsSignal?: number;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
+  artifactRevision?: { text: string; onApplied: () => void };
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   externalActiveConversationId?: string;
   externalNewConversationSignal?: number;
@@ -2200,6 +2202,7 @@ const ChatPanel = ({
       onCloseSkills: () => setIsSkillsOpen(false),
       token,
       onFilesApplied: onFilesUpdated,
+      artifactRevision,
       onOpenWorkspaceFile,
       onCreateSkillViaChat: handleCreateSkillViaChat,
       onUseSkill: handleUseSkill,
@@ -2256,6 +2259,7 @@ const ChatPanel = ({
       isSkillsOpen,
       token,
       onFilesUpdated,
+      artifactRevision,
       onOpenWorkspaceFile,
       handleCreateSkillViaChat,
       handleUseSkill,

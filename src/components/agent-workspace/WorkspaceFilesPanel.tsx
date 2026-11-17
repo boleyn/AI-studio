@@ -12,10 +12,12 @@ type Props = {
   files: Record<string, { code: string }>;
   selectedPath: string;
   onSelect: (path: string) => void;
+  onRequestRevision: (text: string) => void;
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, files, selectedPath, onSelect, onClose }: Props) {
+export default function WorkspaceFilesPanel({ token, version, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
+  const [revisionTarget, setRevisionTarget] = useState<string>();
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const retryPreview = () => {
     setHistoricalResult(undefined);
@@ -145,6 +147,12 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         </Menu>
         {version && <Text fontSize="xs" color="gray.500" flexShrink={0}>回复版本</Text>}
         <Box flex={1} />
+        {selected && isSpreadsheet && !version && (
+          <Button size="sm" variant="ghost" aria-pressed={revisionTarget === fileUrl}
+            onClick={() => setRevisionTarget(revisionTarget === fileUrl ? undefined : fileUrl)}>
+            请求修改
+          </Button>
+        )}
         {selected && isSpreadsheet && (
           <Menu>
             <MenuButton as={Button} variant="ghost" size="sm"
@@ -184,7 +192,14 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
             </Flex>
           )
         ) : selected && previewable ? (
-          <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} spreadsheetZoom={spreadsheetZoom} localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
+          <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} spreadsheetZoom={spreadsheetZoom}
+            onSelectSpreadsheetCell={revisionTarget === fileUrl
+              ? (sheet, address) => {
+                setRevisionTarget(undefined);
+                onRequestRevision(`请修改文件「${selectedPath}」的工作表「${sheet}」中 ${address} 单元格：`);
+              }
+              : undefined}
+            localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
         ) : selected && /\.(md|markdown)$/i.test(selectedPath) ? (
           <Box lineHeight="1.7" overflowWrap="anywhere" sx={{
             "& h1, & h2, & h3": { fontWeight: 600, mt: 4, mb: 2 },

@@ -70,6 +70,7 @@ export type ChatPanelViewContextValue = {
   onCloseSkills: () => void;
   token: string;
   onFilesApplied?: (files: Record<string, { code: string }>) => void;
+  artifactRevision?: { text: string; onApplied: () => void };
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   onCreateSkillViaChat: () => void;
   onUseSkill: (skillName: string) => void;

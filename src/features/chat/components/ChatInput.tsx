@@ -30,6 +30,7 @@ type LocalInputFile = ChatInputFile & {
 
 const ChatInput = ({
   placeholder,
+  artifactRevision,
   draftStorageKey,
   workspaceLayout = false,
   isSending,
@@ -73,6 +74,15 @@ const ChatInput = ({
     }
     setLoadedDraftKey(draftStorageKey);
   }, [draftStorageKey]);
+  useEffect(() => {
+    if (!artifactRevision) return;
+    setText((draft) => draft ? `${artifactRevision.text}\n${draft}` : artifactRevision.text);
+    const frame = requestAnimationFrame(() => {
+      textAreaRef.current?.focus();
+      artifactRevision.onApplied();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [artifactRevision]);
   useEffect(() => {
     if (!draftStorageKey || loadedDraftKey !== draftStorageKey) return;
     try {

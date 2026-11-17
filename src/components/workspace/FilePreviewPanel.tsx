@@ -99,6 +99,7 @@ type FilePreviewPanelProps = {
   localOnly?: boolean;
   onRetry?: () => void;
   spreadsheetZoom?: number;
+  onSelectSpreadsheetCell?: (sheet: string, address: string) => void;
   version?: string;
 };
 
@@ -118,7 +119,11 @@ function spreadsheetColumnLabel(index: number) {
   return label;
 }
 
-function SpreadsheetGrid({ sheet, zoom }: { sheet: PreviewSheet; zoom: number }) {
+function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
+  sheet: PreviewSheet;
+  zoom: number;
+  onSelectCell?: (sheet: string, address: string) => void;
+}) {
   const { rows, firstRow, firstColumn, formulas } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
   const columnCount = Math.max(0, ...rows.map((row) => row.length));
@@ -129,6 +134,7 @@ function SpreadsheetGrid({ sheet, zoom }: { sheet: PreviewSheet; zoom: number })
 
   return (
     <>
+      {onSelectCell && <Text px={3} py={2} fontSize="sm" role="status">选中单元格并提出修改要求</Text>}
       <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
         <Text px={3} minW="64px">{activeAddress}</Text>
         <Box
@@ -174,7 +180,10 @@ function SpreadsheetGrid({ sheet, zoom }: { sheet: PreviewSheet; zoom: number })
                       as="button"
                       type="button"
                       aria-label={`${spreadsheetColumnLabel(firstColumn + column)}${firstRow + rowIndex + 1} ${row[column] ?? ""}`.trim()}
-                      onClick={() => setActiveCell({ row: rowIndex, column })}
+                      onClick={() => {
+                        setActiveCell({ row: rowIndex, column });
+                        onSelectCell?.(sheet.name, spreadsheetColumnLabel(firstColumn + column) + (firstRow + rowIndex + 1));
+                      }}
                       textAlign="left"
                       px={2}
                       minW="88px"
@@ -203,7 +212,7 @@ type PreviewCacheEntry =
   | { kind: "spreadsheet"; officePreviewUrl: string; sheets: PreviewSheet[] }
   | { kind: "presentation"; officePreviewUrl: string; pptSlides: string[][] };
 
-const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry, spreadsheetZoom = 100 }: FilePreviewPanelProps) => {
+const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, version, onRetry, spreadsheetZoom = 100, onSelectSpreadsheetCell }: FilePreviewPanelProps) => {
   const previewKind = getPreviewKind(activeFile);
   const sourceHash = sourceCode.length;
   const previewCacheKey = `${token}::${version ?? ""}::${activeFile}`;
@@ -614,7 +623,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
           </Box>
         ) : (
           <Flex direction="column" h="100%" minH={0} bg="white">
-            {activeSheet && <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} sheet={activeSheet} zoom={spreadsheetZoom} />}
+            {activeSheet && <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} sheet={activeSheet} zoom={spreadsheetZoom} onSelectCell={onSelectSpreadsheetCell} />}
             <Flex as="nav" aria-label="工作表" overflowX="auto" flexShrink={0} borderTop="1px solid" borderColor="gray.200" px={2}>
               {sheets.map(({ name }) => (
                 <Button

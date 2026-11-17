@@ -139,6 +139,7 @@ export default function AgentWorkspace({
     return () => { cancelled = true; };
   }, [activeToken, toast]);
   const [artifactVersion, setArtifactVersion] = useState<string>();
+  const [artifactRevision, setArtifactRevision] = useState<{ text: string; onApplied: () => void }>();
   const [selectedFilePath, setSelectedFilePath] = useState<string>("");
 
   useEffect(() => {
@@ -795,6 +796,7 @@ export default function AgentWorkspace({
                 onFilesUpdated={(files) => {
                   setFilesByProject((prev) => ({ ...prev, [activeProject.token]: { ...prev[activeProject.token], ...files } }));
                 }}
+                artifactRevision={artifactRevision}
                 onOpenWorkspaceFile={openWorkspaceFile}
                 fileOptions={fileKeys}
                 height="100%"
@@ -813,6 +815,7 @@ export default function AgentWorkspace({
 
           {filesDrawerOpen && (
             <WorkspaceFilesPanel token={activeToken} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
+              onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
               onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
           )}
         </Flex>
