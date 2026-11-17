@@ -1,4 +1,4 @@
-import type OpenAI from "openai";
+import type { AgentModelClient } from "./modelClient";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { trimHistoryToBudget } from "./context";
 
@@ -37,7 +37,7 @@ const pruneOldToolOutputs = (
  *    失败时自动回退到窗口裁剪（trimHistoryToBudget）。
  */
 export async function compressContextIfNeeded(params: {
-  client: OpenAI;
+  client: AgentModelClient;
   model: string;
   messages: ChatCompletionMessageParam[];
   maxContext: number;
@@ -65,7 +65,7 @@ export async function compressContextIfNeeded(params: {
       })
       .join("\n");
 
-    const summaryResp = await params.client.chat.completions.create(
+    const summaryResp = await params.client.complete(
       {
         model: params.model,
         temperature: 0.1,
@@ -80,7 +80,7 @@ export async function compressContextIfNeeded(params: {
           { role: "user", content: serialized },
         ],
       },
-      { signal: params.signal },
+      params.signal,
     );
 
     const summary = summaryResp.choices?.[0]?.message?.content?.trim();

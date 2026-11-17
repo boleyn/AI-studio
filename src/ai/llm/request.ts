@@ -1310,6 +1310,7 @@ const createAnthropicChatCompletion = async ({
   });
   const formatTimeout = timeout ? timeout : 600000;
   const controller = new AbortController();
+  const signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
   const timer = setTimeout(() => controller.abort(), formatTimeout);
   let keepTimerForStream = false;
 
@@ -1324,7 +1325,7 @@ const createAnthropicChatCompletion = async ({
       const stream = (await client.messages.create(
         requestBody as any,
         {
-          signal: controller.signal,
+          signal,
           timeout: formatTimeout,
         }
       )) as unknown as AsyncIterable<unknown>;
@@ -1344,7 +1345,7 @@ const createAnthropicChatCompletion = async ({
     }
 
     const json = (await client.messages.create(requestBody as any, {
-      signal: controller.signal,
+      signal,
       timeout: formatTimeout,
     })) as any;
     const text = Array.isArray(json?.content)
@@ -1639,6 +1640,7 @@ const createGoogleChatCompletion = async ({
 
   const formatTimeout = timeout ? timeout : 600000;
   const controller = new AbortController();
+  const signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
   const timer = setTimeout(() => controller.abort(), formatTimeout);
   let keepTimerForStream = false;
 
@@ -1664,6 +1666,7 @@ const createGoogleChatCompletion = async ({
   const converted = toGoogleMessages(Array.isArray(body.messages) ? body.messages : []);
   const googleTools = toGoogleTools(body.tools);
   const requestConfig: Record<string, unknown> = {
+    abortSignal: signal,
     temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
     topP: typeof body.top_p === 'number' ? body.top_p : undefined,
     maxOutputTokens:

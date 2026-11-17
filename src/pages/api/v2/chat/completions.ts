@@ -540,8 +540,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
   if (customModel) {
-    if ((customModel.protocol || "openai").toLowerCase() !== "openai") {
-      res.status(400).json({ error: "Hermes 当前要求 OpenAI 兼容的模型接口。" });
+    const protocol = (customModel.protocol || "openai").toLowerCase();
+    if (protocol !== "openai" && protocol !== "anthropic" && protocol !== "google") {
+      res.status(400).json({ error: "模型配置使用了不支持的协议。" });
       return;
     }
     try {
@@ -551,10 +552,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error("Invalid model connection");
       }
       modelConnection = {
+        protocol,
         baseURL: endpoint.href.replace(/\/$/, ""),
         apiKey: customModel.key,
         maxContext: customModel.maxContext,
         maxTemperature: customModel.maxTemperature,
+        reasoning: customModel.reasoning,
+        vision: customModel.vision,
       };
     } catch {
       res.status(400).json({ error: "请在模型配置中填写有效的 Base URL 和 API Key。" });

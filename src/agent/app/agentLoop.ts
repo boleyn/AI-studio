@@ -1,6 +1,6 @@
 import { encodeProjectFile } from "../sandbox/paths";
 import { randomUUID } from "node:crypto";
-import type OpenAI from "openai";
+import type { AgentModelClient } from "./modelClient";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { registerPendingConversationInteraction } from "@server/chat/activeRuns";
 import type { SdkContentBlock } from "@shared/chat/sdkMessages";
@@ -11,7 +11,7 @@ import { compressContextIfNeeded } from "./compressor";
 import { AgentSessionTracker } from "./session";
 
 export type AgentLoopInput = {
-  client: OpenAI;
+  client: AgentModelClient;
   model: string;
   temperature: number;
   maxContext?: number;
@@ -112,7 +112,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       ...trimmed.messages,
     ];
 
-    const stream = await input.client.chat.completions.create(
+    const stream = await input.client.stream(
       {
         model: input.model,
         temperature: input.temperature,
@@ -121,7 +121,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         stream: true,
         stream_options: { include_usage: true },
       },
-      { signal: input.signal },
+      input.signal,
     );
 
     let turnText = "";

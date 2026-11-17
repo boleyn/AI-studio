@@ -16,7 +16,8 @@ import {
 import { discoverWorkspaceSkills, registry } from "../tools";
 import { getContextWindowForModel } from "./context";
 import { runAgentLoop } from "./agentLoop";
-import { getAgentRuntimeConfig, getOpenAIClient } from "./config";
+import { createAgentModelClient, type AgentModelConnection } from "./modelClient";
+import { getAgentRuntimeConfig } from "./config";
 import { extractCurrentAttachments, extractSystemDirectives, toOpenAIHistory } from "./history";
 import { buildSystemPrompt } from "./prompt";
 
@@ -24,7 +25,7 @@ export type RunHermesAgentInput = {
   token: string;
   chatId: string;
   selectedModel: string;
-  modelConnection?: { baseURL: string; apiKey: string; maxContext?: number; maxTemperature?: number };
+  modelConnection?: AgentModelConnection;
   selectedSkills: string[];
   historyMessages?: unknown;
   projectFiles?: ProjectFiles;
@@ -118,7 +119,6 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
 
     const openAIMessages = toOpenAIHistory(input.messages, input.historyMessages);
     const connection = input.modelConnection;
-    const client = connection ? getOpenAIClient({ baseURL: connection.baseURL, apiKey: connection.apiKey }) : getOpenAIClient();
     const maxContext = connection?.maxContext && connection.maxContext > 0
       ? Math.floor(connection.maxContext)
       : getContextWindowForModel(model);
@@ -127,7 +127,7 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
       : config.temperature;
 
     const loopResult = await runAgentLoop({
-      client,
+      client: createAgentModelClient(model, maxContext, connection),
       model,
       temperature,
       maxContext,
