@@ -14,6 +14,7 @@ import {
   type SandboxKind,
 } from "../sandbox";
 import { discoverWorkspaceSkills, registry } from "../tools";
+import { getContextWindowForModel } from "./context";
 import { runAgentLoop } from "./agentLoop";
 import { getAgentRuntimeConfig, getOpenAIClient } from "./config";
 import { extractCurrentAttachments, extractSystemDirectives, toOpenAIHistory } from "./history";
@@ -23,6 +24,7 @@ export type RunHermesAgentInput = {
   token: string;
   chatId: string;
   selectedModel: string;
+  modelConnection?: { baseURL: string; apiKey: string; maxContext?: number; maxTemperature?: number };
   selectedSkills: string[];
   historyMessages?: unknown;
   projectFiles?: ProjectFiles;
@@ -115,12 +117,20 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
     });
 
     const openAIMessages = toOpenAIHistory(input.messages, input.historyMessages);
-    const client = getOpenAIClient();
+    const connection = input.modelConnection;
+    const client = connection ? getOpenAIClient({ baseURL: connection.baseURL, apiKey: connection.apiKey }) : getOpenAIClient();
+    const maxContext = connection?.maxContext && connection.maxContext > 0
+      ? Math.floor(connection.maxContext)
+      : getContextWindowForModel(model);
+    const temperature = typeof connection?.maxTemperature === "number" && connection.maxTemperature >= 0
+      ? Math.min(config.temperature, connection.maxTemperature)
+      : config.temperature;
 
     const loopResult = await runAgentLoop({
       client,
       model,
-      temperature: config.temperature,
+      temperature,
+      maxContext,
       maxIterations: config.recursionLimit,
       systemPrompt,
       messages: openAIMessages,
@@ -158,6 +168,7 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
         role: "assistant",
         content,
         model,
+        maxContext,
         runUsage: loopResult.runUsage,
         ...(loopResult.usage ? { usage: loopResult.usage } : {}),
       } as any,

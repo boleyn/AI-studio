@@ -14,6 +14,7 @@ export type AgentLoopInput = {
   client: OpenAI;
   model: string;
   temperature: number;
+  maxContext?: number;
   maxIterations: number;
   systemPrompt: string;
   messages: ChatCompletionMessageParam[];
@@ -58,7 +59,7 @@ const parseJsonLoose = (raw: string): unknown => {
 };
 
 export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResult> {
-  const maxContext = getContextWindowForModel(input.model);
+  const maxContext = input.maxContext ?? getContextWindowForModel(input.model);
   const conversation: ChatCompletionMessageParam[] = [...input.messages];
   const assistantBlocks: SdkContentBlock[] = [];
   let finalText = "";
@@ -80,7 +81,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
   const openAITools = input.registry.toOpenAITools(availableTools);
 
   const emitBudget = (promptTokens: number, completionTokens: number) => {
-    const tokenBudget = toTokenBudget({ promptTokens, completionTokens, model: input.model });
+    const tokenBudget = toTokenBudget({ promptTokens, completionTokens, model: input.model, maxContext });
     const fp = `${tokenBudget.usedTokens}:${tokenBudget.maxContext}`;
     if (fp === lastBudgetFingerprint) return;
     lastBudgetFingerprint = fp;

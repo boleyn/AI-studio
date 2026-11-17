@@ -6,6 +6,7 @@ import type {
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { getAgentRuntimeConfig } from "@/agent/app";
 import { toTokenBudget } from "@/agent/app/context";
+import { getUserModelConfigsFromUser } from "@server/auth/userModelConfig";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile, updateBinaryFile, saveProjectArtifactVersion } from "@server/projects/projectStorage";
@@ -283,7 +284,7 @@ const toConversationMessage = (message: SdkMessage): ConversationMessage => {
     && typeof promptTokens === "number" && Number.isFinite(promptTokens) && promptTokens >= 0
     && typeof completionTokens === "number" && Number.isFinite(completionTokens) && completionTokens >= 0
     && promptTokens + completionTokens > 0
-    ? toTokenBudget({ model, promptTokens, completionTokens })
+    ? toTokenBudget({ model, promptTokens, completionTokens, maxContext: typeof message.message?.maxContext === "number" ? message.message.maxContext : undefined })
     : undefined;
   return {
     type: message.type,
@@ -529,6 +530,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     typeof req.body?.model === "string" && req.body.model.trim()
       ? req.body.model.trim()
       : getAgentRuntimeConfig().toolCallModel;
+  const channel = typeof req.body?.channel === "string" ? req.body.channel.trim() : "";
+  const customModel = channel === "user" || !channel
+    ? getUserModelConfigsFromUser(auth.user).find((entry) => entry.id === selectedModel)
+    : undefined;
+  let modelConnection: Parameters<typeof runAgentGateway>[0]["modelConnection"];
+  if (channel === "user" && !customModel) {
+    res.status(400).json({ error: "所选的用户模型不存在，请重新选择。" });
+    return;
+  }
+  if (customModel) {
+    if ((customModel.protocol || "openai").toLowerCase() !== "openai") {
+      res.status(400).json({ error: "Hermes 当前要求 OpenAI 兼容的模型接口。" });
+      return;
+    }
+    try {
+      const endpoint = new URL(customModel.baseUrl || "");
+      if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password
+        || endpoint.search || endpoint.hash || !customModel.key) {
+        throw new Error("Invalid model connection");
+      }
+      modelConnection = {
+        baseURL: endpoint.href.replace(/\/$/, ""),
+        apiKey: customModel.key,
+        maxContext: customModel.maxContext,
+        maxTemperature: customModel.maxTemperature,
+      };
+    } catch {
+      res.status(400).json({ error: "请在模型配置中填写有效的 Base URL 和 API Key。" });
+      return;
+    }
+  }
   const selectedSkills = Array.isArray(req.body?.selectedSkills)
     ? req.body.selectedSkills
         .filter((item: unknown): item is string => typeof item === "string")
@@ -631,6 +663,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       token,
       chatId,
       selectedModel,
+      modelConnection,
       selectedSkills,
       historyMessages: persistedHistoryMessages,
       projectFiles: projectFilesForRun,

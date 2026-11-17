@@ -40,9 +40,10 @@ export function toTokenBudget(params: {
   promptTokens: number;
   completionTokens: number;
   model: string;
+  maxContext?: number;
 }): TokenBudgetPayload {
   const usedTokens = Math.max(0, Math.floor(params.promptTokens + params.completionTokens));
-  const maxContext = Math.max(1, getContextWindowForModel(params.model));
+  const maxContext = Math.max(1, params.maxContext ?? getContextWindowForModel(params.model));
   const usedPercent = Math.max(0, Math.min(100, (usedTokens / maxContext) * 100));
   return {
     used: usedTokens,
