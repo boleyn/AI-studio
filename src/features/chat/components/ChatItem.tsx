@@ -152,9 +152,11 @@ const ChatItem = ({
     (item.type !== "tool" || !PLAN_MODE_TOOL_NAMES.has((item.toolName || "").trim().toLowerCase())),
   );
 
-  const runningActivityLabel = visibleToolCount > 0
+  const runningActivityLabel = hasRunningTool
     ? "正在使用工具"
-    : planProgress ? "正在执行计划" : "正在思考";
+    : planProgress?.plan.some((step) => step.status === "in_progress")
+      ? "正在执行计划"
+      : visibleToolCount > 0 ? "已调用工具" : "正在思考";
 
   const usePlainAnswer = isWorkspaceChat && isAssistant;
   const openingAnswer = isWorkspaceChat && hasActivity && timelineItems[0]?.type === "answer"
