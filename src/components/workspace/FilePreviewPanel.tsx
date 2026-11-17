@@ -1,5 +1,6 @@
 import { Box, Button, Flex, Image, Spinner, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { loadSpreadsheet } from "./loadSpreadsheet";
 import SpreadsheetGrid, { type PreviewSheet } from "./SpreadsheetGrid";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -314,28 +315,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
           return;
         }
         if (previewKind === "spreadsheet") {
-          const XLSX = await import("xlsx");
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
-          const parsedSheets: PreviewSheet[] = workbook.SheetNames.map((name) => {
-            const worksheet = workbook.Sheets[name];
-            const range = worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]) : undefined;
-            const cells: PreviewSheet["cells"] = {};
-            for (const [address, cell] of Object.entries(worksheet)) {
-              if (address.startsWith("!") || !cell) continue;
-              cells[address] = {
-                value: XLSX.utils.format_cell(cell),
-                ...(cell.f ? { formula: `=${cell.f}` } : {}),
-              };
-            }
-            return {
-              name,
-              cells,
-              firstRow: range?.s.r ?? 0,
-              firstColumn: range?.s.c ?? 0,
-              rowCount: range ? range.e.r - range.s.r + 1 : 0,
-              columnCount: range ? range.e.c - range.s.c + 1 : 0,
-            };
-          });
+          const parsedSheets = await loadSpreadsheet(arrayBuffer, controller.signal);
           if (!cancelled) {
             setSheetName(parsedSheets[0]?.name ?? "");
             setSheets(parsedSheets);
