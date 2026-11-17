@@ -1,6 +1,28 @@
+import type { CloudHostStatus } from "@shared/sandbox/cloudHostStatus";
 import type { UploadedFileArtifact } from "./fileArtifact";
 
 export type ReasoningEffortLevel = "off" | "low" | "medium" | "high" | "xhigh";
+
+export const REASONING_EFFORT_OPTIONS: Array<{
+  value: ReasoningEffortLevel;
+  label: string;
+  shortLabel: string;
+}> = [
+  { value: "low", label: "低", shortLabel: "低" },
+  { value: "medium", label: "中", shortLabel: "中" },
+  { value: "high", label: "高", shortLabel: "高" },
+  { value: "xhigh", label: "超高", shortLabel: "超高" },
+  { value: "off", label: "关闭", shortLabel: "关" },
+];
+
+export const getReasoningEffortLabel = (
+  effort?: ReasoningEffortLevel,
+  short = false,
+): string => {
+  const found = REASONING_EFFORT_OPTIONS.find((item) => item.value === (effort || "high"));
+  if (!found) return "高";
+  return short ? found.shortLabel : found.label;
+};
 
 export interface ChatInputFile {
   id: string;
@@ -61,6 +83,7 @@ export interface WorkspaceComposerConfig {
   runtimeKind?: "remote-vm" | "connector";
   runtimeLabel?: string;
   runtimeDeviceId?: string;
+  cloudHostStatus?: CloudHostStatus;
   devices?: WorkspaceComposerDeviceOption[];
   onSelectCloudHost?: () => void;
   onSelectDeviceHost?: (device: WorkspaceComposerDeviceOption) => void;

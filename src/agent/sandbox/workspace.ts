@@ -236,6 +236,7 @@ export async function prepareAgentSandboxWorkspace(params: {
   hostProjectRoot?: string
   projectFiles?: ProjectFilesInput
   runtimeFiles?: ProjectFilesInput
+  forceHydrate?: boolean
 }): Promise<AgentSandboxWorkspace> {
   const workspaceKey = sanitizeWorkspaceKey(params.workspaceIdentity)
   const workspaceRoot = path.resolve(
@@ -252,7 +253,12 @@ export async function prepareAgentSandboxWorkspace(params: {
     : workspaceRoot
 
   await ensureDir(workspaceRoot)
-  await hydrateWorkspaceFromS3(workspaceRoot, workspaceKey)
+  const hydratedMarker = path.join(workspaceRoot, '.hydrated')
+  const alreadyHydrated = await fsStat(hydratedMarker).then(s => s.isFile()).catch(() => false)
+  if (params.forceHydrate || !alreadyHydrated) {
+    await hydrateWorkspaceFromS3(workspaceRoot, workspaceKey)
+    await fsWriteFile(hydratedMarker, `${Date.now()}\n`, 'utf8').catch(() => undefined)
+  }
   if (projectRoot !== workspaceRoot) {
     await ensureDir(projectRoot)
   }

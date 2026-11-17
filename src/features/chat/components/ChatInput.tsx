@@ -34,11 +34,13 @@ import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
 
-import type {
-  ChatInputFile,
-  ChatInputProps,
-  ChatInputSubmitPayload,
-  ReasoningEffortLevel,
+import { getCloudHostStatusMeta } from "@shared/sandbox/cloudHostStatus";
+import {
+  getReasoningEffortLabel,
+  type ChatInputFile,
+  type ChatInputProps,
+  type ChatInputSubmitPayload,
+  type ReasoningEffortLevel,
 } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { normalizeAttachmentWorkspacePath, toFileTagLabel } from "../utils/chatPanelUtils";
@@ -934,18 +936,32 @@ const ChatInput = ({
                         _hover={{ bg: "#f4f4f5" }}
                         onClick={() => workspaceComposer.onSelectCloudHost?.()}
                       >
-                        <HStack justify="space-between" w="full" spacing={3}>
-                          <HStack spacing={2} minW={0}>
-                            <Cloud size={15} color="#18181b" />
-                            <Box w="6px" h="6px" borderRadius="full" bg="#22c55e" flexShrink={0} />
-                            <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
-                              云电脑（默认）
-                            </Text>
-                          </HStack>
-                          {workspaceComposer.runtimeKind !== "connector" && (
-                            <Check size={15} color="#18181b" />
-                          )}
-                        </HStack>
+                        {(() => {
+                          const cloudMeta = getCloudHostStatusMeta(workspaceComposer.cloudHostStatus);
+                          return (
+                            <HStack justify="space-between" w="full" spacing={3}>
+                              <HStack spacing={2} minW={0}>
+                                <Cloud size={15} color="#18181b" />
+                                <Box
+                                  w="6px"
+                                  h="6px"
+                                  borderRadius="full"
+                                  bg={cloudMeta.dotColor}
+                                  flexShrink={0}
+                                />
+                                <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
+                                  云电脑（默认）
+                                </Text>
+                                <Text fontSize="11px" color="#71717a" flexShrink={0}>
+                                  {cloudMeta.label}
+                                </Text>
+                              </HStack>
+                              {workspaceComposer.runtimeKind !== "connector" && (
+                                <Check size={15} color="#18181b" />
+                              )}
+                            </HStack>
+                          );
+                        })()}
                       </MenuItem>
 
                       {(workspaceComposer.devices || []).map((device) => {
@@ -1274,17 +1290,7 @@ const ChatInput = ({
             {workspaceLayout && (
               <ModelCascader
                 showLabel
-                rightSuffix={
-                  reasoningEffort === "off"
-                    ? "关"
-                    : reasoningEffort === "low"
-                    ? "低"
-                    : reasoningEffort === "medium"
-                    ? "中"
-                    : reasoningEffort === "xhigh"
-                    ? "超高"
-                    : "高"
-                }
+                rightSuffix={getReasoningEffortLabel(reasoningEffort, true)}
                 reasoningEffort={reasoningEffort}
                 onChangeReasoningEffort={onChangeReasoningEffort}
                 disabled={Boolean(modelLoading || isSending || isSubmitting)}

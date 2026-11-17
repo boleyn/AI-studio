@@ -92,7 +92,12 @@ export const createSandbox = async (input: CreateSandboxInput): Promise<Sandbox>
         ? execOnRemoteVm(prepared.workspaceRoot, prepared.workspaceKey, command, scopedOptions)
         : execOnHost(prepared.workspaceRoot, command, scopedOptions);
     },
-    persist: () => withRetry(prepared.persistToS3),
+    persist: () => {
+      // 用户云主机持久卷模式下，运行期间直接读写本地持久目录，退出/休眠时由 userCloudHostManager 统一归档 S3
+      const persistEveryTurn =
+        !hostUserId || process.env.AGENT_SANDBOX_PERSIST_MODE === "every-turn";
+      return persistEveryTurn ? withRetry(prepared.persistToS3) : Promise.resolve();
+    },
     exportProjectFiles: () => fs.exportTextFiles(),
     async dispose() {},
   };

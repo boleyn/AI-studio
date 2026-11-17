@@ -253,6 +253,22 @@ export default function AgentWorkspace({
   const [pairedDevices, setPairedDevices] = useState<
     Array<{ deviceId: string; name: string; online: boolean }>
   >([]);
+  const [cloudHostStatus, setCloudHostStatus] = useState<
+    "allocating" | "ready" | "sleeping" | "stopped"
+  >("ready");
+
+  const fetchCloudHostStatus = useCallback(async () => {
+    try {
+      const data = await apiJson<{
+        host?: { status?: "allocating" | "ready" | "sleeping" | "stopped" };
+      }>("/core/sandbox/hostStatus");
+      if (data?.host?.status) {
+        setCloudHostStatus(data.host.status);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const fetchPairedDevices = useCallback(async () => {
     try {
@@ -277,7 +293,8 @@ export default function AgentWorkspace({
   useEffect(() => {
     void fetchProjects();
     void fetchPairedDevices();
-  }, [fetchProjects, fetchPairedDevices]);
+    void fetchCloudHostStatus();
+  }, [fetchProjects, fetchPairedDevices, fetchCloudHostStatus]);
 
   useEffect(() => {
     if (initialProjectToken) {
@@ -1265,6 +1282,7 @@ export default function AgentWorkspace({
                       ? activeRuntime.deviceName || "本地电脑"
                       : "云电脑",
                   runtimeDeviceId: activeRuntime.deviceId,
+                  cloudHostStatus,
                   devices: pairedDevices,
                   onSelectCloudHost: () => {
                     handleSaveRuntimeConfig(activeProject.token, {
@@ -1473,6 +1491,7 @@ export default function AgentWorkspace({
           }
           onSave={(next) => handleSaveRuntimeConfig(runtimeTargetProject.token, next)}
           onTestConnector={handleTestConnector}
+          cloudHostStatus={cloudHostStatus}
         />
       )}
 

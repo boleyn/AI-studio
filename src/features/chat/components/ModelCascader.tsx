@@ -18,10 +18,12 @@ import MyTooltip from "@/components/ui/MyTooltip";
 import { useTranslation } from "next-i18next";
 import { useEffect, useMemo, useState } from "react";
 
-import type {
-  ChatInputModelGroup,
-  ChatInputModelOption,
-  ReasoningEffortLevel,
+import {
+  getReasoningEffortLabel,
+  REASONING_EFFORT_OPTIONS,
+  type ChatInputModelGroup,
+  type ChatInputModelOption,
+  type ReasoningEffortLevel,
 } from "../types/chatInput";
 
 const DEFAULT_MODEL_ICON = "/icons/llms/auto.svg";
@@ -42,14 +44,6 @@ const resolveModelIcon = (option?: ChatInputModelOption) => {
   if (icon.startsWith("/") || icon.startsWith("http://") || icon.startsWith("https://")) return icon;
   return `/icons/llms/${icon.replace(/^\/+/, "")}`;
 };
-
-const REASONING_EFFORT_OPTIONS: Array<{ value: ReasoningEffortLevel; label: string }> = [
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
-  { value: "xhigh", label: "超高" },
-  { value: "off", label: "关闭" },
-];
 
 const ModelCascader = ({
   disabled,
@@ -100,8 +94,7 @@ const ModelCascader = ({
   const selectedModelIcon = resolveModelIcon(selectedModelOption);
   const selectedModelLabel = selectedModelOption?.label || "auto";
   const currentEffort = reasoningEffort || "high";
-  const currentEffortLabel =
-    REASONING_EFFORT_OPTIONS.find((item) => item.value === currentEffort)?.label || "高";
+  const currentEffortLabel = getReasoningEffortLabel(currentEffort);
 
   return (
     <Popover isOpen={isOpen} onClose={onClose} onOpen={onOpen} placement="top-end" gutter={8}>

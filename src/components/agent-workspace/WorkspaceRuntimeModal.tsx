@@ -34,6 +34,7 @@ import {
   Download,
 } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { getCloudHostStatusMeta, type CloudHostStatus } from "@shared/sandbox/cloudHostStatus";
 
 export type ProjectRuntimeConfig = {
   sandboxKind: "remote-vm" | "connector";
@@ -122,6 +123,7 @@ type WorkspaceRuntimeModalProps = {
   projectName: string;
   projectToken: string;
   config: ProjectRuntimeConfig;
+  cloudHostStatus?: CloudHostStatus;
   onSave: (next: ProjectRuntimeConfig) => void;
   onTestConnector: (url: string, token: string) => Promise<{ ok: boolean; latencyMs?: number; error?: string }>;
 };
@@ -132,6 +134,7 @@ export default function WorkspaceRuntimeModal({
   projectName,
   projectToken,
   config,
+  cloudHostStatus = "ready",
   onSave,
   onTestConnector,
 }: WorkspaceRuntimeModalProps) {
@@ -410,7 +413,7 @@ export default function WorkspaceRuntimeModal({
               {draft.sandboxKind === "remote-vm" && <CheckCircle2 size={15} color="#0d0d0d" />}
             </HStack>
             <Text fontSize="12px" color="ink.secondary" lineHeight="1.45">
-              按项目分配云端隔离工作区，文件与成果自动持久化到云端存储。
+              每账号分配专属云主机（/home/user），各项目按文件夹隔离，CLI、依赖与 Skills 跨项目复用。
             </Text>
           </Box>
 
@@ -444,22 +447,32 @@ export default function WorkspaceRuntimeModal({
         </HStack>
 
         {draft.sandboxKind === "remote-vm" ? (
-          <AppSectionCard>
-            <HStack justify="space-between" mb={1.5}>
-              <Text fontSize="13px" fontWeight="600" color="ink.primary">
-                项目虚拟机实例
-              </Text>
-              <Badge colorScheme="green" variant="subtle" fontSize="11px" px={2}>
-                已就绪 · 项目隔离
-              </Badge>
-            </HStack>
-            <Text fontSize="12px" color="ink.secondary">
-              工作区标识：<Code fontSize="11px">{projectToken || "default"}</Code>
-            </Text>
-            <Text fontSize="12px" color="ink.muted" mt={1}>
-              所有终端命令、Python/Node 脚本及生成文件均在专属沙盒环境中运行。
-            </Text>
-          </AppSectionCard>
+          (() => {
+            const cloudMeta = getCloudHostStatusMeta(cloudHostStatus);
+            return (
+              <AppSectionCard>
+                <HStack justify="space-between" mb={1.5}>
+                  <Text fontSize="13px" fontWeight="600" color="ink.primary">
+                    专属云主机实例
+                  </Text>
+                  <Badge
+                    colorScheme={cloudMeta.badgeScheme}
+                    variant="subtle"
+                    fontSize="11px"
+                    px={2}
+                  >
+                    {cloudHostStatus === "ready" ? `${cloudMeta.label} · 持久卷` : cloudMeta.label}
+                  </Badge>
+                </HStack>
+                <Text fontSize="12px" color="ink.secondary">
+                  项目目录：<Code fontSize="11px">/home/user/projects/{projectName || projectToken || "default"}</Code>
+                </Text>
+                <Text fontSize="12px" color="ink.muted" mt={1}>
+                  登录即分配云主机，运行期间直接读写持久化目录；退出登录或超时空闲后自动归档休眠。
+                </Text>
+              </AppSectionCard>
+            );
+          })()
         ) : (
           <AppSectionCard>
             <VStack align="stretch" spacing={3}>
