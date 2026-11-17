@@ -176,6 +176,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     let visionUsageRows: VisionUsageAggRow[] = [];
     let visionUsageTrendRows: VisionUsageTrendAggRow[] = [];
 
+    const recordedRun = "$additional_kwargs.sdkMessage.message.runUsage";
+    const recordedCalls = { $ifNull: [`${recordedRun}.calls`, 1] };
+    const recordedTokens = { $ifNull: [`${recordedRun}.totalTokens`, "$additional_kwargs.contextWindow.usedTokens", 0] };
+
     if (tokens.length > 0) {
       const db = await getMongoDb();
       const itemCol = db.collection("conversation_items");
@@ -192,16 +196,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           {
             $group: {
               _id: "$additional_kwargs.contextWindow.model",
-              calls: { $sum: 1 },
-              totalUsedTokens: {
-                $sum: {
-                  $cond: [
-                    { $isNumber: "$additional_kwargs.contextWindow.usedTokens" },
-                    "$additional_kwargs.contextWindow.usedTokens",
-                    0,
-                  ],
-                },
-              },
+              calls: { $sum: recordedCalls },
+              totalUsedTokens: { $sum: recordedTokens },
               avgUsedPercent: {
                 $avg: {
                   $cond: [
@@ -236,13 +232,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
                   timezone: trendTimezone,
                 },
               },
-              usedTokens: {
-                $cond: [
-                  { $isNumber: "$additional_kwargs.contextWindow.usedTokens" },
-                  "$additional_kwargs.contextWindow.usedTokens",
-                  0,
-                ],
-              },
+              calls: recordedCalls,
+              usedTokens: recordedTokens,
               usedPercent: {
                 $cond: [
                   { $isNumber: "$additional_kwargs.contextWindow.usedPercent" },
@@ -263,7 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
                 modelId: "$modelId",
                 day: "$day",
               },
-              calls: { $sum: 1 },
+              calls: { $sum: "$calls" },
               totalUsedTokens: { $sum: "$usedTokens" },
               avgUsedPercent: { $avg: "$usedPercent" },
             },

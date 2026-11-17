@@ -158,6 +158,7 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
         role: "assistant",
         content,
         model,
+        runUsage: loopResult.runUsage,
         ...(loopResult.usage ? { usage: loopResult.usage } : {}),
       } as any,
     });

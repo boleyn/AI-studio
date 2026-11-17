@@ -34,6 +34,7 @@ export type AgentLoopResult = {
   assistantText: string;
   assistantBlocks: SdkContentBlock[];
   usage?: { input_tokens: number; output_tokens: number };
+  runUsage: { calls: number; totalTokens: number };
   pendingInteraction: boolean;
   stopReason: string | null;
 };
@@ -63,6 +64,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
   let finalText = "";
   let stopReason: string | null = null;
   let lastUsage: { input_tokens: number; output_tokens: number } | undefined;
+  const runUsage = { calls: 0, totalTokens: 0 };
   let pendingInteraction = false;
   let lastBudgetFingerprint = "";
   const session = new AgentSessionTracker();
@@ -122,6 +124,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
     );
 
     let turnText = "";
+    let turnUsage: AgentLoopResult["usage"];
     const toolCallsByIndex = new Map<number, AccumulatedToolCall>();
 
     for await (const chunk of stream) {
@@ -130,7 +133,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       if (chunk.usage) {
         const promptTokens = chunk.usage.prompt_tokens || 0;
         const completionTokens = chunk.usage.completion_tokens || 0;
-        lastUsage = { input_tokens: promptTokens, output_tokens: completionTokens };
+        turnUsage = { input_tokens: promptTokens, output_tokens: completionTokens };
         if (!input.isSubagent) emitBudget(promptTokens, completionTokens);
       }
 
@@ -206,6 +209,12 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       }
     }
 
+    runUsage.calls += 1;
+    if (turnUsage) {
+      lastUsage = turnUsage;
+      runUsage.totalTokens += turnUsage.input_tokens + turnUsage.output_tokens;
+    }
+
     if (turnText.trim()) {
       finalText = turnText;
       assistantBlocks.push({ type: "text", text: turnText });
@@ -278,6 +287,8 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
           parentToolUseId: subParams.toolUseId,
           signal: subParams.signal ?? input.signal,
         });
+        runUsage.calls += subResult.runUsage.calls;
+        runUsage.totalTokens += subResult.runUsage.totalTokens;
         return subResult.assistantText;
       };
 
@@ -341,6 +352,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
     assistantText: finalText,
     assistantBlocks,
     usage: lastUsage,
+    runUsage,
     pendingInteraction,
     stopReason,
   };
