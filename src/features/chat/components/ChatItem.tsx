@@ -153,6 +153,12 @@ const ChatItem = ({
   const openingAnswer = isWorkspaceChat && hasActivity && timelineItems[0]?.type === "answer"
     ? timelineItems[0]
     : undefined;
+  const duration = executionSummary?.durationSeconds;
+  const seconds = Math.max(1, Math.round(duration ?? 0));
+  const elapsedLabel = seconds >= 60
+    ? `用时 ${Math.floor(seconds / 60)} 分钟 ${seconds % 60} 秒`
+    : `用时 ${seconds} 秒`;
+  const showElapsedLabel = isWorkspaceChat && !isStreaming && duration !== undefined;
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
 
   if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
@@ -238,7 +244,7 @@ const ChatItem = ({
                 <Text fontSize="sm">{runningActivityLabel}</Text>
               </Flex>
             )}
-            {openingAnswer && (
+            {isStreaming && openingAnswer && (
               <Markdown
                 onOpenWorkspaceFile={openReplyArtifact}
                 showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
@@ -256,8 +262,8 @@ const ChatItem = ({
                 variant="ghost"
                 color="gray.600"
               >
-                {isStreaming ? (isWorkspaceChat ? runningActivityLabel : "正在处理") : "工作过程"}
-                {!isStreaming && visibleToolCount > 0 && (
+                {isStreaming ? (isWorkspaceChat ? runningActivityLabel : "正在处理") : showElapsedLabel ? elapsedLabel : "工作过程"}
+                {!isStreaming && !showElapsedLabel && visibleToolCount > 0 && (
                   <Text as="span" ml={2} fontWeight="normal" color="gray.500">
                     {visibleToolCount} 次工具调用
                   </Text>
@@ -310,7 +316,7 @@ const ChatItem = ({
               <Box>
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
-                    if (index === 0 && openingAnswer) return null;
+                    if (index === 0 && openingAnswer && (isStreaming || !activityExpanded)) return null;
                     if (!activityExpanded && item.type !== "answer") return null;
 
                     if (item.type === "agent") {
