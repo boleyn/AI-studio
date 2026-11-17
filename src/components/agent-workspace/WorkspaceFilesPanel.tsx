@@ -23,9 +23,19 @@ type Props = {
 };
 
 export default function WorkspaceFilesPanel({ token, version, conversationId, onSelectVersion, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
-  const [versionList, setVersionList] = useState<{ id: string; time?: string | Date }[]>();
+  const versionScope = JSON.stringify([token, conversationId, selectedPath]);
+  const [versionResult, setVersionResult] = useState<{
+    scope: string;
+    items?: { id: string; time?: string | Date }[];
+  }>();
+  const scopedVersionResult = versionResult?.scope === versionScope ? versionResult : undefined;
+  const versionList = scopedVersionResult?.items;
+  const versionError = Boolean(scopedVersionResult && !versionList);
+  const selectedVersionIndex = versionList?.findIndex((entry) => entry.id === version) ?? -1;
+  const selectedVersionLabel = versionList && selectedVersionIndex >= 0
+    ? `版本 ${versionList.length - selectedVersionIndex}`
+    : "历史版本";
   const versionRequest = useRef(0);
-  const [versionError, setVersionError] = useState(false);
   const [revisionTarget, setRevisionTarget] = useState<string>();
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const retryPreview = () => {
@@ -58,12 +68,11 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   const loadVersions = async () => {
     if (!conversationId) return;
     const request = ++versionRequest.current;
-    setVersionList(undefined);
-    setVersionError(false);
+    if (versionError) setVersionResult(undefined);
     const conversation = await getConversation(token, conversationId);
     if (request !== versionRequest.current) return;
     if (!conversation) {
-      setVersionError(true);
+      setVersionResult({ scope: versionScope });
       return;
     }
     const revisions = new Map<string, { id: string; time?: string | Date }>();
@@ -75,7 +84,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
         revisions.set(id, { id, time: message.time });
       }
     }
-    setVersionList([...revisions.values()]);
+    setVersionResult({ scope: versionScope, items: [...revisions.values()] });
   };
   const historical = historicalResult?.url === fileUrl ? historicalResult : undefined;
   const historicalStatus = !historical ? "loading" : "error" in historical ? "error" : "ready";
@@ -159,7 +168,8 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
             leftIcon={<ArtifactFileIcon name={selectedPath} compact />}
             minW={0} flex="1 1 auto" aria-label="选择工作成果" title={selectedPath}>
-            <Text isTruncated>{selectedPath.split("/").pop() || "工作成果"}</Text>
+            <Text as="span" isTruncated>{selectedPath.split("/").pop() || "工作成果"}</Text>
+            {version && <Text as="span" fontSize="xs" fontWeight="normal" color="gray.500" ml={2}>{selectedVersionLabel}</Text>}
           </MenuButton>
           <MenuList maxH="min(45vh, 320px)" overflowY="auto" maxW="min(84vw, 460px)">
             {paths.length ? paths.map((path) => (
@@ -172,7 +182,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
         </Menu>
         {selected && conversationId && (
           <Menu onOpen={() => void loadVersions()}>
-            <MenuButton as={IconButton} aria-label="版本历史" title={version ? "正在查看历史版本" : "版本历史"}
+            <MenuButton as={IconButton} aria-label="版本历史" title={version ? `正在查看${selectedVersionLabel}` : "版本历史"}
               icon={<History size={17} />} size="sm" variant={version ? "solid" : "ghost"} />
             <MenuList>
               {files[selectedPath] && (
