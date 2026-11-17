@@ -1209,6 +1209,7 @@ const ChatPanel = ({
         );
       }
       let assistantFailureText: string | null = null;
+      const runStartedAt = performance.now();
       streamingTextRef.current = existingAssistantContent;
       streamingReasoningRef.current = existingAssistantReasoning;
       cancelPendingFlushes();
@@ -1974,6 +1975,14 @@ const ChatPanel = ({
         }
         // Do not synthesize client-side fake tool results.
         // Missing tool closures must be emitted by backend protocol events.
+        const durationSeconds = !assistantFailureText && !abortCtrl.signal.aborted
+          ? (performance.now() - runStartedAt) / 1000
+          : undefined;
+        if (durationSeconds !== undefined && streamingConversationIdRef.current === conversationId) {
+          setMessages((messages) => messages.map((message) => message.id === assistantMessageId
+            ? { ...message, additional_kwargs: { ...message.additional_kwargs, durationSeconds } }
+            : message));
+        }
         if (conversationId) {
           const persistedMessages = (() => {
             const snapshot = messagesRef.current.map((item) => ({ ...item }));
@@ -2003,6 +2012,7 @@ const ChatPanel = ({
                 ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs: {
                   ...kwargs,
+                  ...(durationSeconds !== undefined ? { durationSeconds } : {}),
                   ...(artifactPaths.size ? { workspaceArtifactPaths: [...artifactPaths].sort(), workspaceArtifactVersion: artifactVersion } : {}),
                   ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
                   ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
@@ -2018,8 +2028,9 @@ const ChatPanel = ({
                 content: finalAssistantText || assistantFailureText || "[已中断]",
                 ...(assistantFailureText ? { status: "error" as const } : {}),
                 additional_kwargs:
-                  finalReasoningText || recoveredContextUsage
+                  finalReasoningText || recoveredContextUsage || durationSeconds !== undefined
                     ? {
+                        ...(durationSeconds !== undefined ? { durationSeconds } : {}),
                         ...(finalReasoningText ? { reasoning_text: finalReasoningText } : {}),
                         ...(recoveredContextUsage ? { contextWindow: recoveredContextUsage } : {}),
                       }
