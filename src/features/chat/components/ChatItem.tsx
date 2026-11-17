@@ -145,6 +145,10 @@ const ChatItem = ({
     (item.type !== "tool" || !PLAN_MODE_TOOL_NAMES.has((item.toolName || "").trim().toLowerCase())),
   );
 
+  const runningActivityLabel = visibleToolCount > 0
+    ? "正在使用工具"
+    : planProgress ? "正在执行计划" : "正在思考";
+
   const usePlainAnswer = isWorkspaceChat && isAssistant;
   const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
 
@@ -228,7 +232,7 @@ const ChatItem = ({
             {isWorkspaceChat && isStreaming && !hasActivity && !content.trim() && (
               <Flex role="status" align="center" gap={2} py={2} color="gray.600">
                 <Spinner size="xs" aria-hidden="true" />
-                <Text fontSize="sm">正在处理</Text>
+                <Text fontSize="sm">{runningActivityLabel}</Text>
               </Flex>
             )}
             {hasActivity && (
@@ -242,7 +246,7 @@ const ChatItem = ({
                 variant="ghost"
                 color="gray.600"
               >
-                {isStreaming ? "正在处理" : "工作过程"}
+                {isStreaming ? (isWorkspaceChat ? runningActivityLabel : "正在处理") : "工作过程"}
                 {!isStreaming && visibleToolCount > 0 && (
                   <Text as="span" ml={2} fontWeight="normal" color="gray.500">
                     {visibleToolCount} 次工具调用
