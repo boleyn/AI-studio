@@ -326,7 +326,7 @@ const ChatItem = ({
               <Box>
                 <Flex direction="column" gap={2}>
                   {timelineItems.map((item, index) => {
-                    if (index === 0 && openingAnswer && (isStreaming || !activityExpanded)) return null;
+                    if (index === 0 && openingAnswer && (isStreaming || (!activityExpanded && latestAnswerIndex > 0))) return null;
                     if (!activityExpanded && item.type !== "answer") return null;
 
                     if (item.type === "agent") {
