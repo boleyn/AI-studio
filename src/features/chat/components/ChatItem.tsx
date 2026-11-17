@@ -226,9 +226,9 @@ const ChatItem = ({
         fontSize={isWorkspaceChat ? "15px" : "sm"}
         lineHeight={isWorkspaceChat ? "1.7" : undefined}
         maxW={isWorkspaceChat && isUser ? { base: "88%", md: "74%" } : "100%"}
-        w={isUser || (isAssistant && !usePlainAnswer) ? "fit-content" : "full"}
+        w={isUser ? "fit-content" : "full"}
         minW={isUser ? "64px" : isAssistant ? "200px" : 0}
-        px={isUser || (isAssistant && !usePlainAnswer) ? 4 : 0}
+        px={isUser || (isAssistant && !isWorkspaceChat && !usePlainAnswer) ? 4 : 0}
         py={isWorkspaceChat && isUser ? 2.5 : isUser || isAssistant ? 3 : 0}
         sx={markdownSx}
       >
@@ -280,7 +280,7 @@ const ChatItem = ({
         ) : isSystem ? (
           <Text color="myGray.500" fontSize="xs">{content}</Text>
         ) : (
-          <Flex direction="column" gap={2}>
+          <Flex direction="column" gap={2} w="full">
             {isStreaming && openingAnswer && (
               isWorkspaceChat ? (
                 <StreamdownMarkdown
@@ -365,8 +365,8 @@ const ChatItem = ({
 
             </Box>
             {timelineItems.length > 0 ? (
-              <Box>
-                <Flex direction="column" gap={2}>
+              <Box w="full">
+                <Flex direction="column" gap={2} w="full">
                   {timelineItems.map((item, index) => {
                     if (index === 0 && openingAnswer && (isStreaming || (!activityExpanded && latestAnswerIndex > 0))) return null;
                     if (!activityExpanded && item.type !== "answer") return null;
@@ -498,7 +498,7 @@ const ChatItem = ({
                     }
 
                     return (
-                      <Box key={`${messageId}-timeline-answer-${index}`} pl={0}>
+                      <Box key={`${messageId}-timeline-answer-${index}`} pl={0} w="full">
                         {isWorkspaceChat ? (
                           <StreamdownMarkdown
                             onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}

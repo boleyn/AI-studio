@@ -57,24 +57,63 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
       lineHeight="1.75"
       sx={{
         "& [data-streamdown='code-block']": {
-          borderRadius: "12px",
-          border: "none",
-          backgroundColor: "#f7f7f8",
+          width: "100%",
+          borderRadius: "14px",
+          border: "1px solid rgba(0, 0, 0, 0.04)",
+          backgroundColor: "#f4f4f5",
           overflow: "hidden",
-          margin: "12px 0",
+          margin: "10px 0",
         },
         "& [data-streamdown='code-block-header']": {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           backgroundColor: "transparent",
           borderBottom: "none",
-          padding: "8px 14px 2px",
-          fontSize: "12px",
-          color: "#71717a",
+          padding: "10px 14px 4px",
+          fontSize: "13px",
+          fontWeight: 500,
+          color: "#3f3f46",
+        },
+        "& [data-streamdown='code-block-header'] > :first-child": {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+        },
+        "& [data-streamdown='code-block-header'] > :first-child::before": {
+          content: '"</>"',
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontSize: "11.5px",
+          fontWeight: 600,
+          color: "#52525b",
         },
         "& [data-streamdown='code-block-body']": {
           backgroundColor: "transparent",
           border: "none",
           fontSize: "13.5px",
           lineHeight: 1.6,
+          padding: "4px 14px 12px",
+        },
+        "& [data-streamdown='code-block-body'] pre": {
+          margin: 0,
+          padding: 0,
+          backgroundColor: "transparent !important",
+        },
+        "& [data-streamdown='code-block-actions']": {
+          border: "none",
+          backgroundColor: "transparent",
+          boxShadow: "none",
+          padding: 0,
+        },
+        "& [data-streamdown='code-block-copy-button']": {
+          border: "none",
+          backgroundColor: "transparent",
+          boxShadow: "none",
+          color: "#52525b",
+        },
+        "& [data-streamdown='code-block-copy-button']:hover": {
+          backgroundColor: "rgba(0, 0, 0, 0.06)",
+          color: "#18181b",
         },
         "& p": { margin: "8px 0" },
         "& p:first-of-type": { marginTop: 0 },
@@ -91,6 +130,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
       }}
     >
       <Streamdown
+        className="w-full"
         plugins={STREAMDOWN_PLUGINS}
         shikiTheme={["github-light", "github-light"]}
         isAnimating={showAnimation}

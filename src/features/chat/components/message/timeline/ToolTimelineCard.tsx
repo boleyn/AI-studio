@@ -452,10 +452,11 @@ const ToolTimelineCard = ({
     .join("\n\n");
 
   return (
-    <Box key={`tool-${item.id || index}`} py={0.5}>
+    <Box key={`tool-${item.id || index}`} py={0.5} w="full">
       <Flex
+        display="inline-flex"
         align="center"
-        gap={2}
+        gap={1.5}
         px={2}
         py={1}
         borderRadius="8px"
