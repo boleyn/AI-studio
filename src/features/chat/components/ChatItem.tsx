@@ -248,12 +248,6 @@ const ChatItem = ({
           <Text color="myGray.500" fontSize="xs">{content}</Text>
         ) : (
           <Flex direction="column" gap={2}>
-            {isWorkspaceChat && isStreaming && !hasActivity && !content.trim() && (
-              <Flex role="status" align="center" gap={2} py={2} color="gray.600">
-                <Spinner size="xs" aria-hidden="true" />
-                <Text fontSize="sm">{runningActivityLabel}</Text>
-              </Flex>
-            )}
             {isStreaming && openingAnswer && (
               <Markdown
                 onOpenWorkspaceFile={openReplyArtifact}
@@ -468,6 +462,13 @@ const ChatItem = ({
             {(!timelineHasAnswer || timelineItems.length === 0) && content ? (
               <Markdown onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined} showAnimation={showAssistantAnimation} source={content} />
             ) : null}
+
+            {isWorkspaceChat && isStreaming && !hasActivity && (
+              <Flex role="status" align="center" gap={2} py={2} color="gray.600">
+                <Spinner size="xs" aria-hidden="true" />
+                <Text fontSize="sm">{runningActivityLabel}</Text>
+              </Flex>
+            )}
 
             {onOpenWorkspaceFile && workspaceArtifacts.length > 0 && (
               <Flex gap={2} wrap="wrap" aria-label="此回复生成的文件">
