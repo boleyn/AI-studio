@@ -31,6 +31,15 @@ const imageOptions: FileViewerProps["options"] = {
   image: { rotation: false },
 };
 
+async function validateOfficePackage(blob: Blob, name: string) {
+  if (!/\.(docx|docm|dotx|dotm|pptx|pptm|potx|potm|ppsx|ppsm)$/i.test(name)) return;
+  const header = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  const isZip = [0x50, 0x4b, 0x03, 0x04].every((byte, index) => header[index] === byte);
+  const isEncryptedContainer = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+    .every((byte, index) => header[index] === byte);
+  if (!isZip && !isEncryptedContainer) throw new Error("Invalid Office file header");
+}
+
 export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onStateChange }: {
   url: string;
   name: string;
@@ -52,7 +61,8 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.blob();
       })
-      .then((blob) => {
+      .then(async (blob) => {
+        await validateOfficePackage(blob, name);
         if (!controller.signal.aborted) setResult({ file: new File([blob], name, { type: blob.type }) });
       })
       .catch(() => {
