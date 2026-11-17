@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import { ArtifactFileIcon, artifactFileType } from "../workspace/ArtifactFileIcon";
 import { PreviewZoomMenu } from "../workspace/PreviewZoomMenu";
 import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
@@ -11,7 +12,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { getConversation } from "@features/chat/services/conversations";
 import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
-import { ArrowLeft, ChevronDown, ChevronRight, Download, History, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Download, History, Maximize2, Minimize2, Share2, X } from "lucide-react";
 
 type Props = {
   token: string;
@@ -40,6 +41,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
     ? `版本 ${versionList.length - selectedVersionIndex}`
     : "历史版本";
   const versionRequest = useRef(0);
+  const [sharingFile, setSharingFile] = useState<string>();
   const [revisionTarget, setRevisionTarget] = useState<string>();
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const retryPreview = () => {
@@ -260,6 +262,10 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
             }} />
         )}
         {selected && (
+          <IconButton aria-label="分享文件" title="分享文件" icon={<Share2 size={15} />}
+            size="sm" variant="ghost" onClick={() => setSharingFile(fileUrl)} />
+        )}
+        {selected && (
           <IconButton aria-label="下载文件" title="下载文件" icon={<Download size={15} />}
             size="sm" variant="ghost" isLoading={downloading} onClick={() => void download()} />
         )}
@@ -348,6 +354,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
           </Box>
         )}
       </Box>
+      {sharingFile === fileUrl && selected && (
+        <ArtifactShareDialog token={token} path={selectedPath} version={version} onClose={() => setSharingFile(undefined)} />
+      )}
     </Flex>
   );
 }
