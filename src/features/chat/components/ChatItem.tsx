@@ -27,11 +27,21 @@ function ReplyArtifact({ path, version, onOpen }: {
   const toast = useToast();
   const [downloading, setDownloading] = React.useState(false);
   const name = path.split("/").pop() || path;
+  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : undefined;
+  const type = extension === "xlsx" || extension === "xls" ? "Excel"
+    : extension === "docx" ? "Word"
+    : extension === "md" ? "Markdown"
+    : extension?.toUpperCase() || "文件";
 
   return (
-    <Flex maxW="100%" border="1px solid" borderColor="gray.200" borderRadius="md">
-      <Button size="sm" variant="ghost" minW={0} title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
-        <Text isTruncated>{name}</Text>
+    <Flex align="center" maxW="100%" border="1px solid" borderColor="gray.200" borderRadius="lg" pr={1}>
+      <Button size="sm" h="auto" py={2} variant="ghost" minW={0} justifyContent="flex-start"
+        leftIcon={<Box as="img" boxSize={8} src={`/icons/chat/${getFileIcon(name)}.svg`} alt="" />}
+        title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
+        <Box minW={0} textAlign="left">
+          <Text isTruncated>{name}</Text>
+          <Text fontSize="xs" fontWeight="normal" color="gray.500" mt={1}>{type}</Text>
+        </Box>
       </Button>
       <IconButton size="sm" variant="ghost" flexShrink={0} icon={<Download size={15} />}
         aria-label={`下载 ${name}`} isLoading={downloading} onClick={async () => {
