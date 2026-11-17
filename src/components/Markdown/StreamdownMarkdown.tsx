@@ -56,6 +56,9 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
       fontSize="15px"
       lineHeight="1.75"
       sx={{
+        "& > *": {
+          width: "100%",
+        },
         "& [data-streamdown='code-block']": {
           width: "100%",
           borderRadius: "14px",
@@ -98,6 +101,11 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
           margin: 0,
           padding: 0,
           backgroundColor: "transparent !important",
+          overflowX: "auto",
+          whiteSpace: "pre",
+        },
+        "& [data-streamdown='code-block-body'] code": {
+          whiteSpace: "pre",
         },
         "& [data-streamdown='code-block-actions']": {
           border: "none",
