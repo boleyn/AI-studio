@@ -239,3 +239,34 @@ dialog.app-dialog[open]:where(:not([data-closing]))::backdrop {
     background-color: rgba(0, 0, 0, 0);
   }
 }
+
+:root {
+  interpolate-size: allow-keywords;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --scrollbar-track: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports not (scrollbar-color: auto) {
+  * {
+    scrollbar-width: auto;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}

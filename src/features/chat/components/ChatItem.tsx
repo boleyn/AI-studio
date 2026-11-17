@@ -194,10 +194,13 @@ const ChatItem = ({
   if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
 
   const markdownSx = {
-    "& .markdown p": { marginTop: "8px", marginBottom: "8px" },
-    "& .markdown ul, & .markdown ol": { marginTop: "4px", marginBottom: "4px" },
-    "& .markdown li": { marginTop: "1px", marginBottom: "1px", lineHeight: 1.23 },
-    "& .markdown li > p": { marginTop: "1px", marginBottom: "1px" },
+    "& .markdown": { fontSize: "15px", lineHeight: 1.75, color: "#0d0d0d" },
+    "& .markdown p": { marginTop: "10px", marginBottom: "10px" },
+    "& .markdown p:first-of-type": { marginTop: "0" },
+    "& .markdown p:last-of-type": { marginBottom: "0" },
+    "& .markdown ul, & .markdown ol": { marginTop: "6px", marginBottom: "6px" },
+    "& .markdown li": { marginTop: "3px", marginBottom: "3px", lineHeight: 1.65 },
+    "& .markdown li > p": { marginTop: "2px", marginBottom: "2px" },
     "& .markdown li > ul, & .markdown li > ol": { marginTop: "2px", marginBottom: "2px" },
   } as const;
 
@@ -219,9 +222,9 @@ const ChatItem = ({
         boxShadow={!isWorkspaceChat && (isUser || isAssistant) ? "sm" : "none"}
         className="chat-message"
         color="#0d0d0d"
-        fontSize={isWorkspaceChat ? "14.5px" : "sm"}
-        lineHeight={isWorkspaceChat ? "1.65" : undefined}
-        maxW={isWorkspaceChat && isUser ? { base: "88%", md: "76%" } : "100%"}
+        fontSize={isWorkspaceChat ? "15px" : "sm"}
+        lineHeight={isWorkspaceChat ? "1.7" : undefined}
+        maxW={isWorkspaceChat && isUser ? { base: "88%", md: "74%" } : "100%"}
         w={isUser || (isAssistant && !usePlainAnswer) ? "fit-content" : "full"}
         minW={isUser ? "64px" : isAssistant ? "200px" : 0}
         px={isUser || (isAssistant && !usePlainAnswer) ? 4 : 0}
@@ -507,22 +510,13 @@ const ChatItem = ({
             )}
 
             {onOpenWorkspaceFile && workspaceArtifacts.length > 0 && (
-              <Flex gap={2} wrap="wrap" aria-label="此回复生成的文件">
+              <Flex gap={2} wrap="wrap" aria-label="此回复生成的文件" mt={1}>
                 {workspaceArtifacts.map((path) => (
                   <ReplyArtifact key={path} path={path} version={typeof artifactVersion === "string" ? artifactVersion : undefined}
                     onOpen={() => openReplyArtifact(path)} />
                 ))}
               </Flex>
             )}
-
-            {activityExpanded && shouldShowExecutionMeta && timelineItems.every((item) => item.type !== "agent") ? (
-              <Flex align="center" borderTop="1px solid" borderColor="myGray.200" color="myGray.600" fontSize="11px" gap={3} mt={1} pt={2} wrap="wrap">
-                <Text>调用工具: {executionSummary?.nodeCount ?? 0}</Text>
-                {executionSummary?.durationSeconds !== undefined ? (
-                  <Text>耗时: {executionSummary.durationSeconds.toFixed(2)}s</Text>
-                ) : null}
-              </Flex>
-            ) : null}
           </Flex>
         )}
       </Box>

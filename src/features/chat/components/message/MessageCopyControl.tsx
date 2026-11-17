@@ -85,20 +85,20 @@ const MessageCopyControl = ({
     <Flex align="center" gap={0.5}>
       <MyTooltip label={copied ? "已复制" : "复制"}>
         <Flex
+          as="button"
+          type="button"
           align="center"
+          justify="center"
           borderRadius="8px"
           color={copied ? "#16a34a" : toneColor}
           cursor="pointer"
-          gap={1}
           h="28px"
+          w="28px"
           onClick={() => void handleCopy()}
-          px={2}
+          aria-label={copied ? "已复制" : `复制（${formatTag}）`}
           _hover={{ color: hoverColor, bg: "#f4f4f5" }}
         >
           {copied ? <Box as={CheckIcon} boxSize="14px" /> : <Box as={CopyIcon} boxSize="14px" />}
-          <Text fontSize="10px" fontWeight="600" lineHeight="1" textTransform="uppercase">
-            {formatTag}
-          </Text>
         </Flex>
       </MyTooltip>
 

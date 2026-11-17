@@ -53,7 +53,7 @@ const ChatMessageBlock = ({
       zIndex={1}
       sx={{
         ".message-action-anchor": {
-          opacity: inlineActions && isAssistant ? 1 : 0,
+          opacity: inlineActions && isAssistant && isLatestRun ? 1 : 0,
           pointerEvents: "auto",
           transition: "opacity 0.18s ease",
         },
