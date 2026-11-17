@@ -1,6 +1,6 @@
 import { Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { isArtifactImage } from "./ArtifactFileIcon";
 import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
@@ -21,15 +21,14 @@ const options = {
   toolbar: { download: false, print: false, exportHtml: false, theme: false },
 } satisfies FileViewerProps["options"];
 
-const imageOptions: FileViewerProps["options"] = {
+const documentOptions = {
   ...options,
   toolbar: { ...options.toolbar, zoom: false, search: false },
-  image: { rotation: false },
-};
+} satisfies FileViewerProps["options"];
 
-const documentOptions: FileViewerProps["options"] = {
-  ...options,
-  toolbar: { ...options.toolbar, zoom: false, search: false },
+const imageOptions: FileViewerProps["options"] = {
+  ...documentOptions,
+  image: { rotation: false },
 };
 
 export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onStateChange }: {
@@ -40,6 +39,11 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   onStateChange?: FileViewerProps["onStateChange"];
 }) {
   const [result, setResult] = useState<{ file: File } | { error: true }>();
+
+  const handleViewerState = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
+    onStateChange?.(state);
+    if (state.error && !state.loading) setResult({ error: true });
+  }, [onStateChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -67,6 +71,6 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
     </Flex>;
   }
 
-  return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={onStateChange}
+  return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={handleViewerState}
     options={isArtifactImage(name) ? imageOptions : viewerRef ? documentOptions : options} style={{ width: "100%", height: "100%" }} />;
 }
