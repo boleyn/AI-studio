@@ -101,7 +101,13 @@ type FilePreviewPanelProps = {
   version?: string;
 };
 
-type PreviewSheet = { name: string; rows: string[][] };
+type PreviewSheet = {
+  name: string;
+  rows: string[][];
+  firstRow: number;
+  firstColumn: number;
+  formulas: Record<string, string>;
+};
 
 function spreadsheetColumnLabel(index: number) {
   let label = "";
@@ -111,21 +117,24 @@ function spreadsheetColumnLabel(index: number) {
   return label;
 }
 
-function SpreadsheetGrid({ rows }: { rows: string[][] }) {
+function SpreadsheetGrid({ sheet }: { sheet: PreviewSheet }) {
+  const { rows, firstRow, firstColumn, formulas } = sheet;
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
   const columnCount = Math.max(0, ...rows.map((row) => row.length));
+
+  const activeAddress = spreadsheetColumnLabel(firstColumn + activeCell.column) + (firstRow + activeCell.row + 1);
 
   if (!columnCount) return <Text p={4} fontSize="sm">此工作表没有可预览的数据</Text>;
 
   return (
     <>
       <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
-        <Text px={3} minW="64px">{spreadsheetColumnLabel(activeCell.column)}{activeCell.row + 1}</Text>
+        <Text px={3} minW="64px">{activeAddress}</Text>
         <Box
           as="input"
           aria-label="单元格内容"
           readOnly
-          value={rows[activeCell.row]?.[activeCell.column] ?? ""}
+          value={formulas[activeAddress] ?? rows[activeCell.row]?.[activeCell.column] ?? ""}
           flex="1"
           minW={0}
           px={3}
@@ -149,20 +158,20 @@ function SpreadsheetGrid({ rows }: { rows: string[][] }) {
             <tr>
               <th aria-label="行号" />
               {Array.from({ length: columnCount }, (_, column) => (
-                <th scope="col" key={column}>{spreadsheetColumnLabel(column)}</th>
+                <th scope="col" key={column}>{spreadsheetColumnLabel(firstColumn + column)}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
-                <th scope="row">{rowIndex + 1}</th>
+                <th scope="row">{firstRow + rowIndex + 1}</th>
                 {Array.from({ length: columnCount }, (_, column) => (
                   <td key={column}>
                     <Box
                       as="button"
                       type="button"
-                      aria-label={`${spreadsheetColumnLabel(column)}${rowIndex + 1} ${row[column] ?? ""}`.trim()}
+                      aria-label={`${spreadsheetColumnLabel(firstColumn + column)}${firstRow + rowIndex + 1} ${row[column] ?? ""}`.trim()}
                       onClick={() => setActiveCell({ row: rowIndex, column })}
                       textAlign="left"
                       px={2}
@@ -220,7 +229,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
   const [officePreviewUrl, setOfficePreviewUrl] = useState("");
   const [sheetName, setSheetName] = useState("");
   const [sheets, setSheets] = useState<PreviewSheet[]>([]);
-  const sheetRows = sheets.find((sheet) => sheet.name === sheetName)?.rows ?? [];
+  const activeSheet = sheets.find((sheet) => sheet.name === sheetName);
   const [pptSlides, setPptSlides] = useState<string[][]>([]);
   const docxContainerRef = useRef<HTMLDivElement | null>(null);
   const previewCacheRef = useRef<Map<string, PreviewCacheEntry>>(new Map());
@@ -398,12 +407,18 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
           const XLSX = await import("xlsx");
           const workbook = XLSX.read(arrayBuffer, { type: "array", sheetRows: 200 });
           const parsedSheets = workbook.SheetNames.map((name) => {
-            const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], {
+            const worksheet = workbook.Sheets[name];
+            const start = worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]).s : { r: 0, c: 0 };
+            const formulas: Record<string, string> = {};
+            for (const address of Object.keys(worksheet)) {
+              if (worksheet[address]?.f) formulas[address] = `=${worksheet[address].f}`;
+            }
+            const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
               header: 1,
               raw: false,
               defval: "",
             });
-            return { name, rows: rows.map((row) => row.map(String)) };
+            return { name, rows: rows.map((row) => row.map(String)), firstRow: start.r, firstColumn: start.c, formulas };
           });
           if (!cancelled) {
             setSheetName(parsedSheets[0]?.name ?? "");
@@ -597,7 +612,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
           </Box>
         ) : (
           <Flex direction="column" h="100%" minH={0} bg="white">
-            <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} rows={sheetRows} />
+            {activeSheet && <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} sheet={activeSheet} />}
             <Flex as="nav" aria-label="工作表" overflowX="auto" flexShrink={0} borderTop="1px solid" borderColor="gray.200" px={2}>
               {sheets.map(({ name }) => (
                 <Button
