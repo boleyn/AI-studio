@@ -172,6 +172,7 @@ function resolveSnapshotPath(workspaceRoot: string, relativePath: string): strin
 async function applyWorkspaceSnapshot(
   workspaceRoot: string,
   rawSnapshot: unknown,
+  options?: { preserveExisting?: boolean },
 ): Promise<void> {
   if (!rawSnapshot || typeof rawSnapshot !== 'object') {
     throw new Error('snapshot_required')
@@ -206,12 +207,14 @@ async function applyWorkspaceSnapshot(
   }
 
   await fs.mkdir(workspaceRoot, { recursive: true })
-  const existing = await fs.readdir(workspaceRoot)
-  await Promise.all(
-    existing.map(name =>
-      fs.rm(path.join(workspaceRoot, name), { recursive: true, force: true }),
-    ),
-  )
+  if (!options?.preserveExisting) {
+    const existing = await fs.readdir(workspaceRoot)
+    await Promise.all(
+      existing.map(name =>
+        fs.rm(path.join(workspaceRoot, name), { recursive: true, force: true }),
+      ),
+    )
+  }
   for (const file of validated) {
     await fs.mkdir(path.dirname(file.absolutePath), { recursive: true })
     await fs.writeFile(file.absolutePath, file.content)
@@ -417,7 +420,13 @@ const server = http.createServer(async (req, res) => {
 
     const result = await withWorkspaceLock(workspaceKey, async () => {
       const workspaceRoot = path.resolve(WORKDIR, workspaceKey)
-      await applyWorkspaceSnapshot(workspaceRoot, body.snapshot)
+      const preserveExisting = body.preservePersistentState === true
+      if (body.snapshot && typeof body.snapshot === 'object') {
+        await applyWorkspaceSnapshot(workspaceRoot, body.snapshot, { preserveExisting })
+      } else {
+        await fs.mkdir(workspaceRoot, { recursive: true })
+        await fs.chown(workspaceRoot, SANDBOX_UID, SANDBOX_GID).catch(() => {})
+      }
 
       const resolvedCwd = path.resolve(workspaceRoot, requestedCwdRelative || '.')
       if (!isInsideRoot(resolvedCwd, workspaceRoot)) {

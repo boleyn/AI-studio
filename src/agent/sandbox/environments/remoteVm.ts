@@ -56,6 +56,7 @@ export const execOnRemoteVm = async (
         workspaceKey: workspaceKey || path.basename(mirrorRoot),
         timeoutMs: options.timeoutMs ?? 120_000,
         protocolVersion: AGENT_SANDBOX_PROTOCOL_VERSION,
+        preservePersistentState: true,
         snapshot,
       }),
     });

@@ -199,7 +199,7 @@ export default function SchedulesView({
               安排任务
             </Text>
             <Text fontSize="13.5px" color="ink.secondary">
-              AI Studio 可以帮你处理持续性任务，让你不必亲自动手。
+              伯仁 (Bore) 可以帮你处理持续性任务，让你不必亲自动手。
             </Text>
           </VStack>
 

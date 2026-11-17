@@ -1,4 +1,5 @@
 import type { AppProps } from "next/app";
+import Head from "next/head";
 import { Box, ChakraProvider, Text } from "@chakra-ui/react";
 import { useRouter } from "next/router";
 import { theme } from "../styles/theme";
@@ -17,6 +18,9 @@ const App = ({ Component, pageProps }: AppProps) => {
 
   return (
     <ChakraProvider theme={theme}>
+      <Head>
+        <title>伯仁 Bore</title>
+      </Head>
       <AuthProvider>
         <AuthGuard>
           {isWorkspaceRoute ? (
@@ -37,7 +41,7 @@ const App = ({ Component, pageProps }: AppProps) => {
                 fontSize="10px"
                 lineHeight="1"
               >
-                AI-STUDIO · AI EBOSS · AIID
+                伯仁 BORE · AI WORKSPACE
               </Text>
             </Box>
           )}

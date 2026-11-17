@@ -18,7 +18,7 @@ const AsiaInfoLogo = ({
   textColor = "myGray.800",
   subTextColor = "myGray.500",
   spacing = 3,
-  titleText = "AI Studio",
+  titleText = "伯仁 Bore",
   subtitleText = "MODEL LAB",
   w,
   width,

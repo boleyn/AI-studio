@@ -675,7 +675,7 @@ export default function AgentWorkspace({
               <PopoverContent w="232px" p={1} borderRadius="18px" zIndex={1500}>
                 <PopoverBody p={2.5}>
                   <Text fontSize="12px" color="ink.muted" mb={2}>
-                    Usage source: AI Studio
+                    Usage source: Bore
                   </Text>
                   <Divider borderColor="stroke.light" mb={2.5} />
                   <VStack align="stretch" spacing={2} fontSize="13px">
@@ -767,9 +767,12 @@ export default function AgentWorkspace({
           borderColor="stroke.light"
         >
           <Flex px={3.5} pt={3} pb={2} align="center" justify="space-between">
-            <Text fontWeight="600" fontSize="15px" color="ink.primary">
-              AI Studio
-            </Text>
+            <HStack spacing={2} minW={0}>
+              <Box as="img" src="/icon/logo.svg" w="20px" h="20px" borderRadius="5px" alt="伯仁 Bore" flexShrink={0} />
+              <Text fontWeight="600" fontSize="15px" color="ink.primary" noOfLines={1}>
+                伯仁 Bore
+              </Text>
+            </HStack>
             <HStack spacing={0.5}>
               <Tooltip label="搜索">
                 <IconButton
@@ -1427,7 +1430,7 @@ export default function AgentWorkspace({
                   e.preventDefault();
                 }
               }}
-              placeholder="例如：财报分析、AI Studio 开发"
+              placeholder="例如：财报分析、Bore 开发"
             />
           </FormControl>
 

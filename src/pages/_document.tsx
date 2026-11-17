@@ -4,6 +4,8 @@ export default function Document() {
   return (
     <Html lang="zh-CN">
       <Head>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="alternate icon" href="/favicon.ico" />
         {/* Crypto polyfill for non-localhost IP access - must run before any other scripts */}
         <script
           dangerouslySetInnerHTML={{

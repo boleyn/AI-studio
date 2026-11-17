@@ -517,7 +517,7 @@ export default function WorkspaceRuntimeModal({
                     尚未绑定电脑，按以下 3 步快速连接：
                   </Text>
                   <Text fontSize="12px" color="ink.secondary" lineHeight="1.6">
-                    1. 点击右上角「下载 Mac 版 (.dmg)」安装并启动「AI Studio 连接器」；
+                    1. 点击右上角「下载 Mac 版 (.dmg)」安装并启动「伯仁连接器」；
                     <br />
                     2. 保持连接器在菜单栏运行，点击「连接此电脑」完成设备配对；
                     <br />

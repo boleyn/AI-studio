@@ -51,8 +51,8 @@ const Login = () => {
   const router = useRouter();
   const { lastRoute = "" } = router.query as { lastRoute: string };
   const [pageType, setPageType] = useState<LoginPageTypeEnum>(LoginPageTypeEnum.password);
-  const productName = "AI Studio";
-  const brandTitle = "AI Studio";
+  const productName = "伯仁";
+  const brandTitle = "伯仁 Bore";
   const brandSubtitle = "MODEL LAB";
   const redirectWithReload = useCallback(
     (target: string) => {
@@ -318,7 +318,7 @@ const Login = () => {
                           ))}
                         </Flex>
                         <Text fontSize="10px" color="myGray.300" fontFamily="mono" textTransform="uppercase" letterSpacing="wider">
-                          © {new Date().getFullYear()} AI Studio
+                          © {new Date().getFullYear()} 伯仁 Bore
                         </Text>
                       </Box>
                     </motion.div>
