@@ -10,7 +10,6 @@ import FilePreviewPanel, { isSpreadsheetFile } from "../workspace/FilePreviewPan
 import { Accordion, Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { getConversation } from "@features/chat/services/conversations";
 import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, History, Maximize2, Minimize2, Share2, X } from "lucide-react";
@@ -19,6 +18,7 @@ type Props = {
   token: string;
   version?: string;
   conversationId?: string;
+  sources: UploadedFileArtifact[];
   onSelectVersion: (version?: string) => void;
   files: Record<string, { code: string }>;
   selectedPath: string;
@@ -28,7 +28,7 @@ type Props = {
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, conversationId, onSelectVersion, files, selectedPath, onSelect, onShowList, onRequestRevision, onClose }: Props) {
+export default function WorkspaceFilesPanel({ token, version, conversationId, sources, onSelectVersion, files, selectedPath, onSelect, onShowList, onRequestRevision, onClose }: Props) {
   const versionScope = JSON.stringify([token, selectedPath]);
   const [versionResult, setVersionResult] = useState<{
     scope: string;
@@ -79,25 +79,6 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   }, []);
 
   const paths = Object.keys(files).sort();
-  const [sources, setSources] = useState<UploadedFileArtifact[]>([]);
-  useEffect(() => {
-    if (selectedPath || !conversationId) return;
-    let active = true;
-    void getConversation(token, conversationId).then((conversation) => {
-      if (!active) return;
-      const attachments = new Map<string, UploadedFileArtifact>();
-      for (const message of conversation?.messages ?? []) {
-        if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") continue;
-        const files = (message.artifact as { files?: UploadedFileArtifact[] }).files;
-        if (!Array.isArray(files)) continue;
-        for (const file of files) {
-          if (file?.storagePath && file.name) attachments.set(file.storagePath, file);
-        }
-      }
-      setSources([...attachments.values()]);
-    });
-    return () => { active = false; };
-  }, [token, conversationId, selectedPath]);
   const [historicalResult, setHistoricalResult] = useState<
     { url: string; content: string } | { url: string; error: true }
   >();
