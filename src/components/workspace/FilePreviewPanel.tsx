@@ -1,5 +1,6 @@
 import { Box, Button, Flex, Image, Spinner, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import SpreadsheetGrid, { type PreviewSheet } from "./SpreadsheetGrid";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 type PreviewKind = "image" | "pdf" | "docx" | "spreadsheet" | "presentation" | "unknown";
@@ -102,141 +103,6 @@ type FilePreviewPanelProps = {
   onSelectSpreadsheetCell?: (sheet: string, address: string) => void;
   version?: string;
 };
-
-type PreviewSheet = {
-  name: string;
-  rows: string[][];
-  firstRow: number;
-  firstColumn: number;
-  formulas: Record<string, string>;
-};
-
-function spreadsheetColumnLabel(index: number) {
-  let label = "";
-  for (let column = index + 1; column > 0; column = Math.floor((column - 1) / 26)) {
-    label = String.fromCharCode(65 + ((column - 1) % 26)) + label;
-  }
-  return label;
-}
-
-function SpreadsheetGrid({ sheet, zoom, onSelectCell }: {
-  sheet: PreviewSheet;
-  zoom: number;
-  onSelectCell?: (sheet: string, address: string) => void;
-}) {
-  const { rows, firstRow, firstColumn, formulas } = sheet;
-  const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
-  const [selectionStart, setSelectionStart] = useState<typeof activeCell>();
-  const gridRef = useRef<HTMLTableElement>(null);
-  const columnCount = Math.max(0, ...rows.map((row) => row.length));
-
-  const addressOf = ({ row, column }: typeof activeCell) =>
-    spreadsheetColumnLabel(firstColumn + column) + (firstRow + row + 1);
-  const activeAddress = addressOf(activeCell);
-  const anchor = selectionStart ?? activeCell;
-  const top = Math.min(anchor.row, activeCell.row);
-  const bottom = Math.max(anchor.row, activeCell.row);
-  const left = Math.min(anchor.column, activeCell.column);
-  const right = Math.max(anchor.column, activeCell.column);
-  const selectedAddress = top === bottom && left === right
-    ? activeAddress
-    : `${addressOf({ row: top, column: left })}:${addressOf({ row: bottom, column: right })}`;
-  const selectCell = (cell: typeof activeCell, extend: boolean) => {
-    setSelectionStart(extend ? (previous) => previous ?? activeCell : undefined);
-    setActiveCell(cell);
-  };
-
-  if (!columnCount) return <Text p={4} fontSize="sm">此工作表没有可预览的数据</Text>;
-
-  return (
-    <>
-      {onSelectCell && (
-        <Flex px={3} py={2} align="center" gap={2} justify="space-between" wrap="wrap">
-          <Text fontSize="sm">选中单元格，按 Shift 扩展选区</Text>
-          <Button size="sm" onClick={() => onSelectCell(sheet.name, selectedAddress)}>修改 {selectedAddress}</Button>
-        </Flex>
-      )}
-      <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
-        <Text px={3} minW="64px">{selectedAddress}</Text>
-        <Box
-          as="input"
-          aria-label="单元格内容"
-          readOnly
-          value={formulas[activeAddress] ?? rows[activeCell.row]?.[activeCell.column] ?? ""}
-          flex="1"
-          minW={0}
-          px={3}
-          alignSelf="stretch"
-          borderLeft="1px solid"
-          borderColor="gray.200"
-        />
-      </Flex>
-      <Box flex="1" minH={0} overflow="auto">
-        <Box as="table" ref={gridRef} fontSize="xs" minW="100%"
-          sx={{
-            borderSpacing: 0,
-            zoom: zoom / 100,
-            "th, td": { borderRight: "1px solid", borderBottom: "1px solid", borderColor: "gray.200" },
-            th: { bg: "gray.50", color: "gray.600", fontWeight: "normal" },
-            "thead th": { position: "sticky", top: 0, zIndex: 2, height: "24px" },
-            "tr > th:first-child": { position: "sticky", left: 0, minWidth: "42px", zIndex: 1 },
-            "thead th:first-child": { zIndex: 3 },
-          }}
-        >
-          <thead>
-            <tr>
-              <th aria-label="行号" />
-              {Array.from({ length: columnCount }, (_, column) => (
-                <th scope="col" key={column}>{spreadsheetColumnLabel(firstColumn + column)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                <th scope="row">{firstRow + rowIndex + 1}</th>
-                {Array.from({ length: columnCount }, (_, column) => (
-                  <td key={column}>
-                    <Box
-                      as="button"
-                      type="button"
-                      tabIndex={activeCell.row === rowIndex && activeCell.column === column ? 0 : -1}
-                      data-cell={`${rowIndex}:${column}`}
-                      onKeyDown={(event) => {
-                        const direction = {
-                          ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
-                        }[event.key];
-                        if (!direction) return;
-                        event.preventDefault();
-                        const row = Math.max(0, Math.min(rows.length - 1, rowIndex + direction[0]));
-                        const nextColumn = Math.max(0, Math.min(columnCount - 1, column + direction[1]));
-                        selectCell({ row, column: nextColumn }, event.shiftKey);
-                        gridRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${row}:${nextColumn}"]`)?.focus();
-                      }}
-                      aria-label={`${spreadsheetColumnLabel(firstColumn + column)}${firstRow + rowIndex + 1} ${row[column] ?? ""}`.trim()}
-                      onClick={(event) => selectCell({ row: rowIndex, column }, event.shiftKey)}
-                      bg={rowIndex >= top && rowIndex <= bottom && column >= left && column <= right ? "blue.50" : undefined}
-                      textAlign="left"
-                      px={2}
-                      minW="88px"
-                      minH="26px"
-                      w="100%"
-                      whiteSpace="pre-wrap"
-                      boxShadow={activeCell.row === rowIndex && activeCell.column === column ? "inset 0 0 0 2px #2563eb" : undefined}
-                    >
-                      {row[column]}
-                    </Box>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </Box>
-      </Box>
-    </>
-  );
-}
-
 
 type PreviewCacheEntry =
   | { kind: "pdf"; binaryObjectUrl: string }
@@ -448,20 +314,26 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
         }
         if (previewKind === "spreadsheet") {
           const XLSX = await import("xlsx");
-          const workbook = XLSX.read(arrayBuffer, { type: "array", sheetRows: 200 });
-          const parsedSheets = workbook.SheetNames.map((name) => {
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const parsedSheets: PreviewSheet[] = workbook.SheetNames.map((name) => {
             const worksheet = workbook.Sheets[name];
-            const start = worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]).s : { r: 0, c: 0 };
-            const formulas: Record<string, string> = {};
-            for (const address of Object.keys(worksheet)) {
-              if (worksheet[address]?.f) formulas[address] = `=${worksheet[address].f}`;
+            const range = worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]) : undefined;
+            const cells: PreviewSheet["cells"] = {};
+            for (const [address, cell] of Object.entries(worksheet)) {
+              if (address.startsWith("!") || !cell) continue;
+              cells[address] = {
+                value: XLSX.utils.format_cell(cell),
+                ...(cell.f ? { formula: `=${cell.f}` } : {}),
+              };
             }
-            const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
-              header: 1,
-              raw: false,
-              defval: "",
-            });
-            return { name, rows: rows.map((row) => row.map(String)), firstRow: start.r, firstColumn: start.c, formulas };
+            return {
+              name,
+              cells,
+              firstRow: range?.s.r ?? 0,
+              firstColumn: range?.s.c ?? 0,
+              rowCount: range ? range.e.r - range.s.r + 1 : 0,
+              columnCount: range ? range.e.c - range.s.c + 1 : 0,
+            };
           });
           if (!cancelled) {
             setSheetName(parsedSheets[0]?.name ?? "");
