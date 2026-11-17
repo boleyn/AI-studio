@@ -203,6 +203,7 @@ const ChatItem = ({
                 alignSelf="flex-start"
                 aria-expanded={activityExpanded}
                 onClick={() => setActivityExpanded((expanded) => !expanded)}
+                leftIcon={isStreaming && isWorkspaceChat ? <Spinner size="xs" aria-hidden="true" /> : undefined}
                 rightIcon={<Icon as={ChevronDownIcon} transform={activityExpanded ? "rotate(180deg)" : undefined} />}
                 size="sm"
                 variant="ghost"
