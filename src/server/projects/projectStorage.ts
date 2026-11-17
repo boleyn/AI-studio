@@ -5,6 +5,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
+import { deleteProjectArtifactShares } from "../shares/artifactShareStorage";
 import { getMongoDb } from "../db/mongo";
 import {
   createGetObjectPresignedUrl,
@@ -745,6 +746,7 @@ export async function deleteProject(token: string): Promise<boolean> {
     bucketType: "private",
   });
   if (artifactKeys.length) await deleteProjectStorageFilesByKeys(artifactKeys);
+  await deleteProjectArtifactShares(token);
   await deleteChatUploadStorageByToken(token);
   await cleanupLegacyDir(token);
   return result.deletedCount > 0;

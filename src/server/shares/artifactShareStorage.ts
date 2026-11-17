@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { getMongoDb } from "@server/db/mongo";
-import { getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
+import { deleteStorageObjects, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
 
 export type ArtifactShareMember = { userId: string; username: string };
 
@@ -62,4 +62,14 @@ export async function updateArtifactShareMember(id: string, ownerId: string, mem
 
 export async function readArtifactShareSnapshot(id: string) {
   return getObjectFromStorage({ key: objectKey(id), bucketType: "private" });
+}
+
+
+export async function deleteProjectArtifactShares(projectToken: string) {
+  const shares = await collection();
+  const records = await shares.find({ projectToken }, { projection: { _id: 1 } }).toArray();
+  if (!records.length) return;
+  const ids = records.map(({ _id }) => _id);
+  await deleteStorageObjects({ keys: ids.map(objectKey), bucketType: "private" });
+  await shares.deleteMany({ projectToken, _id: { $in: ids } });
 }
