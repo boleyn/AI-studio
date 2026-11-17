@@ -13,6 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { AuthUser } from "../../types/auth";
+import { AppPanelFooter, AppPanelHeader } from "../ui";
 
 type AccountInfoPanelProps = {
   user: AuthUser | null;
@@ -138,57 +139,49 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
 
   return (
     <Flex h="100%" direction="column">
-      <Box mb={8}>
-        <Text fontSize="2xl" fontWeight="700" color="myGray.800" pb={1}>
-          个人资料设置
-        </Text>
-        <Text fontSize="sm" color="myGray.500">
-          管理您在这里的基础身份信息，名称将对外展示。
-        </Text>
-      </Box>
+      <AppPanelHeader
+        title="个人资料设置"
+        description="管理您的基础身份信息，显示名称与头像将对外展示。"
+      />
 
-      {/* 移除了导致“框中框”的背景和边框 */}
-      <Box w="100%">
+      <Box w="100%" flex={1}>
         <Flex gap={8} direction={{ base: "column", md: "row" }} align="flex-start">
-          <Flex direction="column" align="center" gap={3}>
+          <Flex direction="column" align="center" gap={2.5}>
             <Box position="relative" role="group">
               <Avatar
-                size="2xl"
+                size="xl"
                 name={displayName || username || "用户"}
                 src={avatar || DEFAULT_AVATAR}
-                border="3px solid white"
-                boxShadow="var(--ws-glow-soft)"
-                transition="all 0.2s"
+                border="1px solid"
+                borderColor="stroke.subtle"
               />
               <Button
-                size="sm"
+                size="xs"
                 position="absolute"
-                bottom="-6px"
+                bottom="-4px"
                 left="50%"
                 transform="translateX(-50%)"
                 borderRadius="full"
-                variant="whitePrimary"
-                border="1px solid var(--ws-border)"
-                boxShadow="md"
+                variant="outline"
                 onClick={handlePickAvatar}
                 isDisabled={uploadingAvatar}
                 opacity="0"
-                _groupHover={{ opacity: 1, bottom: "-2px" }}
-                transition="all 0.2s"
+                _groupHover={{ opacity: 1 }}
+                transition="opacity 0.15s"
               >
-                {uploadingAvatar ? "上传中" : "更换头像"}
+                {uploadingAvatar ? "上传中" : "更换"}
               </Button>
             </Box>
-            <Text fontSize="11px" color="myGray.400" textAlign="center">
-              PNG, JPG, Max 8MB
+            <Text fontSize="11px" color="ink.muted" textAlign="center">
+              PNG, JPG · 最大 8MB
             </Text>
           </Flex>
 
-          <Divider orientation="vertical" borderColor="var(--ws-border)" h="120px" display={{ base: "none", md: "block" }} />
+          <Divider orientation="vertical" borderColor="stroke.light" h="120px" display={{ base: "none", md: "block" }} />
 
           <Box flex={1} w="100%">
             <FormControl>
-              <FormLabel fontSize="sm" fontWeight="600" color="myGray.700" mb={2}>
+              <FormLabel fontSize="13px" fontWeight="500" color="ink.primary" mb={1.5}>
                 显示名称
               </FormLabel>
               <Input
@@ -196,29 +189,20 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="输入你的显示名称"
                 maxLength={40}
-                size="lg"
-                bg="white"
-                border="1px solid var(--ws-border)"
-                borderRadius="xl"
-                fontSize="md"
-                _hover={{ borderColor: "myGray.300" }}
-                _focus={{ borderColor: "green.400", boxShadow: "0 0 0 1px #32D583" }}
+                size="md"
               />
             </FormControl>
 
-            <FormControl mt={6}>
-              <FormLabel fontSize="sm" fontWeight="600" color="myGray.700" mb={2}>
-                当前账号 (Username)
+            <FormControl mt={4}>
+              <FormLabel fontSize="13px" fontWeight="500" color="ink.primary" mb={1.5}>
+                当前账号
               </FormLabel>
               <Input
                 value={username}
                 isReadOnly
-                size="lg"
-                bg="rgba(17, 24, 36, 0.02)"
-                border="1px solid transparent"
-                borderRadius="xl"
-                color="myGray.500"
-                fontSize="md"
+                size="md"
+                bg="surface.sidebar"
+                color="ink.secondary"
               />
             </FormControl>
           </Box>
@@ -233,40 +217,25 @@ export function AccountInfoPanel({ user, onSaved }: AccountInfoPanelProps) {
         />
       </Box>
 
-      <Flex flex={1} />
-      
-      <Flex mt={8} pt={6} borderTop="1px solid var(--ws-border)" justify="space-between" align="center">
-        <Text fontSize="sm" color="myGray.500">
-          如果您未遇到问题，建议不要轻易修改你的基本信息。
-        </Text>
-        <Flex gap={3}>
-          <Button
-            variant="ghost"
-            onClick={resetForm}
-            isDisabled={saving || uploadingAvatar || !hasChanged}
-            size="md"
-            borderRadius="xl"
-            px={6}
-          >
-            撤销更改
-          </Button>
-          <Button
-            onClick={handleSave}
-            isLoading={saving}
-            isDisabled={!hasChanged || uploadingAvatar}
-            size="md"
-            borderRadius="xl"
-            px={8}
-            bg="green.500"
-            color="white"
-            _hover={{ bg: "green.600" }}
-            _active={{ bg: "green.700" }}
-            boxShadow="0 4px 12px -4px rgba(18, 183, 106, 0.4)"
-          >
-            保存设置
-          </Button>
-        </Flex>
-      </Flex>
+      <AppPanelFooter hint="如需变更登录密码，请前往安全设置。">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={resetForm}
+          isDisabled={saving || uploadingAvatar || !hasChanged}
+        >
+          撤销更改
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleSave}
+          isLoading={saving}
+          isDisabled={!hasChanged || uploadingAvatar}
+        >
+          保存设置
+        </Button>
+      </AppPanelFooter>
     </Flex>
   );
 }

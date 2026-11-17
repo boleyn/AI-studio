@@ -1,0 +1,25 @@
+{
+  "feConfigs": {
+    "connector": {
+      "name": "企业本机连接器",
+      "description": "保留云端能力，让智能体在你授权后连接你的电脑。",
+      "helpUrl": "https://downloads.example.com/connector/help",
+      "releases": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "version": "1.0.0",
+          "url": "https://downloads.example.com/connector/1.0.0/mac-arm64.dmg",
+          "requirement": "替换为经过验证的最低 macOS 版本"
+        },
+        {
+          "platform": "windows",
+          "arch": "amd64",
+          "version": "1.0.0",
+          "url": "https://downloads.example.com/connector/1.0.0/windows-x64.exe",
+          "requirement": "替换为经过验证的最低 Windows 版本"
+        }
+      ]
+    }
+  }
+}

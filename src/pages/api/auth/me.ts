@@ -1,5 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
+import {
+  ensureUserCloudHostAllocated,
+  getUserCloudHostStatus,
+  touchUserCloudHost,
+} from "@server/sandbox/userCloudHostManager";
 
 const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
 const sanitizeAvatar = (avatar?: string) => {
@@ -18,6 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const auth = await requireAuth(req, res);
   if (!auth) return;
+
+  const userId = String(auth.user._id);
+  const hostStatus = getUserCloudHostStatus(userId);
+  if (!hostStatus || hostStatus.status === "stopped" || hostStatus.status === "sleeping") {
+    void ensureUserCloudHostAllocated(userId);
+  } else {
+    touchUserCloudHost(userId);
+  }
 
   res.status(200).json({
     user: {

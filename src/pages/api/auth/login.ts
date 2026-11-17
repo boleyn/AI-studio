@@ -4,6 +4,7 @@ import { findUserByUsername } from "@server/auth/userStore";
 import { verifyPassword } from "@server/auth/password";
 import { signAuthToken } from "@server/auth/jwt";
 import { setAuthCookie } from "@server/auth/session";
+import { ensureUserCloudHostAllocated } from "@server/sandbox/userCloudHostManager";
 
 const DEFAULT_AVATAR = "/icons/defaultAvatar.svg";
 const sanitizeAvatar = (avatar?: string) =>
@@ -42,6 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const token = signAuthToken({ sub: String(user._id), username: user.username });
   setAuthCookie(res, token);
+  void ensureUserCloudHostAllocated(String(user._id));
 
   res.status(200).json({
     token,

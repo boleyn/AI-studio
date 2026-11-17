@@ -1,13 +1,32 @@
 import {
   Box,
+  Button,
   CloseButton,
   Flex,
+  HStack,
   IconButton,
   Input,
+  Menu,
+  MenuButton,
+  MenuDivider,
+  MenuItem,
+  MenuList,
   Text,
   Textarea,
   useTheme,
 } from "@chakra-ui/react";
+import {
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Cloud,
+  Folder,
+  Laptop,
+  Layers,
+  Plus,
+  SlidersHorizontal,
+  Square,
+} from "lucide-react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { AgentSkillsIcon, ModeToggleIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
@@ -15,7 +34,12 @@ import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
 
-import type { ChatInputFile, ChatInputProps, ChatInputSubmitPayload } from "../types/chatInput";
+import type {
+  ChatInputFile,
+  ChatInputProps,
+  ChatInputSubmitPayload,
+  ReasoningEffortLevel,
+} from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { normalizeAttachmentWorkspacePath, toFileTagLabel } from "../utils/chatPanelUtils";
 import ModelCascader from "./ModelCascader";
@@ -33,12 +57,14 @@ const ChatInput = ({
   artifactRevision,
   draftStorageKey,
   workspaceLayout = false,
+  workspaceComposer,
   isSending,
   model,
   modelOptions,
   modelGroups,
   modelLoading,
   thinkingEnabled = true,
+  reasoningEffort = "high",
   showThinkingToggle = true,
   mode = "default",
   thinkingTooltipEnabled,
@@ -53,6 +79,7 @@ const ChatInput = ({
   onChangeModel,
   onChangeMode,
   onChangeThinkingEnabled,
+  onChangeReasoningEffort,
   onChangeSelectedSkill,
   onChangeSelectedSkills,
   onUploadFiles,
@@ -483,6 +510,7 @@ const ChatInput = ({
       selectedSkills: selectedSkillList.length > 0 ? selectedSkillList : undefined,
       selectedFilePaths: selectedFilePaths.length > 0 ? selectedFilePaths : undefined,
       thinkingEnabled: showThinkingToggle ? thinkingEnabled : undefined,
+      reasoningEffort: workspaceLayout || showThinkingToggle ? reasoningEffort : undefined,
     };
 
     setIsSubmitting(true);
@@ -498,22 +526,34 @@ const ChatInput = ({
     Promise.resolve(onSend(payload)).finally(() => {
       setIsSubmitting(false);
     });
-  }, [canSend, files, onSend, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle]);
+  }, [canSend, files, onSend, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
 
   return (
     <Box px={4} py={3}>
       <Flex
         bg="white"
-        border="0.5px solid"
-        borderColor={isFocused ? "rgba(0,0,0,0.24)" : "rgba(0,0,0,0.18)"}
-        borderRadius="26px"
+        border={workspaceLayout ? "1px solid" : "0.5px solid"}
+        borderColor={
+          workspaceLayout
+            ? isFocused
+              ? "rgba(0,0,0,0.18)"
+              : "rgba(0,0,0,0.09)"
+            : isFocused
+            ? "rgba(0,0,0,0.24)"
+            : "rgba(0,0,0,0.18)"
+        }
+        borderRadius={workspaceLayout ? "22px" : "26px"}
         boxShadow={
-          isFocused
+          workspaceLayout
+            ? isFocused
+              ? "0px 4px 18px rgba(0, 0, 0, 0.06)"
+              : "0px 2px 10px rgba(0, 0, 0, 0.035)"
+            : isFocused
             ? "0px 5px 20px -4px rgba(19, 51, 107, 0.13)"
             : "0px 5px 16px -4px rgba(19, 51, 107, 0.08)"
         }
         direction="column"
-        minH={workspaceLayout ? "94px" : "116px"}
+        minH={workspaceLayout ? "96px" : "116px"}
         overflow="visible"
       >
         {previewFiles.length > 0 ? (
@@ -831,7 +871,7 @@ const ChatInput = ({
         </Flex>
 
         <Flex align="center" h="44px" justify="space-between" mt="auto" pb={2} pl={3} pr={3}>
-          <Flex align="center" gap={2} minW={0} flex={workspaceLayout ? 1 : undefined}>
+          <Flex align="center" gap={workspaceLayout ? 1 : 2} minW={0} flex={workspaceLayout ? 1 : undefined}>
             <Input
               ref={fileInputRef}
               display="none"
@@ -841,124 +881,384 @@ const ChatInput = ({
             />
             <IconButton
               aria-label="添加文件"
-              icon={<Box as="span" fontSize="22px" lineHeight="1">+</Box>}
+              icon={<Plus size={18} strokeWidth={1.8} />}
               isDisabled={isSending || isSubmitting}
               onClick={() => fileInputRef.current?.click()}
               size="sm"
               variant="ghost"
+              color="#374151"
+              _hover={{ bg: "#f4f4f5" }}
               borderRadius="full"
             />
-            {workspaceLayout && <Box flex={1} />}
-            <ModelCascader
-              showLabel={workspaceLayout}
-              disabled={Boolean(modelLoading || isSending || isSubmitting)}
-              loading={modelLoading}
-              model={model}
-              modelOptions={modelOptions}
-              modelGroups={modelGroups}
-              onChangeModel={onChangeModel}
-            />
-            {showThinkingToggle ? (
-              <MyTooltip
-                fontSize="12px"
-                label={
-                  thinkingEnabled
-                    ? thinkingTooltipEnabled || "思考模式：开启"
-                    : thinkingTooltipDisabled || "思考模式：关闭"
-                }
-                openDelay={150}
-              >
-                <IconButton
-                  _hover={{
-                    bg: "rgba(0, 0, 0, 0.04)",
-                  }}
-                  aria-label={thinkingEnabled ? "关闭思考模式" : "开启思考模式"}
-                  bg="transparent"
-                  border="1px solid transparent"
-                  borderRadius="8px"
-                  h="30px"
-                  icon={
-                    <Flex
-                      align="center"
-                      bg={thinkingEnabled ? "#16A34A" : "transparent"}
-                      border="1px solid"
-                      borderColor={thinkingEnabled ? "#16A34A" : "#CBD5E1"}
-                      borderRadius="999px"
-                      h="20px"
-                      justify="center"
-                      w="20px"
+            {workspaceLayout ? (
+              <>
+                <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
+                {workspaceComposer?.onOpenRuntime && (
+                  <Menu placement="top-start" isLazy>
+                    <MenuButton
+                      as={Button}
+                      size="xs"
+                      h="30px"
+                      px={2.5}
+                      borderRadius="full"
+                      fontSize="12.5px"
+                      fontWeight="500"
+                      bg={workspaceComposer.runtimeKind === "connector" ? "#ecfdf5" : "#eef4ff"}
+                      color={workspaceComposer.runtimeKind === "connector" ? "#059669" : "#2563eb"}
+                      _hover={{
+                        bg: workspaceComposer.runtimeKind === "connector" ? "#d1fae5" : "#e0ecff",
+                      }}
+                      leftIcon={
+                        workspaceComposer.runtimeKind === "connector" ? (
+                          <Laptop size={14} />
+                        ) : (
+                          <Cloud size={14} />
+                        )
+                      }
+                      rightIcon={<ChevronRight size={13} />}
+                      flexShrink={0}
                     >
-                      <Box
-                        as="svg"
-                        fill="none"
-                        h="13px"
-                        viewBox="0 0 24 24"
-                        w="13px"
+                      {workspaceComposer.runtimeLabel || "云电脑"}
+                    </MenuButton>
+                    <MenuList
+                      minW="236px"
+                      p={1.5}
+                      borderRadius="14px"
+                      border="1px solid rgba(0, 0, 0, 0.06)"
+                      boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+                    >
+                      <MenuItem
+                        borderRadius="9px"
+                        px={2.5}
+                        py={2}
+                        _hover={{ bg: "#f4f4f5" }}
+                        onClick={() => workspaceComposer.onSelectCloudHost?.()}
                       >
-                        <path
-                          d="M12 3.5a6.5 6.5 0 0 0-3.5 12v2.25a.75.75 0 0 0 .75.75h5.5a.75.75 0 0 0 .75-.75V15.5A6.5 6.5 0 0 0 12 3.5Z"
-                          stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                        />
-                        <path
-                          d="M9.5 21h5"
-                          stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
-                          strokeLinecap="round"
-                          strokeWidth="2"
-                        />
-                      </Box>
-                    </Flex>
-                  }
-                  isDisabled={Boolean(modelLoading || isSending || isSubmitting)}
-                  minW="30px"
-                  onClick={() => onChangeThinkingEnabled?.(!thinkingEnabled)}
-                  variant="ghost"
-                />
-              </MyTooltip>
-            ) : null}
-            <MyTooltip
-              fontSize="12px"
-              label={
-                mode === "plan"
-                  ? "当前模式: PLAN。点击可切换到 RUN。"
-                  : "当前模式: RUN。点击可切换到 PLAN。"
-              }
-              openDelay={120}
-            >
-              <IconButton
-                _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
-                aria-label={mode === "plan" ? "切换到执行模式" : "切换到计划模式"}
-                bg="transparent"
-                border="1px solid transparent"
-                borderRadius="8px"
-                h="30px"
-                icon={
-                  <Flex
-                    align="center"
-                    bg={mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "transparent"}
-                    border="1px solid"
-                    borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.55)" : "#CBD5E1"}
-                    borderRadius="999px"
-                    h="20px"
-                    justify="center"
-                    w="20px"
+                        <HStack justify="space-between" w="full" spacing={3}>
+                          <HStack spacing={2} minW={0}>
+                            <Cloud size={15} color="#18181b" />
+                            <Box w="6px" h="6px" borderRadius="full" bg="#22c55e" flexShrink={0} />
+                            <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
+                              云电脑（默认）
+                            </Text>
+                          </HStack>
+                          {workspaceComposer.runtimeKind !== "connector" && (
+                            <Check size={15} color="#18181b" />
+                          )}
+                        </HStack>
+                      </MenuItem>
+
+                      {(workspaceComposer.devices || []).map((device) => {
+                        const isSelected =
+                          workspaceComposer.runtimeKind === "connector" &&
+                          workspaceComposer.runtimeDeviceId === device.deviceId;
+                        return (
+                          <MenuItem
+                            key={device.deviceId}
+                            borderRadius="9px"
+                            px={2.5}
+                            py={2}
+                            _hover={{ bg: "#f4f4f5" }}
+                            onClick={() => workspaceComposer.onSelectDeviceHost?.(device)}
+                          >
+                            <HStack justify="space-between" w="full" spacing={3}>
+                              <HStack spacing={2} minW={0}>
+                                <Laptop size={15} color="#18181b" />
+                                <Box
+                                  w="6px"
+                                  h="6px"
+                                  borderRadius="full"
+                                  bg={device.online ? "#3b82f6" : "#a1a1aa"}
+                                  flexShrink={0}
+                                />
+                                <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
+                                  {device.name}
+                                </Text>
+                              </HStack>
+                              {isSelected && <Check size={15} color="#18181b" />}
+                            </HStack>
+                          </MenuItem>
+                        );
+                      })}
+
+                      <MenuDivider my={1} />
+                      <MenuItem
+                        borderRadius="9px"
+                        px={2.5}
+                        py={2}
+                        fontSize="13px"
+                        color="#52525b"
+                        _hover={{ bg: "#f4f4f5" }}
+                        icon={<Plus size={14} />}
+                        onClick={workspaceComposer.onOpenRuntime}
+                      >
+                        连接或管理其他主机...
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                )}
+
+                {workspaceComposer?.projects && workspaceComposer.projects.length > 0 && (
+                  <Menu placement="top-start" isLazy>
+                    <MenuButton
+                      as={Button}
+                      size="xs"
+                      h="30px"
+                      px={2.5}
+                      borderRadius="full"
+                      variant="ghost"
+                      fontSize="12.5px"
+                      fontWeight="500"
+                      color="#374151"
+                      _hover={{ bg: "#f4f4f5" }}
+                      leftIcon={<Folder size={14} />}
+                      rightIcon={<ChevronRight size={13} color="#9ca3af" />}
+                      maxW="150px"
+                      flexShrink={0}
+                    >
+                      <Text as="span" isTruncated>
+                        {workspaceComposer.projectName || "项目"}
+                      </Text>
+                    </MenuButton>
+                    <MenuList minW="190px" maxH="240px" overflowY="auto">
+                      {workspaceComposer.projects.map((proj) => (
+                        <MenuItem
+                          key={proj.token}
+                          fontSize="13px"
+                          fontWeight={proj.token === workspaceComposer.projectToken ? "600" : "400"}
+                          onClick={() => workspaceComposer.onSelectProject?.(proj.token)}
+                        >
+                          {proj.name}
+                        </MenuItem>
+                      ))}
+                      {workspaceComposer.onCreateProject && (
+                        <>
+                          <MenuDivider />
+                          <MenuItem
+                            fontSize="13px"
+                            icon={<Plus size={14} />}
+                            onClick={workspaceComposer.onCreateProject}
+                          >
+                            新建项目
+                          </MenuItem>
+                        </>
+                      )}
+                    </MenuList>
+                  </Menu>
+                )}
+
+                <Menu placement="top-start" isLazy>
+                  <MenuButton
+                    as={Button}
+                    size="xs"
+                    h="30px"
+                    px={2.5}
+                    borderRadius="full"
+                    variant="ghost"
+                    fontSize="12.5px"
+                    fontWeight="500"
+                    color="#374151"
+                    _hover={{ bg: "#f4f4f5" }}
+                    leftIcon={<Layers size={14} />}
+                    rightIcon={<ChevronRight size={13} color="#9ca3af" />}
+                    flexShrink={0}
                   >
-                    <Box
-                      as={ModeToggleIcon}
-                      color={mode === "plan" ? "orange.700" : "myGray.600"}
-                      h="14px"
-                      w="14px"
+                    技能
+                  </MenuButton>
+                  <MenuList minW="210px" maxH="260px" overflowY="auto">
+                    {skillOptions.length === 0 ? (
+                      <MenuItem fontSize="13px" isDisabled>
+                        暂无可用技能
+                      </MenuItem>
+                    ) : (
+                      skillOptions.map((skill) => {
+                        const checked = selectedSkillList.includes(skill.name);
+                        return (
+                          <MenuItem
+                            key={skill.name}
+                            fontSize="13px"
+                            fontWeight={checked ? "600" : "400"}
+                            onClick={() => {
+                              const next = checked
+                                ? selectedSkillList.filter((s) => s !== skill.name)
+                                : [...selectedSkillList, skill.name];
+                              commitSelectedSkills(next);
+                            }}
+                          >
+                            <HStack justify="space-between" w="full">
+                              <Text noOfLines={1}>{skill.name}</Text>
+                              {checked ? <Text color="blue.600" fontSize="xs">已选</Text> : null}
+                            </HStack>
+                          </MenuItem>
+                        );
+                      })
+                    )}
+                  </MenuList>
+                </Menu>
+
+                <Menu placement="top-start" isLazy>
+                  <MenuButton
+                    as={Button}
+                    size="xs"
+                    h="30px"
+                    px={2.5}
+                    borderRadius="full"
+                    variant="ghost"
+                    fontSize="12.5px"
+                    fontWeight="500"
+                    color={mode === "plan" ? "#b45309" : "#374151"}
+                    bg={mode === "plan" ? "rgba(251, 191, 36, 0.14)" : "transparent"}
+                    _hover={{ bg: mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "#f4f4f5" }}
+                    leftIcon={<SlidersHorizontal size={13} />}
+                    rightIcon={<ChevronRight size={13} color="#9ca3af" />}
+                    flexShrink={0}
+                  >
+                    {mode === "plan" ? "PLAN 模式" : "模式"}
+                  </MenuButton>
+                  <MenuList minW="190px">
+                    <MenuItem
+                      fontSize="13px"
+                      fontWeight={mode === "default" ? "600" : "400"}
+                      onClick={() => onChangeMode?.("default")}
+                    >
+                      RUN 执行模式（默认）
+                    </MenuItem>
+                    <MenuItem
+                      fontSize="13px"
+                      fontWeight={mode === "plan" ? "600" : "400"}
+                      onClick={() => onChangeMode?.("plan")}
+                    >
+                      PLAN 规划模式（只读）
+                    </MenuItem>
+                    {showThinkingToggle && (
+                      <>
+                        <MenuDivider />
+                        <MenuItem
+                          fontSize="13px"
+                          onClick={() => onChangeThinkingEnabled?.(!thinkingEnabled)}
+                        >
+                          深度思考：{thinkingEnabled ? "开启" : "关闭"}
+                        </MenuItem>
+                      </>
+                    )}
+                  </MenuList>
+                </Menu>
+                <Box flex={1} />
+              </>
+            ) : (
+              <>
+                <ModelCascader
+                  showLabel={false}
+                  disabled={Boolean(modelLoading || isSending || isSubmitting)}
+                  loading={modelLoading}
+                  model={model}
+                  modelOptions={modelOptions}
+                  modelGroups={modelGroups}
+                  onChangeModel={onChangeModel}
+                />
+                {showThinkingToggle ? (
+                  <MyTooltip
+                    fontSize="12px"
+                    label={
+                      thinkingEnabled
+                        ? thinkingTooltipEnabled || "思考模式：开启"
+                        : thinkingTooltipDisabled || "思考模式：关闭"
+                    }
+                    openDelay={150}
+                  >
+                    <IconButton
+                      _hover={{
+                        bg: "rgba(0, 0, 0, 0.04)",
+                      }}
+                      aria-label={thinkingEnabled ? "关闭思考模式" : "开启思考模式"}
+                      bg="transparent"
+                      border="1px solid transparent"
+                      borderRadius="8px"
+                      h="30px"
+                      icon={
+                        <Flex
+                          align="center"
+                          bg={thinkingEnabled ? "#16A34A" : "transparent"}
+                          border="1px solid"
+                          borderColor={thinkingEnabled ? "#16A34A" : "#CBD5E1"}
+                          borderRadius="999px"
+                          h="20px"
+                          justify="center"
+                          w="20px"
+                        >
+                          <Box
+                            as="svg"
+                            fill="none"
+                            h="13px"
+                            viewBox="0 0 24 24"
+                            w="13px"
+                          >
+                            <path
+                              d="M12 3.5a6.5 6.5 0 0 0-3.5 12v2.25a.75.75 0 0 0 .75.75h5.5a.75.75 0 0 0 .75-.75V15.5A6.5 6.5 0 0 0 12 3.5Z"
+                              stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                            />
+                            <path
+                              d="M9.5 21h5"
+                              stroke={thinkingEnabled ? "#FFFFFF" : "#64748B"}
+                              strokeLinecap="round"
+                              strokeWidth="2"
+                            />
+                          </Box>
+                        </Flex>
+                      }
+                      isDisabled={Boolean(modelLoading || isSending || isSubmitting)}
+                      minW="30px"
+                      onClick={() => onChangeThinkingEnabled?.(!thinkingEnabled)}
+                      variant="ghost"
                     />
-                  </Flex>
-                }
-                isDisabled={Boolean(isSending || isSubmitting)}
-                minW="30px"
-                onClick={() => onChangeMode?.(mode === "plan" ? "default" : "plan")}
-                variant="ghost"
-              />
-            </MyTooltip>
+                  </MyTooltip>
+                ) : null}
+                <MyTooltip
+                  fontSize="12px"
+                  label={
+                    mode === "plan"
+                      ? "当前模式: PLAN。点击可切换到 RUN。"
+                      : "当前模式: RUN。点击可切换到 PLAN。"
+                  }
+                  openDelay={120}
+                >
+                  <IconButton
+                    _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
+                    aria-label={mode === "plan" ? "切换到执行模式" : "切换到计划模式"}
+                    bg="transparent"
+                    border="1px solid transparent"
+                    borderRadius="8px"
+                    h="30px"
+                    icon={
+                      <Flex
+                        align="center"
+                        bg={mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "transparent"}
+                        border="1px solid"
+                        borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.55)" : "#CBD5E1"}
+                        borderRadius="999px"
+                        h="20px"
+                        justify="center"
+                        w="20px"
+                      >
+                        <Box
+                          as={ModeToggleIcon}
+                          color={mode === "plan" ? "orange.700" : "myGray.600"}
+                          h="14px"
+                          w="14px"
+                        />
+                      </Flex>
+                    }
+                    isDisabled={Boolean(isSending || isSubmitting)}
+                    minW="30px"
+                    onClick={() => onChangeMode?.(mode === "plan" ? "default" : "plan")}
+                    variant="ghost"
+                  />
+                </MyTooltip>
+              </>
+            )}
             {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">
                 {t("chat:uploading_files", { defaultValue: "文件上传中..." })}
@@ -970,27 +1270,54 @@ const ChatInput = ({
             ) : null}
           </Flex>
 
-          <Flex align="center" gap={1}>
+          <Flex align="center" gap={1.5}>
+            {workspaceLayout && (
+              <ModelCascader
+                showLabel
+                rightSuffix={
+                  reasoningEffort === "off"
+                    ? "关"
+                    : reasoningEffort === "low"
+                    ? "低"
+                    : reasoningEffort === "medium"
+                    ? "中"
+                    : reasoningEffort === "xhigh"
+                    ? "超高"
+                    : "高"
+                }
+                reasoningEffort={reasoningEffort}
+                onChangeReasoningEffort={onChangeReasoningEffort}
+                disabled={Boolean(modelLoading || isSending || isSubmitting)}
+                loading={modelLoading}
+                model={model}
+                modelOptions={modelOptions}
+                modelGroups={modelGroups}
+                onChangeModel={onChangeModel}
+              />
+            )}
             <IconButton
-              _hover={{ bg: isSending ? "primary.100" : canSend ? "gray.700" : "rgba(17, 24, 36, 0.1)" }}
+              _hover={{
+                bg: isSending
+                  ? "rgba(15, 23, 42, 0.14)"
+                  : canSend
+                  ? "#111827"
+                  : "#e4e4e7",
+              }}
               aria-label={
                 isSending
                   ? t("chat:stop_generating", { defaultValue: "停止生成" })
                   : t("common:Send", { defaultValue: "发送" })
               }
-              bg={isSending ? "primary.50" : canSend ? "gray.900" : "rgba(17, 24, 36, 0.1)"}
+              bg={isSending ? "#f4f4f5" : canSend ? "#0f172a" : "#f4f4f5"}
+              color={isSending ? "#0f172a" : canSend ? "#ffffff" : "#71717a"}
               borderRadius="full"
-              h="36px"
+              h="34px"
               icon={
-                <Box
-                  as="img"
-                  h="18px"
-                  src={isSending ? "/icons/chat/stop.svg" : "/icons/chat/sendFill.svg"}
-                  sx={{
-                    filter: isSending ? "none" : "brightness(0) invert(1)",
-                  }}
-                  w="18px"
-                />
+                isSending ? (
+                  <Square size={13} fill="currentColor" />
+                ) : (
+                  <ArrowUp size={17} strokeWidth={2.2} />
+                )
               }
               isDisabled={!isSending && !canSend}
               onClick={() => {
@@ -1001,7 +1328,8 @@ const ChatInput = ({
                 handleSend();
               }}
               type="button"
-              w="36px"
+              w="34px"
+              minW="34px"
             />
           </Flex>
         </Flex>

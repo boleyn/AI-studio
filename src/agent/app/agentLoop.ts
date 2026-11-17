@@ -14,6 +14,7 @@ export type AgentLoopInput = {
   client: AgentModelClient;
   model: string;
   temperature: number;
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   maxContext?: number;
   maxIterations: number;
   systemPrompt: string;
@@ -118,9 +119,10 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         temperature: input.temperature,
         messages: requestMessages,
         ...(openAITools.length > 0 ? { tools: openAITools, tool_choice: "auto" } : {}),
+        ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
         stream: true,
         stream_options: { include_usage: true },
-      },
+      } as Parameters<AgentModelClient["stream"]>[0],
       input.signal,
     );
 

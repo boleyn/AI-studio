@@ -6,7 +6,12 @@ import type { ConversationSummary } from "@/types/conversation";
 import type { ChatInteractionContextValue } from "./ChatInteractionContext";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { MessageRating } from "../components/message/MessageActionBar";
-import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
+import type {
+  ChatInputFile,
+  ChatInputSubmitPayload,
+  ReasoningEffortLevel,
+  WorkspaceComposerConfig,
+} from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 
 export type ChatPanelViewContextValue = {
@@ -45,6 +50,7 @@ export type ChatPanelViewContextValue = {
   onRewindLatestTurn: () => void;
   streamingMessageId: string | null;
   thinkingEnabled: boolean;
+  reasoningEffort: ReasoningEffortLevel;
   chatMode: "default" | "plan";
   selectedModelSupportsReasoning?: boolean;
   thinkingTooltipEnabled?: string;
@@ -54,6 +60,7 @@ export type ChatPanelViewContextValue = {
   fileOptions: string[];
   addFileRequest?: { path: string; version: number } | null;
   onChangeThinkingEnabled: (enabled: boolean) => void;
+  onChangeReasoningEffort: (effort: ReasoningEffortLevel) => void;
   onChangeSelectedSkills: (skills: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;
   onSend: (
@@ -74,6 +81,7 @@ export type ChatPanelViewContextValue = {
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   onCreateSkillViaChat: () => void;
   onUseSkill: (skillName: string) => void;
+  workspaceComposer?: WorkspaceComposerConfig;
 };
 
 const ChatPanelViewContext = createContext<ChatPanelViewContextValue | null>(null);

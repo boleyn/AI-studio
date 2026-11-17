@@ -5,9 +5,11 @@ import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { getAgentRuntimeConfig } from "@/agent/app";
+import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { toTokenBudget } from "@/agent/app/context";
 import { getUserModelConfigsFromUser } from "@server/auth/userModelConfig";
 import { requireAuth } from "@server/auth/session";
+import { touchUserCloudHost } from "@server/sandbox/userCloudHostManager";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile, updateBinaryFile, saveProjectArtifactVersion } from "@server/projects/projectStorage";
 import { getUserSkill, updateUserSkill } from "@server/skills/skillStorage";
@@ -564,6 +566,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: "请在模型配置中填写有效的 Base URL 和 API Key。" });
       return;
     }
+  } else {
+    await getChatModelCatalog().catch(() => undefined);
+    const systemProfile = getChatModelProfile(selectedModel) as
+      | {
+          protocol?: string;
+          baseUrl?: string;
+          key?: string;
+          maxContext?: number;
+          maxTemperature?: number;
+          reasoning?: boolean;
+          vision?: boolean;
+        }
+      | undefined;
+    if (systemProfile?.baseUrl) {
+      const protocolRaw = (systemProfile.protocol || "openai").toLowerCase();
+      const protocol =
+        protocolRaw === "anthropic" || protocolRaw === "google" ? protocolRaw : "openai";
+      const apiKey = systemProfile.key || getAgentRuntimeConfig().apiKey || "";
+      try {
+        const endpoint = new URL(systemProfile.baseUrl);
+        if (["http:", "https:"].includes(endpoint.protocol) && apiKey) {
+          modelConnection = {
+            protocol,
+            baseURL: endpoint.href.replace(/\/$/, ""),
+            apiKey,
+            maxContext: systemProfile.maxContext,
+            maxTemperature: systemProfile.maxTemperature,
+            reasoning: systemProfile.reasoning,
+            vision: systemProfile.vision,
+          };
+        }
+      } catch {
+        // ignore invalid system profile URL and fall back to runtime env
+      }
+    }
   }
   const selectedSkills = Array.isArray(req.body?.selectedSkills)
     ? req.body.selectedSkills
@@ -663,17 +700,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: incomingUserMessages,
     });
 
+    const rawReasoningEffort =
+      typeof req.body?.reasoningEffort === "string"
+        ? req.body.reasoningEffort.trim().toLowerCase()
+        : typeof req.body?.reasoning_effort === "string"
+        ? req.body.reasoning_effort.trim().toLowerCase()
+        : "";
+    const reasoningEffort =
+      rawReasoningEffort === "low" ||
+      rawReasoningEffort === "medium" ||
+      rawReasoningEffort === "high" ||
+      rawReasoningEffort === "xhigh"
+        ? rawReasoningEffort
+        : undefined;
+
+    touchUserCloudHost(String(auth.user._id));
+
     const runResult = await runAgentGateway({
       token,
+      projectName: isProjectToken ? project?.name : skill?.name,
+      userId: String(auth.user._id),
       chatId,
       selectedModel,
       modelConnection,
+      reasoningEffort,
       selectedSkills,
       historyMessages: persistedHistoryMessages,
       projectFiles: projectFilesForRun,
       permissionMode,
       sandboxKind: req.body?.sandboxKind,
-      connector: req.body?.connector,
+      connector:
+        req.body?.connector && typeof req.body.connector === "object"
+          ? {
+              ...req.body.connector,
+              userId: String(auth.user._id),
+            }
+          : undefined,
       messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,
       onEvent: (event, data) => {

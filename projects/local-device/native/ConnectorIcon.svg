@@ -1,0 +1,10 @@
+<!-- Matches the linked-window mark in macos/ConnectorIcon.swift. The 32px PNG is its Windows tray/window raster. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs><linearGradient id="blue" x2="0" y2="1"><stop stop-color="#408fff"/><stop offset="1" stop-color="#1a47d6"/></linearGradient></defs>
+  <rect x="5" y="5" width="90" height="90" rx="20" fill="url(#blue)"/>
+  <g transform="translate(12 88) scale(.76 -.76)" fill="none" stroke="white" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round">
+    <path id="frame" d="M43 68H30C21 68 18 65 18 56V30C18 21 21 18 30 18H56C65 18 68 21 68 30V43"/>
+    <use href="#frame" transform="translate(100 100) scale(-1)"/>
+    <path d="M39 39L61 61"/>
+  </g>
+</svg>

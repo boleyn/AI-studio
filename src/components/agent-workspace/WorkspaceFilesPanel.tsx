@@ -54,7 +54,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   const [documentZoom, setDocumentZoom] = useState<{ url: string; percent: number }>();
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
   const [expanded, setExpanded] = useState(false);
-  const [paneWidth, setPaneWidth] = useState(58);
+  const [paneWidth, setPaneWidth] = useState(42);
   const panelRef = useRef<HTMLElement>(null);
   const resizePane = (width: number) => setPaneWidth(Math.max(35, Math.min(75, width)));
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -321,6 +321,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
             <ArtifactSection label="输出">
               {paths.length ? paths.map((path) => {
               const name = path.split("/").pop() || path;
+              const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
               return (
                 <Flex as="button" type="button" key={path} align="center" textAlign="left" gap={3} px={2} py={2}
                   w="full" borderRadius="lg" title={path} _hover={{ bg: "gray.50" }}
@@ -332,7 +333,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
                   <ArtifactFileIcon name={name} />
                   <Box flex={1} minW={0}>
                     <Text isTruncated fontSize="sm" fontWeight={500}>{name}</Text>
-                    <Text fontSize="xs" color="gray.500">{artifactFileType(name).label}</Text>
+                    <Text fontSize="xs" color="gray.500" isTruncated>
+                      {dir ? `${artifactFileType(name).label} · ${dir}` : artifactFileType(name).label}
+                    </Text>
                   </Box>
                   <ChevronRight size={16} aria-hidden="true" />
                 </Flex>

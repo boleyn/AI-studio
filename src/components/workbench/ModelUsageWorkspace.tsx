@@ -1,8 +1,9 @@
-import { Badge, Box, Button, Flex, Grid, Spinner, Text } from "@chakra-ui/react";
+import { Badge, Box, Button, Flex, Grid, Skeleton, SkeletonCircle, Text } from "@chakra-ui/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
 import { EmptyIcon } from "@components/common/Icon";
+import { AppSectionCard } from "../ui";
 import { useModelUsage, type ModelUsageTrendPoint } from "../../hooks/useModelUsage";
 
 const MotionBox = motion(Box);
@@ -51,9 +52,9 @@ const resolveModelIconSrc = (icon?: string) => {
 export type MetricKey = "calls" | "totalUsedTokens" | "avgUsedPercent";
 
 export const metricOptions: Array<{ key: MetricKey; label: string; color: string }> = [
-  { key: "calls", label: "调用次数", color: "#32a549" },
-  { key: "totalUsedTokens", label: "Token 消耗", color: "#3370FF" },
-  { key: "avgUsedPercent", label: "平均利用率", color: "#B54708" },
+  { key: "calls", label: "调用次数", color: "#0d0d0d" },
+  { key: "totalUsedTokens", label: "Token 消耗", color: "#2563eb" },
+  { key: "avgUsedPercent", label: "平均利用率", color: "#5d5d5d" },
 ];
 
 const dayOptions = [7, 14, 30] as const;
@@ -150,49 +151,80 @@ export function ModelUsageWorkspace() {
     : 0;
 
   return (
-    <Flex direction="column" gap={4} flex={1} minH={0}>
+    <Flex direction="column" gap={4} flex={1} minH="490px">
       <Box
-        borderRadius="xl"
-        border="1px solid"
-        borderColor="myGray.200"
-        bg="var(--ws-surface)"
-        px={5}
-        py={4}
         flex={1}
         minH={0}
         display="flex"
         flexDirection="column"
       >
-        <Flex align={{ base: "flex-start", lg: "center" }} justify="space-between" mb={4} gap={3} wrap="wrap">
-          <Text fontSize="md" fontWeight="700" color="myGray.800">按模型用量</Text>
-          <Flex align="center" gap={2} wrap="wrap">
-            <Flex bg="myGray.50" border="1px solid" borderColor="myGray.200" borderRadius="12px" p={1}>
-              {dayOptions.map((value) => (
-                <Button
-                  key={value}
-                  size="xs"
-                  variant="ghost"
-                  px={3}
-                  borderRadius="8px"
-                  color={windowDays === value ? "primary.700" : "myGray.600"}
-                  bg={windowDays === value ? "white" : "transparent"}
-                  onClick={() => setWindowDays(value)}
-                >
-                  {value}天
-                </Button>
-              ))}
-            </Flex>
-            <Badge bg="primary.50" color="primary.700" border="1px solid" borderColor="primary.200">
-              {refreshing ? "更新中…" : `更新时间 ${formatTime(data.summary.generatedAt)}`}
-            </Badge>
+        <Flex align="center" justify="space-between" mb={4} pr={8}>
+          <Text fontSize="16px" fontWeight="600" color="ink.primary">用量统计</Text>
+        </Flex>
+
+        <Flex align="center" justify="space-between" mb={3.5} gap={2} wrap="wrap">
+          <Flex bg="surface.sidebar" border="1px solid" borderColor="stroke.subtle" borderRadius="10px" p={0.5}>
+            {dayOptions.map((value) => (
+              <Button
+                key={value}
+                size="xs"
+                variant="ghost"
+                px={3}
+                borderRadius="8px"
+                fontWeight={windowDays === value ? "600" : "400"}
+                color={windowDays === value ? "ink.primary" : "ink.secondary"}
+                bg={windowDays === value ? "white" : "transparent"}
+                boxShadow={windowDays === value ? "0 1px 2px rgba(0,0,0,0.06)" : "none"}
+                onClick={() => setWindowDays(value)}
+              >
+                {value}天
+              </Button>
+            ))}
           </Flex>
+          <Badge bg="surface.sidebar" color="ink.secondary" border="1px solid" borderColor="stroke.subtle" fontWeight="500" px={2.5} py={1}>
+            {refreshing ? "更新中…" : `更新时间 ${formatTime(data.summary.generatedAt)}`}
+          </Badge>
         </Flex>
 
         {loading && data.items.length === 0 ? (
-          <Flex align="center" justify="center" gap={3} py={10} bg="myGray.50" borderRadius="lg" flex={1}>
-            <Spinner size="sm" />
-            <Text fontSize="sm" color="myGray.600">正在刷新模型用量…</Text>
-          </Flex>
+          <Grid templateColumns={{ base: "1fr", xl: "minmax(0, 0.46fr) minmax(0, 0.54fr)" }} gap={5} flex={1} minH={0}>
+            <Box pr={1}>
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <Flex key={idx} align="center" gap={3} p={3} mb={1}>
+                  <SkeletonCircle size="7" flexShrink={0} />
+                  <Box flex={1}>
+                    <Skeleton height="14px" width="48%" borderRadius="6px" mb={1.5} />
+                    <Skeleton height="11px" width="32%" borderRadius="6px" />
+                  </Box>
+                  <Skeleton height="18px" width="36px" borderRadius="999px" />
+                </Flex>
+              ))}
+            </Box>
+            <Flex
+              direction="column"
+              borderLeftWidth={{ base: 0, xl: "1px" }}
+              borderLeftStyle="solid"
+              borderLeftColor={{ base: "transparent", xl: "stroke.light" }}
+              pl={{ base: 0, xl: 5 }}
+            >
+              <Skeleton height="20px" width="140px" borderRadius="6px" mb={2} />
+              <Skeleton height="13px" width="100px" borderRadius="6px" mb={4} />
+              <Grid templateColumns="repeat(3, minmax(0, 1fr))" gap={3} mb={4}>
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <AppSectionCard key={idx} p={3}>
+                    <Skeleton height="11px" width="52px" borderRadius="4px" mb={2} />
+                    <Skeleton height="22px" width="60px" borderRadius="6px" />
+                  </AppSectionCard>
+                ))}
+              </Grid>
+              <Flex gap={2} mb={4}>
+                <Skeleton height="28px" width="76px" borderRadius="999px" />
+                <Skeleton height="28px" width="84px" borderRadius="999px" />
+                <Skeleton height="28px" width="88px" borderRadius="999px" />
+              </Flex>
+              <Skeleton flex={1} minH="190px" borderRadius="12px" />
+            </Flex>
+          </Grid>
         ) : data.items.length === 0 ? (
           <Flex direction="column" align="center" justify="center" py={12} flex={1}>
             <Box mb={4}>
@@ -205,7 +237,7 @@ export function ModelUsageWorkspace() {
           </Flex>
         ) : (
           <Grid templateColumns={{ base: "1fr", xl: "minmax(0, 0.46fr) minmax(0, 0.54fr)" }} gap={5} flex={1} minH={0}>
-            <Box minH={0} overflowY="auto" pr={1}>
+            <Box minH={0} overflowY="auto" overflowX="hidden" pr={1}>
               {data.items.map((item, index) => {
                 const active = selectedItem?.modelId === item.modelId;
                 return (
@@ -215,10 +247,9 @@ export function ModelUsageWorkspace() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2, delay: index * 0.015 }}
                     p={3}
-                    borderBottom={index === data.items.length - 1 ? "none" : "1px solid"}
-                    borderColor="myGray.150"
-                    bg={active ? "rgba(100, 218, 122, 0.08)" : "transparent"}
-                    borderRadius={active ? "12px" : "0"}
+                    borderRadius="10px"
+                    mb={1}
+                    bg={active ? "surface.active" : "transparent"}
                     cursor="pointer"
                     onClick={() => setSelectedModelId(item.modelId)}
                     whileHover={{ x: 2 }}
@@ -268,26 +299,26 @@ export function ModelUsageWorkspace() {
                   minH={0}
                   flex={1}
                 >
-                  <Text fontSize="2xl" fontWeight="700" color="myGray.800" lineHeight="1.2">
+                  <Text fontSize="16px" fontWeight="600" color="ink.primary" lineHeight="1.3">
                     {selectedItem?.label || "模型趋势"}
                   </Text>
-                  <Text mt={1} fontSize="sm" color="myGray.500">
+                  <Text mt={0.5} fontSize="12px" color="ink.muted">
                     {selectedItem?.modelId || "选择左侧模型查看趋势"}
                   </Text>
 
                   <Grid templateColumns="repeat(3, minmax(0, 1fr))" gap={3} mt={4}>
-                    <Box>
-                      <Text fontSize="11px" color="myGray.500" textTransform="uppercase" letterSpacing="0.06em">调用总数</Text>
-                      <Text mt={1} fontSize="lg" fontWeight="700" color="myGray.800">{totalCalls.toLocaleString("zh-CN")}</Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="11px" color="myGray.500" textTransform="uppercase" letterSpacing="0.06em">Token 总量</Text>
-                      <Text mt={1} fontSize="lg" fontWeight="700" color="myGray.800">{formatCompactNumber(totalTokens)}</Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="11px" color="myGray.500" textTransform="uppercase" letterSpacing="0.06em">平均利用率</Text>
-                      <Text mt={1} fontSize="lg" fontWeight="700" color="myGray.800">{avgUtil.toFixed(1)}%</Text>
-                    </Box>
+                    <AppSectionCard p={3}>
+                      <Text fontSize="11px" color="ink.muted">调用总数</Text>
+                      <Text mt={1} fontSize="18px" fontWeight="600" color="ink.primary">{totalCalls.toLocaleString("zh-CN")}</Text>
+                    </AppSectionCard>
+                    <AppSectionCard p={3}>
+                      <Text fontSize="11px" color="ink.muted">Token 总量</Text>
+                      <Text mt={1} fontSize="18px" fontWeight="600" color="ink.primary">{formatCompactNumber(totalTokens)}</Text>
+                    </AppSectionCard>
+                    <AppSectionCard p={3}>
+                      <Text fontSize="11px" color="ink.muted">平均利用率</Text>
+                      <Text mt={1} fontSize="18px" fontWeight="600" color="ink.primary">{avgUtil.toFixed(1)}%</Text>
+                    </AppSectionCard>
                   </Grid>
 
                   <Flex mt={4} gap={2} wrap="wrap">
@@ -298,9 +329,10 @@ export function ModelUsageWorkspace() {
                         variant="ghost"
                         borderRadius="999px"
                         border="1px solid"
-                        borderColor={metric === option.key ? "primary.300" : "myGray.200"}
-                        bg={metric === option.key ? "primary.50" : "transparent"}
-                        color={metric === option.key ? "primary.700" : "myGray.600"}
+                        borderColor={metric === option.key ? "ink.primary" : "stroke.subtle"}
+                        bg={metric === option.key ? "ink.primary" : "transparent"}
+                        color={metric === option.key ? "white" : "ink.secondary"}
+                        _hover={{ bg: metric === option.key ? "ink.primary" : "surface.hover" }}
                         onClick={() => setMetric(option.key)}
                       >
                         {option.label}

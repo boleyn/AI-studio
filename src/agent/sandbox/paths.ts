@@ -28,10 +28,38 @@ export const toVirtualPath = (root: string, absolutePath: string): string => {
 };
 
 /** 把文本中出现的宿主机根目录替换为 `/`，避免向模型/用户泄露服务器路径。 */
-export const maskHostPaths = (text: string, root: string): string => {
+export const maskHostPaths = (text: string, root: string, replacement = "/"): string => {
   if (!text) return text;
   const normalizedRoot = path.resolve(root);
-  return text.split(`${normalizedRoot}/`).join("/").split(normalizedRoot).join("/");
+  const suffix = replacement.endsWith("/") ? replacement : `${replacement}/`;
+  return text.split(`${normalizedRoot}/`).join(suffix).split(normalizedRoot).join(replacement);
+};
+
+export const CLOUD_HOST_HOME = "/home/user";
+
+/** 将容器物理路径 (/workspace/<workspaceKey>) 虚拟化为云电脑标准路径 (/home/user)。 */
+export const virtualizeCloudHostPaths = (
+  text: string,
+  workspaceKey: string,
+  mirrorRoot?: string,
+): string => {
+  if (!text) return text;
+  let out = text;
+  if (workspaceKey) {
+    const containerRoot = `/workspace/${workspaceKey}`;
+    out = out.split(`${containerRoot}/`).join(`${CLOUD_HOST_HOME}/`).split(containerRoot).join(CLOUD_HOST_HOME);
+  }
+  if (mirrorRoot) {
+    out = maskHostPaths(out, mirrorRoot, CLOUD_HOST_HOME);
+  }
+  return out;
+};
+
+/** 将命令中出现的云电脑路径 (/home/user) 还原为容器物理路径 (/workspace/<workspaceKey>)。 */
+export const devirtualizeCloudHostPaths = (command: string, workspaceKey: string): string => {
+  if (!command || !workspaceKey) return command;
+  const containerRoot = `/workspace/${workspaceKey}`;
+  return command.replace(/\/home\/user(?=\/|\s|['";&|)]|$)/g, containerRoot);
 };
 
 /** 生成安全的目录名片段 */
@@ -39,6 +67,19 @@ export const toSafeSegment = (raw: string): string => {
   const trimmed = (raw || "").trim();
   if (!trimmed) return "default";
   return trimmed.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "default";
+};
+
+/** 生成人类可读的项目文件夹名（保留中英文、数字、-、_，去除危险字符）。 */
+export const toReadableProjectDir = (projectName?: string, fallbackToken?: string): string => {
+  const cleaned = (projectName || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 64);
+  if (cleaned && cleaned !== "." && cleaned !== "..") return cleaned;
+  return toSafeSegment(fallbackToken || "default");
 };
 
 /**

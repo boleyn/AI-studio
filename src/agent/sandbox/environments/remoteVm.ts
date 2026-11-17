@@ -1,6 +1,10 @@
 import path from "node:path";
 import { applySandboxWorkspaceSnapshot, collectSandboxWorkspaceSnapshot, type SandboxWorkspaceSnapshot } from "../snapshot";
-import { normalizeVirtualPath } from "../paths";
+import {
+  devirtualizeCloudHostPaths,
+  normalizeVirtualPath,
+  virtualizeCloudHostPaths,
+} from "../paths";
 import type { SandboxExecOptions, SandboxExecResult } from "../types";
 
 /** 与 projects/agent-sandbox/exec-server.ts 的协议版本保持一致 */
@@ -27,7 +31,17 @@ export const execOnRemoteVm = async (
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (token) headers["x-fastgpt-exec-token"] = token;
 
+  const effectiveWorkspaceKey = workspaceKey || path.basename(mirrorRoot);
   const cwdRelative = normalizeVirtualPath(options.cwd || "/").slice(1) || ".";
+  const effectiveCwdRelative = ".";
+  const normalizedCommand = devirtualizeCloudHostPaths(command, effectiveWorkspaceKey);
+  const effectiveCommand =
+    cwdRelative === "."
+      ? normalizedCommand
+      : (() => {
+          const safeCwd = cwdRelative.replace(/'/g, "'\\''");
+          return `mkdir -p '${safeCwd}' && cd '${safeCwd}' && {\n${normalizedCommand}\n}`;
+        })();
   const snapshot = await collectSandboxWorkspaceSnapshot(mirrorRoot);
 
   let response: Response;
@@ -37,8 +51,8 @@ export const execOnRemoteVm = async (
       headers,
       signal: options.signal,
       body: JSON.stringify({
-        command,
-        cwdRelative,
+        command: effectiveCommand,
+        cwdRelative: effectiveCwdRelative,
         workspaceKey: workspaceKey || path.basename(mirrorRoot),
         timeoutMs: options.timeoutMs ?? 120_000,
         protocolVersion: AGENT_SANDBOX_PROTOCOL_VERSION,
@@ -73,7 +87,15 @@ export const execOnRemoteVm = async (
   });
   return {
     code: typeof data.code === "number" && Number.isFinite(data.code) ? data.code : 1,
-    stdout: typeof data.stdout === "string" ? data.stdout : "",
-    stderr: typeof data.stderr === "string" ? data.stderr : "",
+    stdout: virtualizeCloudHostPaths(
+      typeof data.stdout === "string" ? data.stdout : "",
+      effectiveWorkspaceKey,
+      mirrorRoot,
+    ),
+    stderr: virtualizeCloudHostPaths(
+      typeof data.stderr === "string" ? data.stderr : "",
+      effectiveWorkspaceKey,
+      mirrorRoot,
+    ),
   };
 };

@@ -23,9 +23,12 @@ import { buildSystemPrompt } from "./prompt";
 
 export type RunHermesAgentInput = {
   token: string;
+  projectName?: string;
+  userId?: string;
   chatId: string;
   selectedModel: string;
   modelConnection?: AgentModelConnection;
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   selectedSkills: string[];
   historyMessages?: unknown;
   projectFiles?: ProjectFiles;
@@ -33,7 +36,7 @@ export type RunHermesAgentInput = {
   messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
   sandboxKind?: SandboxKind;
-  connector?: { url: string; token?: string };
+  connector?: { url?: string; token?: string; deviceId?: string; grantId?: string; userId?: string };
   onEvent: (event: SdkStreamEventName, data: Record<string, unknown>) => void;
 };
 
@@ -88,6 +91,8 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
 
   const sandbox = await createSandbox({
     workspaceKey: input.token || "project",
+    projectName: input.projectName,
+    hostUserId: input.userId,
     kind: input.sandboxKind,
     projectFiles: input.projectFiles,
     runtimeFiles: runtimeSkillFiles,
@@ -130,6 +135,7 @@ export async function runHermesAgent(input: RunHermesAgentInput): Promise<RunHer
       client: createAgentModelClient(model, maxContext, connection),
       model,
       temperature,
+      reasoningEffort: input.reasoningEffort,
       maxContext,
       maxIterations: config.recursionLimit,
       systemPrompt,

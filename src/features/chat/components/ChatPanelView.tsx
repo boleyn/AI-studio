@@ -134,18 +134,20 @@ const ChatPanelView = () => {
 
         <ChatInput
           workspaceLayout={context.hideHeader}
+          workspaceComposer={context.workspaceComposer}
           key={context.hideHeader ? context.activeConversationId ?? "new-conversation" : "composer"}
           artifactRevision={context.artifactRevision}
           draftStorageKey={context.hideHeader && context.activeConversationId
             ? `aistudio:draft:${context.token}:${context.activeConversationId}`
             : undefined}
-          placeholder={context.hideHeader ? "发消息给 AI Studio" : undefined}
+          placeholder={context.hideHeader ? "发消息或创建任务... / 使用技能 @ 添加资料" : undefined}
           isSending={context.isSending}
           model={context.model}
           modelLoading={context.modelLoading}
           modelOptions={context.modelOptions}
           modelGroups={context.modelGroups}
           thinkingEnabled={context.thinkingEnabled}
+          reasoningEffort={context.reasoningEffort}
           mode={context.chatMode}
           showThinkingToggle={context.selectedModelSupportsReasoning}
           thinkingTooltipEnabled={context.thinkingTooltipEnabled}
@@ -158,6 +160,7 @@ const ChatPanelView = () => {
           onChangeModel={context.onChangeModel}
           onChangeMode={context.onChangeMode}
           onChangeThinkingEnabled={context.onChangeThinkingEnabled}
+          onChangeReasoningEffort={context.onChangeReasoningEffort}
           onChangeSelectedSkills={context.onChangeSelectedSkills}
           onUploadFiles={context.onUploadFiles}
           onSend={context.onSend}

@@ -1,6 +1,6 @@
 // @ts-nocheck
 // @ts-nocheck
-import { getAgentRuntimeConfig } from "@/agent/app";
+import { getAgentRuntimeConfig } from "@/agent/app/config";
 import { promises as fs } from "fs";
 import JSON5 from "json5";
 import path from "path";

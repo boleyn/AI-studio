@@ -159,3 +159,83 @@ body {
   border: 2px solid transparent;
   background-clip: content-box;
 }
+
+/* Native <dialog> top-layer modal styling (modern-web-guidance: dialog, animate-to-from-top-layer, prevent-page-scroll-under-modal-dialog) */
+dialog.app-dialog {
+  margin: auto;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  background: #ffffff;
+  color: #0d0d0d;
+  outline: none;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.18), 0 4px 16px -4px rgba(0, 0, 0, 0.06);
+  max-height: 86dvh;
+  width: calc(100vw - 32px);
+  overflow: hidden;
+  opacity: 0;
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.2s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  transition-behavior: allow-discrete;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog.app-dialog {
+    transform: scale(0.96) translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog.app-dialog {
+    transition-duration: 0.1s;
+  }
+}
+
+dialog.app-dialog[open]:where(:not([data-closing])) {
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog.app-dialog[open]:where(:not([data-closing])) {
+    transform: scale(1) translateY(0);
+  }
+}
+
+@starting-style {
+  dialog.app-dialog[open]:where(:not([data-closing])) {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    dialog.app-dialog[open]:where(:not([data-closing])) {
+      transform: scale(0.96) translateY(4px);
+    }
+  }
+}
+
+dialog.app-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.app-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgba(0, 0, 0, 0);
+  transition-property: background-color, display, overlay;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-out;
+  transition-behavior: allow-discrete;
+}
+
+dialog.app-dialog[open]:where(:not([data-closing]))::backdrop {
+  background-color: rgba(0, 0, 0, 0.36);
+}
+
+@starting-style {
+  dialog.app-dialog[open]:where(:not([data-closing]))::backdrop {
+    background-color: rgba(0, 0, 0, 0);
+  }
+}

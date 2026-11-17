@@ -224,6 +224,7 @@ async function persistWorkspaceToS3(
 
 export type AgentSandboxWorkspace = {
   workspaceRoot: string
+  projectRoot: string
   workspaceKey: string
   persistToS3: () => Promise<void>
 }
@@ -231,6 +232,7 @@ export type AgentSandboxWorkspace = {
 export async function prepareAgentSandboxWorkspace(params: {
   baseCwd: string
   workspaceIdentity: string
+  projectSubdir?: string
   hostProjectRoot?: string
   projectFiles?: ProjectFilesInput
   runtimeFiles?: ProjectFilesInput
@@ -242,9 +244,18 @@ export async function prepareAgentSandboxWorkspace(params: {
     'sandboxes',
     workspaceKey,
   )
+  const safeSubdir = params.projectSubdir
+    ? params.projectSubdir.replace(/^\/+|\/+$/g, '')
+    : ''
+  const projectRoot = safeSubdir
+    ? path.resolve(workspaceRoot, safeSubdir)
+    : workspaceRoot
 
   await ensureDir(workspaceRoot)
   await hydrateWorkspaceFromS3(workspaceRoot, workspaceKey)
+  if (projectRoot !== workspaceRoot) {
+    await ensureDir(projectRoot)
+  }
 
   // /workspace/<token> was produced by the pre-agent-sandbox cwd adapter. It
   // is a reserved runtime path and otherwise gets rehydrated from persisted
@@ -255,7 +266,7 @@ export async function prepareAgentSandboxWorkspace(params: {
   })
 
   if (params.projectFiles && Object.keys(params.projectFiles).length > 0) {
-    await writeProjectFilesToWorkspace(workspaceRoot, params.projectFiles)
+    await writeProjectFilesToWorkspace(projectRoot, params.projectFiles)
   }
 
   // Runtime dependencies (for example repository-provided skills) must be
@@ -276,6 +287,7 @@ export async function prepareAgentSandboxWorkspace(params: {
 
   return {
     workspaceRoot,
+    projectRoot,
     workspaceKey,
     persistToS3: async () => {
       await persistWorkspaceToS3(

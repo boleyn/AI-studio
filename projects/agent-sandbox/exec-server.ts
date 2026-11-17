@@ -308,6 +308,8 @@ async function executeCommand(params: {
   const cacheDir = path.join(workspaceRoot, '.cache')
   const stateDir = path.join(workspaceRoot, '.state')
   const configDir = path.join(workspaceRoot, '.config')
+  await fs.mkdir(cwd, { recursive: true })
+  await fs.chown(cwd, SANDBOX_UID, SANDBOX_GID).catch(() => {})
   await fs.mkdir(tmpDir, { recursive: true })
   await fs.mkdir(cacheDir, { recursive: true })
   await fs.mkdir(stateDir, { recursive: true })

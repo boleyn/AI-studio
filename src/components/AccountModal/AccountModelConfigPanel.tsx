@@ -33,6 +33,7 @@ import {
   IconButton,
   Input,
   Select,
+  Skeleton,
   Text,
   useDisclosure,
   useToast,
@@ -49,6 +50,7 @@ import {
   ModelVisionIcon,
   SearchIcon,
 } from "@components/common/Icon";
+import { AppPanelFooter } from "../ui";
 
 type EditableModelConfig = {
   id: string;
@@ -485,20 +487,17 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
         minH={fillParent ? 0 : undefined}
       >
         {!hideHeader ? (
-          <Flex mb={4} justify="space-between" align="center" pr={14}>
+          <Flex mb={4} justify="space-between" align="center" pr={10}>
             <Box>
-              <Text fontSize="2xl" lineHeight="1.2" fontWeight="700" color="myGray.800">
+              <Text fontSize="16px" fontWeight="600" color="ink.primary">
                 {title}
               </Text>
               {description ? (
-                <Text mt={2} fontSize="sm" color="myGray.500">
+                <Text mt={1} fontSize="13px" color="ink.secondary">
                   {description}
                 </Text>
               ) : null}
             </Box>
-            <Button variant="whitePrimary" onClick={openCreateDrawer}>
-              新增
-            </Button>
           </Flex>
         ) : !hideToolbar ? (
           <Flex mb={4} justify="space-between" align="center" gap={3} wrap="wrap">
@@ -533,8 +532,8 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                 autoComplete="off"
               />
             </Box>
-            <Button variant="whitePrimary" onClick={openCreateDrawer}>
-              新增
+            <Button variant="primary" size="sm" onClick={openCreateDrawer}>
+              新增模型
             </Button>
           </Flex>
         ) : null}
@@ -543,14 +542,43 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
           px={1}
           py={1}
           flex={fillParent ? 1 : undefined}
-          minH={fillParent ? 0 : undefined}
+          minH={fillParent ? 0 : "340px"}
           maxH={fillParent ? "none" : tableMaxHeight}
           overflowY={loading || filteredModels.length === 0 ? "visible" : "auto"}
         >
           {loading ? (
-            <Flex align="center" justify="center" py={8}>
-              <Text fontSize="sm" color="myGray.500">加载中...</Text>
-            </Flex>
+            <Box
+              border="1px solid"
+              borderColor="stroke.subtle"
+              borderRadius="12px"
+              overflow="hidden"
+              bg="white"
+            >
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <Flex
+                  key={idx}
+                  align="center"
+                  justify="space-between"
+                  gap={4}
+                  px={4}
+                  py={3}
+                  borderBottom={idx === 4 ? "none" : "1px solid"}
+                  borderColor="stroke.light"
+                >
+                  <Flex align="center" gap={3} flex={1}>
+                    <Skeleton w="34px" h="34px" borderRadius="9px" flexShrink={0} />
+                    <Box flex={1}>
+                      <Skeleton height="14px" width="120px" borderRadius="6px" mb={1.5} />
+                      <Skeleton height="11px" width="90px" borderRadius="6px" />
+                    </Box>
+                  </Flex>
+                  <Flex align="center" gap={2}>
+                    <Skeleton height="12px" width="84px" borderRadius="6px" />
+                    <Skeleton height="20px" width="40px" borderRadius="999px" />
+                  </Flex>
+                </Flex>
+              ))}
+            </Box>
           ) : filteredModels.length === 0 ? (
             <Flex direction="column" align="center" justify="center" py={8}>
               <Box mb={5}>
@@ -564,30 +592,26 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
               </Text>
             </Flex>
           ) : (
-            <Grid
-              templateColumns={{
-                base: "1fr",
-                md: "repeat(2, minmax(0, 1fr))",
-                xl: "repeat(3, minmax(0, 1fr))",
-                "2xl": "repeat(4, minmax(0, 1fr))",
-              }}
-              gap={4}
+            <Box
+              border="1px solid"
+              borderColor="stroke.subtle"
+              borderRadius="12px"
+              overflow="hidden"
+              bg="white"
             >
-              {filteredModels.map(({ item, index }) => (
-                <Box
+              {filteredModels.map(({ item, index }, rowIdx) => (
+                <Flex
                   key={`${item.id}-${index}`}
-                  position="relative"
-                  border="1px solid var(--ws-border)"
-                  borderRadius="24px"
-                  bg="linear-gradient(140deg, rgba(255,255,255,0.78) 0%, rgba(245,250,248,0.88) 100%)"
+                  align="center"
+                  justify="space-between"
+                  gap={4}
                   px={4}
-                  py={3.5}
-                  transition="all 0.18s ease"
+                  py={3}
+                  borderBottom={rowIdx === filteredModels.length - 1 ? "none" : "1px solid"}
+                  borderColor="stroke.light"
+                  transition="background 0.12s"
                   cursor={onModelClick ? "pointer" : "default"}
-                  _hover={{
-                    boxShadow: "var(--ws-glow-soft)",
-                    transform: "translateY(-1px)",
-                  }}
+                  _hover={{ bg: "surface.sidebar" }}
                   onClick={() => {
                     if (!onModelClick) return;
                     onModelClick({
@@ -598,135 +622,103 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                     });
                   }}
                 >
-                  {item.scope !== "system" ? (
-                    <Flex position="absolute" top={3} right={3} gap={1.5} zIndex={2}>
-                      <MyTooltip label="编辑">
-                        <IconButton
-                          aria-label="编辑"
-                          {...actionBtnSx}
-                          icon={<Box as={EditCustomIcon} w={3.5} h={3.5} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openEditDrawer(index);
-                          }}
-                          isDisabled={saving}
-                        />
-                      </MyTooltip>
-                      <MyTooltip label="删除">
-                        <IconButton
-                          aria-label="删除"
-                          {...actionBtnSx}
-                          _hover={{
-                            ...actionBtnSx._hover,
-                            borderColor: "red.300",
-                            bg: "rgba(254,243,242,0.92)",
-                            color: "red.600",
-                            boxShadow: "0 8px 16px -12px rgba(217,45,32,0.45)",
-                          }}
-                          icon={<Box as={CloseIcon} w={3.5} h={3.5} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleDelete(index);
-                          }}
-                          isDisabled={saving}
-                        />
-                      </MyTooltip>
-                    </Flex>
-                  ) : null}
-
-                  <Flex align="center" gap={3}>
+                  <Flex align="center" gap={3} minW={0} flex="1">
                     <Box
-                      w="44px"
-                      h="44px"
-                      borderRadius="14px"
-                      bg="rgba(134, 239, 172, 0.16)"
-                      border="1px solid rgba(74, 222, 128, 0.45)"
+                      w="34px"
+                      h="34px"
+                      borderRadius="9px"
+                      bg="surface.sidebar"
+                      border="1px solid"
+                      borderColor="stroke.light"
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
                       flexShrink={0}
                     >
-                      <Box as="img" src={resolveIconSrc(item.icon)} w="20px" h="20px" />
+                      <Box as="img" src={resolveIconSrc(item.icon)} w="18px" h="18px" />
                     </Box>
                     <Box minW={0}>
-                      <Text fontSize="lg" lineHeight="1.2" fontWeight="800" color="var(--ws-text-main)" noOfLines={1}>
+                      <Text fontSize="13.5px" fontWeight="600" color="ink.primary" noOfLines={1}>
                         {item.label || item.id}
                       </Text>
-                      <Text mt={1} fontSize="xs" color="var(--ws-text-subtle)" noOfLines={1}>
+                      <Text fontSize="12px" color="ink.muted" noOfLines={1}>
                         {item.id}
                       </Text>
                     </Box>
                   </Flex>
 
-                  <Divider my={4} borderColor="var(--ws-border)" />
+                  <Flex align="center" gap={2} flexShrink={0}>
+                    <Text fontSize="12px" color="ink.secondary" fontFamily="mono">
+                      {(item.protocol || "openai").toUpperCase()} · {formatContextWindow(item.maxContext)}
+                    </Text>
+                    {item.reasoning ? (
+                      <Badge bg="surface.hover" color="ink.primary" fontWeight="500" fontSize="11px" px={2} py={0.5}>
+                        思考
+                      </Badge>
+                    ) : null}
+                    {item.vision ? (
+                      <Badge bg="surface.hover" color="ink.primary" fontWeight="500" fontSize="11px" px={2} py={0.5}>
+                        视觉
+                      </Badge>
+                    ) : null}
+                    <Badge
+                      bg="transparent"
+                      border="1px solid"
+                      borderColor="stroke.subtle"
+                      color="ink.muted"
+                      fontWeight="400"
+                      fontSize="11px"
+                      px={2}
+                      py={0.5}
+                    >
+                      {item.scope === "system" ? "系统" : "自定义"}
+                    </Badge>
 
-                  <Flex wrap="wrap" gap={2.5}>
-                    <Badge
-                      px={2.5}
-                      py={1}
-                      borderRadius="999px"
-                      bg="rgba(226, 232, 240, 0.7)"
-                      color="var(--ws-text-main)"
-                      border="1px solid var(--ws-border)"
-                      display="inline-flex"
-                      alignItems="center"
-                      gap={1}
-                      fontSize="11px"
-                    >
-                      <Box as={ModelProtocolIcon} w={3} h={3} />
-                      {(item.protocol || "openai").toUpperCase()}
-                    </Badge>
-                    <Badge
-                      px={2.5}
-                      py={1}
-                      borderRadius="999px"
-                      bg="rgba(226, 232, 240, 0.7)"
-                      color="var(--ws-text-main)"
-                      border="1px solid var(--ws-border)"
-                      display="inline-flex"
-                      alignItems="center"
-                      gap={1}
-                      fontSize="11px"
-                    >
-                      <Box as={ModelContextIcon} w={3} h={3} />
-                      {formatContextWindow(item.maxContext)}
-                    </Badge>
-                    <Badge
-                      px={2.5}
-                      py={1}
-                      borderRadius="999px"
-                      bg={item.reasoning ? "var(--ws-accent-soft)" : "rgba(148, 163, 184, 0.16)"}
-                      color={item.reasoning ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
-                      border={item.reasoning ? "1px solid var(--ws-accent-border)" : "1px solid var(--ws-border)"}
-                      display="inline-flex"
-                      alignItems="center"
-                      gap={1}
-                      fontSize="11px"
-                    >
-                      <Box as={ModelReasoningIcon} w={3} h={3} />
-                      {item.reasoning ? "思考" : "无思考"}
-                    </Badge>
-                    <Badge
-                      px={2.5}
-                      py={1}
-                      borderRadius="999px"
-                      bg={item.vision ? "var(--ws-accent-soft)" : "rgba(148, 163, 184, 0.16)"}
-                      color={item.vision ? "var(--ws-accent)" : "var(--ws-text-subtle)"}
-                      border={item.vision ? "1px solid var(--ws-accent-border)" : "1px solid var(--ws-border)"}
-                      display="inline-flex"
-                      alignItems="center"
-                      gap={1}
-                      fontSize="11px"
-                    >
-                      <Box as={ModelVisionIcon} w={3} h={3} />
-                      {item.vision ? "视觉" : "无视觉"}
-                    </Badge>
+                    {item.scope !== "system" ? (
+                      <Flex gap={1} ml={1}>
+                        <MyTooltip label="编辑">
+                          <IconButton
+                            aria-label="编辑"
+                            size="xs"
+                            variant="ghost"
+                            icon={<Box as={EditCustomIcon} w={3.5} h={3.5} />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openEditDrawer(index);
+                            }}
+                            isDisabled={saving}
+                          />
+                        </MyTooltip>
+                        <MyTooltip label="删除">
+                          <IconButton
+                            aria-label="删除"
+                            size="xs"
+                            variant="ghost"
+                            _hover={{ bg: "red.50", color: "red.600" }}
+                            icon={<Box as={CloseIcon} w={3.5} h={3.5} />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDelete(index);
+                            }}
+                            isDisabled={saving}
+                          />
+                        </MyTooltip>
+                      </Flex>
+                    ) : null}
                   </Flex>
-                </Box>
+                </Flex>
               ))}
-            </Grid>
+            </Box>
           )}
         </Box>
+
+        {!hideHeader && (
+          <AppPanelFooter hint="支持接入 OpenAI / Anthropic 兼容接口，自定义模型仅当前账号可见。">
+            <Button variant="primary" size="sm" onClick={openCreateDrawer}>
+              新增模型
+            </Button>
+          </AppPanelFooter>
+        )}
       </Box>
 
       <AlertDialog
@@ -848,8 +840,8 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
                           p={0}
                           borderRadius="md"
                           border="1px solid"
-                          borderColor={active ? "green.400" : "myGray.200"}
-                          bg={active ? "green.50" : "white"}
+                          borderColor={active ? "ink.primary" : "stroke.subtle"}
+                          bg={active ? "surface.active" : "white"}
                           onClick={() => setDraft((prev) => ({ ...prev, icon }))}
                         >
                           <Box as="img" src={resolveIconSrc(icon)} w="16px" h="16px" />
@@ -879,10 +871,8 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
               测试模型
             </Button>
             <Button
-              bg="green.500"
-              color="white"
-              _hover={{ bg: "green.600" }}
-              _active={{ bg: "green.700" }}
+              variant="primary"
+              size="sm"
               isLoading={saving}
               isDisabled={testing}
               onClick={commitDraft}

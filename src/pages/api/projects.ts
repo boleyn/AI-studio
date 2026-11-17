@@ -10,6 +10,7 @@ import {
   listProjects,
   getProject,
   saveProject,
+  updateProjectMeta,
   generateToken,
   deleteProject as deleteProjectStorage,
   type ProjectData,
@@ -132,6 +133,53 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return;
   }
 
+  if (req.method === "PATCH") {
+    const token =
+      typeof req.query.token === "string"
+        ? req.query.token
+        : typeof req.body?.token === "string"
+          ? req.body.token
+          : "";
+    if (!token) {
+      res.status(400).json({ error: "缺少 token 参数" });
+      return;
+    }
+    try {
+      const project = await getProject(token);
+      if (!project) {
+        res.status(404).json({ error: "项目不存在" });
+        return;
+      }
+      if (project.userId !== userId) {
+        res.status(403).json({ error: "无权修改该项目" });
+        return;
+      }
+      const nextName =
+        typeof req.body?.name === "string" ? req.body.name.trim() : undefined;
+      if (nextName !== undefined && !nextName) {
+        res.status(400).json({ error: "项目名称不能为空" });
+        return;
+      }
+      const nextDescription =
+        typeof req.body?.description === "string"
+          ? req.body.description.trim()
+          : undefined;
+      await updateProjectMeta(token, {
+        ...(nextName !== undefined ? { name: nextName } : {}),
+        ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+      });
+      res.status(200).json({
+        token,
+        name: nextName ?? project.name,
+        description: nextDescription ?? project.description,
+      });
+    } catch (error) {
+      console.error("Failed to update project:", error);
+      res.status(500).json({ error: "更新项目失败" });
+    }
+    return;
+  }
+
   if (req.method === "DELETE") {
     const token = typeof req.query.token === "string" ? req.query.token : "";
     if (!token) {
@@ -158,7 +206,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return;
   }
 
-  res.setHeader("Allow", ["GET", "POST", "DELETE"]);
+  res.setHeader("Allow", ["GET", "POST", "PATCH", "DELETE"]);
   res.status(405).json({ error: `方法 ${req.method} 不被允许` });
 };
 

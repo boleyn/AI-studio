@@ -23,7 +23,12 @@ import {
   getConversation as getConversationById,
   replaceConversationMessages,
 } from "../services/conversations";
-import type { ChatInputFile, ChatInputSubmitPayload } from "../types/chatInput";
+import type {
+  ChatInputFile,
+  ChatInputSubmitPayload,
+  ReasoningEffortLevel,
+  WorkspaceComposerConfig,
+} from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
@@ -71,6 +76,31 @@ import {
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
 const THINKING_ENABLED_STORAGE_KEY = "aistudio.chat.thinkingEnabled";
+const REASONING_EFFORT_STORAGE_KEY = "aistudio.chat.reasoningEffort";
+
+const readReasoningEffort = (): ReasoningEffortLevel => {
+  if (typeof window === "undefined") return "high";
+  try {
+    const val = window.localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
+    if (val === "off" || val === "low" || val === "medium" || val === "high" || val === "xhigh") {
+      return val;
+    }
+    const legacy = window.localStorage.getItem(THINKING_ENABLED_STORAGE_KEY);
+    if (legacy === "0") return "off";
+  } catch {
+    // ignore
+  }
+  return "high";
+};
+
+const persistReasoningEffort = (effort: ReasoningEffortLevel) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, effort);
+  } catch {
+    // ignore
+  }
+};
 
 const readThinkingEnabled = () => {
   if (typeof window === "undefined") return true;
@@ -506,6 +536,7 @@ const ChatPanel = ({
   externalNewConversationSignal,
   onConversationsChanged,
   hideHeader = false,
+  workspaceComposer,
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
@@ -534,6 +565,7 @@ const ChatPanel = ({
   externalNewConversationSignal?: number;
   onConversationsChanged?: () => void;
   hideHeader?: boolean;
+  workspaceComposer?: WorkspaceComposerConfig;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -584,6 +616,7 @@ const ChatPanel = ({
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>("high");
   const [chatMode, setChatMode] = useState<"default" | "plan">("default");
   const [pendingInteractions, setPendingInteractions] = useState<PendingChatInteraction[]>([]);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
@@ -628,11 +661,25 @@ const ChatPanel = ({
     [model, setModel]
   );
   useEffect(() => {
-    setThinkingEnabled(readThinkingEnabled());
+    const storedEffort = readReasoningEffort();
+    setReasoningEffort(storedEffort);
+    setThinkingEnabled(readThinkingEnabled() && storedEffort !== "off");
+  }, []);
+  const handleChangeReasoningEffort = useCallback((effort: ReasoningEffortLevel) => {
+    setReasoningEffort(effort);
+    persistReasoningEffort(effort);
+    const enabled = effort !== "off";
+    setThinkingEnabled(enabled);
+    persistThinkingEnabled(enabled);
   }, []);
   const handleChangeThinkingEnabled = useCallback((enabled: boolean) => {
     setThinkingEnabled(enabled);
     persistThinkingEnabled(enabled);
+    setReasoningEffort((prev) => {
+      const next: ReasoningEffortLevel = enabled ? (prev === "off" ? "high" : prev) : "off";
+      persistReasoningEffort(next);
+      return next;
+    });
   }, []);
   const selectedModelSupportsReasoning = useMemo(() => {
     const selected = modelCatalog?.models?.find((item) => item.id === model);
@@ -1297,6 +1344,9 @@ const ChatPanel = ({
               ...(model.toLowerCase().includes("kimi")
                 ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
                 : {}),
+              ...(payload.reasoningEffort && payload.reasoningEffort !== "off"
+                ? { reasoningEffort: payload.reasoningEffort }
+                : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
               ...(completionsExtraBody || {}),
@@ -1911,7 +1961,28 @@ const ChatPanel = ({
             }
 
             if (event === SdkStreamEventEnum.done) return;
-            if (event === SdkStreamEventEnum.error) return;
+            if (event === SdkStreamEventEnum.error) {
+              const errRecord = item as { message?: unknown; error?: unknown };
+              const errMsg =
+                (typeof errRecord.message === "string" && errRecord.message.trim()) ||
+                (typeof errRecord.error === "string" && errRecord.error.trim()) ||
+                "请求失败";
+              assistantFailureText = errMsg.startsWith("请求失败") ? errMsg : `请求失败: ${errMsg}`;
+              if (streamingConversationIdRef.current === conversationId) {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          content: assistantFailureText,
+                          status: "error",
+                        }
+                      : msg
+                  )
+                );
+              }
+              return;
+            }
           };
           const enqueueSseEvent = (item: unknown) => {
             streamEventQueue.push(item);
@@ -1940,6 +2011,9 @@ const ChatPanel = ({
               model,
               ...(model.toLowerCase().includes("kimi")
                 ? { thinking: { type: payload.thinkingEnabled === false ? "disabled" : "enabled" } }
+                : {}),
+              ...(payload.reasoningEffort && payload.reasoningEffort !== "off"
+                ? { reasoningEffort: payload.reasoningEffort }
                 : {}),
               ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
               ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
@@ -2198,6 +2272,7 @@ const ChatPanel = ({
       onRewindLatestTurn: () => void handleRewindLatestTurn(),
       streamingMessageId,
       thinkingEnabled,
+      reasoningEffort,
       chatMode,
       selectedModelSupportsReasoning,
       thinkingTooltipEnabled,
@@ -2207,6 +2282,7 @@ const ChatPanel = ({
       fileOptions,
       addFileRequest,
       onChangeThinkingEnabled: handleChangeThinkingEnabled,
+      onChangeReasoningEffort: handleChangeReasoningEffort,
       onChangeSelectedSkills: setSelectedSkills,
       onUploadFiles: prepareUploadFiles,
       onSend: handleSend,
@@ -2220,6 +2296,7 @@ const ChatPanel = ({
       onOpenWorkspaceFile,
       onCreateSkillViaChat: handleCreateSkillViaChat,
       onUseSkill: handleUseSkill,
+      workspaceComposer,
     }),
     [
       height,
@@ -2256,6 +2333,7 @@ const ChatPanel = ({
       handleRewindLatestTurn,
       streamingMessageId,
       thinkingEnabled,
+      reasoningEffort,
       chatMode,
       selectedModelSupportsReasoning,
       thinkingTooltipEnabled,
@@ -2265,6 +2343,7 @@ const ChatPanel = ({
       fileOptions,
       addFileRequest,
       handleChangeThinkingEnabled,
+      handleChangeReasoningEffort,
       setSelectedSkills,
       prepareUploadFiles,
       handleSend,
@@ -2277,6 +2356,7 @@ const ChatPanel = ({
       onOpenWorkspaceFile,
       handleCreateSkillViaChat,
       handleUseSkill,
+      workspaceComposer,
     ]
   );
 

@@ -1,5 +1,7 @@
 import type { UploadedFileArtifact } from "./fileArtifact";
 
+export type ReasoningEffortLevel = "off" | "low" | "medium" | "high" | "xhigh";
+
 export interface ChatInputFile {
   id: string;
   file: File;
@@ -31,6 +33,7 @@ export interface ChatInputSubmitPayload {
   selectedSkills?: string[];
   selectedFilePaths?: string[];
   thinkingEnabled?: boolean;
+  reasoningEffort?: ReasoningEffortLevel;
 }
 
 export interface ChatInputModelOption {
@@ -48,17 +51,40 @@ export interface ChatInputModelGroup {
   options: ChatInputModelOption[];
 }
 
+export interface WorkspaceComposerDeviceOption {
+  deviceId: string;
+  name: string;
+  online: boolean;
+}
+
+export interface WorkspaceComposerConfig {
+  runtimeKind?: "remote-vm" | "connector";
+  runtimeLabel?: string;
+  runtimeDeviceId?: string;
+  devices?: WorkspaceComposerDeviceOption[];
+  onSelectCloudHost?: () => void;
+  onSelectDeviceHost?: (device: WorkspaceComposerDeviceOption) => void;
+  onOpenRuntime?: () => void;
+  projectToken?: string;
+  projectName?: string;
+  projects?: Array<{ token: string; name: string }>;
+  onSelectProject?: (token: string) => void;
+  onCreateProject?: () => void;
+}
+
 export interface ChatInputProps {
   placeholder?: string;
   artifactRevision?: { text: string; onApplied: () => void };
   draftStorageKey?: string;
   workspaceLayout?: boolean;
+  workspaceComposer?: WorkspaceComposerConfig;
   isSending: boolean;
   model: string;
   modelOptions: ChatInputModelOption[];
   modelGroups?: ChatInputModelGroup[];
   modelLoading?: boolean;
   thinkingEnabled?: boolean;
+  reasoningEffort?: ReasoningEffortLevel;
   showThinkingToggle?: boolean;
   mode?: "default" | "plan";
   thinkingTooltipEnabled?: string;
@@ -76,6 +102,7 @@ export interface ChatInputProps {
   onChangeModel: (model: string) => void;
   onChangeMode?: (mode: "default" | "plan") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;
+  onChangeReasoningEffort?: (effort: ReasoningEffortLevel) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;
   onChangeSelectedSkills?: (skillNames: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;

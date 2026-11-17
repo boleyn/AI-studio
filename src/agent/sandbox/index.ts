@@ -1,8 +1,9 @@
 import { createConnectorSandbox } from "./environments/connector";
+import { createLocalDeviceSandbox } from "./environments/localDevice";
 import { HostDirFileSystem } from "./environments/hostDirFs";
 import { execOnHost } from "./environments/localExec";
 import { execOnRemoteVm } from "./environments/remoteVm";
-import { toSafeSegment } from "./paths";
+import { toReadableProjectDir, toSafeSegment } from "./paths";
 import type { CreateSandboxInput, Sandbox, SandboxKind } from "./types";
 import { prepareAgentSandboxWorkspace } from "./workspace";
 
@@ -42,29 +43,55 @@ export const resolveSandboxKind = (requested?: SandboxKind): SandboxKind => {
 /** 创建工作空间沙盒（Hermes: tools/environments 工厂） */
 export const createSandbox = async (input: CreateSandboxInput): Promise<Sandbox> => {
   const kind = resolveSandboxKind(input.kind);
-  const workspaceKey = toSafeSegment(input.workspaceKey);
+  const projectKey = toSafeSegment(input.workspaceKey);
+  const hostUserId = typeof input.hostUserId === "string" ? input.hostUserId.trim() : "";
 
   if (kind === "connector") {
-    if (!input.connector?.url) throw new Error("connector sandbox requires connector.url");
-    return createConnectorSandbox({ workspaceKey, url: input.connector.url, token: input.connector.token });
+    if (input.connector?.deviceId && input.connector?.grantId && input.connector?.userId) {
+      return createLocalDeviceSandbox({
+        workspaceKey: projectKey,
+        deviceId: input.connector.deviceId,
+        grantId: input.connector.grantId,
+        userId: input.connector.userId,
+      });
+    }
+    if (!input.connector?.url) throw new Error("connector sandbox requires connector.url or deviceId+grantId");
+    return createConnectorSandbox({ workspaceKey: projectKey, url: input.connector.url, token: input.connector.token });
   }
+
+  // 每用户绑定一台云主机（user-<userId>），各个项目作为主机内 projects/<可读项目名> 文件夹共享 CLI / 依赖 / skills
+  const hostWorkspaceKey = hostUserId ? toSafeSegment(`user-${hostUserId}`) : projectKey;
+  const readableDir = hostUserId
+    ? toReadableProjectDir(input.projectName, projectKey)
+    : undefined;
+  const projectSubdir = readableDir ? `projects/${readableDir}` : undefined;
 
   const prepared = await prepareAgentSandboxWorkspace({
     baseCwd: process.cwd(),
-    workspaceIdentity: workspaceKey,
+    workspaceIdentity: hostWorkspaceKey,
+    projectSubdir,
     projectFiles: input.projectFiles,
     runtimeFiles: input.runtimeFiles,
   });
-  const fs = new HostDirFileSystem(prepared.workspaceRoot);
+  const fs = new HostDirFileSystem(prepared.projectRoot);
+  const resolveExecCwd = (cwd?: string) => {
+    if (!projectSubdir) return cwd;
+    const rel = (cwd || "/").replace(/^\/+/, "");
+    return rel ? `/${projectSubdir}/${rel}` : `/${projectSubdir}`;
+  };
 
   return {
     kind,
     workspaceKey: prepared.workspaceKey,
     fs,
-    exec: (command, options) =>
-      kind === "remote-vm"
-        ? execOnRemoteVm(prepared.workspaceRoot, prepared.workspaceKey, command, options)
-        : execOnHost(prepared.workspaceRoot, command, options),
+    exec: (command, options) => {
+      const scopedOptions = projectSubdir
+        ? { ...options, cwd: resolveExecCwd(options?.cwd) }
+        : options;
+      return kind === "remote-vm"
+        ? execOnRemoteVm(prepared.workspaceRoot, prepared.workspaceKey, command, scopedOptions)
+        : execOnHost(prepared.workspaceRoot, command, scopedOptions);
+    },
     persist: () => withRetry(prepared.persistToS3),
     exportProjectFiles: () => fs.exportTextFiles(),
     async dispose() {},

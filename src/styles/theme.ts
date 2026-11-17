@@ -11,11 +11,12 @@ export const theme = extendTheme({
         height: "100%",
       },
       body: {
-        color: "myGray.800",
+        bg: "#ffffff",
+        color: "#0d0d0d",
         letterSpacing: "-0.01em",
       },
       "::selection": {
-        background: "rgba(51, 112, 255, 0.2)",
+        background: "rgba(13, 13, 13, 0.14)",
       },
     },
   },
@@ -23,103 +24,247 @@ export const theme = extendTheme({
     Input: {
       baseStyle: {
         field: {
-          bg: "rgba(255,255,255,0.78)",
-          borderColor: "myGray.250",
-          borderRadius: "12px",
+          bg: "#ffffff",
+          borderColor: "rgba(0, 0, 0, 0.14)",
+          borderRadius: "10px",
+          color: "#0d0d0d",
           transitionProperty: "common",
-          transitionDuration: "normal",
+          transitionDuration: "fast",
           _placeholder: {
             fontSize: "sm",
-            color: "myGray.400",
+            color: "#8f8f8f",
           },
           _hover: {
-            borderColor: "myGray.300",
+            borderColor: "rgba(0, 0, 0, 0.26)",
           },
           _focusVisible: {
-            borderColor: "primary.400",
-            boxShadow: "0 0 0 3px rgba(51,112,255,0.15)",
+            borderColor: "#0d0d0d",
+            boxShadow: "0 0 0 2px rgba(13, 13, 13, 0.08)",
           },
+        },
+      },
+    },
+    Textarea: {
+      baseStyle: {
+        bg: "#ffffff",
+        borderColor: "rgba(0, 0, 0, 0.14)",
+        borderRadius: "10px",
+        color: "#0d0d0d",
+        _placeholder: {
+          fontSize: "sm",
+          color: "#8f8f8f",
+        },
+        _hover: {
+          borderColor: "rgba(0, 0, 0, 0.26)",
+        },
+        _focusVisible: {
+          borderColor: "#0d0d0d",
+          boxShadow: "0 0 0 2px rgba(13, 13, 13, 0.08)",
         },
       },
     },
     Card: {
       baseStyle: {
         container: {
-          borderRadius: "18px",
-          border: "1px solid",
-          borderColor: "rgba(255,255,255,0.7)",
-          bg: "rgba(255,255,255,0.8)",
-          backdropFilter: "blur(16px)",
-          boxShadow: "0 22px 42px -28px rgba(15, 23, 42, 0.35)",
+          borderRadius: "16px",
+          border: "1px solid rgba(0, 0, 0, 0.08)",
+          bg: "#ffffff",
+          boxShadow: "0 4px 20px -4px rgba(0, 0, 0, 0.06)",
         },
       },
     },
     Modal: {
       baseStyle: {
-        dialog: {
-          borderRadius: "18px",
-          border: "1px solid rgba(255,255,255,0.72)",
-          bg: "rgba(255,255,255,0.92)",
-          backdropFilter: "blur(18px)",
-          boxShadow: "0 28px 50px -30px rgba(15,23,42,0.42)",
+        overlay: {
+          bg: "rgba(0, 0, 0, 0.35)",
+          backdropFilter: "blur(2px)",
         },
+        dialog: {
+          borderRadius: "20px",
+          border: "1px solid rgba(0, 0, 0, 0.06)",
+          bg: "#ffffff",
+          boxShadow: "0 24px 48px -12px rgba(0, 0, 0, 0.18)",
+        },
+      },
+    },
+    Menu: {
+      baseStyle: {
+        list: {
+          borderRadius: "16px",
+          border: "1px solid rgba(0, 0, 0, 0.08)",
+          bg: "#ffffff",
+          p: "6px",
+          boxShadow: "0 10px 30px -6px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+          minW: "180px",
+        },
+        item: {
+          borderRadius: "10px",
+          px: "10px",
+          py: "8px",
+          fontSize: "14px",
+          fontWeight: "400",
+          color: "#0d0d0d",
+          bg: "transparent",
+          _hover: {
+            bg: "#f3f3f3",
+          },
+          _focus: {
+            bg: "#f3f3f3",
+          },
+        },
+        divider: {
+          borderColor: "rgba(0, 0, 0, 0.06)",
+          my: "4px",
+        },
+      },
+    },
+    Popover: {
+      baseStyle: {
+        content: {
+          borderRadius: "16px",
+          border: "1px solid rgba(0, 0, 0, 0.08)",
+          bg: "#ffffff",
+          boxShadow: "0 12px 32px -6px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+          _focusVisible: {
+            outline: "none",
+            boxShadow: "0 12px 32px -6px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+          },
+        },
+      },
+    },
+    Tooltip: {
+      baseStyle: {
+        borderRadius: "8px",
+        bg: "#0d0d0d",
+        color: "#ffffff",
+        fontSize: "12px",
+        fontWeight: "500",
+        px: "10px",
+        py: "5px",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
       },
     },
     IconButton: {
       baseStyle: {
-        borderRadius: "12px",
+        borderRadius: "10px",
         transitionProperty: "common",
-        transitionDuration: "normal",
+        transitionDuration: "fast",
         _hover: {
-          bg: "myGray.100",
+          bg: "#f3f3f3",
         },
       },
     },
     Badge: {
       baseStyle: {
         borderRadius: "999px",
-        fontWeight: "700",
+        fontWeight: "600",
+      },
+    },
+    Alert: {
+      variants: {
+        solid: (props: { status?: string }) => {
+          const status = props.status;
+          if (status === "error") {
+            return {
+              container: {
+                bg: "#dc2626",
+                color: "#ffffff",
+                borderRadius: "12px",
+                boxShadow: "0 10px 25px -5px rgba(0,0,0,0.2)",
+              },
+            };
+          }
+          return {
+            container: {
+              bg: "#0d0d0d",
+              color: "#ffffff",
+              borderRadius: "12px",
+              boxShadow: "0 10px 25px -5px rgba(0,0,0,0.2)",
+            },
+          };
+        },
       },
     },
     Button: {
       baseStyle: {
-        borderRadius: "12px",
-        fontWeight: "600",
+        borderRadius: "10px",
+        fontWeight: "500",
         lineHeight: "1.1",
         minH: "unset",
         transitionProperty: "common",
-        transitionDuration: "normal",
+        transitionDuration: "fast",
       },
       variants: {
         primary: {
-          bg: "primary.600",
-          color: "white",
+          bg: "#0d0d0d",
+          color: "#ffffff",
           border: "none",
-          boxShadow: "0 10px 22px -12px rgba(37, 99, 235, 0.62)",
           _hover: {
-            bg: "primary.700",
+            bg: "#262626",
+            _disabled: { bg: "#0d0d0d" },
           },
-          _disabled: { bg: "primary.7 !important" },
+          _disabled: { opacity: 0.45 },
         },
         whitePrimary: {
-          color: "myGray.600",
-          border: "1px solid",
-          borderColor: "myGray.250",
-          bg: "rgba(255,255,255,0.94)",
-          boxShadow: "0 10px 24px -20px rgba(15, 23, 42, 0.4)",
+          color: "#0d0d0d",
+          border: "1px solid rgba(0, 0, 0, 0.1)",
+          bg: "#ffffff",
           _hover: {
-            color: "primary.600",
-            background: "rgba(240, 244, 255, 0.92)",
-            borderColor: "primary.300",
-            transform: "translateY(-1px)",
+            bg: "#f5f5f5",
+            borderColor: "rgba(0, 0, 0, 0.18)",
           },
-          _active: { color: "primary.600" },
-          _disabled: { color: "myGray.600 !important" },
+          _active: { bg: "#ececec" },
+          _disabled: { opacity: 0.5 },
+        },
+        ghost: {
+          color: "#0d0d0d",
+          _hover: {
+            bg: "#f3f3f3",
+          },
+          _active: {
+            bg: "#eaeaea",
+          },
+        },
+        outline: {
+          borderColor: "rgba(0, 0, 0, 0.12)",
+          color: "#0d0d0d",
+          bg: "#ffffff",
+          _hover: {
+            bg: "#f5f5f5",
+          },
+        },
+        danger: {
+          bg: "#dc2626",
+          color: "#ffffff",
+          border: "none",
+          _hover: {
+            bg: "#b91c1c",
+            _disabled: { bg: "#dc2626" },
+          },
+          _disabled: { opacity: 0.45 },
         },
       },
     },
   },
   colors: {
+    surface: {
+      canvas: "#ffffff",
+      rail: "#f4f4f5",
+      sidebar: "#f9f9f9",
+      hover: "#f3f3f3",
+      active: "#ececec",
+      popover: "#ffffff",
+      userBubble: "#e8f1ff",
+    },
+    ink: {
+      primary: "#0d0d0d",
+      secondary: "#5d5d5d",
+      muted: "#8f8f8f",
+    },
+    stroke: {
+      subtle: "rgba(0, 0, 0, 0.08)",
+      light: "rgba(0, 0, 0, 0.06)",
+    },
     slate: {
       900: "#0f172a",
     },

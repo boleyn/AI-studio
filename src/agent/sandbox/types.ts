@@ -60,11 +60,15 @@ export type ProjectFiles = Record<string, { code?: string }>;
 
 export type CreateSandboxInput = {
   workspaceKey: string;
+  /** 可读项目名称：在用户云主机下优先使用可读项目目录名（如 /home/user/projects/测试） */
+  projectName?: string;
+  /** 绑定所属用户 ID：提供时云主机按 user-<hostUserId> 复用，项目文件存放在 projects/<项目目录> 文件夹下 */
+  hostUserId?: string;
   kind?: SandboxKind;
   /** 首轮种子文件（已存在的文件不会覆盖） */
   projectFiles?: ProjectFiles;
   /** 每轮强制刷新的运行时文件（如系统 skills），不进入持久化 */
   runtimeFiles?: ProjectFiles;
-  /** connector 模式下的连接信息 */
-  connector?: { url: string; token?: string };
+  /** connector 模式下的连接信息（直连 HTTP RPC 或 WebSocket 桌面连接器） */
+  connector?: { url?: string; token?: string; deviceId?: string; grantId?: string; userId?: string };
 };
