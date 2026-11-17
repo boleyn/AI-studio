@@ -482,6 +482,7 @@ const ChatPanel = ({
   token,
   onFilesUpdated,
   onAttachmentsAvailable,
+  onConversationSourcesChanged,
   addFileRequest,
   onFilesRefresh,
   height = "100%",
@@ -509,6 +510,7 @@ const ChatPanel = ({
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
+  onConversationSourcesChanged?: (sources: { token: string; conversationId: string; files: UploadedFileArtifact[] }) => void;
   onAttachmentsAvailable?: (files: UploadedFileArtifact[]) => void;
   addFileRequest?: { path: string; version: number } | null;
   onFilesRefresh?: () => Promise<Record<string, { code: string }> | null>;
@@ -581,6 +583,20 @@ const ChatPanel = ({
   }, [conversationsSignature, isInitialized, onConversationsChanged]);
 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  useEffect(() => {
+    if (!onConversationSourcesChanged || !activeConversation?.id) return;
+    const files = new Map<string, UploadedFileArtifact>();
+    for (const message of messages) {
+      if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") continue;
+      const attachments = (message.artifact as { files?: UploadedFileArtifact[] }).files;
+      if (!Array.isArray(attachments)) continue;
+      for (const file of attachments) {
+        if (file?.storagePath && file.name) files.set(file.storagePath, file);
+      }
+    }
+    onConversationSourcesChanged({ token, conversationId: activeConversation.id, files: [...files.values()] });
+  }, [activeConversation?.id, messages, onConversationSourcesChanged, token]);
+
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);

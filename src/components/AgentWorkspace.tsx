@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
 import ChatPanel from "@features/chat/components/ChatPanel";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -118,6 +119,7 @@ export default function AgentWorkspace({
   const [showAllConvsByProject, setShowAllConvsByProject] = useState<Record<string, boolean>>({});
 
   // 工作区文件抽屉（按需展开，默认关闭以保持传统会话体验）
+  const [conversationSources, setConversationSources] = useState<{ token: string; conversationId: string; files: UploadedFileArtifact[] }>();
   const [filesDrawerOpen, setFilesDrawerOpen] = useState(false);
   const [filesByProject, setFilesByProject] = useState<Record<string, Record<string, { code: string }>>>(
     initialProjectToken ? { [initialProjectToken]: initialFiles } : {},
@@ -795,6 +797,7 @@ export default function AgentWorkspace({
                 externalActiveConversationId={activeChatId}
                 externalNewConversationSignal={newConvSignal}
                 onConversationsChanged={() => void fetchProjects()}
+                onConversationSourcesChanged={setConversationSources}
                 onFilesUpdated={(files) => {
                   setFilesByProject((prev) => ({ ...prev, [activeProject.token]: { ...prev[activeProject.token], ...files } }));
                 }}
@@ -818,6 +821,7 @@ export default function AgentWorkspace({
           {filesDrawerOpen && (
             <WorkspaceFilesPanel key={visibleChatId || activeToken} token={activeToken} conversationId={visibleChatId} onSelectVersion={setArtifactVersion} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
               onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
+              sources={conversationSources && conversationSources.token === activeToken && conversationSources.conversationId === visibleChatId ? conversationSources.files : []}
               onShowList={() => { setArtifactVersion(undefined); setSelectedFilePath(""); }}
               onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
           )}
