@@ -22,26 +22,42 @@ const CodeBlock = ({ language, value }: CodeBlockProps) => {
   };
 
   return (
-    <Box borderRadius="12px" overflow="hidden" border="1px solid" borderColor="gray.700" bg="#1e1e1e">
-      <Flex align="center" justify="space-between" px={3} py={2} bg="#111827">
-        <Text fontSize="xs" color="gray.200" textTransform="uppercase" letterSpacing="0.08em">
+    <Box
+      borderRadius="14px"
+      overflow="hidden"
+      border="1px solid rgba(0, 0, 0, 0.08)"
+      bg="#f9f9fa"
+      my={3}
+    >
+      <Flex
+        align="center"
+        justify="space-between"
+        px={4}
+        py={2}
+        bg="#f3f4f6"
+        borderBottom="1px solid rgba(0, 0, 0, 0.06)"
+      >
+        <Text fontSize="12px" fontWeight="500" color="#52525b" letterSpacing="0.02em">
           {language || "code"}
         </Text>
         <IconButton
           aria-label="Copy code"
           size="xs"
           variant="ghost"
-          colorScheme="whiteAlpha"
+          color="#52525b"
+          _hover={{ bg: "rgba(0, 0, 0, 0.06)", color: "#18181b" }}
+          px={2}
+          borderRadius="6px"
           onClick={handleCopy}
         >
-          <Text fontSize="xs">{copied ? "已复制" : "复制"}</Text>
+          <Text fontSize="12px">{copied ? "已复制" : "复制"}</Text>
         </IconButton>
       </Flex>
-      <Box px={3} py={3} overflowX="auto">
+      <Box px={4} py={3} overflowX="auto">
         <SyntaxHighlighter
           language={language}
           style={codeLight as any}
-          customStyle={{ background: "transparent", margin: 0, padding: 0 }}
+          customStyle={{ background: "transparent", margin: 0, padding: 0, fontSize: "13.5px", lineHeight: "1.6" }}
           wrapLongLines
         >
           {value}

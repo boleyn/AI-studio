@@ -1,20 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { Box, Flex } from '@chakra-ui/react';
-import { CopyIcon } from '@/components/common/Icon';
+import { Box, Flex, Text } from '@chakra-ui/react';
+import { Check, Copy } from 'lucide-react';
 import { useCopyData } from '@/hooks/useCopyData';
 import { useMarkdownWidth } from '../hooks';
 
 export const codeLight: { [key: string]: React.CSSProperties } = {
   'code[class*=language-]': {
-    color: '#d4d4d4',
+    color: '#1e293b',
     textShadow: 'none',
     direction: 'ltr',
     textAlign: 'left',
     whiteSpace: 'pre',
     wordSpacing: 'normal',
     wordBreak: 'normal',
-    lineHeight: '1.5',
+    lineHeight: '1.6',
     MozTabSize: '4',
     OTabSize: '4',
     tabSize: '4',
@@ -24,14 +24,14 @@ export const codeLight: { [key: string]: React.CSSProperties } = {
     hyphens: 'none'
   },
   'pre[class*=language-]': {
-    color: '#d4d4d4',
+    color: '#1e293b',
     textShadow: 'none',
     direction: 'ltr',
     textAlign: 'left',
     whiteSpace: 'pre',
     wordSpacing: 'normal',
     wordBreak: 'normal',
-    lineHeight: '1.5',
+    lineHeight: '1.6',
     MozTabSize: '4',
     OTabSize: '4',
     tabSize: '4',
@@ -42,152 +42,153 @@ export const codeLight: { [key: string]: React.CSSProperties } = {
     padding: '1em',
     margin: '.5em 0',
     overflow: 'auto',
-    background: '#1e1e1e'
+    background: '#f9f9fa'
   },
   'code[class*=language-] ::selection': {
     textShadow: 'none',
-    background: '#264f78'
+    background: '#dbeafe'
   },
   'code[class*=language-]::selection': {
     textShadow: 'none',
-    background: '#264f78'
+    background: '#dbeafe'
   },
   'pre[class*=language-] ::selection': {
     textShadow: 'none',
-    background: '#264f78'
+    background: '#dbeafe'
   },
   'pre[class*=language-]::selection': {
     textShadow: 'none',
-    background: '#264f78'
+    background: '#dbeafe'
   },
   ':not(pre)>code[class*=language-]': {
-    padding: '.1em .3em',
-    borderRadius: '.3em',
-    color: '#db4c69',
-    background: '#1e1e1e'
+    padding: '.15em .4em',
+    borderRadius: '.35em',
+    color: '#0f172a',
+    background: '#f1f5f9'
   },
   '.namespace': {
     opacity: '0.7'
   },
   'doctype.doctype-tag': {
-    color: '#569cd6'
+    color: '#2563eb'
   },
   'doctype.name': {
-    color: '#9cdcfe'
+    color: '#0284c7'
   },
   comment: {
-    color: '#6a9955'
+    color: '#6b7280',
+    fontStyle: 'italic'
   },
   prolog: {
-    color: '#6a9955'
+    color: '#6b7280'
   },
   '.language-html .language-css .token.punctuation': {
-    color: '#d4d4d4'
+    color: '#475569'
   },
   '.language-html .language-javascript .token.punctuation': {
-    color: '#d4d4d4'
+    color: '#475569'
   },
   punctuation: {
-    color: '#d4d4d4'
+    color: '#475569'
   },
   boolean: {
-    color: '#569cd6'
+    color: '#2563eb'
   },
   constant: {
-    color: '#9cdcfe'
+    color: '#0369a1'
   },
   inserted: {
-    color: '#b5cea8'
+    color: '#15803d'
   },
   number: {
-    color: '#b5cea8'
+    color: '#d97706'
   },
   property: {
-    color: '#9cdcfe'
+    color: '#0369a1'
   },
   symbol: {
-    color: '#b5cea8'
+    color: '#d97706'
   },
   tag: {
-    color: '#569cd6'
+    color: '#16a34a'
   },
   unit: {
-    color: '#b5cea8'
+    color: '#d97706'
   },
   'attr-name': {
-    color: '#9cdcfe'
+    color: '#0284c7'
   },
   builtin: {
-    color: '#ce9178'
+    color: '#b45309'
   },
   char: {
-    color: '#ce9178'
+    color: '#059669'
   },
   deleted: {
-    color: '#ce9178'
+    color: '#dc2626'
   },
   selector: {
-    color: '#d7ba7d'
+    color: '#7c3aed'
   },
   string: {
-    color: '#ce9178'
+    color: '#059669'
   },
   '.language-css .token.string.url': {
     textDecoration: 'underline'
   },
   entity: {
-    color: '#569cd6'
+    color: '#2563eb'
   },
   operator: {
-    color: '#d4d4d4'
+    color: '#475569'
   },
   'operator.arrow': {
-    color: '#569cd6'
+    color: '#2563eb'
   },
   atrule: {
-    color: '#ce9178'
+    color: '#b45309'
   },
   'atrule.rule': {
-    color: '#c586c0'
+    color: '#7c3aed'
   },
   'atrule.url': {
-    color: '#9cdcfe'
+    color: '#0284c7'
   },
   'atrule.url.function': {
-    color: '#dcdcaa'
+    color: '#2563eb'
   },
   'atrule.url.punctuation': {
-    color: '#d4d4d4'
+    color: '#475569'
   },
   keyword: {
-    color: '#569cd6'
+    color: '#7c3aed'
   },
   'keyword.control-flow': {
-    color: '#c586c0'
+    color: '#7c3aed'
   },
   'keyword.module': {
-    color: '#c586c0'
+    color: '#7c3aed'
   },
   function: {
-    color: '#dcdcaa'
+    color: '#2563eb'
   },
   'function.maybe-class-name': {
-    color: '#dcdcaa'
+    color: '#2563eb'
   },
   regex: {
-    color: '#d16969'
+    color: '#dc2626'
   },
   important: {
-    color: '#569cd6'
+    color: '#2563eb'
   },
   italic: {
     fontStyle: 'italic'
   },
   'class-name': {
-    color: '#4ec9b0'
+    color: '#0d9488'
   },
   'maybe-class-name': {
-    color: '#4ec9b0'
+    color: '#0d9488'
   },
   console: {
     color: '#9cdcfe'
@@ -296,83 +297,105 @@ const CodeLight = ({
   match: RegExpExecArray | null;
 }) => {
   const { copyData } = useCopyData();
+  const [copied, setCopied] = useState(false);
   // 使用动态宽度计算，设置代码块的最小宽度
   const { width, Ref } = useMarkdownWidth({
     minWidth: { base: 320, md: 500 }
   });
 
+  const codeBoxName = useMemo(() => {
+    const input = match?.['input'] || '';
+    if (!input) return match?.[1];
+
+    const splitInput = input.split('#');
+    return splitInput[1] || match?.[1];
+  }, [match]);
+
+  // 处理代码内容
+  const processedChildren = useMemo(() => {
+    let code = String(children).replace(/&nbsp;/g, ' ');
+
+    // 对于bash、shell、terminal代码块，保持原始格式
+    const language = match?.[1]?.toLowerCase();
+    if (language === 'bash' || language === 'shell' || language === 'terminal') {
+      // 只做基本清理，保持原始格式
+      return code.trim();
+    }
+
+    return code;
+  }, [children, match]);
+
   if (codeBlock) {
-    const codeBoxName = useMemo(() => {
-      const input = match?.['input'] || '';
-      if (!input) return match?.[1];
-
-      const splitInput = input.split('#');
-      return splitInput[1] || match?.[1];
-    }, [match]);
-
-    // 处理代码内容
-    const processedChildren = useMemo(() => {
-      let code = String(children).replace(/&nbsp;/g, ' ');
-
-      // 对于bash、shell、terminal代码块，保持原始格式
-      const language = match?.[1]?.toLowerCase();
-      if (language === 'bash' || language === 'shell' || language === 'terminal') {
-        // 只做基本清理，保持原始格式
-        return code.trim();
-      }
-
-      return code;
-    }, [children, match]);
 
     return (
       <Box
         ref={Ref}
         my={3}
-        borderRadius={'md'}
-        overflow={'hidden'}
-        boxShadow={
-          '0px 0px 1px 0px rgba(19, 51, 107, 0.08), 0px 1px 2px 0px rgba(19, 51, 107, 0.05)'
-        }
-        maxW={'100%'}
-        w={width}
+        borderRadius="14px"
+        border="1px solid rgba(0, 0, 0, 0.08)"
+        bg="#f9f9fa"
+        overflow="hidden"
+        maxW="100%"
+        w="100%"
       >
         <Flex
           className="code-header"
           py={2}
-          px={5}
-          bg={'myGray.600'}
-          color={'white'}
-          fontSize={'sm'}
-          userSelect={'none'}
+          px={4}
+          bg="#f3f4f6"
+          borderBottom="1px solid rgba(0, 0, 0, 0.06)"
+          color="#52525b"
+          fontSize="12px"
+          fontWeight="500"
+          align="center"
+          justify="space-between"
+          userSelect="none"
         >
-          <Box flex={1} className={'textEllipsis'}>
+          <Box flex={1} className="textEllipsis">
             {codeBoxName}
           </Box>
-          <Flex cursor={'pointer'} onClick={() => copyData(String(children))} alignItems={'center'}>
-            <Box as={CopyIcon} w={'15px'} h={'15px'} />
-            <Box ml={1}>{'复制'}</Box>
+          <Flex
+            as="button"
+            type="button"
+            cursor="pointer"
+            align="center"
+            gap={1}
+            px={2}
+            py={0.5}
+            borderRadius="6px"
+            color={copied ? "#16a34a" : "#52525b"}
+            _hover={{ bg: "rgba(0, 0, 0, 0.06)", color: "#18181b" }}
+            transition="background 0.15s, color 0.15s"
+            onClick={() => {
+              copyData(String(children));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1400);
+            }}
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            <Text fontSize="12px">{copied ? "已复制" : "复制"}</Text>
           </Flex>
         </Flex>
-        <Box overflow={'auto'} maxW={'100%'}>
+        <Box overflow="auto" maxW="100%" bg="#f9f9fa">
           <SyntaxHighlighter
             style={codeLight as any}
             language={match?.[1]}
             PreTag="pre"
             customStyle={{
               margin: 0,
-              padding: '1rem',
+              padding: '14px 16px',
               background: 'transparent',
               maxWidth: '100%',
-              overflow: 'auto'
+              overflow: 'auto',
             }}
             codeTagProps={{
               style: {
-                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                fontSize: '14px',
-                lineHeight: '1.5',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                fontSize: '13.5px',
+                lineHeight: '1.6',
                 whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word'
-              }
+                wordBreak: 'break-word',
+              },
             }}
           >
             {processedChildren}

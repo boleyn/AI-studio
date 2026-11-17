@@ -69,8 +69,8 @@ const MessageCopyControl = ({
     return convertMarkdownToPlainText(content);
   }, [content, selectedFormat]);
 
-  const toneColor = "myGray.500";
-  const hoverColor = "primary.600";
+  const toneColor = "#71717a";
+  const hoverColor = "#18181b";
   const formatTag = selectedFormat === "markdown" ? "MD" : "TXT";
 
   const handleCopy = async () => {
@@ -86,17 +86,17 @@ const MessageCopyControl = ({
       <MyTooltip label={copied ? "已复制" : "复制"}>
         <Flex
           align="center"
-          borderRadius="6px"
-          color={toneColor}
+          borderRadius="8px"
+          color={copied ? "#16a34a" : toneColor}
           cursor="pointer"
           gap={1}
+          h="28px"
           onClick={() => void handleCopy()}
-          px={1}
-          py={0.5}
-          _hover={{ color: hoverColor, bg: "myGray.100" }}
+          px={2}
+          _hover={{ color: hoverColor, bg: "#f4f4f5" }}
         >
           {copied ? <Box as={CheckIcon} boxSize="14px" /> : <Box as={CopyIcon} boxSize="14px" />}
-          <Text fontSize="10px" fontWeight="700" lineHeight="1" textTransform="uppercase">
+          <Text fontSize="10px" fontWeight="600" lineHeight="1" textTransform="uppercase">
             {formatTag}
           </Text>
         </Flex>
@@ -108,15 +108,14 @@ const MessageCopyControl = ({
             <MenuButton
               as={Flex}
               align="center"
-              borderRadius="6px"
+              borderRadius="8px"
               color={toneColor}
               cursor="pointer"
-              h="20px"
+              h="28px"
               justify="center"
-              minW="20px"
+              minW="22px"
               px={1}
-              py={0.5}
-              _hover={{ color: hoverColor, bg: "myGray.100" }}
+              _hover={{ color: hoverColor, bg: "#f4f4f5" }}
             >
               <Icon as={ChevronDownIcon} boxSize="12px" color="currentColor" />
             </MenuButton>

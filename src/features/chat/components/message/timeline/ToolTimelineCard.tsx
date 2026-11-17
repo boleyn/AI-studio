@@ -452,18 +452,27 @@ const ToolTimelineCard = ({
     .join("\n\n");
 
   return (
-    <Box
-      key={`tool-${item.id || index}`}
-      borderLeft="2px solid"
-      borderLeftColor={leftBorderColor}
-      py={1}
-      pl={3}
-    >
-      <Flex align="center" gap={2}>
+    <Box key={`tool-${item.id || index}`} py={0.5}>
+      <Flex
+        align="center"
+        gap={2}
+        px={2}
+        py={1}
+        borderRadius="8px"
+        cursor="pointer"
+        _hover={{ bg: "#f4f4f5" }}
+        onClick={onToggle}
+      >
         {isRunning ? (
-          <Spinner color="blue.500" size="xs" speed="0.7s" thickness="2.5px" />
+          <Spinner color="#2563eb" size="xs" speed="0.7s" thickness="2px" />
         ) : (
-          <Box bg="myGray.350" borderRadius="full" h="6px" w="6px" />
+          <Box
+            bg={isError ? "#ef4444" : "#22c55e"}
+            borderRadius="full"
+            h="6px"
+            w="6px"
+            flexShrink={0}
+          />
         )}
         {(isWriteTool || isEditTool) ? (
           <>
@@ -540,7 +549,10 @@ const ToolTimelineCard = ({
           }
           h="22px"
           minW="22px"
-          onClick={onToggle}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
           size="xs"
           variant="ghost"
           sx={HEADER_BTN_SX}
@@ -548,7 +560,14 @@ const ToolTimelineCard = ({
       </Flex>
 
       <Collapse animateOpacity in={isExpanded}>
-        <Flex direction="column" gap={2} mt={2}>
+        <Flex
+          direction="column"
+          gap={2}
+          mt={1.5}
+          ml={2.5}
+          pl={3}
+          borderLeft="1.5px solid rgba(0, 0, 0, 0.1)"
+        >
           {(isEditTool || isWriteTool) && newString ? (
             <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
               <Flex
@@ -596,15 +615,15 @@ const ToolTimelineCard = ({
           ) : null}
 
           {!(isEditTool || isWriteTool) || status !== "completed" ? (
-            <Box borderTop="1px dashed" borderColor="myGray.250" pt={2}>
-              <Flex align="center" justify="space-between" mb={1}>
-                <Text color="primary.700" fontSize="10px" fontWeight="700">
-                  结果
+            <Box pt={2}>
+              <Flex align="center" justify="space-between" mb={1.5}>
+                <Text color="#52525b" fontSize="11.5px" fontWeight="500">
+                  执行输出
                 </Text>
                 {responseTruncated ? (
                   <Button
-                    colorScheme="primary"
-                    h="20px"
+                    color="#2563eb"
+                    h="22px"
                     minW="auto"
                     onClick={() => onOpenToolDetailModal(`${item.toolName || `工具 ${index + 1}`} · 出参`, item.response)}
                     px={2}
@@ -615,15 +634,20 @@ const ToolTimelineCard = ({
                   </Button>
                 ) : null}
               </Flex>
-              <Box bg="myGray.25" border="1px solid" borderColor="myGray.200" borderRadius="8px" p={2}>
+              <Box
+                bg="#f9f9fa"
+                border="1px solid rgba(0, 0, 0, 0.06)"
+                borderRadius="10px"
+                p={2.5}
+              >
                 {truncatedResponse ? (
-                  <ToolStreamText color="myGray.800" fontSize="12px" isStreaming={isStreaming} value={truncatedResponse} />
+                  <ToolStreamText color="#18181b" fontSize="12.5px" isStreaming={isStreaming} value={truncatedResponse} />
                 ) : isRunning ? (
-                  <Text color="myGray.500" fontSize="12px">
+                  <Text color="#71717a" fontSize="12.5px">
                     执行中...
                   </Text>
                 ) : (
-                  <Text color="myGray.400" fontSize="12px">
+                  <Text color="#a1a1aa" fontSize="12.5px">
                     暂无输出
                   </Text>
                 )}

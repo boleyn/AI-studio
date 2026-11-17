@@ -434,13 +434,13 @@
     max-width: 100%;
     /* 确保不超过容器宽度 */
     min-width: 320px; /* Mobile 最小宽度 - 增加以提供更好的可读性 */
-    padding: 15px;
+    padding: 14px 16px;
     margin: 0;
     border: none;
     border-radius: 0;
-    background-color: var(--chakra-colors-gray-900) !important;
+    background-color: #f9f9fa !important;
     overflow-x: auto;
-    color: #fff;
+    color: #1e293b;
     box-sizing: border-box;
     /* 包含内边距在宽度计算中 */
 
