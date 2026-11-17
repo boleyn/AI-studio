@@ -5,6 +5,7 @@ import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
 import { getAgentRuntimeConfig } from "@/agent/app";
+import { toTokenBudget } from "@/agent/app/context";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { getProject, updateFile, updateBinaryFile, saveProjectArtifactVersion } from "@server/projects/projectStorage";
@@ -274,6 +275,16 @@ const toAgentMessages = (messages: SdkMessage[]): ChatCompletionMessageParam[] =
 const toConversationMessage = (message: SdkMessage): ConversationMessage => {
   const role = message.message?.role || "assistant";
   const content = message.message?.content ?? "";
+  const usage = message.message?.usage as { input_tokens?: unknown; output_tokens?: unknown } | undefined;
+  const model = message.message?.model;
+  const promptTokens = usage?.input_tokens;
+  const completionTokens = usage?.output_tokens;
+  const contextWindow = role === "assistant" && typeof model === "string" && model.trim()
+    && typeof promptTokens === "number" && Number.isFinite(promptTokens) && promptTokens >= 0
+    && typeof completionTokens === "number" && Number.isFinite(completionTokens) && completionTokens >= 0
+    && promptTokens + completionTokens > 0
+    ? toTokenBudget({ model, promptTokens, completionTokens })
+    : undefined;
   return {
     type: message.type,
     role: role === "tool" ? "assistant" : (role as ConversationMessage["role"]),
@@ -286,6 +297,7 @@ const toConversationMessage = (message: SdkMessage): ConversationMessage => {
     meta: message.meta,
     additional_kwargs: {
       sdkMessage: message,
+      ...(contextWindow ? { contextWindow } : {}),
     },
   };
 };
