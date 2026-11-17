@@ -1,15 +1,20 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import FilePreviewPanel, { isPreviewableFile } from "../workspace/FilePreviewPanel";
+import { ArtifactFileIcon } from "../workspace/ArtifactFileIcon";
+import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
+import FilePreviewPanel from "../workspace/FilePreviewPanel";
 import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuItemOption, MenuList, MenuOptionGroup, Text, useToast } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { getConversation } from "@features/chat/services/conversations";
 import { downloadWorkspaceArtifact } from "@features/chat/services/files";
-import { ChevronDown, Download, Maximize2, Minimize2, X } from "lucide-react";
+import { ChevronDown, Download, History, Maximize2, Minimize2, X } from "lucide-react";
 
 type Props = {
   token: string;
   version?: string;
+  conversationId?: string;
+  onSelectVersion: (version?: string) => void;
   files: Record<string, { code: string }>;
   selectedPath: string;
   onSelect: (path: string) => void;
@@ -17,7 +22,10 @@ type Props = {
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
+export default function WorkspaceFilesPanel({ token, version, conversationId, onSelectVersion, files, selectedPath, onSelect, onRequestRevision, onClose }: Props) {
+  const [versionList, setVersionList] = useState<{ id: string; time?: string | Date }[]>();
+  const versionRequest = useRef(0);
+  const [versionError, setVersionError] = useState(false);
   const [revisionTarget, setRevisionTarget] = useState<string>();
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const retryPreview = () => {
@@ -45,8 +53,30 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
   const query = new URLSearchParams({ token, action: "view", path: selectedPath });
   if (version) query.set("version", version);
   const fileUrl = `/api/code?${query}`;
-  const previewable = isPreviewableFile(selectedPath);
   const isSpreadsheet = /\.(xlsx?|csv)$/i.test(selectedPath);
+  const showMarkdown = /\.(md|markdown)$/i.test(selectedPath);
+  const loadVersions = async () => {
+    if (!conversationId) return;
+    const request = ++versionRequest.current;
+    setVersionList(undefined);
+    setVersionError(false);
+    const conversation = await getConversation(token, conversationId);
+    if (request !== versionRequest.current) return;
+    if (!conversation) {
+      setVersionError(true);
+      return;
+    }
+    const revisions = new Map<string, { id: string; time?: string | Date }>();
+    for (const message of [...conversation.messages].reverse()) {
+      const id = message.additional_kwargs?.workspaceArtifactVersion;
+      const paths = message.additional_kwargs?.workspaceArtifactPaths;
+      if (message.role === "assistant" && typeof id === "string"
+        && Array.isArray(paths) && paths.includes(selectedPath) && !revisions.has(id)) {
+        revisions.set(id, { id, time: message.time });
+      }
+    }
+    setVersionList([...revisions.values()]);
+  };
   const historical = historicalResult?.url === fileUrl ? historicalResult : undefined;
   const historicalStatus = !historical ? "loading" : "error" in historical ? "error" : "ready";
   const selected = version
@@ -54,7 +84,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
     : files[selectedPath];
 
   useEffect(() => {
-    if (!version || previewable) return;
+    if (!version || !showMarkdown) return;
     const controller = new AbortController();
     void fetch(fileUrl, { headers: withAuthHeaders(), signal: controller.signal })
       .then((response) => {
@@ -67,7 +97,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
       })
       .catch(() => { if (!controller.signal.aborted) setHistoricalResult({ url: fileUrl, error: true }); });
     return () => controller.abort();
-  }, [fileUrl, previewable, version, previewAttempt]);
+  }, [fileUrl, showMarkdown, version, previewAttempt]);
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
 
@@ -127,19 +157,42 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
       <Flex px={{ base: 2, md: 4 }} py={3} align="center" gap={{ base: 1, md: 2 }} borderBottom="1px solid" borderColor="gray.100">
         <Menu>
           <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDown size={15} />}
+            leftIcon={<ArtifactFileIcon name={selectedPath} compact />}
             minW={0} flex="1 1 auto" aria-label="选择工作成果" title={selectedPath}>
             <Text isTruncated>{selectedPath.split("/").pop() || "工作成果"}</Text>
           </MenuButton>
           <MenuList maxH="min(45vh, 320px)" overflowY="auto" maxW="min(84vw, 460px)">
             {paths.length ? paths.map((path) => (
               <MenuItem key={path} bg={!version && path === selectedPath ? "gray.100" : undefined}
-                onClick={() => onSelect(path)} title={path}>
+                onClick={() => onSelect(path)} title={path} icon={<ArtifactFileIcon name={path} compact />}>
                 <Text isTruncated>{path}</Text>
               </MenuItem>
             )) : <MenuItem isDisabled>暂无工作成果</MenuItem>}
           </MenuList>
         </Menu>
-        {version && <Text fontSize="xs" color="gray.500" flexShrink={0}>回复版本</Text>}
+        {selected && conversationId && (
+          <Menu onOpen={() => void loadVersions()}>
+            <MenuButton as={IconButton} aria-label="版本历史" title={version ? "正在查看历史版本" : "版本历史"}
+              icon={<History size={17} />} size="sm" variant={version ? "solid" : "ghost"} />
+            <MenuList>
+              {files[selectedPath] && (
+                <MenuItem onClick={() => onSelectVersion()} aria-current={version ? undefined : "true"} fontWeight={version ? "normal" : "semibold"}>
+                  当前文件
+                </MenuItem>
+              )}
+              {versionList?.map((entry, index) => (
+                <MenuItem key={entry.id} aria-current={version === entry.id ? "true" : undefined} fontWeight={version === entry.id ? "semibold" : "normal"}
+                  onClick={() => onSelectVersion(entry.id)}>
+                  版本 {versionList.length - index}
+                  {entry.time && <Text as="span" ml={3} fontSize="xs" color="gray.500">{new Date(entry.time).toLocaleString()}</Text>}
+                </MenuItem>
+              ))}
+              {versionError ? <MenuItem onClick={() => void loadVersions()}>加载失败，重试</MenuItem>
+                : !versionList ? <MenuItem isDisabled>正在加载版本…</MenuItem>
+                : !versionList.length ? <MenuItem isDisabled>暂无历史版本</MenuItem> : null}
+            </MenuList>
+          </Menu>
+        )}
         {selected && isSpreadsheet && !version && (
           <Button size="sm" variant="ghost" flexShrink={0} px={2} aria-pressed={revisionTarget === fileUrl}
             onClick={() => setRevisionTarget(revisionTarget === fileUrl ? undefined : fileUrl)}>
@@ -176,15 +229,15 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         />
         <IconButton ref={closeButtonRef} aria-label="关闭工作成果" icon={<X size={16} />} size="sm" variant="ghost" onClick={onClose} />
       </Flex>
-      <Box flex={1} minH={0} overflow="auto" p={isSpreadsheet ? 0 : 4}>
-        {version && !previewable && historicalStatus !== "ready" ? (
+      <Box flex={1} minH={0} overflow="auto" p={showMarkdown ? 4 : 0}>
+        {version && showMarkdown && historicalStatus !== "ready" ? (
           historicalStatus === "loading" ? <Text fontSize="sm">正在加载回复版本…</Text> : (
             <Flex direction="column" align="center" justify="center" h="full" gap={3} role="status">
               <Text fontSize="sm" color="gray.600">无法加载此文件</Text>
               <Button size="sm" variant="outline" onClick={retryPreview}>重试</Button>
             </Flex>
           )
-        ) : selected && previewable ? (
+        ) : selected && isSpreadsheet ? (
           <FilePreviewPanel key={`${fileUrl}:${previewAttempt}`} onRetry={retryPreview} spreadsheetZoom={spreadsheetZoom}
             onSelectSpreadsheetCell={revisionTarget === fileUrl
               ? (sheet, address) => {
@@ -193,7 +246,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
               }
               : undefined}
             localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
-        ) : selected && /\.(md|markdown)$/i.test(selectedPath) ? (
+        ) : selected && showMarkdown ? (
           <Box lineHeight="1.7" overflowWrap="anywhere" sx={{
             "& h1, & h2, & h3": { fontWeight: 600, mt: 4, mb: 2 },
             "& h1": { fontSize: "2xl" },
@@ -206,11 +259,10 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
           }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.code}</ReactMarkdown>
           </Box>
-        ) : (
-        <Box as="pre" fontSize="12px" lineHeight="1.7" fontFamily="mono" whiteSpace="pre-wrap" overflowWrap="anywhere">
-          {selected?.code ?? "选择文件查看内容"}
-        </Box>
-        )}
+        ) : selected ? (
+          <ExtendedFilePreview key={`${fileUrl}:${previewAttempt}`} url={fileUrl}
+            name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview} />
+        ) : <Text p={4} fontSize="sm" color="gray.500">选择文件查看内容</Text>}
       </Box>
     </Flex>
   );

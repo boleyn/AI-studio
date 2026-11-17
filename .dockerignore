@@ -13,3 +13,5 @@ README.md
 .aistudio
 data/sandboxes
 data/sandboxes/**
+
+public/file-viewer/

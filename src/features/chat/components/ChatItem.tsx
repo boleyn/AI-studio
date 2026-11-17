@@ -4,6 +4,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import { downloadWorkspaceArtifact } from "../services/files";
+import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
 import { useCopyData } from "@/hooks/useCopyData";
@@ -27,20 +28,16 @@ function ReplyArtifact({ path, version, onOpen }: {
   const toast = useToast();
   const [downloading, setDownloading] = React.useState(false);
   const name = path.split("/").pop() || path;
-  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : undefined;
-  const type = extension === "xlsx" || extension === "xls" ? "Excel"
-    : extension === "docx" ? "Word"
-    : extension === "md" ? "Markdown"
-    : extension?.toUpperCase() || "文件";
+  const { label } = artifactFileType(name);
 
   return (
     <Flex align="center" maxW="100%" border="1px solid" borderColor="gray.200" borderRadius="lg" pr={1}>
       <Button size="sm" h="auto" py={2} variant="ghost" minW={0} justifyContent="flex-start"
-        leftIcon={<Box as="img" boxSize={8} src={`/icons/chat/${getFileIcon(name)}.svg`} alt="" />}
+        leftIcon={<ArtifactFileIcon name={name} />}
         title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
         <Box minW={0} textAlign="left">
           <Text isTruncated>{name}</Text>
-          <Text fontSize="xs" fontWeight="normal" color="gray.500" mt={1}>{type}</Text>
+          <Text fontSize="xs" fontWeight="normal" color="gray.500" mt={1}>{label}</Text>
         </Box>
       </Button>
       <IconButton size="sm" variant="ghost" flexShrink={0} icon={<Download size={15} />}

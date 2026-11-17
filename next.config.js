@@ -7,7 +7,26 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  webpack(config) {
+  webpack(config, { webpack }) {
+    // libarchive ships a minified module worker as a static asset. SWC treats
+    // emitted .js assets as scripts when minifying them again.
+    config.plugins.push({
+      apply(compiler) {
+        compiler.hooks.thisCompilation.tap("PreserveLibarchiveWorker", (compilation) => {
+          compilation.hooks.processAssets.tap(
+            { name: "PreserveLibarchiveWorker", stage: webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE - 1 },
+            () => {
+              for (const { name, info } of compilation.getAssets()) {
+                if (info.sourceFilename?.endsWith("libarchive.js/dist/worker-bundle.js")) {
+                  compilation.updateAsset(name, (source) => source, { minimized: true });
+                }
+              }
+            },
+          );
+        });
+      },
+    });
+
     const fileLoaderRule = config.module.rules.find(
       (rule) => rule.test && rule.test.test && rule.test.test(".svg")
     );

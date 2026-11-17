@@ -87,3 +87,4 @@ tmp/docx/
 .idea/
 .aistudio-virtual/
 /data/sandboxes
+/public/file-viewer/

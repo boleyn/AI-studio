@@ -814,7 +814,7 @@ export default function AgentWorkspace({
           </Box>
 
           {filesDrawerOpen && (
-            <WorkspaceFilesPanel token={activeToken} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
+            <WorkspaceFilesPanel token={activeToken} conversationId={visibleChatId} onSelectVersion={setArtifactVersion} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
               onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
               onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
           )}

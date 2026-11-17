@@ -5,14 +5,15 @@
   "license": "Apache-2.0",
   "author": "CodeSandbox",
   "scripts": {
-    "dev": "NEXT_DIST_DIR=.next-dev next dev",
-    "build": "NEXT_DIST_DIR=.next next build",
+    "dev": "bun run preview:assets && NEXT_DIST_DIR=.next-dev next dev",
+    "build": "bun run preview:assets && NEXT_DIST_DIR=.next next build",
     "start": "NEXT_DIST_DIR=.next next start",
     "connector": "bun projects/agent-connector/server.ts",
     "typecheck": "bun x tsc -p tsconfig.json --noEmit",
     "typecheck:web": "bun x tsc -p tsconfig.web-check.json --noEmit",
     "lint": "next lint --dir src/pages --dir src/features --dir src/server --dir src/agent --dir src/shared --dir src/contexts --dir src/hooks",
-    "test:agent": "bun test src/agent"
+    "test:agent": "bun test src/agent",
+    "preview:assets": "file-viewer-copy-assets ./public/file-viewer"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
@@ -30,6 +31,7 @@
     "@codesandbox/sandpack-themes": "*",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
+    "@file-viewer/react-full": "3.3.4",
     "@fortaine/fetch-event-source": "^3.0.6",
     "@google/genai": "^1.48.0",
     "@growthbook/growthbook": "^1.6.5",
