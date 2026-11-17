@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Image, Select, Spinner, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Image, Spinner, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -102,6 +102,88 @@ type FilePreviewPanelProps = {
 };
 
 type PreviewSheet = { name: string; rows: string[][] };
+
+function spreadsheetColumnLabel(index: number) {
+  let label = "";
+  for (let column = index + 1; column > 0; column = Math.floor((column - 1) / 26)) {
+    label = String.fromCharCode(65 + ((column - 1) % 26)) + label;
+  }
+  return label;
+}
+
+function SpreadsheetGrid({ rows }: { rows: string[][] }) {
+  const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
+  const columnCount = Math.max(0, ...rows.map((row) => row.length));
+
+  if (!columnCount) return <Text p={4} fontSize="sm">此工作表没有可预览的数据</Text>;
+
+  return (
+    <>
+      <Flex align="center" borderBottom="1px solid" borderColor="gray.200" minH="34px" fontSize="xs">
+        <Text px={3} minW="64px">{spreadsheetColumnLabel(activeCell.column)}{activeCell.row + 1}</Text>
+        <Box
+          as="input"
+          aria-label="单元格内容"
+          readOnly
+          value={rows[activeCell.row]?.[activeCell.column] ?? ""}
+          flex="1"
+          minW={0}
+          px={3}
+          alignSelf="stretch"
+          borderLeft="1px solid"
+          borderColor="gray.200"
+        />
+      </Flex>
+      <Box flex="1" minH={0} overflow="auto">
+        <Box as="table" fontSize="xs" borderSpacing={0} minW="100%"
+          sx={{
+            "th, td": { borderRight: "1px solid", borderBottom: "1px solid", borderColor: "gray.200" },
+            th: { bg: "gray.50", color: "gray.600", fontWeight: "normal" },
+            "thead th": { position: "sticky", top: 0, zIndex: 2, height: "24px" },
+            "tr > th:first-child": { position: "sticky", left: 0, minWidth: "42px", zIndex: 1 },
+            "thead th:first-child": { zIndex: 3 },
+          }}
+        >
+          <thead>
+            <tr>
+              <th aria-label="行号" />
+              {Array.from({ length: columnCount }, (_, column) => (
+                <th scope="col" key={column}>{spreadsheetColumnLabel(column)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                <th scope="row">{rowIndex + 1}</th>
+                {Array.from({ length: columnCount }, (_, column) => (
+                  <td key={column}>
+                    <Box
+                      as="button"
+                      type="button"
+                      aria-label={`${spreadsheetColumnLabel(column)}${rowIndex + 1} ${row[column] ?? ""}`.trim()}
+                      onClick={() => setActiveCell({ row: rowIndex, column })}
+                      textAlign="left"
+                      px={2}
+                      minW="88px"
+                      minH="26px"
+                      w="100%"
+                      whiteSpace="pre-wrap"
+                      boxShadow={activeCell.row === rowIndex && activeCell.column === column ? "inset 0 0 0 2px #2563eb" : undefined}
+                    >
+                      {row[column]}
+                    </Box>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </Box>
+      </Box>
+    </>
+  );
+}
+
 
 type PreviewCacheEntry =
   | { kind: "pdf"; binaryObjectUrl: string }
@@ -496,7 +578,7 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
 
   if (previewKind === "spreadsheet") {
     return (
-      <Box h="100%" overflow="auto" bg="#f8fafc" p={4}>
+      <Box h="100%" overflow="auto" bg={officePreviewUrl || docLoading || docError ? "#f8fafc" : "white"} p={officePreviewUrl || docLoading || docError ? 4 : 0}>
         {docLoading ? (
           <Box display="flex" alignItems="center" gap={2}>
             <Spinner size="sm" />
@@ -513,31 +595,26 @@ const FilePreviewPanel = ({ token, activeFile, sourceCode, localOnly = false, ve
             <iframe src={officePreviewUrl} title={activeFile} style={{ width: "100%", height: "100%", minHeight: "560px", border: "none" }} />
           </Box>
         ) : (
-          <Box>
-            {sheets.length > 0 && (
-              <Select aria-label="工作表" size="sm" value={sheetName} onChange={(event) => setSheetName(event.target.value)}>
-                {sheets.map(({ name }) => <option key={name} value={name}>{name}</option>)}
-              </Select>
-            )}
-            <Text fontSize="xs" color="gray.600" my={2}>
-              {sheetRows.length ? "最多显示 200 行" : "此工作表没有可预览的数据"}
-            </Text>
-            <Box border="1px solid #e2e8f0" borderRadius="md" overflow="auto" bg="white">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                <tbody>
-                  {sheetRows.map((row, rowIndex) => (
-                    <tr key={`r-${rowIndex}`}>
-                      {row.map((cell, cellIndex) => (
-                        <td key={`c-${rowIndex}-${cellIndex}`} style={{ border: "1px solid #edf2f7", padding: "6px 8px", verticalAlign: "top", whiteSpace: "pre-wrap", minWidth: "80px" }}>
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Box>
-          </Box>
+          <Flex direction="column" h="100%" minH={0} bg="white">
+            <SpreadsheetGrid key={JSON.stringify([activeFile, sheetName])} rows={sheetRows} />
+            <Flex as="nav" aria-label="工作表" overflowX="auto" flexShrink={0} borderTop="1px solid" borderColor="gray.200" px={2}>
+              {sheets.map(({ name }) => (
+                <Button
+                  key={name}
+                  size="sm"
+                  variant="ghost"
+                  borderRadius={0}
+                  flexShrink={0}
+                  aria-current={name === sheetName ? "true" : undefined}
+                  borderBottom="2px solid"
+                  borderColor={name === sheetName ? "gray.800" : "transparent"}
+                  onClick={() => setSheetName(name)}
+                >
+                  {name}
+                </Button>
+              ))}
+            </Flex>
+          </Flex>
         )}
       </Box>
     );
