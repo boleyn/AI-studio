@@ -1537,6 +1537,7 @@ const createGoogleStreamResponse = (
   onDone: () => void
 ) => {
   const emittedCalls = new Set<string>();
+  let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
   const makeChunk = (delta: Record<string, unknown>, finishReason: CompletionFinishReason = null) =>
     ({
       id: `chatcmpl-${Date.now()}`,
@@ -1544,6 +1545,7 @@ const createGoogleStreamResponse = (
       created,
       model,
       choices: [{ index: 0, delta, finish_reason: finishReason }],
+      ...(usage ? { usage } : {}),
     }) as unknown;
 
   const iterable = {
@@ -1552,56 +1554,37 @@ const createGoogleStreamResponse = (
       try {
         for await (const rawChunk of stream) {
           const chunk = rawChunk as any;
-          const text = typeof chunk?.text === 'string' ? chunk.text : '';
-          if (text) {
-            yield makeChunk({ content: text });
+          const usageMetadata = chunk?.usageMetadata;
+          if (usageMetadata) {
+            const promptTokens = Number(usageMetadata.promptTokenCount ?? usage?.prompt_tokens ?? 0);
+            const completionTokens = Number(usageMetadata.candidatesTokenCount ?? 0)
+              + Number(usageMetadata.thoughtsTokenCount ?? 0);
+            usage = {
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: Number(usageMetadata.totalTokenCount ?? promptTokens + completionTokens),
+            };
           }
+          const text = typeof chunk?.text === 'string' ? chunk.text : '';
+          if (text) yield makeChunk({ content: text });
 
           const functionCalls = Array.isArray(chunk?.functionCalls) ? chunk.functionCalls : [];
-          functionCalls.forEach((call: any, index: number) => {
+          for (const [position, call] of functionCalls.entries()) {
             const name = typeof call?.name === 'string' ? call.name : '';
-            const argsObj = call?.args && typeof call.args === 'object' ? call.args : {};
-            if (!name) return;
-            const key = `${name}::${JSON.stringify(argsObj)}`;
-            if (emittedCalls.has(key)) return;
-            emittedCalls.add(key);
-            const id = getNanoid();
-            const delta = {
-              tool_calls: [
-                {
-                  index,
-                  id,
-                  type: 'function',
-                  function: {
-                    name,
-                    arguments: JSON.stringify(argsObj),
-                  },
-                },
-              ],
-            };
-            // eslint-disable-next-line no-void
-            void (delta && 0);
-          });
-          for (const [index, call] of functionCalls.entries()) {
-            const name = typeof call?.name === 'string' ? call.name : '';
-            const argsObj = call?.args && typeof call.args === 'object' ? call.args : {};
             if (!name) continue;
-            const key = `${name}::${JSON.stringify(argsObj)}`;
-            if (!emittedCalls.has(key)) continue;
+            const args = JSON.stringify(call?.args && typeof call.args === 'object' ? call.args : {});
+            const key = typeof call.id === 'string' && call.id ? call.id : `${position}:${name}:${args}`;
+            if (emittedCalls.has(key)) continue;
+            const index = emittedCalls.size;
+            emittedCalls.add(key);
             yield makeChunk({
-              tool_calls: [
-                {
-                  index,
-                  id: getNanoid(),
-                  type: 'function',
-                  function: {
-                    name,
-                    arguments: JSON.stringify(argsObj),
-                  },
-                },
-              ],
+              tool_calls: [{
+                index,
+                id: typeof call.id === 'string' && call.id ? call.id : getNanoid(),
+                type: 'function',
+                function: { name, arguments: args },
+              }],
             });
-            emittedCalls.delete(key);
           }
 
           const reason =
@@ -1611,7 +1594,7 @@ const createGoogleStreamResponse = (
           const mapped = toGoogleFinishReason(reason);
           if (mapped) finalReason = mapped;
         }
-        yield makeChunk({}, finalReason || 'stop');
+        yield makeChunk({}, emittedCalls.size > 0 ? 'tool_calls' : finalReason || 'stop');
       } finally {
         onDone();
       }

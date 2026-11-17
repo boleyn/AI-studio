@@ -126,6 +126,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
 
     let turnText = "";
     let turnUsage: AgentLoopResult["usage"];
+    let turnTotalTokens = 0;
     const toolCallsByIndex = new Map<number, AccumulatedToolCall>();
 
     for await (const chunk of stream) {
@@ -135,6 +136,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         const promptTokens = chunk.usage.prompt_tokens || 0;
         const completionTokens = chunk.usage.completion_tokens || 0;
         turnUsage = { input_tokens: promptTokens, output_tokens: completionTokens };
+        turnTotalTokens = Math.max(promptTokens + completionTokens, chunk.usage.total_tokens || 0);
         if (!input.isSubagent) emitBudget(promptTokens, completionTokens);
       }
 
@@ -213,7 +215,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
     runUsage.calls += 1;
     if (turnUsage) {
       lastUsage = turnUsage;
-      runUsage.totalTokens += turnUsage.input_tokens + turnUsage.output_tokens;
+      runUsage.totalTokens += turnTotalTokens;
     }
 
     if (turnText.trim()) {
