@@ -149,7 +149,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         )}
         <IconButton
           display={{ base: "none", lg: "inline-flex" }}
-          aria-label={expanded ? "恢复并排预览" : "扩大预览"}
+          aria-label={expanded ? "退出完整视图" : "进入完整视图"}
           aria-pressed={expanded}
           icon={expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           size="sm"
@@ -158,7 +158,7 @@ export default function WorkspaceFilesPanel({ token, version, files, selectedPat
         />
         <IconButton ref={closeButtonRef} aria-label="关闭工作成果" icon={<X size={16} />} size="sm" variant="ghost" onClick={onClose} />
       </Flex>
-      <Box flex={1} overflow="auto" p={4}>
+      <Box flex={1} minH={0} overflow="auto" p={previewable && /\.(xlsx?|csv)$/i.test(selectedPath) ? 0 : 4}>
         {version && !previewable && historicalStatus !== "ready" ? (
           historicalStatus === "loading" ? <Text fontSize="sm">正在加载回复版本…</Text> : (
             <Flex direction="column" align="center" justify="center" h="full" gap={3} role="status">
