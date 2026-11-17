@@ -3,10 +3,15 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { isArtifactImage } from "./ArtifactFileIcon";
-import type { FileViewerProps } from "@file-viewer/react-full";
+import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
 
-const FileViewer = dynamic<FileViewerProps>(
-  () => import("@file-viewer/react-full").then((module) => module.FileViewer),
+type ViewerProps = FileViewerProps & { viewerRef?: (viewer: FileViewerHandle | null) => void };
+
+const FileViewer = dynamic<ViewerProps>(
+  () => import("@file-viewer/react-full").then(({ FileViewer: Viewer }) =>
+    function ViewerWithHandle({ viewerRef, ...props }: ViewerProps) {
+      return <Viewer {...props} ref={viewerRef} />;
+    }),
   { ssr: false, loading: () => <Spinner size="sm" aria-label="正在加载预览器" /> },
 );
 
@@ -22,10 +27,17 @@ const imageOptions: FileViewerProps["options"] = {
   image: { rotation: false },
 };
 
-export default function ExtendedFilePreview({ url, name, onRetry }: {
+const documentOptions: FileViewerProps["options"] = {
+  ...options,
+  toolbar: { ...options.toolbar, zoom: false, search: false },
+};
+
+export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onStateChange }: {
   url: string;
   name: string;
   onRetry: () => void;
+  viewerRef?: ViewerProps["viewerRef"];
+  onStateChange?: FileViewerProps["onStateChange"];
 }) {
   const [result, setResult] = useState<{ file: File } | { error: true }>();
 
@@ -55,5 +67,6 @@ export default function ExtendedFilePreview({ url, name, onRetry }: {
     </Flex>;
   }
 
-  return <FileViewer file={result.file} options={isArtifactImage(name) ? imageOptions : options} style={{ width: "100%", height: "100%" }} />;
+  return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={onStateChange}
+    options={isArtifactImage(name) ? imageOptions : viewerRef ? documentOptions : options} style={{ width: "100%", height: "100%" }} />;
 }

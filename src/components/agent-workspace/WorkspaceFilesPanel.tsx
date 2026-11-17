@@ -1,10 +1,12 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArtifactFileIcon } from "../workspace/ArtifactFileIcon";
+import { PreviewZoomMenu } from "../workspace/PreviewZoomMenu";
+import type { FileViewerHandle, FileViewerProps } from "@file-viewer/react-full";
 import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
 import FilePreviewPanel from "../workspace/FilePreviewPanel";
-import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuItemOption, MenuList, MenuOptionGroup, Text, useToast } from "@chakra-ui/react";
-import { useEffect, useRef, useState } from "react";
+import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { getConversation } from "@features/chat/services/conversations";
 import { downloadWorkspaceArtifact } from "@features/chat/services/files";
@@ -42,6 +44,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
     setHistoricalResult(undefined);
     setPreviewAttempt((attempt) => attempt + 1);
   };
+  const viewerHandle = useRef<FileViewerHandle | null>(null);
+  const setViewerHandle = useCallback((viewer: FileViewerHandle | null) => { viewerHandle.current = viewer; }, []);
+  const [documentZoom, setDocumentZoom] = useState<{ url: string; percent: number }>();
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
   const [expanded, setExpanded] = useState(false);
   const [paneWidth, setPaneWidth] = useState(58);
@@ -64,6 +69,13 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
   if (version) query.set("version", version);
   const fileUrl = `/api/code?${query}`;
   const isSpreadsheet = /\.(xlsx?|csv)$/i.test(selectedPath);
+  const showDocumentZoom = /\.docx$/i.test(selectedPath);
+  const onDocumentStateChange = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
+    const percent = state.zoom ? Math.round(state.zoom.scale * 100) : 100;
+    setDocumentZoom((previous) => previous?.url === fileUrl && previous.percent === percent
+      ? previous
+      : { url: fileUrl, percent });
+  }, [fileUrl]);
   const showMarkdown = /\.(md|markdown)$/i.test(selectedPath);
   const loadVersions = async () => {
     if (!conversationId) return;
@@ -210,19 +222,13 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
           </Button>
         )}
         {selected && isSpreadsheet && (
-          <Menu>
-            <MenuButton as={Button} variant="ghost" size="sm" flexShrink={0} px={2}
-              aria-label={`表格缩放 ${spreadsheetZoom}%`} rightIcon={<ChevronDown size={14} />}>
-              {spreadsheetZoom}%
-            </MenuButton>
-            <MenuList minW="120px">
-              <MenuOptionGroup type="radio" value={String(spreadsheetZoom)} onChange={(value) => setSpreadsheetZoom(Number(value))}>
-                {[50, 75, 100, 125, 150, 200].map((zoom) => (
-                  <MenuItemOption key={zoom} value={String(zoom)}>{zoom}%</MenuItemOption>
-                ))}
-              </MenuOptionGroup>
-            </MenuList>
-          </Menu>
+          <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />
+        )}
+        {selected && showDocumentZoom && (
+          <PreviewZoomMenu label="文档缩放" zoom={documentZoom?.url === fileUrl ? documentZoom.percent : 100}
+            onChange={(zoom) => {
+              void viewerHandle.current?.applyViewState({ scale: zoom / 100 }).catch(() => undefined);
+            }} />
         )}
         {selected && (
           <IconButton aria-label="下载文件" title="下载文件" icon={<Download size={15} />}
@@ -271,7 +277,9 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, on
           </Box>
         ) : selected ? (
           <ExtendedFilePreview key={`${fileUrl}:${previewAttempt}`} url={fileUrl}
-            name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview} />
+            name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview}
+            viewerRef={showDocumentZoom ? setViewerHandle : undefined}
+            onStateChange={showDocumentZoom ? onDocumentStateChange : undefined} />
         ) : <Text p={4} fontSize="sm" color="gray.500">选择文件查看内容</Text>}
       </Box>
     </Flex>
