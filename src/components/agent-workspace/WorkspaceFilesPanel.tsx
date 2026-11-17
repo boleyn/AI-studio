@@ -8,12 +8,15 @@ import FilePreviewPanel from "../workspace/FilePreviewPanel";
 import { Box, Button, Flex, IconButton, Menu, MenuButton, MenuItem, MenuList, Text, useToast } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { downloadWorkspaceArtifact } from "@features/chat/services/files";
+import { getConversation } from "@features/chat/services/conversations";
+import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
+import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, History, Maximize2, Minimize2, X } from "lucide-react";
 
 type Props = {
   token: string;
   version?: string;
+  conversationId?: string;
   onSelectVersion: (version?: string) => void;
   files: Record<string, { code: string }>;
   selectedPath: string;
@@ -23,7 +26,7 @@ type Props = {
   onClose: () => void;
 };
 
-export default function WorkspaceFilesPanel({ token, version, onSelectVersion, files, selectedPath, onSelect, onShowList, onRequestRevision, onClose }: Props) {
+export default function WorkspaceFilesPanel({ token, version, conversationId, onSelectVersion, files, selectedPath, onSelect, onShowList, onRequestRevision, onClose }: Props) {
   const versionScope = JSON.stringify([token, selectedPath]);
   const [versionResult, setVersionResult] = useState<{
     scope: string;
@@ -73,6 +76,25 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
   }, []);
 
   const paths = Object.keys(files).sort();
+  const [sources, setSources] = useState<UploadedFileArtifact[]>([]);
+  useEffect(() => {
+    if (selectedPath || !conversationId) return;
+    let active = true;
+    void getConversation(token, conversationId).then((conversation) => {
+      if (!active) return;
+      const attachments = new Map<string, UploadedFileArtifact>();
+      for (const message of conversation?.messages ?? []) {
+        if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") continue;
+        const files = (message.artifact as { files?: UploadedFileArtifact[] }).files;
+        if (!Array.isArray(files)) continue;
+        for (const file of files) {
+          if (file?.storagePath && file.name) attachments.set(file.storagePath, file);
+        }
+      }
+      setSources([...attachments.values()]);
+    });
+    return () => { active = false; };
+  }, [token, conversationId, selectedPath]);
   const [historicalResult, setHistoricalResult] = useState<
     { url: string; content: string } | { url: string; error: true }
   >();
@@ -289,6 +311,7 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
             onStateChange={showDocumentZoom ? onDocumentStateChange : undefined} />
         ) : (
           <Box px={4} py={3}>
+            <Text as="h2" px={2} py={2} fontSize="sm" fontWeight={600}>输出</Text>
             {paths.length ? paths.map((path) => {
               const name = path.split("/").pop() || path;
               return (
@@ -308,6 +331,20 @@ export default function WorkspaceFilesPanel({ token, version, onSelectVersion, f
                 </Flex>
               );
             }) : <Text px={2} py={3} fontSize="sm" color="gray.500">暂无工作成果</Text>}
+            {sources.length > 0 && conversationId && (
+              <Box borderTop="1px solid" borderColor="gray.100" mt={3} pt={2}>
+                <Text as="h2" px={2} py={2} fontSize="sm" fontWeight={600}>来源</Text>
+                {sources.map((file) => (
+                  <Flex as="a" key={file.storagePath} href={buildDownloadUrl({ storagePath: file.storagePath!, token, chatId: conversationId })}
+                    align="center" gap={3} px={2} py={2} borderRadius="lg" _hover={{ bg: "gray.50" }}
+                    aria-label={`下载来源 ${file.name}`}>
+                    <ArtifactFileIcon name={file.name} />
+                    <Text flex={1} minW={0} fontSize="sm" isTruncated>{file.name}</Text>
+                    <Download size={16} aria-hidden="true" />
+                  </Flex>
+                ))}
+              </Box>
+            )}
           </Box>
         )}
       </Box>
