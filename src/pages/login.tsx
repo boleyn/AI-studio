@@ -53,7 +53,7 @@ const Login = () => {
   const [pageType, setPageType] = useState<LoginPageTypeEnum>(LoginPageTypeEnum.password);
   const productName = "伯仁";
   const brandTitle = "伯仁";
-  const brandSubtitle = "MODEL LAB";
+  const brandSubtitle = "AGENT WORKSPACE";
   const redirectWithReload = useCallback(
     (target: string) => {
       if (typeof window !== "undefined") {
@@ -192,22 +192,21 @@ const Login = () => {
                         </Box>
 
                         <Box>
-                          <Text
-                            display="inline-flex"
-                            px={3}
-                            py={1}
-                            mb={4}
-                            borderRadius="full"
-                            bg="rgba(255,255,255,0.6)"
-                            border="1px solid rgba(148,163,184,0.35)"
-                            color="blue.700"
-                            fontSize="xs"
-                            fontWeight="700"
-                            letterSpacing="0.08em"
-                            textTransform="uppercase"
-                          >
-                            Creative Engineering Console
-                          </Text>
+                            <Text
+                              display="inline-flex"
+                              px={3}
+                              py={1}
+                              mb={4}
+                              borderRadius="full"
+                              bg="rgba(255,255,255,0.6)"
+                              border="1px solid rgba(148,163,184,0.35)"
+                              color="blue.700"
+                              fontSize="xs"
+                              fontWeight="700"
+                              letterSpacing="0.06em"
+                            >
+                              专属云电脑 · 本机连接器 · 智能体
+                            </Text>
                           <Heading
                             size="2xl"
                             fontWeight="extrabold"
@@ -220,15 +219,15 @@ const Login = () => {
                             gap={3}
                             flexWrap="nowrap"
                           >
-                            <Box as="span" bgClip="text" bgGradient="linear(to-r, blue.600, green.500)" color="transparent">
-                              灵感到原型
+                            <Box as="span" bgClip="text" bgGradient="linear(to-r, blue.600, purple.500)" color="transparent">
+                              从想法到交付
                             </Box>
                             <Box as="span" color="myGray.800">
                               一步到位
                             </Box>
                           </Heading>
                           <Text color="myGray.600" fontSize="lg" fontWeight="medium" lineHeight="1.6" maxW="xlg">
-                            统一管理模型、提示词与评测，把试验、协作和发布放在同一处完成。
+                            为每个账号配备独立云主机与项目文件夹，支持本机设备直连、技能编排与深度推理，让伯仁替你完成复杂任务。
                           </Text>
                         </Box>
                       </VStack>

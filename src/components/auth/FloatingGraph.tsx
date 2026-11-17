@@ -82,8 +82,7 @@ const FloatingGraph = () => {
             position="relative"
             border={`1px solid ${primary50}`}
           >
-            <Box w="60%" h="60%" borderRadius="full" border={`4px solid ${primary200}`} position="absolute" />
-            <Circle size={24} fill={primary600} color={primary600} />
+            <Box as="img" src="/icon/logo.svg" alt="伯仁" w="48px" h="48px" position="relative" zIndex={1} />
           </Box>
         </motion.div>
       </Box>

@@ -767,9 +767,9 @@ export default function AgentWorkspace({
           borderColor="stroke.light"
         >
           <Flex px={3.5} pt={3} pb={2} align="center" justify="space-between">
-            <HStack spacing={2} minW={0}>
-              <Box as="img" src="/icon/logo.svg" w="20px" h="20px" borderRadius="5px" alt="伯仁" flexShrink={0} />
-              <Text fontWeight="600" fontSize="15px" color="ink.primary" noOfLines={1}>
+            <HStack spacing={2.5} minW={0}>
+              <Box as="img" src="/icon/logo.svg" w="30px" h="30px" borderRadius="8px" alt="伯仁" flexShrink={0} />
+              <Text fontWeight="600" fontSize="16px" color="ink.primary" noOfLines={1}>
                 伯仁
               </Text>
             </HStack>

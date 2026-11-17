@@ -1,13 +1,13 @@
 import { Flex, Grid, Text } from "@chakra-ui/react";
-import { Bot, Network, Cpu, Zap } from "lucide-react";
+import { Cloud, Laptop, Atom, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
 const FeatureFooter = () => {
   const features = [
-    { icon: Bot, label: "多模型试验", chakraColor: "blue.600", chakraBg: "blue.50" },
-    { icon: Network, label: "提示词工坊", chakraColor: "green.600", chakraBg: "green.50" },
-    { icon: Cpu, label: "数据评测", chakraColor: "purple.600", chakraBg: "purple.50" },
-    { icon: Zap, label: "一键发布", chakraColor: "red.600", chakraBg: "red.50" },
+    { icon: Cloud, label: "专属云电脑", chakraColor: "blue.600", chakraBg: "blue.50" },
+    { icon: Laptop, label: "本机连接器", chakraColor: "green.600", chakraBg: "green.50" },
+    { icon: Atom, label: "深度推理", chakraColor: "purple.600", chakraBg: "purple.50" },
+    { icon: Clock, label: "定时自动化", chakraColor: "orange.600", chakraBg: "orange.50" },
   ];
 
   return (
