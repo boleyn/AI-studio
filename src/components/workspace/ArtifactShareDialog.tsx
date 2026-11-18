@@ -2,7 +2,7 @@ import {
   Button, Flex, FormControl, FormLabel, Input, Modal, ModalBody, ModalCloseButton,
   Menu, MenuButton, MenuList, MenuItemOption, MenuOptionGroup, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Spinner, Text,
 } from "@chakra-ui/react";
-import { ChevronDown, Link2, LockKeyhole } from "lucide-react";
+import { CircleAlert, ChevronDown, Link2, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -24,24 +24,28 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    setShare(undefined);
+    setError("");
+    setCopied(false);
     void fetch(spaceId ? "/api/library/space-share?id="+spaceId : siteId ? `/api/share/${siteId}/members` : "/api/artifact-share", {
       method: siteId || spaceId ? "GET" : "POST",
       headers: withAuthHeaders({ "Content-Type": "application/json" }),
       body: siteId || spaceId ? undefined : JSON.stringify({ token, path, version,libraryItemId,chatId,chatUpload:Boolean(chatId) }),
       signal: controller.signal,
     }).then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "无法准备分享链接");
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data) throw new Error(data?.error || "无法准备分享链接");
       if (!controller.signal.aborted) setShare(data);
     }).catch((reason) => {
-      if (!controller.signal.aborted) setError(reason.message || "无法准备分享链接");
+      if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message || "无法准备分享链接");
     });
     return () => controller.abort();
-  }, [token, path, version,libraryItemId,chatId,siteId,spaceId]);
+  }, [token, path, version,libraryItemId,chatId,siteId,spaceId,attempt]);
 
   const updateMember = async (name: string, remove = false, canEdit?: boolean) => {
     if (!share || !name.trim() || busy) return;
@@ -53,12 +57,12 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
         headers: withAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ username: name, remove, canEdit }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "无法更新访问权限");
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data) throw new Error(data?.error || "无法更新访问权限");
       setShare({ ...share, members: data.members });
       if (!remove) setUsername("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法更新访问权限");
+      setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason instanceof Error ? reason.message : "无法更新访问权限");
     } finally {
       setBusy(false);
     }
@@ -77,7 +81,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
             <Flex as="form" gap={2} align="end" onSubmit={(event) => { event.preventDefault(); void updateMember(username); }}>
               <FormControl>
                 <FormLabel fontSize="sm">添加成员</FormLabel>
-                <Input placeholder="输入账号名称" size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
+                <Input placeholder={spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
               </FormControl>
               <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>
             </Flex>
@@ -104,7 +108,11 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               </Flex>
             ))}
           </>}
-          {error && <Text mt={3} fontSize="sm" color="red.600" role="alert">{error}</Text>}
+          {error && <Flex mt={3} p={3} gap={2} align="center" borderRadius="10px" bg="#faf5f2" color="#694332">
+            <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/>
+            <Text role="alert" flex="1" fontSize="sm" overflowWrap="anywhere">{error}</Text>
+            {!share && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
+          </Flex>}
         </ModalBody>
         <ModalFooter gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
