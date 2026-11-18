@@ -27,13 +27,13 @@ test('OEM name uses connector override, then platform name, and rejects unsafe f
     for (const [feConfigs, expected] of [
       [{ systemTitle: '腾云平台' }, '腾云平台连接器'],
       [{ systemTitle: '平台', connector: { name: '定制连接器' } }, '定制连接器'],
-      [{}, 'AI-Chat连接器']
+      [{}, '伯仁连接器']
     ]) {
       await writeFile(config, JSON.stringify({ feConfigs, systemEnv: { secret: 'never bundled' } }));
       const branding = await readBranding(config);
       assert.equal(branding.name, expected);
       assert.ok(branding.iconPath.endsWith(join('public', 'favicon.ico')));
-      assert.equal(branding.bundleId, 'tech.fastgpt.local-device');
+      assert.equal(branding.bundleId, 'ai.studio.local-device');
     }
     await writeFile(config, JSON.stringify({ feConfigs: { connector: { name: '../escape' } } }));
     await assert.rejects(readBranding(config), /filename/);

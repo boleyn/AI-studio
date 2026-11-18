@@ -26,17 +26,34 @@ Bore Agent 是一个支持私有化部署的智能体工作台。你可以把业
 
 主智能体可将独立调查委派给只读子智能体，并在当前轮汇总结果。后台任务支持等待、查询和取消。长对话会按模型窗口预算压缩，保留近期工具调用和结果，并将较早的记录归档以供回读。
 
-## 接入工作区
+## Hermes Agent 规范与架构
 
-- **工具和技能**：通过工具注册表、项目 Skills 和可选的 MCP 服务扩展能力。
-- **执行环境**：支持项目沙盒和本机连接器。连接器将选定目录作为智能体工作区。
+Bore Agent 采用 **Hermes Agent** 的工具注册、插件贡献、技能渐进加载与 Gateway 编排规范（以 TypeScript 实现于 Next.js Node 服务端，非 Python 二进制兼容层）：
+
+- **Gateway 编排（`src/agent/gateway/`）**：统一解析模型连接、建立沙盒与插件、冻结提示词上下文、驱动 ReAct 主循环并适配 SSE 流式协议，最终导出成果并释放资源。
+- **Agent 主体（`src/agent/app/`）**：实现 ReAct 流式主循环、模型上下文窗口预算、工具输出裁剪与结构化摘要压缩（`docs/context-engineering.md`），以及跨轮持久化记忆（`src/agent/memory/`）。
+- **工具与插件（`src/agent/tools/`、`src/agent/plugins/`）**：通过统一工具注册中心（`ToolRegistry`）分发内置工具，并支持通过插件 Manifest 贡献工具、技能、提示词与 MCP 服务，实现逐请求激活与逆序清理。
+- **技能与 MCP（`src/agent/skills/`、`src/agent/mcp/`）**：支持 YAML frontmatter 技能的按需渐进加载（内置目录、项目快照与沙盒目录），以及基于 `@modelcontextprotocol/sdk` 的 stdio / HTTP / SSE MCP 客户端桥接。
+
+## 执行环境：云主机与本地电脑连接
+
+工作区支持多种执行环境（`src/agent/sandbox/`），可根据安全隔离需求或本地协作场景灵活切换：
+
+| 环境类型 | 对应模块 | 适用场景与特点 |
+| --- | --- | --- |
+| **云主机 / 虚拟机沙盒（`remote-vm`）** | `projects/agent-sandbox/` | 提供隔离的远端虚拟机/容器沙盒服务端，支持工作区快照同步、远端命令执行与工作成果导出。Docker Compose 部署时通过 `AGENT_SANDBOX_EXEC_TOKEN` 进行鉴权。 |
+| **本地电脑连接（`local-device`）** | `projects/local-device/` | 提供原生桌面客户端（macOS / Windows 托盘应用），支持将个人电脑安全接入工作台。客户端主动建立 WS/WSS 长连接，**设备配对与执行授权分离**——每次会话执行均需在本机弹窗确认并选择工作目录。 |
+| **本机目录连接器（`agent-connector`）** | `projects/agent-connector/` | 轻量级本机目录挂载连接器，将指定本地目录直接映射为智能体工作区。 |
+
 - **会话与模型**：按项目管理会话和输出文件，配置模型连接、查看用量，也可以在会话中创建定时任务。
 
 ## 本地运行
 
-准备 Bun、MongoDB 和可用的模型服务。附件上传与对象存储功能还需要 S3 兼容服务和相应的存储桶。
+准备 Node.js 24、Bun、MongoDB 和可用的模型服务。附件上传与对象存储功能还需要 S3 兼容服务和相应的存储桶。
 
 ```bash
+nvm install
+nvm use
 bun install --frozen-lockfile
 cp .env.example .env
 ```
@@ -82,6 +99,6 @@ bun run build
 | `projects/` | 沙盒服务、本机连接器与设备端 |
 | `skills/`、`data/project-templates/` | 内置技能与项目模板 |
 
-进一步阅读：[智能体架构](docs/agent-architecture.md) · [上下文管理](docs/context-engineering.md)。
+进一步阅读：[智能体架构](docs/agent-architecture.md) · [上下文管理](docs/context-engineering.md) · [本地电脑连接器指南](projects/local-device/HANDBOOK.md)。
 
 项目许可：Apache-2.0。

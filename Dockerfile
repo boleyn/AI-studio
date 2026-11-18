@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=docker.1ms.run/library/node:20.14.0-alpine
+ARG NODE_IMAGE=docker.1ms.run/library/node:24.20.0-alpine
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ARG APK_MIRROR=mirrors.aliyun.com
@@ -20,16 +20,13 @@ ENV NPM_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 ENV NPM_CONFIG_NODEDIR=/usr/local
 ENV RIPGREP_PATH=/usr/bin/rg
-# Bun otherwise resolves a missing node-gyp command through `bunx
-# node-gyp@latest`. node-gyp 13 requires a newer Node runtime than this image,
-# so keep the native-addon toolchain compatible with Node 20.
+# Pin the build tools used by native dependencies.
 RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
   && npm install -g bun@1.3.10 node-gyp@10.3.1
 
 FROM base AS deps
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 COPY package.json bun.lock ./
-COPY vendor ./vendor
 RUN apk add --no-cache python3 \
   && if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi \
   && bun install --frozen-lockfile

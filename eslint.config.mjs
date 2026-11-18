@@ -1,0 +1,25 @@
+import nextVitals from "eslint-config-next/core-web-vitals";
+
+export default [
+  ...nextVitals,
+  { ignores: [".next-dev/**", "src/ai/compat/**", "src/web/**"] },
+  { rules: {
+  "import/order": "off",
+  "react/jsx-sort-props": "off",
+  "react/jsx-boolean-value": "off",
+  "no-console": "off",
+  "no-empty": "off",
+  "no-useless-escape": "off",
+  "prefer-const": "off",
+  "no-async-promise-executor": "off",
+  "jsx-a11y/iframe-has-title": "off",
+  "react-hooks/exhaustive-deps": "off",
+  "react-hooks/rules-of-hooks": "off",
+  "@typescript-eslint/no-explicit-any": "off",
+  "@typescript-eslint/ban-ts-comment": "off",
+  "@typescript-eslint/ban-types": "off",
+  "@typescript-eslint/array-type": "off",
+  "@typescript-eslint/consistent-type-definitions": "off",
+  "@typescript-eslint/consistent-type-imports": "off"
+} },
+];

@@ -15,9 +15,10 @@ export async function readBranding(configPath) {
     const raw = await readFile(configPath, 'utf8');
     feConfigs = JSON.parse(raw)?.feConfigs ?? {};
   } catch {
-    // Fallback to AI Studio defaults when no external config file exists
+    // Fallback to Bore Agent defaults when no external config file exists
   }
-  const name = feConfigs.connector?.name ?? 'AI Studio 连接器';
+  const platformName = typeof feConfigs.systemTitle === 'string' && feConfigs.systemTitle.trim() || '伯仁';
+  const name = feConfigs.connector?.name ?? platformName + '连接器';
   if (
     typeof name !== 'string' ||
     !name.trim() ||
