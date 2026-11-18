@@ -81,17 +81,17 @@ export interface WorkspaceComposerDeviceOption {
 }
 
 export interface WorkspaceComposerConfig {
-  runtimeKind?: "remote-vm" | "connector";
-  runtimeLabel?: string;
-  runtimeDeviceId?: string;
+  deviceAccessKind?: "remote-vm" | "connector";
+  deviceAccessLabel?: string;
+  selectedDeviceId?: string;
   cloudHostStatus?: CloudHostStatus;
   devices?: WorkspaceComposerDeviceOption[];
+  requestingDeviceAccess?: boolean;
+  onClearDeviceAccess?: () => void;
   onSelectCloudHost?: () => void;
-  platformPanel?: import("react").ReactNode;
-  closePlatformPanel?: () => void;
   onOpenHostMenu?: () => void;
   onSelectDeviceHost?: (device: WorkspaceComposerDeviceOption) => void;
-  onOpenRuntime?: () => void;
+  onOpenDeviceManagement?: () => void;
   projectToken?: string;
   projectName?: string;
   projects?: Array<{ token: string; name: string }>;

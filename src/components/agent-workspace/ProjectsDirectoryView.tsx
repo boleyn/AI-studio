@@ -26,12 +26,10 @@ import {
   Pin,
   Plus,
   Search,
-  SlidersHorizontal,
   SquarePen,
   Trash2,
 } from "lucide-react";
 import type { ProjectWithConversations } from "../AgentWorkspace";
-import type { ProjectRuntimeConfig } from "./WorkspaceRuntimeModal";
 
 function formatRelativeTime(isoString?: string): string {
   if (!isoString) return "";
@@ -54,24 +52,20 @@ function formatRelativeTime(isoString?: string): string {
 type ProjectsDirectoryViewProps = {
   projects: ProjectWithConversations[];
   pinnedTokens: string[];
-  getProjectRuntime: (token: string) => ProjectRuntimeConfig;
   onSelectProject: (token: string) => void;
   onCreateProject: () => void;
   onTogglePin: (token: string) => void;
   onOpenSettings: (project: ProjectWithConversations) => void;
-  onOpenRuntime: (project: ProjectWithConversations) => void;
   onRequestDelete: (project: ProjectWithConversations) => void;
 };
 
 export default function ProjectsDirectoryView({
   projects,
   pinnedTokens,
-  getProjectRuntime,
   onSelectProject,
   onCreateProject,
   onTogglePin,
   onOpenSettings,
-  onOpenRuntime,
   onRequestDelete,
 }: ProjectsDirectoryViewProps) {
   const [query, setQuery] = useState("");
@@ -185,8 +179,7 @@ export default function ProjectsDirectoryView({
         ) : (
           <VStack align="stretch" spacing={0}>
             {visibleProjects.map((project) => {
-              const runtime = getProjectRuntime(project.token);
-              const isConnector = runtime.sandboxKind === "connector";
+              const isConnector = project.workspace?.kind === "connector";
               const isPinned = pinnedTokens.includes(project.token);
 
               return (
@@ -235,12 +228,6 @@ export default function ProjectsDirectoryView({
                           color="ink.secondary"
                         />
                         <MenuList minW="168px">
-                          <MenuItem
-                            icon={<SlidersHorizontal size={14} />}
-                            onClick={() => onOpenRuntime(project)}
-                          >
-                            执行环境 ({isConnector ? "本机" : "虚拟机"})
-                          </MenuItem>
                           <MenuItem
                             icon={<Pencil size={14} />}
                             onClick={() => onOpenSettings(project)}

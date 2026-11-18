@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { loadConversationGoal, saveConversationGoal, loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
@@ -62,6 +63,15 @@ type ImageInputPart = {
   image_url: { url: string };
   key?: string;
 };
+
+const deviceAccessSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("remote-vm") }).strict(),
+  z.object({
+    kind: z.literal("connector"),
+    deviceId: z.string().uuid(),
+    grantId: z.string().uuid(),
+  }).strict(),
+]).optional();
 
 const IMAGE_MEDIA_TYPES = new Set([
   "image/jpeg",
@@ -506,6 +516,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
+  const workspace = project?.workspace;
+  const deviceAccess = project
+    ? deviceAccessSchema.safeParse(req.body?.deviceAccess)
+    : undefined;
+  if (deviceAccess && !deviceAccess.success) {
+    res.status(400).json({ error: "设备访问配置无效" });
+    return;
+  }
+
   const rawMessages = req.body?.messages;
   const imageInputParts = extractImageInputParts(rawMessages);
   const imageBlocks = await materializeImageBlocksFromInputParts({
@@ -725,6 +744,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       currentMessages: incomingAgentMessages,
       token,
       projectName: isProjectToken ? project?.name : skill?.name,
+      projectDirectory: workspace?.kind === "remote-vm" ? workspace.directoryName : undefined,
       userId: String(auth.user._id),
       chatId,
       selectedModel,
@@ -734,14 +754,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       historyMessages: persistedHistoryMessages,
       projectFiles: projectFilesForRun,
       permissionMode,
-      sandboxKind: req.body?.sandboxKind,
-      connector:
-        req.body?.connector && typeof req.body.connector === "object"
-          ? {
-              ...req.body.connector,
-              userId: String(auth.user._id),
-            }
+      sandboxKind: project ? workspace?.kind ?? "remote-vm" : req.body?.sandboxKind,
+      connector: workspace?.kind === "connector"
+        ? { ...workspace, userId: String(auth.user._id) }
+        : !project && req.body?.connector && typeof req.body.connector === "object"
+          ? { ...req.body.connector, userId: String(auth.user._id) }
           : undefined,
+      deviceAccess: deviceAccess?.data,
       messages: [...historyAgentMessages, ...incomingAgentMessages],
       abortSignal: abortController.signal,
       onEvent: (event, data) => {

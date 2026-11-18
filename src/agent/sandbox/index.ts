@@ -52,6 +52,7 @@ export const createSandbox = async (input: CreateSandboxInput): Promise<Sandbox>
         workspaceKey: projectKey,
         deviceId: input.connector.deviceId,
         grantId: input.connector.grantId,
+        workdir: input.connector.workdir,
         userId: input.connector.userId,
         runtimeFiles: input.runtimeFiles,
       });
@@ -63,7 +64,7 @@ export const createSandbox = async (input: CreateSandboxInput): Promise<Sandbox>
   // 每用户绑定一台云主机（user-<userId>），各个项目作为主机内 projects/<可读项目名> 文件夹共享 CLI / 依赖 / skills
   const hostWorkspaceKey = hostUserId ? toSafeSegment(`user-${hostUserId}`) : projectKey;
   const readableDir = hostUserId
-    ? toReadableProjectDir(input.projectName, projectKey)
+    ? input.projectDirectory ?? toReadableProjectDir(input.projectName, projectKey)
     : undefined;
   const projectSubdir = readableDir ? `projects/${readableDir}` : undefined;
 

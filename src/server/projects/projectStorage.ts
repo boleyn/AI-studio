@@ -3,6 +3,8 @@
 import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { toReadableProjectDir } from "@/agent/sandbox/paths";
+import type { ProjectWorkspace } from "@/types/projectWorkspace";
 import { ObjectId } from "mongodb";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
 import { deleteProjectArtifactShares } from "../shares/artifactShareStorage";
@@ -33,6 +35,7 @@ export type ProjectMeta = {
 };
 
 export type ProjectData = {
+  workspace?: ProjectWorkspace;
   token: string;
   name: string;
   description?: string;
@@ -46,6 +49,7 @@ export type ProjectData = {
 };
 
 export type ProjectListItem = {
+  workspace?: ProjectWorkspace;
   token: string;
   name: string;
   description?: string;
@@ -63,6 +67,7 @@ export type ProjectOverviewItem = {
 };
 
 type ProjectDoc = {
+  workspace?: ProjectWorkspace;
   _id: ObjectId;
   token: string;
   name: string;
@@ -404,6 +409,7 @@ async function docToProject(doc: ProjectDoc, coll: Awaited<ReturnType<typeof get
     token: doc.token,
     name: doc.name,
     description: doc.description,
+    workspace: doc.workspace,
     template: doc.template,
     userId: doc.userId,
     files,
@@ -446,8 +452,14 @@ export async function updateProjectMeta(
   updates: Partial<Pick<ProjectMeta, "name" | "description" | "template" | "dependencies" | "sandpackCompileInfo">>
 ): Promise<void> {
   const coll = await getCollection();
-  const exists = await coll.findOne({ token }, { projection: { _id: 1 } });
-  if (!exists) throw new Error("项目不存在");
+  const existing = await coll.findOne({ token }, { projection: { name: 1, workspace: 1 } });
+  if (!existing) throw new Error("项目不存在");
+
+  if (updates.name !== undefined && !existing.workspace) {
+    await coll.updateOne({ token, workspace: null }, {
+      $set: { workspace: { kind: "remote-vm", directoryName: toReadableProjectDir(existing.name, token) } },
+    });
+  }
 
   const now = new Date().toISOString();
   const set: Partial<ProjectDoc> = {
@@ -634,6 +646,7 @@ export async function saveProject(project: ProjectData): Promise<void> {
     token: project.token,
     name: project.name,
     description: project.description,
+    workspace: project.workspace,
     template: project.template,
     userId: project.userId,
     dependencies: project.dependencies ?? {},
@@ -656,7 +669,7 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
   const docs = await coll
     .find({ userId })
     .sort({ updatedAt: -1 })
-    .project({ token: 1, name: 1, description: 1, fileCount: 1, createdAt: 1, updatedAt: 1 })
+    .project({ token: 1, name: 1, description: 1, workspace: 1, fileCount: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
   const resolved = await Promise.all(
@@ -667,6 +680,7 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
           token: d.token,
           name: d.name,
           description: d.description,
+          workspace: d.workspace,
           fileCount: Math.max(0, Math.trunc(d.fileCount as number)),
           createdAt: d.createdAt,
           updatedAt: d.updatedAt,
@@ -679,6 +693,7 @@ export async function listProjects(userId: string): Promise<ProjectListItem[]> {
         token: d.token,
         name: d.name,
         description: d.description,
+        workspace: d.workspace,
         fileCount,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,

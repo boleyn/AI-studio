@@ -103,8 +103,12 @@ func Run(parent context.Context, shell Shell, request Request) (result Result, r
 			}
 		}
 	}()
-	if strings.HasPrefix(request.Command, workspacePrefix) {
-		result.Stdout, runError = runWorkspace(parent, request)
+	if strings.HasPrefix(request.Command, workspacePrefix) || strings.HasPrefix(request.Command, directoriesPrefix) {
+		if strings.HasPrefix(request.Command, directoriesPrefix) {
+			result.Stdout, runError = listDirectories(parent, request.Command)
+		} else {
+			result.Stdout, runError = runWorkspace(parent, request)
+		}
 		if runError == nil {
 			result.Status, result.ExitCode = "completed", 0
 		}

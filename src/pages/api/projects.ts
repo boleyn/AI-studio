@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { toReadableProjectDir } from "@/agent/sandbox/paths";
+import { requestProjectGrant } from "@server/localDevice/requestProjectGrant";
+import type { ProjectWorkspace } from "@/types/projectWorkspace";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import {
@@ -18,22 +22,23 @@ import {
 import { listConversations, purgeAllConversations } from "@server/conversations/conversationStorage";
 import { requireAuth } from "@server/auth/session";
 
-type ProjectListItem = {
-  token: string;
-  name: string;
-  description?: string;
-  fileCount?: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
 type CreateProjectRequest = {
+  workspace?: unknown;
   name?: string;
   description?: string;
   template?: SandpackPredefinedTemplate;
   files?: Record<string, { code: string }>;
   dependencies?: Record<string, string>;
 };
+
+const workspaceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("remote-vm") }).strict(),
+  z.object({
+    kind: z.literal("connector"),
+    deviceId: z.string().uuid(),
+    workdir: z.string().trim().min(1).max(4096).optional(),
+  }).strict(),
+]);
 
 const hasFilesObject = (files: unknown): files is Record<string, { code: string }> => {
   return Boolean(files && typeof files === "object");
@@ -92,6 +97,11 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         res.status(400).json({ error: "请输入项目名称" });
         return;
       }
+      const selection = workspaceSchema.safeParse(body.workspace === undefined ? { kind: "remote-vm" } : body.workspace);
+      if (!selection.success) {
+        res.status(400).json({ error: "请选择工作空间位置，本地电脑需要选择设备" });
+        return;
+      }
       const token = generateToken();
       const now = new Date().toISOString();
       const requestedTemplate = isCommonProjectTemplate(body.template)
@@ -102,7 +112,35 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         ? await loadProjectTemplateDefaults(requestedTemplate)
         : { files: {}, dependencies: {} };
 
+      let workspace: ProjectWorkspace = {
+        kind: "remote-vm",
+        directoryName: `${toReadableProjectDir(name, token)}-${token}`,
+      };
+      if (selection.data.kind === "connector") {
+        try {
+          const grant = await requestProjectGrant({
+            userId,
+            memberName: auth.user.displayName || auth.user.username || userId,
+            project: { token, name },
+            deviceId: selection.data.deviceId,
+            initialWorkdir: selection.data.workdir,
+          });
+          workspace = {
+            kind: "connector",
+            deviceId: selection.data.deviceId,
+            grantId: grant.grantId,
+            workdir: grant.workdir,
+          };
+        } catch (error) {
+          res.status(400).json({ error: error instanceof Error && error.message === "grant_workdir_invalid"
+            ? "所选目录不可用，请选择其他目录"
+            : "无法授权本地工作空间，请确认连接器在线并在本机批准" });
+          return;
+        }
+      }
+
       const project: ProjectData = {
+        workspace,
         token,
         name,
         description: body.description?.trim() || undefined,
@@ -119,6 +157,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       await saveProject(project);
 
       res.status(201).json({
+        workspace: project.workspace,
         token: project.token,
         name: project.name,
         description: project.description,
@@ -136,6 +175,10 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   if (req.method === "PATCH") {
+    if (req.body && Object.hasOwn(req.body, "workspace")) {
+      res.status(400).json({ error: "项目创建后无法更改工作空间" });
+      return;
+    }
     const token =
       typeof req.query.token === "string"
         ? req.query.token

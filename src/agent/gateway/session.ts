@@ -1,3 +1,6 @@
+import type { DeviceAccess } from "@/types/projectWorkspace";
+import { createLocalDeviceExecutor } from "../sandbox/environments/localDevice";
+import { BashTool, runTerminalCommand } from "../tools/builtin/terminalTool";
 import { schedulePlugin } from "@server/schedules/plugin";
 import { delegationRole, roleInstructions } from "../delegation/roles";
 import { goalStatusTool, resumeGoal, type SessionGoal } from "../app/goal";
@@ -55,6 +58,7 @@ export type AgentSessionInput = {
   currentMessages?: ChatCompletionMessageParam[];
   token: string;
   projectName?: string;
+  projectDirectory?: string;
   userId?: string;
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   chatId: string;
@@ -67,7 +71,8 @@ export type AgentSessionInput = {
   messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
   sandboxKind?: SandboxKind;
-  connector?: { url?: string; token?: string; deviceId?: string; grantId?: string; userId?: string };
+  connector?: { url?: string; token?: string; deviceId?: string; grantId?: string; workdir?: string; userId?: string };
+  deviceAccess?: DeviceAccess;
   onEvent: (event: SdkStreamEventName, data: Record<string, unknown>) => void;
 };
 
@@ -161,6 +166,7 @@ export async function runAgentSession(
   const sandbox = await createSandbox({
     workspaceKey: input.token || "project",
     projectName: input.projectName,
+    projectDirectory: input.projectDirectory,
     hostUserId: input.userId,
     kind: input.sandboxKind,
     projectFiles: input.projectFiles,
@@ -188,6 +194,35 @@ export async function runAgentSession(
         ],
       },
     );
+    const { deviceAccess, userId } = input;
+    if (deviceAccess && userId && !input.isSubagent && plugins.registry.get("Bash")) {
+      plugins.registry.register<Parameters<typeof runTerminalCommand>[0]>({
+        ...BashTool,
+        name: "DeviceBash",
+        description: deviceAccess.kind === "connector"
+          ? "Run a command on the additional local computer selected by the user, starting in its authorized directory. Paths and output are relative to that device. Use Bash and file tools for the project workspace."
+          : "Run a command on the user's cloud computer outside the project workspace. Use Bash and file tools for the project workspace.",
+        async handler(args, { signal }) {
+          if (deviceAccess.kind === "connector") {
+            const { exec } = await createLocalDeviceExecutor({
+              ...deviceAccess, userId, projectToken: input.token,
+            });
+            return runTerminalCommand(args, exec, signal);
+          }
+          const cloudDevice = await createSandbox({
+            workspaceKey: "device-access",
+            projectDirectory: ".device-access",
+            hostUserId: userId,
+            kind: "remote-vm",
+          });
+          try {
+            return await runTerminalCommand(args, cloudDevice.exec, signal);
+          } finally {
+            await cloudDevice.dispose();
+          }
+        },
+      });
+    }
     const userContent = (input.currentMessages ?? input.messages).filter(m => m.role === "user").at(-1)?.content;
     const objective = typeof userContent === "string" ? userContent : Array.isArray(userContent) ? userContent.flatMap(block => block.type === "text" ? [block.text] : []).join("\n") : "";
     const goal: SessionGoal | undefined = permissionMode === "goal" && !input.isSubagent
@@ -260,7 +295,7 @@ export async function runAgentSession(
       input.historyMessages,
     );
     const identity = contextIdentity({ model, systemPrompt, permissionMode, sandboxKind: sandbox.kind,
-      connector: input.connector, pluginInstructions: instructionSkills.map(skill => [skill.name, skill.content]), tools: plugins.registry.available({ sandbox, permissionMode, projectToken: input.token, isSubagent: input.isSubagent }).map(t => [t.name, t.parameters]),
+      connector: input.connector, deviceAccess: input.deviceAccess, pluginInstructions: instructionSkills.map(skill => [skill.name, skill.content]), tools: plugins.registry.available({ sandbox, permissionMode, projectToken: input.token, isSubagent: input.isSubagent }).map(t => [t.name, t.parameters]),
     });
     const current = toOpenAIHistory(input.currentMessages || input.messages.slice(-1));
     const appendContext = (messages: typeof openAIMessages) => {

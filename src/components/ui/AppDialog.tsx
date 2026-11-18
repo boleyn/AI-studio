@@ -52,6 +52,7 @@ export type AppDialogProps = {
   initialFocusRef?: RefObject<HTMLElement>;
   onSubmit?: (e: FormEvent) => void;
   footer?: ReactNode;
+  cornerRadius?: string;
   bodyPadding?: number | string;
   children: ReactNode;
 };
@@ -71,6 +72,7 @@ export function AppDialog({
   initialFocusRef,
   onSubmit,
   footer,
+  cornerRadius,
   bodyPadding,
   children,
 }: AppDialogProps) {
@@ -244,7 +246,7 @@ export function AppDialog({
       ref={dialogRef}
       tabIndex={-1}
       className="app-dialog"
-      style={{ maxWidth: resolvedMaxW }}
+      style={{ maxWidth: resolvedMaxW, borderRadius: cornerRadius }}
       aria-labelledby={title ? titleId : undefined}
       aria-label={!title ? ariaLabel : undefined}
       {...({ closedby: "any" } as Record<string, string>)}

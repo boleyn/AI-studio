@@ -1,3 +1,4 @@
+import type { ProjectWorkspace } from "@/types/projectWorkspace";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, FormControl, FormLabel, Input, Text, Textarea, VStack } from "@chakra-ui/react";
 import { AppDialog } from "../ui";
@@ -9,7 +10,9 @@ type ProjectSettingsModalProps = {
     token: string;
     name: string;
     description?: string;
+    workspace?: ProjectWorkspace;
   } | null;
+  workspaceDeviceName?: string;
   onSave: (token: string, updates: { name: string; description: string }) => Promise<void>;
 };
 
@@ -17,6 +20,7 @@ export default function ProjectSettingsModal({
   isOpen,
   onClose,
   project,
+  workspaceDeviceName,
   onSave,
 }: ProjectSettingsModalProps) {
   const nameInputId = useId();
@@ -86,6 +90,15 @@ export default function ProjectSettingsModal({
       }
     >
       <VStack align="stretch" spacing={4}>
+        <VStack align="stretch" spacing={1}>
+          <Text fontSize="13px" fontWeight="500">工作空间位置</Text>
+          <Text fontSize="13px" color="ink.secondary">
+            {project?.workspace?.kind === "connector" ? workspaceDeviceName || "本地电脑" : "云电脑"}
+          </Text>
+          {project?.workspace?.kind === "connector" && (
+            <Text fontSize="12px" color="ink.muted" overflowWrap="anywhere">{project.workspace.workdir}</Text>
+          )}
+        </VStack>
         <FormControl isRequired>
           <FormLabel htmlFor={nameInputId} fontSize="13px" fontWeight="500" color="ink.primary">
             项目名称

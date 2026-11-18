@@ -10,19 +10,23 @@ import type {
   SandboxExecResult,
 } from "../types";
 
-export const createLocalDeviceSandbox = async (params: {
-  workspaceKey: string;
+export const createLocalDeviceExecutor = async (params: {
+  projectToken: string;
   deviceId: string;
   grantId: string;
   userId: string;
-  runtimeFiles?: import("../types").ProjectFiles;
-}): Promise<Sandbox> => {
+  workdir?: string;
+}): Promise<{ exec: Sandbox["exec"]; workdir: string }> => {
   const grant = await findGrant(params.grantId);
   if (
     !grant ||
     grant.revoked ||
     !grant.locallyApproved ||
     grant.teamId !== params.userId ||
+    grant.appId !== params.projectToken ||
+    !grant.capabilities.includes("exec") ||
+    Boolean(grant.expiresAt && grant.expiresAt <= Date.now()) ||
+    (params.workdir !== undefined && grant.workdir !== params.workdir) ||
     grant.deviceId !== params.deviceId
   ) {
     throw new Error("local_device_grant_unavailable");
@@ -31,7 +35,7 @@ export const createLocalDeviceSandbox = async (params: {
   const gateway = createLocalDeviceGateway();
   const baseWorkdir = grant.workdir || ".";
 
-  const runExec = async (command: string, options: SandboxExecOptions = {}): Promise<SandboxExecResult> => {
+  const exec = async (command: string, options: SandboxExecOptions = {}): Promise<SandboxExecResult> => {
     const operationId = randomUUID();
     const timeoutMs = Math.min(Math.max(options.timeoutMs ?? 120_000, 1000), 600_000);
     const cwd = options.cwd ? resolveWorkdirPath(baseWorkdir, options.cwd) : baseWorkdir;
@@ -100,14 +104,26 @@ export const createLocalDeviceSandbox = async (params: {
     }
   };
 
-  const fs = createPosixDeviceFileSystem(baseWorkdir, runExec);
+  return { exec, workdir: baseWorkdir };
+};
+
+export const createLocalDeviceSandbox = async (params: {
+  workspaceKey: string;
+  deviceId: string;
+  grantId: string;
+  userId: string;
+  workdir?: string;
+  runtimeFiles?: import("../types").ProjectFiles;
+}): Promise<Sandbox> => {
+  const { exec, workdir } = await createLocalDeviceExecutor({ ...params, projectToken: params.workspaceKey });
+  const fs = createPosixDeviceFileSystem(workdir, exec);
   const workspace = await prepareConnectorWorkspace(fs, params.runtimeFiles);
 
   return {
     kind: "connector",
     workspaceKey: params.workspaceKey,
     fs,
-    exec: runExec,
+    exec,
     async persist() {},
     exportProjectFiles: workspace.exportChangedFiles,
     async dispose() {},

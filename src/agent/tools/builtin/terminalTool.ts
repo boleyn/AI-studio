@@ -1,4 +1,5 @@
 import { defineTool } from "../types";
+import type { Sandbox } from "../../sandbox/types";
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.AGENT_BASH_TIMEOUT_MS || 120_000);
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
@@ -24,15 +25,21 @@ export const BashTool = defineTool<{ command: string; timeout?: number; cwd?: st
     },
     required: ["command"],
   },
-  async handler(input, { sandbox, signal }) {
-    const command = String(input.command || "").trim();
-    if (!command) return { content: "command is required", isError: true };
-    const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1000, Number(input.timeout) || DEFAULT_TIMEOUT_MS));
-    const result = await sandbox.exec(command, { cwd: input.cwd, timeoutMs, signal });
-    const parts = [];
-    if (result.stdout.trim()) parts.push(result.stdout.trimEnd());
-    if (result.stderr.trim()) parts.push(`[stderr]\n${result.stderr.trimEnd()}`);
-    parts.push(`[exit code: ${result.code}]`);
-    return { content: parts.join("\n"), isError: result.code !== 0 };
-  },
+  handler: (input, { sandbox, signal }) => runTerminalCommand(input, sandbox.exec, signal),
 });
+
+export async function runTerminalCommand(
+  input: { command: string; timeout?: number; cwd?: string },
+  exec: Sandbox["exec"],
+  signal?: AbortSignal,
+) {
+  const command = String(input.command || "").trim();
+  if (!command) return { content: "command is required", isError: true };
+  const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1000, Number(input.timeout) || DEFAULT_TIMEOUT_MS));
+  const result = await exec(command, { cwd: input.cwd, timeoutMs, signal });
+  const parts = [];
+  if (result.stdout.trim()) parts.push(result.stdout.trimEnd());
+  if (result.stderr.trim()) parts.push(`[stderr]\n${result.stderr.trimEnd()}`);
+  parts.push(`[exit code: ${result.code}]`);
+  return { content: parts.join("\n"), isError: result.code !== 0 };
+}

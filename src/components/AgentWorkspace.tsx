@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Collapse,
-  Divider,
   Flex,
   FormControl,
   FormLabel,
@@ -26,24 +25,27 @@ import {
   PopoverContent,
   PopoverTrigger,
   Portal,
+  Radio,
+  RadioGroup,
   Text,
-  Textarea,
   Tooltip,
   useDisclosure,
   useToast,
   VStack,
 } from "@chakra-ui/react";
 import {
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Clock,
-  FileText,
+  Cloud,
   Folder,
   FolderOpen,
   FolderPlus,
   HardDrive,
   Home,
   LayoutGrid,
+  Laptop,
   MessageSquare,
   MoreHorizontal,
   PanelLeftClose,
@@ -57,12 +59,9 @@ import {
 } from "lucide-react";
 import { AppDialog } from "./ui";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
-import WorkspaceRuntimeModal, {
-  DEFAULT_RUNTIME_CONFIG,
-  loadProjectRuntimeConfig,
-  saveProjectRuntimeConfig,
-  type ProjectRuntimeConfig,
-} from "./agent-workspace/WorkspaceRuntimeModal";
+import ProjectWorkspaceSelect from "./agent-workspace/ProjectWorkspaceSelect";
+import DeviceManagementModal from "./agent-workspace/DeviceManagementModal";
+import type { DeviceAccess, ProjectWorkspace } from "@/types/projectWorkspace";
 import ProjectSettingsModal from "./agent-workspace/ProjectSettingsModal";
 import ProjectsDirectoryView from "./agent-workspace/ProjectsDirectoryView";
 import type { Schedule } from "@/shared/schedules/types";
@@ -95,6 +94,7 @@ export type ProjectWithConversations = {
   name: string;
   description?: string;
   fileCount?: number;
+  workspace?: ProjectWorkspace;
   createdAt: string;
   updatedAt: string;
   conversations: ConversationItem[];
@@ -106,7 +106,6 @@ type AgentWorkspaceProps = {
   initialFiles?: Record<string, { code: string }>;
 };
 
-const MAX_COLLAPSED_CONVERSATIONS = 5;
 
 export default function AgentWorkspace({
   initialProjectToken,
@@ -135,7 +134,6 @@ export default function AgentWorkspace({
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
-  const [showAllConvsByProject, setShowAllConvsByProject] = useState<Record<string, boolean>>({});
 
   // 右侧浮动资源卡（输出 / 来源）与文件预览抽屉
   const [floatingResourcesOpen, setFloatingResourcesOpen] = useState(false);
@@ -170,25 +168,17 @@ export default function AgentWorkspace({
     setFilesDrawerOpen(false);
   }, [activeToken, activeChatId, newConvSignal]);
 
-  // 项目级执行环境配置（按项目 token 持久化，切换项目自动恢复）
-  const [runtimeByProject, setRuntimeByProject] = useState<Record<string, ProjectRuntimeConfig>>({});
-  const runtimeModal = useDisclosure();
-  const [composerPanel, setComposerPanel] = useState(false);
-  const [runtimeTargetProject, setRuntimeTargetProject] = useState<{ token: string; name: string } | null>(null);
-
-  const activeRuntime = useMemo(
-    () => (activeToken ? runtimeByProject[activeToken] || loadProjectRuntimeConfig(activeToken) : DEFAULT_RUNTIME_CONFIG),
-    [activeToken, runtimeByProject],
-  );
-
-  useEffect(() => {
-    if (!activeToken) return;
-    setRuntimeByProject((prev) => (prev[activeToken] ? prev : { ...prev, [activeToken]: loadProjectRuntimeConfig(activeToken) }));
-  }, [activeToken]);
+  const devicesModal = useDisclosure();
+  const [deviceAccessByProject, setDeviceAccessByProject] = useState<Record<string, DeviceAccess | undefined>>({});
+  const [requestingDeviceAccess, setRequestingDeviceAccess] = useState(false);
+  const activeDeviceAccess = deviceAccessByProject[activeToken];
 
   // 项目设置与删除确认弹窗
   const settingsModal = useDisclosure();
   const [editingProject, setEditingProject] = useState<ProjectWithConversations | null>(null);
+  const editingWorkspaceDeviceId = editingProject?.workspace?.kind === "connector"
+    ? editingProject.workspace.deviceId
+    : undefined;
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
@@ -225,7 +215,13 @@ export default function AgentWorkspace({
   // 新建项目弹窗
   const createModal = useDisclosure();
   const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [newWorkspaceKind, setNewWorkspaceKind] = useState<ProjectWorkspace["kind"]>("remote-vm");
+  const [newWorkspaceDeviceId, setNewWorkspaceDeviceId] = useState("");
+  const [newWorkspaceWorkdir, setNewWorkspaceWorkdir] = useState("");
+  const [highlightedFolder, setHighlightedFolder] = useState("");
+  const [showHiddenFolders, setShowHiddenFolders] = useState(false);
+  const [choosingFolderDevice, setChoosingFolderDevice] = useState(false);
+  const [deviceWorkdirs, setDeviceWorkdirs] = useState<{ deviceId: string; workdirs?: string[]; current?: string; parent?: string | null; error?: boolean }>();
   const [creatingProject, setCreatingProject] = useState(false);
   const newProjectNameRef = useRef<HTMLInputElement>(null);
 
@@ -294,6 +290,7 @@ export default function AgentWorkspace({
             }))
         : [];
       setPairedDevices(list);
+      return list;
     } catch {
       // ignore if user has no devices or endpoint unavailable
     }
@@ -362,22 +359,57 @@ export default function AgentWorkspace({
     setNewConvSignal((n) => n + 1);
   };
 
+  const directoryRequest = useRef(0);
+  const fetchDeviceWorkdirs = async (deviceId: string, directory?: string) => {
+    if (!deviceId) return;
+    setHighlightedFolder("");
+    const request = ++directoryRequest.current;
+    setDeviceWorkdirs({ deviceId, current: directory });
+    try {
+      const data = await apiJson<{ current: string; parent: string | null; children: string[] }>(
+        "/core/localDevice/directories", { method: "POST", body: JSON.stringify({ deviceId, directory }) },
+      );
+      if (request === directoryRequest.current)
+        setDeviceWorkdirs({ deviceId, current: data.current, parent: data.parent, workdirs: data.children });
+    } catch {
+      if (request === directoryRequest.current) setDeviceWorkdirs({ deviceId, current: directory, error: true });
+    }
+  };
+
+  const closeFolderPicker = () => {
+    ++directoryRequest.current;
+    setDeviceWorkdirs(undefined);
+    setHighlightedFolder("");
+  };
+  const folderName = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() || path;
+  const visibleFolders = (deviceWorkdirs?.workdirs || []).filter(folder => showHiddenFolders || !folderName(folder).startsWith("."));
+
   const handleCreateProject = async () => {
     const name = newProjectName.trim();
-    if (!name) return;
+    if (!name || creatingProject) return;
+    if (newWorkspaceKind === "connector" &&
+        !pairedDevices.some(device => device.deviceId === newWorkspaceDeviceId && device.online)) {
+      toast({ title: "请选择在线的本地电脑", status: "warning" });
+      return;
+    }
     setCreatingProject(true);
     try {
       const created = await apiJson<{ token: string; name: string }>("/projects", {
         method: "POST",
         body: JSON.stringify({
           name,
+          workspace: newWorkspaceKind === "connector"
+            ? { kind: newWorkspaceKind, deviceId: newWorkspaceDeviceId, workdir: newWorkspaceWorkdir || undefined }
+            : { kind: newWorkspaceKind },
           files: {},
           dependencies: {},
-          ...(newProjectDesc.trim() ? { description: newProjectDesc.trim() } : {}),
         }),
       });
       setNewProjectName("");
-      setNewProjectDesc("");
+      setNewWorkspaceKind("remote-vm");
+      setNewWorkspaceDeviceId("");
+      setDeviceWorkdirs(undefined);
+      setNewWorkspaceWorkdir("");
       createModal.onClose();
       await fetchProjects();
       setNewConvSignal(0);
@@ -420,14 +452,24 @@ export default function AgentWorkspace({
     }
   };
 
-  const handleSaveRuntimeConfig = (projectToken: string, next: ProjectRuntimeConfig) => {
-    saveProjectRuntimeConfig(projectToken, next);
-    setRuntimeByProject((prev) => ({ ...prev, [projectToken]: next }));
-    toast({
-      title: next.sandboxKind === "connector" ? "已切换为本地电脑" : "已切换为云电脑",
-      status: "success",
-      duration: 2000,
-    });
+  const selectDeviceAccess = (projectToken: string, access?: DeviceAccess) => {
+    setDeviceAccessByProject(prev => ({ ...prev, [projectToken]: access }));
+  };
+
+  const requestDeviceAccess = async (projectToken: string, deviceId: string) => {
+    if (requestingDeviceAccess) return;
+    setRequestingDeviceAccess(true);
+    try {
+      const { grant } = await apiJson<{ grant: { grantId: string } }>("/core/localDevice/grant", {
+        method: "POST",
+        body: JSON.stringify({ action: "request", appId: projectToken, chatId: "device-access", deviceId }),
+      });
+      selectDeviceAccess(projectToken, { kind: "connector", deviceId, grantId: grant.grantId });
+    } catch {
+      toast({ title: "无法访问这台电脑，请确认连接器在线并在本机批准", status: "warning" });
+    } finally {
+      setRequestingDeviceAccess(false);
+    }
   };
 
   const handleDeleteProject = async (token: string, name: string) => {
@@ -467,45 +509,9 @@ export default function AgentWorkspace({
     }
   };
 
-  const handleTestConnector = async (url: string, token: string) => {
-    const start = Date.now();
-    try {
-      const res = await apiJson<{ ok: boolean; error?: string }>("/agent/connector/test", {
-        method: "POST",
-        body: JSON.stringify({ url, token }),
-      });
-      return { ok: Boolean(res.ok), latencyMs: Date.now() - start, error: res.error };
-    } catch (error) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  };
-
   const completionsExtraBody = useMemo(
-    () =>
-      activeRuntime.sandboxKind === "connector"
-        ? activeRuntime.deviceId && activeRuntime.grantId
-          ? {
-              sandboxKind: "connector",
-              connector: {
-                deviceId: activeRuntime.deviceId,
-                grantId: activeRuntime.grantId,
-              },
-            }
-          : {
-              sandboxKind: "connector",
-              connector: { url: activeRuntime.connectorUrl, token: activeRuntime.connectorToken },
-            }
-        : { sandboxKind: "remote-vm" },
-    [
-      activeRuntime.connectorToken,
-      activeRuntime.connectorUrl,
-      activeRuntime.deviceId,
-      activeRuntime.grantId,
-      activeRuntime.sandboxKind,
-    ],
+    () => activeDeviceAccess ? { deviceAccess: activeDeviceAccess } : undefined,
+    [activeDeviceAccess],
   );
 
   const openWorkspaceFile = useCallback((filePath: string, version?: string) => {
@@ -552,22 +558,6 @@ export default function AgentWorkspace({
   const currentResources = conversationResources?.token === activeToken &&
     conversationResources.conversationId === visibleChatId ? conversationResources : undefined;
 
-  const recentConversations = useMemo(() => {
-    const items: Array<ConversationItem & { projectToken: string; projectName: string }> = [];
-    for (const project of projects) {
-      for (const conv of project.conversations) {
-        items.push({
-          ...conv,
-          projectToken: project.token,
-          projectName: project.name,
-        });
-      }
-    }
-    return items
-      .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
-      .slice(0, 8);
-  }, [projects]);
-
   const conversationPane = (
       <Flex flex="1" direction="column" minW={0} bg="#ffffff">
         {activeNav !== "schedules" && (
@@ -602,7 +592,7 @@ export default function AgentWorkspace({
                   fontSize="14px"
                   color="ink.primary"
                   leftIcon={
-                    activeRuntime.sandboxKind === "connector" ? (
+                    activeProject.workspace?.kind === "connector" ? (
                       <HardDrive size={15} />
                     ) : (
                       <Folder size={15} />
@@ -727,60 +717,19 @@ export default function AgentWorkspace({
                 fileOptions={fileKeys}
                 height="100%"
                 workspaceComposer={{
-                  runtimeKind: activeRuntime.sandboxKind,
-                  runtimeLabel:
-                    activeRuntime.sandboxKind === "connector"
-                      ? pairedDevices.find(d => d.deviceId === activeRuntime.deviceId)?.name || deviceDisplayName({ name: activeRuntime.deviceName })
-                      : "云电脑",
-                  runtimeDeviceId: activeRuntime.deviceId,
+                  deviceAccessKind: activeDeviceAccess?.kind,
+                  deviceAccessLabel: activeDeviceAccess?.kind === "connector"
+                    ? pairedDevices.find(device => device.deviceId === activeDeviceAccess.deviceId)?.name || "本地电脑"
+                    : activeDeviceAccess?.kind === "remote-vm" ? "云电脑" : "访问设备",
+                  selectedDeviceId: activeDeviceAccess?.kind === "connector" ? activeDeviceAccess.deviceId : undefined,
+                  requestingDeviceAccess,
                   cloudHostStatus,
                   devices: pairedDevices,
-                  onOpenHostMenu: () => void fetchPairedDevices(),
-                  onSelectCloudHost: () => {
-                    handleSaveRuntimeConfig(activeProject.token, {
-                      ...activeRuntime,
-                      sandboxKind: "remote-vm",
-                    });
-                  },
-                  platformPanel: composerPanel && <WorkspaceRuntimeModal embedded isOpen
-                    projectName={activeProject.name} projectToken={activeProject.token} config={activeRuntime}
-                    onClose={() => { setComposerPanel(false); void fetchPairedDevices(); }}
-                    onSave={next => handleSaveRuntimeConfig(activeProject.token, next)}
-                    onTestConnector={handleTestConnector} cloudHostStatus={cloudHostStatus} />,
-                  closePlatformPanel: () => { setComposerPanel(false); void fetchPairedDevices(); },
-                  onSelectDeviceHost: (device) => {
-                    void (async () => {
-                      if (activeRuntime.deviceId === device.deviceId && activeRuntime.grantId) {
-                        handleSaveRuntimeConfig(activeProject.token, {
-                          ...activeRuntime,
-                          sandboxKind: "connector",
-                          deviceId: device.deviceId,
-                          deviceName: device.name,
-                        });
-                        return;
-                      }
-                      try {
-                        const { grant } = await apiJson<{ grant: { grantId: string; workdir: string } }>(
-                          "/core/localDevice/grant", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ action: "request", appId: activeProject.token, deviceId: device.deviceId }),
-                          },
-                        );
-                        handleSaveRuntimeConfig(activeProject.token, {
-                          ...activeRuntime, sandboxKind: "connector", deviceId: device.deviceId,
-                          deviceName: device.name, grantId: grant.grantId, workdir: grant.workdir,
-                        });
-                        return;
-                      } catch {
-                        toast({ title: "无法使用这台电脑，请检查连接器中的账号授权", status: "warning" });
-                      }
-                      setComposerPanel(true);
-                    })();
-                  },
-                  onOpenRuntime: () => {
-                    setComposerPanel(true);
-                  },
+                  onOpenHostMenu: () => { void fetchPairedDevices(); void fetchCloudHostStatus(); },
+                  onClearDeviceAccess: () => selectDeviceAccess(activeProject.token),
+                  onSelectCloudHost: () => selectDeviceAccess(activeProject.token, { kind: "remote-vm" }),
+                  onSelectDeviceHost: (device) => void requestDeviceAccess(activeProject.token, device.deviceId),
+                  onOpenDeviceManagement: devicesModal.onOpen,
                   projectToken: activeProject.token,
                   projectName: activeProject.name,
                   projects: projects.map((p) => ({ token: p.token, name: p.name })),
@@ -877,21 +826,10 @@ export default function AgentWorkspace({
               onClick={() => setActiveNav("schedules")}
             />
           </Tooltip>
-          {activeProject && (
-            <Tooltip label="执行环境（虚拟机 / 本机连接器）" placement="right">
-              <IconButton
-                aria-label="执行环境"
-                icon={<LayoutGrid size={17} />}
-                size="sm"
-                variant="ghost"
-                color="ink.secondary"
-                onClick={() => {
-                  setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                  runtimeModal.onOpen();
-                }}
-              />
-            </Tooltip>
-          )}
+          <Tooltip label="我的设备" placement="right">
+            <IconButton aria-label="我的设备" icon={<LayoutGrid size={17} />} size="sm"
+              variant="ghost" color="ink.secondary" onClick={devicesModal.onOpen} />
+          </Tooltip>
         </VStack>
 
         <VStack spacing={2.5}>
@@ -904,7 +842,6 @@ export default function AgentWorkspace({
         <ProjectsDirectoryView
           projects={projects}
           pinnedTokens={pinnedProjectTokens}
-          getProjectRuntime={(token) => runtimeByProject[token] || loadProjectRuntimeConfig(token)}
           onSelectProject={(token) => {
             handleSelectProject(token);
             setActiveNav("chat");
@@ -914,10 +851,6 @@ export default function AgentWorkspace({
           onOpenSettings={(project) => {
             setEditingProject(project);
             settingsModal.onOpen();
-          }}
-          onOpenRuntime={(project) => {
-            setRuntimeTargetProject({ token: project.token, name: project.name });
-            runtimeModal.onOpen();
           }}
           onRequestDelete={(project) => {
             setPendingDeleteProject({ token: project.token, name: project.name });
@@ -1067,9 +1000,7 @@ export default function AgentWorkspace({
                     {(showAllProjects || searchQuery.trim() ? filteredProjects : filteredProjects.slice(0, 8)).map((project) => {
                       const isActiveProject = activeToken === project.token && !visibleChatId;
                       const isExpanded = Boolean(expandedProjects[project.token]) || Boolean(searchQuery.trim());
-                      const projectRuntime =
-                        runtimeByProject[project.token] || loadProjectRuntimeConfig(project.token);
-                      const isConnectorProject = projectRuntime.sandboxKind === "connector";
+                      const isConnectorProject = project.workspace?.kind === "connector";
 
                       return (
                         <Box key={project.token}>
@@ -1156,15 +1087,6 @@ export default function AgentWorkspace({
                                     }}
                                   >
                                     项目设置与说明
-                                  </MenuItem>
-                                  <MenuItem
-                                    icon={<SlidersHorizontal size={14} />}
-                                    onClick={() => {
-                                      setRuntimeTargetProject({ token: project.token, name: project.name });
-                                      runtimeModal.onOpen();
-                                    }}
-                                  >
-                                    执行环境设置
                                   </MenuItem>
                                   <MenuDivider />
                                   <MenuItem
@@ -1299,9 +1221,9 @@ export default function AgentWorkspace({
         isOpen={createModal.isOpen}
         onClose={createModal.onClose}
         title="新建项目"
-        subtitle="为一组相关的对话、文件和工作环境创建独立空间"
         initialFocusRef={newProjectNameRef}
-        size="md"
+        size="sm"
+        cornerRadius="10px"
         onSubmit={(e) => {
           e.preventDefault();
           void handleCreateProject();
@@ -1316,6 +1238,7 @@ export default function AgentWorkspace({
               variant="primary"
               size="sm"
               isLoading={creatingProject}
+              loadingText="正在创建"
               isDisabled={!newProjectName.trim()}
             >
               创建项目
@@ -1324,13 +1247,14 @@ export default function AgentWorkspace({
         }
       >
         <VStack align="stretch" spacing={4}>
-          <FormControl isRequired>
+          <FormControl id="new-project-name" isRequired>
             <FormLabel fontSize="13px" fontWeight="500" color="ink.primary">
               项目名称
             </FormLabel>
             <Input
+              name="projectName"
               ref={newProjectNameRef}
-              size="md"
+              size="sm"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               onKeyDown={(e) => {
@@ -1338,23 +1262,130 @@ export default function AgentWorkspace({
                   e.preventDefault();
                 }
               }}
-              placeholder="例如：财报分析、Bore 开发"
+              placeholder="输入项目名称"
             />
           </FormControl>
 
-          <FormControl>
-            <FormLabel fontSize="13px" fontWeight="500" color="ink.primary">
-              项目说明（可选）
-            </FormLabel>
-            <Textarea
-              size="sm"
-              rows={2}
-              value={newProjectDesc}
-              onChange={(e) => setNewProjectDesc(e.target.value)}
-              placeholder="描述项目目标或工作约定"
-            />
+          <FormControl as="fieldset">
+            <FormLabel as="legend" fontSize="13px" color="ink.primary">工作空间</FormLabel>
+            <RadioGroup name="workspaceKind" value={newWorkspaceKind} onChange={(value) => {
+              setNewWorkspaceKind(value === "connector" ? "connector" : "remote-vm");
+              setChoosingFolderDevice(false);
+              if (value === "connector") void fetchPairedDevices().then(list => {
+                const online = list?.filter(device => device.online);
+                if (online?.length === 1) setNewWorkspaceDeviceId(previous => previous || online[0].deviceId);
+              });
+            }}>
+              <HStack spacing={1} p={1} bg="surface.rail" borderRadius="8px" sx={{
+                "& > label": {
+                  flex: 1,
+                  minHeight: "36px",
+                  justifyContent: "center",
+                  borderRadius: "5px",
+                  _hover: { bg: "surface.hover" },
+                  "&[data-checked]": { bg: "surface.canvas", boxShadow: "sm" },
+                  "& .chakra-radio__control": { display: "none" },
+                  "&:focus-within": { outline: "2px solid", outlineColor: "ink.primary", outlineOffset: "1px" },
+                },
+              }}>
+                {([
+                  { value: "remote-vm", label: "云电脑", Icon: Cloud },
+                  { value: "connector", label: "本地电脑", Icon: Laptop },
+                ] as const).map(({ value, label, Icon }) => (
+                  <Radio key={value} value={value} colorScheme="gray" spacing={0}>
+                    <HStack spacing={1.5}>
+                      <Icon aria-hidden="true" size={15} />
+                      <Text fontSize="13px" fontWeight={newWorkspaceKind === value ? "600" : "500"}>{label}</Text>
+                    </HStack>
+                  </Radio>
+                ))}
+              </HStack>
+            </RadioGroup>
           </FormControl>
+          {newWorkspaceKind === "connector" && (
+            <VStack align="stretch" spacing={3} pt={3} borderTop="1px solid" borderColor="stroke.light">
+              <HStack align="center" spacing={2}>
+                <Text id="new-project-device-label" fontSize="13px" w="64px" flexShrink={0}>设备</Text>
+                <Box flex={1} minW={0}>
+                  <ProjectWorkspaceSelect labelId="new-project-device-label" value={newWorkspaceDeviceId}
+                    placeholder="选择设备" emptyMessage="暂无设备" onOpen={() => void fetchPairedDevices()}
+                    options={pairedDevices.map(device => ({
+                      value: device.deviceId, label: device.name,
+                      status: device.online ? "在线" : "离线", disabled: !device.online,
+                    }))}
+                    onChange={deviceId => {
+                      setChoosingFolderDevice(false);
+                      setNewWorkspaceDeviceId(deviceId);
+                      setNewWorkspaceWorkdir("");
+                      ++directoryRequest.current;
+                      setDeviceWorkdirs(undefined);
+                    }} />
+                </Box>
+                <Button type="button" size="xs" variant="ghost" flexShrink={0} onClick={devicesModal.onOpen}>管理</Button>
+              </HStack>
+              <HStack align="center" spacing={2}>
+                <Text id="new-project-workdir-label" fontSize="13px" w="64px" flexShrink={0}>工作目录</Text>
+                <Box flex={1} minW={0}>
+                  <Button type="button" size="sm" variant="outline" w="full" justifyContent="space-between"
+                    aria-expanded={choosingFolderDevice || !!deviceWorkdirs}
+                    rightIcon={<ChevronDown size={14} />} onClick={() => {
+                      if (deviceWorkdirs) { ++directoryRequest.current; setDeviceWorkdirs(undefined); }
+                      else if (newWorkspaceDeviceId) void fetchDeviceWorkdirs(newWorkspaceDeviceId, newWorkspaceWorkdir || undefined);
+                      else {
+                        setChoosingFolderDevice(!choosingFolderDevice);
+                        void fetchPairedDevices();
+                      }
+                    }}>
+                    <Text noOfLines={1}>{newWorkspaceWorkdir || "选择文件夹"}</Text>
+                  </Button>
+                </Box>
+              </HStack>
+              {choosingFolderDevice && !newWorkspaceDeviceId && (
+                <VStack align="stretch" spacing={1}>
+                  {pairedDevices.filter(device => device.online).map(device => (
+                    <Button key={device.deviceId} type="button" variant="outline" size="sm" onClick={() => {
+                      setChoosingFolderDevice(false);
+                      setNewWorkspaceDeviceId(device.deviceId);
+                      setNewWorkspaceWorkdir("");
+                      void fetchDeviceWorkdirs(device.deviceId);
+                    }}>{device.name}</Button>
+                  ))}
+                  {!pairedDevices.some(device => device.online) && <Button type="button" size="sm" variant="ghost" onClick={devicesModal.onOpen}>暂无在线设备 · 管理设备</Button>}
+                </VStack>
+              )}
+            </VStack>
+          )}
         </VStack>
+      </AppDialog>
+
+      <AppDialog isOpen={!!deviceWorkdirs && createModal.isOpen} title="选择工作目录" size="md" cornerRadius="8px"
+        onClose={closeFolderPicker} footer={<>
+          <Button variant="ghost" size="sm" onClick={closeFolderPicker}>取消</Button>
+          <Button variant="primary" size="sm" isDisabled={!deviceWorkdirs?.workdirs || !(highlightedFolder || deviceWorkdirs.current)}
+            onClick={() => { setNewWorkspaceWorkdir(highlightedFolder || deviceWorkdirs?.current || ""); closeFolderPicker(); }}>选定文件夹</Button>
+        </>}>
+        <HStack pb={2} borderBottomWidth="1px">
+          <IconButton aria-label="上一级" icon={<ArrowUp size={15}/>} size="sm" variant="ghost"
+            isDisabled={deviceWorkdirs?.parent == null} onClick={() => void fetchDeviceWorkdirs(newWorkspaceDeviceId, deviceWorkdirs!.parent!)}/>
+          <Text flex={1} fontSize="sm" overflowWrap="anywhere">{deviceWorkdirs?.current || "设备"}</Text>
+          <Button size="xs" variant="ghost" aria-pressed={showHiddenFolders} onClick={() => setShowHiddenFolders(!showHiddenFolders)}>
+            {showHiddenFolders ? "收起隐藏项" : "显示隐藏项"}
+          </Button>
+        </HStack>
+        <Box h="min(280px, 40dvh)" overflowY="auto" py={1}>
+          {visibleFolders.map(folder => <HStack key={folder} spacing={0} borderRadius="4px"
+            bg={highlightedFolder === folder ? "surface.hover" : undefined} _hover={{ bg: "surface.hover" }}>
+            <Button flex={1} minW={0} justifyContent="flex-start" size="sm" variant="ghost" fontWeight="normal"
+              aria-pressed={highlightedFolder === folder} leftIcon={<Folder size={16}/>}
+              onClick={() => setHighlightedFolder(folder)} onDoubleClick={() => void fetchDeviceWorkdirs(newWorkspaceDeviceId, folder)}>
+              <Text noOfLines={1}>{folderName(folder)}</Text>
+            </Button>
+            <IconButton variant="ghost" size="sm" aria-label={`打开 ${folderName(folder)}`} icon={<ChevronRight size={15}/>}
+              onClick={() => void fetchDeviceWorkdirs(newWorkspaceDeviceId, folder)}/>
+          </HStack>)}
+          {deviceWorkdirs?.error ? <Button variant="ghost" size="sm" onClick={() => void fetchDeviceWorkdirs(newWorkspaceDeviceId, deviceWorkdirs.current)}>读取失败，重试</Button>
+            : !deviceWorkdirs?.workdirs ? <Spinner size="sm" m={3}/> : !visibleFolders.length && <Text p={3} color="ink.secondary" fontSize="sm">没有可显示的子文件夹</Text>}
+        </Box>
       </AppDialog>
 
       {/* 删除项目二次确认弹窗（安全按钮默认获焦） */}
@@ -1389,28 +1420,17 @@ export default function AgentWorkspace({
         </Text>
       </AppDialog>
 
-      {/* 项目执行环境配置弹窗 */}
-      {runtimeTargetProject && (
-        <WorkspaceRuntimeModal
-          isOpen={runtimeModal.isOpen}
-          onClose={() => { runtimeModal.onClose(); void fetchPairedDevices(); }}
-          projectName={runtimeTargetProject.name}
-          projectToken={runtimeTargetProject.token}
-          config={
-            runtimeByProject[runtimeTargetProject.token] ||
-            loadProjectRuntimeConfig(runtimeTargetProject.token)
-          }
-          onSave={(next) => handleSaveRuntimeConfig(runtimeTargetProject.token, next)}
-          onTestConnector={handleTestConnector}
-          cloudHostStatus={cloudHostStatus}
-        />
-      )}
+      <DeviceManagementModal isOpen={devicesModal.isOpen} onClose={() => {
+        devicesModal.onClose();
+        void fetchPairedDevices();
+      }} />
 
       {/* 项目设置与说明弹窗 */}
       <ProjectSettingsModal
         isOpen={settingsModal.isOpen}
         onClose={settingsModal.onClose}
         project={editingProject}
+        workspaceDeviceName={pairedDevices.find(device => device.deviceId === editingWorkspaceDeviceId)?.name}
         onSave={handleSaveProjectSettings}
       />
     </Flex>
