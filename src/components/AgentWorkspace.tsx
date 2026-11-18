@@ -852,7 +852,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView onChat={async files => {
+      {activeNav === "library" && <LibraryView projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async files => {
         const token = activeProject?.token || projects[0]?.token;
         if (!token) throw new Error("当前没有可用工作空间");
         const chat = await createConversation(token,[]);

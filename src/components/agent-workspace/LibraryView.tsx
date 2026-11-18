@@ -13,6 +13,8 @@ import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor from "./LibraryPageEditor";
 import LibraryTemplates, { TemplateGallery } from "./LibraryTemplates";
+import LibraryGlobalSearch from "./LibraryGlobalSearch";
+import type { ProjectWithConversations } from "../AgentWorkspace";
 import LibrarySidebar from "./LibrarySidebar";
 
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
@@ -27,13 +29,14 @@ function fileType(path: string) {
   return "其他";
 }
 
-export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:File[])=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ projects, onProject, onOpen, onBack, onChat }: { projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[])=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
   const [batchMove,setBatchMove] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [globalSearch,setGlobalSearch] = useState(false);
   const [query, setQuery] = useState("");
   const [editor,setEditor] = useState<LibraryFile>();
   const [showTemplates,setShowTemplates] = useState(true);
@@ -212,7 +215,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       void uploadFiles(selected);
     }}/>
     {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
-      onFile={openItem} onSearch={() => {setDetail(undefined);setEditor(undefined);requestAnimationFrame(() => search.current?.focus());}} onCollapse={() => setSidebar(false)} /></Box>}
+      onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>setDetail(undefined)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={editor} onBack={() => setEditor(undefined)}
@@ -281,6 +284,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>}
     </Box>
   </Box>}
+    {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
