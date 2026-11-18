@@ -1,3 +1,4 @@
+import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -128,11 +129,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
 
   const [appearance,setAppearance] = useState({icon:"",color:"默认"});
-  const [invitees,setInvitees] = useState("");
+  const [invitees,setInvitees] = useState<string[]>([]);
   const [inviteOpen,setInviteOpen] = useState(false);
   function openSpaceDialog() {
     setAppearance({icon:"",color:"默认"});
-    setInvitees("");
+    setInvitees([]);
     setInviteOpen(false);
     setTitle("");
     setNewKind("资料空间");
@@ -145,7 +146,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,...(kind === "资料空间" ? {appearance,invitees:invitees.split(/[,，;；\s]+/).filter(Boolean)} : {}),folderId:kind === "资料空间" ? null : parentId})});
+      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,...(kind === "资料空间" ? {appearance,invitees} : {}),folderId:kind === "资料空间" ? null : parentId})});
       if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error);
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
@@ -747,7 +748,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
           <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
             <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
-            {inviteOpen && <Box mt={2}><Input aria-label="受邀账号" title="邮箱形式的本地用户名可写为「账号:用户名」" placeholder="输入飞书邮箱或账号，用逗号分隔" value={invitees} onChange={event=>setInvitees(event.target.value)}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
+            {inviteOpen && <Box mt={2}><SpaceInviteInput accounts={invitees} onChange={setInvitees}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
           </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={()=>setNewKind(undefined)}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
         </form></ModalContent></Modal>
     <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
