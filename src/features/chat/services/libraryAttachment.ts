@@ -2,6 +2,11 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
 
+const imageTypes: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", avif: "image/avif", bmp: "image/bmp",
+};
+
 export function libraryAttachmentUrl(item: LibraryFile) {
   if (item.shareId) return "/api/artifact-share?id=" + item.shareId + "&file=1";
   const query = new URLSearchParams({token:item.token, action:"view", path:item.path});
@@ -22,7 +27,11 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   }
   const blob = await response.blob();
   if (item.sharedPage) return new File([blob],item.path,{type:"text/markdown"});
-  return new File([blob],item.name,{type:blob.type});
+  const extension = item.name.split(".").pop()?.toLowerCase() ?? "";
+  const type = !blob.type || blob.type === "application/octet-stream"
+    ? imageTypes[extension] ?? blob.type
+    : blob.type;
+  return new File([blob],item.name,{type});
 }
 
 export async function addLibraryAttachments(
