@@ -1,5 +1,6 @@
-import { Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
-import { BookOpen, Calendar, ClipboardList, Plane, Target, Wallet, X } from "lucide-react";
+import { useState } from "react";
+import { Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
+import { BookOpen, Calendar, ClipboardList, Plane, Search, Target, Wallet, X } from "lucide-react";
 
 export const templates = [
   { name:"页面使用指南", body:"欢迎使用页面\n\n在这里写作、整理资料，并与团队协作。\n\n开始使用\n添加标题、清单和笔记。", icon:BookOpen, color:"#008cff" },
@@ -22,4 +23,50 @@ export default function LibraryTemplates({ onPick, onClose }: {onPick:(name:stri
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">{i === 0 ? "从这里开始" : "Page"}</Text>
       </Button>)}</Box>
   </Box>;
+}
+
+export function TemplateGallery({ onClose, onPick }: {
+  onClose: () => void;
+  onPick: (name: string, body: string) => void;
+}) {
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("为你推荐");
+  const pages = templates.slice(1).filter(template =>
+    template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  );
+
+  return <Modal isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
+    <ModalOverlay />
+    <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
+      <ModalHeader>Templates</ModalHeader>
+      <ModalCloseButton aria-label="关闭对话框" />
+      <Flex px={6} pb={4} gap={2} align="center">
+        {["为你推荐", "页面"].map(label =>
+          <Button key={label} size="sm" borderRadius="full" aria-pressed={category === label}
+            variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}>{label}</Button>
+        )}
+        <Box flex={1} />
+        {searching && <Input autoFocus size="sm" w="min(200px, 30vw)" placeholder="搜索模板"
+          value={query} onChange={event => setQuery(event.target.value)} />}
+        <IconButton size="sm" variant="ghost" aria-label="搜索" aria-expanded={searching} icon={<Search size={18} />}
+          onClick={() => { setSearching(!searching); setQuery(""); }} />
+      </Flex>
+      <ModalBody>
+        <SimpleGrid columns={{base:2, md:4}} gap={4}>
+          {pages.map(({name, body, icon: Icon, color}) =>
+            <Button key={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
+              textAlign="left" onClick={() => onPick(name, body)}>
+              <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+                <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
+                  <Text whiteSpace="pre-line" mt={2} fontSize="8px">{body}</Text></Box>
+              </Box>
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
+            </Button>
+          )}
+        </SimpleGrid>
+        {!pages.length && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
+      </ModalBody>
+    </ModalContent>
+  </Modal>;
 }

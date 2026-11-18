@@ -12,7 +12,7 @@ import LibraryFileViewer from "./LibraryFileViewer";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor from "./LibraryPageEditor";
-import LibraryTemplates from "./LibraryTemplates";
+import LibraryTemplates, { TemplateGallery } from "./LibraryTemplates";
 import LibrarySidebar from "./LibrarySidebar";
 
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
@@ -57,7 +57,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
   }
-  const templateRegion = useRef<HTMLDivElement>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [folder,setFolder] = useState<LibraryFile>();
   const [newKind,setNewKind] = useState<"文件夹"|"资料空间">();
   const [move,setMove] = useState<LibraryFile>();
@@ -182,7 +182,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       <MenuItem color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Menu>;
   const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
-            <MenuList><MenuItem onClick={() => {changeSection("全部");setShowTemplates(true);requestAnimationFrame(() => templateRegion.current?.scrollIntoView({block:"nearest"}));}}>从模板开始</MenuItem>
+            <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
               <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
@@ -221,7 +221,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
         <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => setGrid(false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
       </Flex>
       </Box>
-      <Box ref={templateRegion}>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !types.length &&
+      <Box>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !types.length &&
         <LibraryTemplates onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
@@ -263,6 +263,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>}
     </Box>
   </Box>}
+    {galleryOpen && <TemplateGallery onClose={() => setGalleryOpen(false)} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
