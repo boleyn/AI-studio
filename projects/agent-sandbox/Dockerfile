@@ -62,7 +62,7 @@ COPY --chown=sandbox:sandbox settings.json /home/sandbox/.local/share/code-serve
 
 # Copy and configure entrypoint
 COPY --chown=sandbox:sandbox entrypoint.sh /home/sandbox/entrypoint.sh
-COPY --chown=sandbox:sandbox exec-server.ts /home/sandbox/exec-server.ts
+COPY --chown=sandbox:sandbox exec-server.ts virtual-paths.ts /home/sandbox/
 RUN chmod +x /home/sandbox/entrypoint.sh
 
 # Expose code-server port
