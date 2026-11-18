@@ -136,7 +136,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setFiles(previous => [page,...previous || []]);
       setNewKind(undefined);
       openItem(page);
-    } catch { toast({status:"error",title:"创建页面失败"}); }
+    } catch { toast({status:"error",title:"无法创建"+kind+"，请重试"}); }
     finally {setCreating(false);}
   }
   function recordOpen(file:LibraryFile) {
@@ -421,7 +421,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         file.chatId === detail.chatId && file.path === detail.path
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => navigateList(section, tab, folder?.id)}
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} backLabel={folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => navigateList(section, tab, folder?.id)}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
       outline={dropActive ? "2px dashed #777" : undefined} outlineOffset="-4px"
@@ -525,6 +525,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">文件夹为空</Heading>
             <Text fontSize="sm" color="gray.600">与你共享的文件和页面将显示在这里</Text>
+          </Flex> : folder && !filterCount ? <Flex role="status" direction="column" align="center" textAlign="center" py={16} gap={2}>
+            <Heading as="h2" fontSize="lg" fontWeight="600">{folder.kind === "资料空间" ? "资料空间为空" : "文件夹为空"}</Heading>
+            <Text fontSize="sm" color="gray.600">通过「新建」添加页面，或将文件拖到这里。</Text>
           </Flex> : slidesSection ? <Text role="status" textAlign="center" py={16} color="gray.500">未找到任何项目</Text> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
         imageSection ? <Box sx={{containerType:"inline-size"}}>
           <Box sx={{
