@@ -257,10 +257,27 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       if (!response.ok) throw new Error();
       setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} : item));
       setRename(undefined);
-      setMove(undefined);
+      return true;
     } catch {
       toast({ status:"error", title:"未能保存更改，请重试" });
+      return false;
     } finally { setSaving(false); }
+  }
+  async function moveToDestination() {
+    if (!move || batchBusy) return;
+    const targets = (batchMove ? picked : [move]).filter(item => (item.folderId || "") !== destination);
+    const failed: string[] = [];
+    setBatchBusy(true);
+    try {
+      for (const item of targets) {
+        if (!await update(item, {folderId: destination || null})) failed.push(item.id);
+      }
+      if (batchMove) setSelected(failed);
+      if (!failed.length) {
+        setMove(undefined);
+        setBatchMove(false);
+      }
+    } finally { setBatchBusy(false); }
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end">
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
@@ -415,7 +432,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter gap={2}><Button borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
           <Button borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
-    <Modal isOpen={Boolean(move)} onClose={() => setMove(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px"><ModalHeader>移动到…</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
+    <Modal isOpen={Boolean(move)} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px"><ModalHeader>移动到…</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
       <ModalBody><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
         <Button size="sm" variant="ghost" isDisabled={!destination} onClick={()=>setDestination("")}>资料库</Button>
         {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/><Button size="sm" variant="ghost" isDisabled={item.id===destination} onClick={()=>setDestination(item.id)}>{item.name}</Button></Flex>)}
@@ -434,7 +451,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         } catch { toast({status:"error",title:"创建文件夹失败，请重试"}); }
         finally { setSaving(false); }
       }}><Input autoFocus aria-label="文件夹名称" maxLength={255} value={newDestinationName} onChange={event=>setNewDestinationName(event.target.value)}/><Button type="submit" isDisabled={!newDestinationName.trim()} isLoading={saving}>创建</Button></Flex>}</ModalBody>
-      <ModalFooter gap={2}><Button mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={async () => {if (!move) return; const targets=batchMove ? picked : [move]; for(const item of targets) await update(item,{folderId:destination || null});setBatchMove(false);}}>移至此处</Button></ModalFooter>
+      <ModalFooter gap={2}><Button isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "清空回收站？" : "永久删除项目？"}</ModalHeader>
