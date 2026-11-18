@@ -10,6 +10,7 @@ import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
+import LibrarySites from "./LibrarySites";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor from "./LibraryPageEditor";
@@ -313,7 +314,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       </Flex>}
       <Box>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !types.length &&
         <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
-      {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
+      {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? <Text>{sitesSection ? (tab === "与你共享" ? "没有与你共享的站点" : "没有站点") : section === "回收站" ? "回收站为空" : files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
         grid || imageSection ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
