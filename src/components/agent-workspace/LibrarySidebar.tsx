@@ -25,9 +25,9 @@ export default function LibrarySidebar({ createMenu, onNewSpace, section, files,
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
   return <Flex as="aside" w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>
-    <Flex align="center" px="8px" mb={3}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1">资料空间</Heading>
-      <Popover placement="bottom-start" isLazy>
-        <PopoverTrigger><IconButton size="xs" variant="ghost" aria-label="动态" icon={<Bell size={15}/>} /></PopoverTrigger>
+    <Flex align="center" px="8px" gap="4px" mb={3}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1">资料空间</Heading>
+      <Popover placement="bottom-start" gutter={5} isLazy>
+        <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="动态" icon={<Bell size={15}/>} /></PopoverTrigger>
         <Portal><PopoverContent aria-label="动态" width="min(384px, calc(100vw - 24px))" height="320px" borderRadius="12px" boxShadow="lg">
           <Text px={4} py={3} fontWeight="600">动态</Text>
           <Flex flex="1" direction="column" align="center" justify="center" px={8} pb={8} textAlign="center" gap={2}>
@@ -37,8 +37,8 @@ export default function LibrarySidebar({ createMenu, onNewSpace, section, files,
           </Flex>
         </PopoverContent></Portal>
       </Popover>
-      <IconButton size="xs" variant="ghost" aria-label="搜索" icon={<Search size={15}/>} onClick={onSearch}/>
-      <IconButton size="xs" variant="ghost" aria-label="显示/隐藏侧边栏" icon={<PanelLeftClose size={15}/>} onClick={onCollapse}/>
+      <IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="搜索" icon={<Search size={15}/>} onClick={onSearch}/>
+      <IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="显示/隐藏侧边栏" icon={<PanelLeftClose size={15}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
