@@ -9,6 +9,14 @@ export const templates = [
   { name:"Trip planner", body:"Travelers: Maya and Sam\nPace: One main activity a day\n\n🧭 The plan\n\nPlan two nights near a mountain observatory.", icon:Plane, color:"#168cff" },
   { name:"Weekly planner", body:"🎯 Priorities\n\n☐ Confirm plans\n☐ Review progress\n\n📅 Schedule", icon:Calendar, color:"#d26e69" },
   { name:"Budget tracker", body:"Monthly budget\n\nIncome\n\nExpenses\n\nSavings goals", icon:Wallet, color:"#1a995e" },
+  { name:"Apartment hunter", body:"Apartment shortlist\n\nAddress and neighborhood\nMonthly rent and utilities\nViewing date\n\nQuestions for the landlord", icon:ClipboardList, color:"#168cff" },
+  { name:"Personal goals", body:"My goals\n\nGoal\nWhy it matters\nNext step\n\nWeekly reflection", icon:Target, color:"#14b95d" },
+  { name:"周报", body:"本周进展\n\n已完成的工作\n\n风险与阻碍\n\n下周计划", icon:Calendar, color:"#168cff" },
+  { name:"反馈跟踪表", body:"待处理反馈\n\n反馈内容\n来源\n负责人\n处理状态\n\n后续跟进", icon:ClipboardList, color:"#14b95d" },
+  { name:"更新日志", body:"版本与日期\n\n新增功能\n\n改进\n\n问题修复", icon:BookOpen, color:"#168cff" },
+  { name:"Feature backlog", body:"Feature requests\n\nUser need\nPriority\nOwner\n\nNext steps", icon:ClipboardList, color:"#168cff" },
+  { name:"Learning plan", body:"Learning objective\n\nTopics to explore\nResources\nPractice activities\n\nProgress review", icon:BookOpen, color:"#14b95d" },
+  { name:"Event Plan", body:"Event overview\n\nDate and venue\nGuests\nAgenda\n\nPreparation checklist", icon:Calendar, color:"#d26e69" },
 ];
 export default function LibraryTemplates({ onPick, onClose }: {onPick:(name:string, body:string)=>void; onClose:()=>void}) {
   return <Box as="section" mb="40px" role="group">
