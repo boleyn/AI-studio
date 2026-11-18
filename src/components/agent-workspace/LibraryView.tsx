@@ -30,7 +30,7 @@ function fileType(path: string) {
   return "其他";
 }
 
-export default function LibraryView({ projects, onProject, onOpen, onBack, onChat }: { projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[])=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ projects, onProject, onOpen, onBack, onChat }: { projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
@@ -264,7 +264,13 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}{folder && <Button variant="ghost" size="xs" onClick={() => {const parent=files?.find(item => item.id===folder.folderId);navigateList(section,tab,parent?.id);}}>返回</Button>}<Heading fontSize="24px" lineHeight="36px" fontWeight="500">{folder?.name || section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label="搜索文件、项目或会话" placeholder="搜索" maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
-          {createMenu(false)}</Flex>}
+          {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
+            onClick={async () => {
+              setCreating(true);
+              try { await onChat([], "创建图像 "); }
+              catch { toast({status:"error",title:"无法开始图像对话，请重试"}); }
+              finally { setCreating(false); }
+            }}>创建图像</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>

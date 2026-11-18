@@ -135,7 +135,7 @@ export default function AgentWorkspace({
   const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
-  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[]}>();
+  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[];text?:string}>();
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -867,12 +867,12 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async files => {
+      {activeNav === "library" && <LibraryView projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text) => {
         const token = activeProject?.token || projects[0]?.token;
         if (!token) throw new Error("当前没有可用工作空间");
         const chat = await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
-        setLibraryDraft({chatId:chat.id,files});
+        setLibraryDraft({chatId:chat.id,files,text});
         handleSelectConversation(token,chat.id);
         setActiveNav("chat");
       }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }} />}

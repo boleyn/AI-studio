@@ -495,7 +495,11 @@ const ChatInput = ({
     if (!draft || consumedLibraryDraft.current === draft.chatId ||
       draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
     consumedLibraryDraft.current = draft.chatId;
-    void onPickFiles(draft.files);
+    if (draft.text) {
+      setText(draft.text);
+      requestAnimationFrame(() => textAreaRef.current?.focus());
+    }
+    if (draft.files.length) void onPickFiles(draft.files);
     workspaceComposer?.onLibraryDraftConsumed?.();
   },[workspaceComposer,draftStorageKey,onPickFiles]);
   const getPastedFiles = useCallback((data: DataTransfer | null) => {
