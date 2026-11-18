@@ -7,7 +7,7 @@ import type { LibraryFile } from "@/types/library";
 import { LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { readLibraryAttachment } from "@features/chat/services/libraryAttachment";
+import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -111,9 +111,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const router = useRouter();
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "回收站"];
-  const tabs = ["推荐", "收藏", "你的条目", "与你共享"];
   const section = sections.find(value => value === router.query.librarySection) || "全部";
-  const tab = tabs.find(value => value === router.query.libraryTab) || "推荐";
+  const imageSection = section === "图像";
+  const tabs = imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
   const editor = opened?.kind === "页面" ? opened : undefined;
@@ -176,6 +177,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || (file.kind === "页面" ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
+    (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
     (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" ? "页面" : fileType(file.path))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * (section === "回收站" && sort.column === "time" ? a.deletedAt || "" : a[sort.column]).localeCompare(section === "回收站" && sort.column === "time" ? b.deletedAt || "" : b[sort.column], "zh-CN", { numeric: true }));
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
@@ -263,14 +265,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>
           <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}</Flex>
-        <Menu closeOnSelect={false}>
+        {!imageSection && <><Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label="打开筛选器" icon={<ListFilter size={17}/>} size="sm" variant={types.length ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup></MenuList>
         </Menu>
         <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
-        <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
+        <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
       </Box>
       {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
@@ -283,9 +285,11 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? <Text>{section === "回收站" ? "回收站为空" : files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
-        grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
+        grid || imageSection ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
-            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/><LibraryItemIcon item={file}/><Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
+            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>{imageSection ? <Box as="button" w="full" onClick={() => openItem(file)} aria-label={"打开 " + file.name}>
+              <Box as="img" src={libraryAttachmentUrl(file)} alt={file.name} loading="lazy" w="full" aspectRatio="1" objectFit="cover" borderRadius="8px"/>
+            </Box> : <LibraryItemIcon item={file}/>}<Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
             {actions(file)}
           </Box>)}
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
