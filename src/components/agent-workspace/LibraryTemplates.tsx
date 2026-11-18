@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
-import { BookOpen, Calendar, ClipboardList, Plane, Search, Target, Wallet, X } from "lucide-react";
+import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
+import { BookOpen, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
 export const templates = [
   { name:"页面使用指南", body:"欢迎使用页面\n\n在这里写作、整理资料，并与团队协作。\n\n开始使用\n添加标题、清单和笔记。", icon:BookOpen, color:"#008cff" },
@@ -56,7 +56,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef }: {
       <ModalBody>
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
           {pages.map(({name, body, icon: Icon, color}) =>
-            <Button key={name} aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
+            <Box key={name} position="relative" role="group">
+            <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
               textAlign="left" onClick={() => onPick(name, body)}>
               <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
@@ -64,6 +65,13 @@ export function TemplateGallery({ onClose, onPick, triggerRef }: {
               </Box>
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
             </Button>
+            <Menu>
+              <MenuButton as={IconButton} aria-label={`Actions for ${name}`} icon={<MoreHorizontal size={16} />}
+                size="xs" position="absolute" top={2} right={2} borderRadius="full" bg="white"
+                opacity={{base:1, md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} _expanded={{opacity:1}} />
+              <MenuList><MenuItem onClick={() => onPick(name, body)}>Use template</MenuItem></MenuList>
+            </Menu>
+            </Box>
           )}
         </SimpleGrid>
         {!pages.length && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
