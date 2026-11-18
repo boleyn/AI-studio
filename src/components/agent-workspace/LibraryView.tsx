@@ -18,7 +18,7 @@ import LibrarySites from "./LibrarySites";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor from "./LibraryPageEditor";
-import LibraryTemplates, { TemplateGallery } from "./LibraryTemplates";
+import LibraryTemplates, { TemplateGallery, type SlideTemplateName } from "./LibraryTemplates";
 import LibraryGlobalSearch from "./LibraryGlobalSearch";
 import type { ProjectWithConversations } from "../AgentWorkspace";
 import LibrarySidebar from "./LibrarySidebar";
@@ -90,13 +90,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
   }
-  async function createSlides(template: "blank" | "product-strategy" = "blank") {
+  async function createSlides(template?: SlideTemplateName) {
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch(`/library-templates/${template}.pptx`);
+      const slug = template?.toLowerCase().replaceAll(" ", "-") ?? "blank";
+      const response = await fetch(`/library-templates/${slug}.pptx`);
       if (!response.ok) throw new Error();
-      await uploadFiles([new File([await response.blob()], template === "blank" ? "无标题演示文稿.pptx" : "Product Strategy.pptx", {
+      await uploadFiles([new File([await response.blob()], (template ?? "无标题演示文稿") + ".pptx", {
         type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"
       })], true);
     } catch {
@@ -446,7 +447,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
       </Flex>}
       <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
-        <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
+        <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
