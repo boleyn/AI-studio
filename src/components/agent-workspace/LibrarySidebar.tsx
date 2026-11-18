@@ -1,8 +1,9 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
-import { Bell, Plus, Layers, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
+import { HardDrive, Bell, Plus, Layers, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import LibraryItemIcon from "./LibraryItemIcon";
-import { type ReactNode, useState } from "react";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+import { type ReactNode, useState, useEffect } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
@@ -20,6 +21,16 @@ type Props = {
   onCollapse: () => void;
 };
 export default function LibrarySidebar({ createMenu, onNewSpace, section, files, onSection, onFile, onSearch, onCollapse }: Props) {
+  const [driveConnected,setDriveConnected] = useState(false);
+  useEffect(()=>{
+    const controller = new AbortController();
+    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
+      if (!response.ok) return;
+      const status = await response.json();
+      if (!controller.signal.aborted) setDriveConnected(status.connected);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
   const [expanded, setExpanded] = useState(false);
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);
@@ -43,6 +54,7 @@ export default function LibrarySidebar({ createMenu, onNewSpace, section, files,
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
       bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={16}/>} onClick={() => onSection(name)}>{name}</Button>)}
+    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" leftIcon={<HardDrive size={16}/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
     <Box overflowY="auto" mt={5} flex="1">
       <Button variant="ghost" size="sm" color="gray.500" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && items.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
