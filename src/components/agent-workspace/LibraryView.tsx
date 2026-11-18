@@ -473,11 +473,29 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             <Heading as="h2" fontSize="lg" fontWeight="600">文件夹为空</Heading>
             <Text fontSize="sm" color="gray.600">与你共享的文件和页面将显示在这里</Text>
           </Flex> : slidesSection ? <Text role="status" textAlign="center" py={16} color="gray.500">未找到任何项目</Text> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
-        grid || imageSection ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
+        imageSection ? <Box sx={{containerType:"inline-size"}}>
+          <Box sx={{
+            columnCount:1, columnGap:"16px",
+            "@container (min-width:24rem)":{columnCount:2}, "@container (min-width:36rem)":{columnCount:3},
+            "@container (min-width:48rem)":{columnCount:4}, "@container (min-width:64rem)":{columnCount:5},
+            "@container (min-width:80rem)":{columnCount:6}
+          }}>
+            {visible.map(file => <Box key={key(file)} position="relative" mb={4} sx={{breakInside:"avoid",
+              "& [role=checkbox]":{background:"white"},
+              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions, &:not(:hover):not(:focus-within) [role=checkbox][aria-checked=false]":{opacity:0}}
+            }}>
+              <Box as="button" display="block" w="full" overflow="hidden" borderRadius="16px" borderWidth="1px"
+                onClick={() => openItem(file)} aria-label={file.name}>
+                <Box as="img" src={libraryAttachmentUrl(file)} alt="" loading="lazy" w="full" h="auto"/>
+              </Box>
+              <Box className="image-actions" position="absolute" top={2} left={2} bg="white" borderRadius="full">{actions(file)}</Box>
+              <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
+            </Box>)}
+          </Box>
+        </Box> : grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
-            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>{imageSection ? <Box as="button" w="full" onClick={() => openItem(file)} aria-label={"打开 " + file.name}>
-              <Box as="img" src={libraryAttachmentUrl(file)} alt={file.name} loading="lazy" w="full" aspectRatio="1" objectFit="cover" borderRadius="8px"/>
-            </Box> : <LibraryItemIcon item={file}/>}<Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
+            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
+            <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
