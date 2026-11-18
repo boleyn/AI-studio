@@ -193,6 +193,10 @@ export default function AgentWorkspace({
   function setActiveNav(view: WorkspaceView) {
     if (view === activeNav) return;
     const nextQuery = {...router.query};
+    if (view !== "library") {
+      delete nextQuery.librarySection;
+      delete nextQuery.libraryTab;
+    }
     if (view === "chat") delete nextQuery.view;
     else nextQuery.view = view;
     void router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});

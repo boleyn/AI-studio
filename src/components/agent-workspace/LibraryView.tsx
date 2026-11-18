@@ -1,3 +1,4 @@
+import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, Select, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -108,8 +109,21 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     } else if (file.kind === "页面") setEditor(file);
     else setDetail(file);
   }
-  const [section, setSection] = useState("全部");
-  const [tab, setTab] = useState("推荐");
+  const router = useRouter();
+  const sections = ["全部", "页面", "幻灯片", "站点", "图像", "回收站"];
+  const tabs = ["推荐", "收藏", "你的条目", "与你共享"];
+  const section = sections.find(value => value === router.query.librarySection) || "全部";
+  const tab = tabs.find(value => value === router.query.libraryTab) || "推荐";
+  function navigateList(nextSection: string, nextTab: string) {
+    if (nextSection === section && nextTab === tab) return;
+    const query = {...router.query};
+    if (nextSection === "全部") delete query.librarySection;
+    else query.librarySection = nextSection;
+    if (nextTab === "推荐") delete query.libraryTab;
+    else query.libraryTab = nextTab;
+    void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
+  }
+  useEffect(() => { setSelected([]); }, [section, tab]);
   const [sidebar, setSidebar] = useState(true);
   const search = useRef<HTMLInputElement>(null);
   const [detail, setDetail] = useState<LibraryFile>();
@@ -122,11 +136,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     setEditor(undefined);
     setSelected([]);
     setDetail(undefined);
-    setSection(next);
+    navigateList(next, "推荐");
     setFolder(undefined);
     setQuery("");
     setTypes([]);
-    setTab("推荐");
   };
   const [types, setTypes] = useState<string[]>([]);
   const [grid, setGrid] = useState(false);
@@ -235,8 +248,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           {createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && ["推荐","收藏","你的条目","与你共享"].map(name =>
-          <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);setTab(name);}}>{name}</Button>)}</Flex>
+        <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>
+          <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name);}}>{name}</Button>)}</Flex>
         <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label="打开筛选器" icon={<ListFilter size={17}/>} size="sm" variant={types.length ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => setTypes(Array.isArray(value) ? value : [value])}>
