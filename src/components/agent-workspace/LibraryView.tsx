@@ -425,11 +425,15 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
-        !visible.length ? (section === "全部" && tab === "与你共享" && !query.trim() && !filterCount && !folder ?
+        !visible.length ? (query.trim() ?
+          <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
+            <Heading as="h2" fontSize="lg" fontWeight="600">未找到匹配结果</Heading>
+            <Text fontSize="sm" color="gray.600" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
+          </Flex> : section === "全部" && tab === "与你共享" && !filterCount && !folder ?
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">文件夹为空</Heading>
             <Text fontSize="sm" color="gray.600">与你共享的文件和页面将显示在这里</Text>
-          </Flex> : <Text>{section === "回收站" ? "回收站为空" : query.trim() || filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
+          </Flex> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
         grid || imageSection ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
             <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>{imageSection ? <Box as="button" w="full" onClick={() => openItem(file)} aria-label={"打开 " + file.name}>
