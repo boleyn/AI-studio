@@ -129,10 +129,20 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
 
   const [appearance,setAppearance] = useState({icon:"",color:"默认"});
+  const [inviteQuery,setInviteQuery] = useState("");
+  const [confirmDiscard,setConfirmDiscard] = useState(false);
+  const continueEditing = useRef<HTMLButtonElement>(null);
+  function closeSpaceDialog() {
+    if (creating) return;
+    if (title || inviteQuery || invitees.length || appearance.icon || appearance.color !== "默认") setConfirmDiscard(true);
+    else setNewKind(undefined);
+  }
   const [invitees,setInvitees] = useState<string[]>([]);
   const [inviteOpen,setInviteOpen] = useState(false);
   function openSpaceDialog() {
     setAppearance({icon:"",color:"默认"});
+    setInviteQuery("");
+    setConfirmDiscard(false);
     setInvitees([]);
     setInviteOpen(false);
     setTitle("");
@@ -742,15 +752,22 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     {sharing && <ArtifactShareDialog spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
-    <Modal isOpen={newKind === "资料空间"} onClose={()=>{if (!creating) setNewKind(undefined);}} isCentered>
+    <Modal isOpen={newKind === "资料空间"} onClose={closeSpaceDialog} isCentered>
       <ModalOverlay/><ModalContent mx={3} maxW="512px" minH="238px" borderRadius="24px">
         <ModalHeader as="h2" fontSize="20px">创建资料空间</ModalHeader><ModalCloseButton aria-label="关闭对话框" isDisabled={creating}/>
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
           <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
             <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
-            {inviteOpen && <Box mt={2}><SpaceInviteInput accounts={invitees} onChange={setInvitees}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
-          </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={()=>setNewKind(undefined)}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
+            {inviteOpen && <Box mt={2}><SpaceInviteInput query={inviteQuery} setQuery={setInviteQuery} accounts={invitees} onChange={setInvitees}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
+          </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={closeSpaceDialog}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
         </form></ModalContent></Modal>
+    <Modal isOpen={confirmDiscard} initialFocusRef={continueEditing} onClose={()=>setConfirmDiscard(false)} isCentered>
+      <ModalOverlay/><ModalContent mx={3} borderRadius="20px">
+        <ModalHeader>放弃更改？</ModalHeader><ModalBody>你的更改将丢失</ModalBody>
+        <ModalFooter gap={2}><Button ref={continueEditing} borderRadius="full" onClick={()=>setConfirmDiscard(false)}>继续编辑</Button>
+          <Button borderRadius="full" colorScheme="red" onClick={()=>{setConfirmDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
+      </ModalContent>
+    </Modal>
     <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">新建{newKind}</ModalHeader><form onSubmit={event => {event.preventDefault(); if (title.trim() && newKind) void createPage(title.trim(),"",newKind);}}>
         <ModalBody p={0} mt="12px"><FormLabel m={0} mb="8px" lineHeight="24px" htmlFor="library-container-name">{newKind}名称</FormLabel><Input h="36px" fontSize="14px" borderRadius="6px" id="library-container-name" autoFocus value={title} maxLength={255}

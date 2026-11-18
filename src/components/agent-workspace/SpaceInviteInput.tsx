@@ -2,8 +2,7 @@ import { Box, Button, Flex, Input, Text } from "@chakra-ui/react";
 import { useEffect, useId, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
-export default function SpaceInviteInput({accounts,onChange}:{accounts:string[];onChange:(accounts:string[])=>void}) {
-  const [query,setQuery] = useState("");
+export default function SpaceInviteInput({accounts,onChange,query,setQuery}:{accounts:string[];onChange:(accounts:string[])=>void;query:string;setQuery:(query:string)=>void}) {
   const account = query.trim();
   const [result,setResult] = useState<{account:string;name?:string;error?:boolean}>();
   const list = useId();
