@@ -254,3 +254,14 @@ test("a legacy attachment cannot take a same-name attachment's exact upload path
     "chat_uploads/a.md", "chat_uploads/b.md",
   ]);
 });
+
+test("history restores a Markdown attachment title and specific MIME type from its content block", () => {
+  const path = "chat_uploads/record";
+  const message = {
+    artifact: { files: [{ storagePath: path, type: "application/octet-stream" }] },
+    content: [{ type: "attachment", name: "交接记录", source_storage_path: path, mime_type: "text/markdown" }],
+  } as unknown as ConversationMessage;
+  const [file] = getMessageFiles(message);
+  assert.equal(file.name, "交接记录");
+  assert.equal(file.type, "text/markdown");
+});

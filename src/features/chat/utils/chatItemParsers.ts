@@ -431,8 +431,11 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
       : remaining.findIndex(item => item.name === file.name && !reservedPaths.has(item.storagePath?.replace(/^\/+/, "")));
     if (index < 0) return file;
     const [block] = remaining.splice(index, 1);
+    const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type));
     return {
       ...file,
+      ...(useBlockType ? { type: block.type } : {}),
+      ...(!file.name && block.name ? { name: block.name } : {}),
       ...(block.libraryItemId && !file.libraryItemId ? {libraryItemId:block.libraryItemId} : {}),
       storagePath: path?.startsWith("chat_uploads/") ? path : block.storagePath || file.storagePath,
       previewUrl: file.previewUrl || block.previewUrl,
