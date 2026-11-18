@@ -507,7 +507,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
           </Box>)}
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
-          "& td":{height:"50px",verticalAlign:"middle"},
+          "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0},
           "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"24px"},
           "& td button, & td a":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
