@@ -504,15 +504,16 @@ const ChatInput = ({
   useEffect(() => {
     const draft = workspaceComposer?.libraryDraft;
     if (!draft || consumedLibraryDrafts.current.has(draft) ||
-      draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
+      loadedDraftKey !== draftStorageKey || draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
     consumedLibraryDrafts.current.add(draft);
-    if (draft.text) {
-      setText(draft.text);
+    const incomingText = draft.text;
+    if (incomingText) {
+      setText(previous => previous ? previous.trimEnd() + "\n\n" + incomingText : incomingText);
       requestAnimationFrame(() => textAreaRef.current?.focus());
     }
     if (draft.files.length) void onPickFiles(draft.files);
     workspaceComposer?.onLibraryDraftConsumed?.();
-  },[workspaceComposer,draftStorageKey,onPickFiles]);
+  },[workspaceComposer,draftStorageKey,loadedDraftKey,onPickFiles]);
   const getPastedFiles = useCallback((data: DataTransfer | null) => {
     if (!data) return [] as File[];
 
