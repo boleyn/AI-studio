@@ -12,6 +12,7 @@ import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/serv
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
+import LibraryConnectors from "./LibraryConnectors";
 import LibrarySites from "./LibrarySites";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
@@ -46,6 +47,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [batchMove,setBatchMove] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [connectors, setConnectors] = useState(false);
   const [globalSearch,setGlobalSearch] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -324,7 +326,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
               <MenuItem onClick={() => startCreativeChat("站点")}>站台</MenuItem>
               <MenuItem onClick={() => startCreativeChat("图像")}>图像</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
-              <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
+              <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem><MenuItem onClick={()=>setConnectors(true)}>连接插件</MenuItem></MenuList>
           </Menu>;
   return <Flex flex="1" minW={0} minH={0}>
     <input ref={fileInput} type="file" multiple hidden aria-label="上传文件" onChange={event => {
@@ -440,6 +442,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           <Button colorScheme="red" onClick={() => {setConfirmDiscard(false); setReferenceDraft(undefined);}}>放弃更改</Button>
         </ModalFooter></ModalContent>
     </Modal>
+    {(connectors || router.query.libraryConnectors) && <LibraryConnectors callbackError={router.query.libraryConnectors === "error"} close={()=>{
+      setConnectors(false);
+      if (router.query.libraryConnectors) {
+        const query = {...router.query};
+        delete query.libraryConnectors;
+        void router.replace({pathname:router.pathname,query},undefined,{shallow:true});
+      }
+    }}/>}
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
