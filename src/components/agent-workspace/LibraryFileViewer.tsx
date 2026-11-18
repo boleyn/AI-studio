@@ -21,6 +21,7 @@ interface Props {
   toggleFavorite: () => void;
 }
 export default function LibraryFileViewer({item,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openSource,toggleFavorite}:Props) {
+  const [showInfo,setShowInfo] = useState(false);
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
@@ -69,12 +70,14 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
     const inSlideshow = event.nativeEvent.composedPath().some(node =>
       node instanceof Element && node.classList.contains("flyfish-pptx-presentation")
     );
-    if (!inSlideshow) close();
+    if (inSlideshow) return;
+    if (showInfo) setShowInfo(false);
+    else close();
   }}>
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
       <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
         <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
-        <MenuList><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
+        <MenuList><MenuItem onClick={()=>setShowInfo(true)}>文件信息</MenuItem><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
           {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
       </Menu><Box flex="1"/>{image && <Menu>
         <MenuButton as={Button} size="sm" variant="ghost" rightIcon={<ChevronDown size={14}/>} aria-label="图像缩放">
@@ -86,7 +89,8 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
         </MenuList>
       </Menu>}{download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}<IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
     </Flex>
-    <Box ref={viewport} flex="1" minH={0} overflow="auto">
+    <Flex flex="1" minH={0} position="relative">
+    <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
       {markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}
         sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.7em"},"& h2":{fontSize:"1.3em"},"& p":{marginBottom:3,whiteSpace:"pre-wrap"},"& ul, & ol":{paddingInlineStart:6},"& pre":{overflowX:"auto"}}}>
         {error ? previewFailure : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
@@ -104,6 +108,19 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
         </Flex>}
     </Box>
+    {showInfo && <Box as="aside" aria-label="文件详情" position={{base:"absolute",lg:"relative"}}
+      insetY={0} right={0} w="min(100%, 300px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" p={4}>
+      <Flex align="center" justify="space-between"><Heading size="sm">文件详情</Heading>
+        <IconButton size="sm" variant="ghost" aria-label="关闭文件信息面板" icon={<X size={16}/>} onClick={()=>setShowInfo(false)}/>
+      </Flex>
+      <Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
+      <Box as="dl" mt={4} fontSize="sm" sx={{"& dt":{color:"gray.600",mt:3}}}>
+        <dt>文件类型</dt><dd>{name.match(/\.([^.\/]+)$/)?.[1].toUpperCase() || item.kind}</dd>
+        {item.time && <><dt>最近更新</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
+        {item.size !== undefined && <><dt>文件大小</dt><dd>{item.size.toLocaleString("zh-CN")} B</dd></>}
+      </Box>
+    </Box>}
+    </Flex>
     {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
       onClick={resumeFileChat} aria-label="展开聊天窗口">聊天</Button>}
     {!fileChatOpen && !resumeFileChat && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
