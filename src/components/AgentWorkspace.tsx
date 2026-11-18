@@ -190,9 +190,10 @@ export default function AgentWorkspace({
   type WorkspaceView = "chat" | "schedules" | "projects" | "library";
   const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
     ? query.view : "chat";
-  function setActiveNav(view: WorkspaceView) {
-    if (view === activeNav) return;
+  function setActiveNav(view: WorkspaceView, conversation?:string) {
+    if (view === activeNav && !conversation) return;
     const nextQuery = {...router.query};
+    if (conversation) nextQuery.conversation = conversation;
     if (view !== "library") {
       delete nextQuery.libraryItem;
       delete nextQuery.libraryFolder;
@@ -884,8 +885,8 @@ export default function AgentWorkspace({
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text});
         handleSelectConversation(token,chat.id);
-        setActiveNav("chat");
-      }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }} />}
+        setActiveNav("chat", chat.id);
+      }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
           projects={projects}
@@ -914,7 +915,7 @@ export default function AgentWorkspace({
           })))}
           onSelectConversation={selectScheduleConversation}
           conversation={scheduleConversation && activeProject?.token === scheduleConversation.token ? conversationPane : null}
-          onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }}
+          onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }}
         />
       )}
       <Flex
