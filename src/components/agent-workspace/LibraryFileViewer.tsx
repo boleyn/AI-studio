@@ -1,5 +1,5 @@
-import { Box, Button, Flex, Heading, IconButton, Menu, MenuButton, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
-import { ChevronDown, X } from "lucide-react";
+import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
+import { ChevronDown, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,11 +13,14 @@ interface Props {
   item: LibraryFile;
   download: ReactNode;
   share?:()=>void;
+  askAboutFile:(question:string)=>Promise<void>;
   close: () => void;
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,download,share,close,openSource,toggleFavorite}:Props) {
+export default function LibraryFileViewer({item,download,share,askAboutFile,close,openSource,toggleFavorite}:Props) {
+  const [question,setQuestion] = useState("");
+  const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [body,setBody] = useState<string>();
   const [error,setError] = useState(false);
@@ -64,5 +67,15 @@ export default function LibraryFileViewer({item,download,share,close,openSource,
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
         </Flex>}
     </Box>
+    {isArtifactImage(name) && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
+      onSubmit={async event=>{
+        event.preventDefault();
+        if (openingChat) return;
+        setOpeningChat(true);
+        try {await askAboutFile(question.trim());} finally {setOpeningChat(false);}
+      }}>
+      <Input aria-label="询问此文件" placeholder="询问此文件" value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
+      <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
+    </Flex>}
   </Flex>;
 }
