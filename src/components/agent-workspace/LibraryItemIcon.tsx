@@ -1,11 +1,12 @@
 import { Box } from "@chakra-ui/react";
-import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, Presentation, Sheet } from "lucide-react";
+import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation, Sheet } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 type IconItem = Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage">>;
 
 function appearance(item: IconItem) {
+  if (item.kind === "站点") return { Icon: PanelsTopLeft };
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };

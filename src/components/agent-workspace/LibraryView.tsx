@@ -26,7 +26,7 @@ import LibrarySidebar from "./LibrarySidebar";
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 const isNative = (file:LibraryFile) => file.kind === "页面" || isContainer(file);
 function renameSuffix(file?: LibraryFile) {
-  if (!file || isNative(file)) return "";
+  if (!file || file.siteId || isNative(file)) return "";
   const dot = file.name.lastIndexOf(".");
   return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
 }
@@ -142,6 +142,10 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
   }
   function openItem(file:LibraryFile) {
     recordOpen(file);
+    if (file.siteId) {
+      void router.push("/share/preview/"+encodeURIComponent(file.siteId));
+      return;
+    }
     if (isContainer(file)) {
       setSelected([]);
       setQuery("");
@@ -182,6 +186,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
   }
   function itemLink(file: LibraryFile) {
     if (file.deleted) return <span>{file.name}</span>;
+    if (file.siteId) return <Link href={"/share/preview/"+encodeURIComponent(file.siteId)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
     return <Link href={href} shallow scroll={false} prefetch={false} onClick={event=>{
@@ -355,7 +360,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
       <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <MenuItem closeOnSelect={false} icon={<Copy size={16}/>} onClick={()=>setCopyMenuId(file.id)}>复制<ChevronRight size={14}/></MenuItem>}
-      {file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
+      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuDivider my={2}/>
       <MenuItem icon={<Bookmark size={16}/>} isDisabled={imageSection} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
@@ -553,8 +558,8 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
         w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
-        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
-        <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
+        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
+        <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
         <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
         <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
         <IconButton size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
@@ -594,7 +599,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
     }}/>}
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
-    {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
+    {sharing && <ArtifactShareDialog siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
     <Modal isOpen={Boolean(newKind)} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent borderRadius="20px">

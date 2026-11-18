@@ -2,6 +2,7 @@ export const referenceTypes = ["我", "宠物", "朋友", "空间", "其他"] as
 export type ImageReference = { type: typeof referenceTypes[number]; name: string };
 export interface LibraryFile {
   id: string;
+  siteId?: string;
   shareId?: string;
   editablePageId?: string;
   sharedPage?: boolean;
@@ -17,7 +18,7 @@ export interface LibraryFile {
   deleted?: boolean;
   deletedAt?: string | null;
   size?: number;
-  kind: "生成" | "上传" | "页面" | "文件夹" | "资料空间";
+  kind: "生成" | "上传" | "页面" | "文件夹" | "资料空间" | "站点";
   token: string;
   project: string;
   chatId: string;

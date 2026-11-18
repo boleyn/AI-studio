@@ -34,7 +34,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     fetch("/api/library",{headers:withAuthHeaders(),signal:controller.signal}).then(async response => {
       if (!response.ok) throw new Error();
       const data:LibraryFile[] = await response.json();
-      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted && item.kind !== "文件夹" && item.kind !== "资料空间"));
+      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted && !item.siteId && item.kind !== "文件夹" && item.kind !== "资料空间"));
     }).catch(() => {if (!controller.signal.aborted) setError("无法加载资料空间");});
     return () => controller.abort();
   },[attempt]);
