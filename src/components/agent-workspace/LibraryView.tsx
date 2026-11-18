@@ -1,10 +1,10 @@
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, Select, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -100,6 +100,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
 
   const [newKind,setNewKind] = useState<"文件夹"|"资料空间">();
   const [move,setMove] = useState<LibraryFile>();
+  const [newDestinationName, setNewDestinationName] = useState<string>();
   const [destination,setDestination] = useState("");
   async function createPage(name:string, body:string, kind:"页面"|"文件夹"|"资料空间"="页面") {
     if (creating) return;
@@ -197,6 +198,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     return () => controller.abort();
   }, [attempt]);
   const destinations = files?.filter(item => isContainer(item) && !item.deleted) || [];
+  const destinationPath: LibraryFile[] = [];
+  let ancestor = destinations.find(item => item.id === destination);
+  while (ancestor && !destinationPath.includes(ancestor)) {
+    destinationPath.unshift(ancestor);
+    const parentId: string | null | undefined = ancestor.folderId;
+    ancestor = destinations.find(item => item.id === parentId);
+  }
+  const childFolders = destinations.filter(item => (item.folderId || "") === destination);
   function rowTime(file: LibraryFile) {
     if (section === "回收站") return file.deletedAt || "";
     return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
@@ -261,7 +270,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       {isNative(file) ? <MenuItem onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuItem onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹移除" : "添加到收藏夹"}</MenuItem>
-      {!isContainer(file) && <MenuItem onClick={() => {setBatchMove(false);setMove(file);setDestination(file.folderId || "");}}>移至文件夹</MenuItem>}
+      {!isContainer(file) && <MenuItem onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMove(file);setDestination(file.folderId || "");}}>移至文件夹</MenuItem>}
       <MenuItem color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Menu>;
   async function startCreativeChat(kind: "站点" | "图像") {
@@ -369,7 +378,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <Button size="sm" variant="ghost" isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
         <Button size="sm" variant="ghost" isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
         <Button size="sm" variant="ghost" isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
-        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
+        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
         <IconButton size="sm" variant="ghost" aria-label="清除选择" icon={<span>×</span>} onClick={()=>setSelected([])}/>
       </Flex>}
     </Box>
@@ -406,10 +415,26 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter gap={2}><Button borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
           <Button borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
-    <Modal isOpen={Boolean(move)} onClose={() => setMove(undefined)} isCentered><ModalOverlay/><ModalContent><ModalHeader>移至文件夹</ModalHeader><ModalCloseButton/>
-      <ModalBody><Select aria-label="目标文件夹" value={destination} onChange={e => setDestination(e.target.value)}><option value="">全部</option>
-        {destinations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></ModalBody>
-      <ModalFooter gap={2}><Button onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving} onClick={async () => {if (!move) return; const targets=batchMove ? picked : [move]; for(const item of targets) await update(item,{folderId:destination || null});setBatchMove(false);}}>移动</Button></ModalFooter>
+    <Modal isOpen={Boolean(move)} onClose={() => setMove(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px"><ModalHeader>移动到…</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
+      <ModalBody><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
+        <Button size="sm" variant="ghost" isDisabled={!destination} onClick={()=>setDestination("")}>资料库</Button>
+        {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/><Button size="sm" variant="ghost" isDisabled={item.id===destination} onClick={()=>setDestination(item.id)}>{item.name}</Button></Flex>)}
+      </Flex><Box as="ul" listStyleType="none" my={3} maxH="36vh" overflowY="auto">
+        {childFolders.map(item=><Box as="li" key={item.id}><Button w="full" variant="ghost" justifyContent="start" leftIcon={<Folder size={18}/>} onClick={()=>setDestination(item.id)}>{item.name}</Button></Box>)}
+        {!childFolders.length && <Box as="li" py={5} textAlign="center" color="gray.500">此文件夹为空</Box>}
+      </Box>{newDestinationName !== undefined && <Flex as="form" gap={2} onSubmit={async event=>{
+        event.preventDefault();
+        if (!newDestinationName.trim() || saving) return;
+        setSaving(true);
+        try {
+          const response = await fetch("/api/library/pages",{method:"POST",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({kind:"文件夹",name:newDestinationName.trim(),body:"",folderId:destination || null})});
+          if (!response.ok) throw new Error();
+          const item: LibraryFile = await response.json();
+          setFiles(previous=>[item,...previous || []]); setNewDestinationName(undefined); setDestination(item.id);
+        } catch { toast({status:"error",title:"创建文件夹失败，请重试"}); }
+        finally { setSaving(false); }
+      }}><Input autoFocus aria-label="文件夹名称" maxLength={255} value={newDestinationName} onChange={event=>setNewDestinationName(event.target.value)}/><Button type="submit" isDisabled={!newDestinationName.trim()} isLoading={saving}>创建</Button></Flex>}</ModalBody>
+      <ModalFooter gap={2}><Button mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={async () => {if (!move) return; const targets=batchMove ? picked : [move]; for(const item of targets) await update(item,{folderId:destination || null});setBatchMove(false);}}>移至此处</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "清空回收站？" : "永久删除项目？"}</ModalHeader>
