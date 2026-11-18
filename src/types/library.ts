@@ -4,6 +4,7 @@ export interface LibraryFile {
   id: string;
   shareId?: string;
   editablePageId?: string;
+  sharedPage?: boolean;
   reference?: ImageReference;
   directUpload?: boolean;
   folderId?: string | null;

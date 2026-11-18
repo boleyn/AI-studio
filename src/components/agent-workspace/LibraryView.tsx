@@ -242,10 +242,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
-    (section === "全部" || section === "回收站" || (file.kind === "页面" ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
+    (section === "全部" || section === "回收站" || (file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
-    (!sources.length || (file.kind === "上传" && sources.includes("已上传")) || (file.kind === "生成" && sources.includes("生成的文件"))) &&
-    (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" ? "页面" : fileType(file.path))) &&
+    (!sources.length || (file.kind === "上传" && !file.sharedPage && sources.includes("已上传")) || (file.kind === "生成" && sources.includes("生成的文件"))) &&
+    (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);

@@ -6,7 +6,7 @@ import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 function appearance(item: LibraryFile) {
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
-  if (item.kind === "页面") return { Icon: NotebookText, color: "#168aff" };
+  if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };
   const path = item.path || item.name;
   if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return { Icon: Sheet, color: "#18a851" };
   if (/\.(pptx?|odp)$/i.test(path)) return { Icon: Presentation, color: "#d86a32" };
