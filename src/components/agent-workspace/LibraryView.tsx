@@ -44,6 +44,12 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [creating,setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [referenceDraft,setReferenceDraft] = useState<{file?:File; type?:ImageReference["type"]; name:string}>();
+  const [confirmDiscard,setConfirmDiscard] = useState(false);
+  function closeReference() {
+    if (creating) return;
+    if (referenceDraft?.file || referenceDraft?.type || referenceDraft?.name) setConfirmDiscard(true);
+    else setReferenceDraft(undefined);
+  }
   const referenceInput = useRef<HTMLInputElement>(null);
   async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference) {
     if (!selected.length) return;
@@ -343,7 +349,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       </Flex>}
     </Box>
   </Box>}
-    {referenceDraft && <Modal isOpen isCentered onClose={() => {if (!creating) setReferenceDraft(undefined);}}>
+    {referenceDraft && <Modal isOpen isCentered onClose={closeReference}>
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>上传参考图</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
         <ModalBody><Text mb={4}>今后生成图像时可以将这张照片用作参考。请仅保存你拥有或有权限使用的照片。</Text>
           <input ref={referenceInput} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.avif,.gif" onChange={event => setReferenceDraft({...referenceDraft,file:event.target.files?.[0]})}/>
@@ -353,10 +359,17 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
               onClick={() => setReferenceDraft({...referenceDraft,type})}>{type}</Button>)}</Flex>
           {referenceDraft.type && referenceDraft.type !== "我" && <Input mt={3} aria-label="名字" placeholder="名字" maxLength={120} value={referenceDraft.name}
             onChange={event => setReferenceDraft({...referenceDraft,name:event.target.value})}/>}
-        </ModalBody><ModalFooter gap={2}><Button isDisabled={creating} onClick={() => setReferenceDraft(undefined)}>取消</Button>
+        </ModalBody><ModalFooter gap={2}><Button isDisabled={creating} onClick={closeReference}>取消</Button>
           <Button isLoading={creating} isDisabled={!referenceDraft.file || !referenceDraft.type} onClick={() => {
             if (referenceDraft.file && referenceDraft.type) void uploadFiles([referenceDraft.file], false, {type:referenceDraft.type,name:referenceDraft.name});
           }}>保存</Button></ModalFooter></ModalContent></Modal>}
+    <Modal isOpen={confirmDiscard} isCentered onClose={() => setConfirmDiscard(false)}>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>是否放弃更改？</ModalHeader>
+        <ModalBody>未保存的更改将丢失</ModalBody>
+        <ModalFooter gap={2}><Button onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
+          <Button colorScheme="red" onClick={() => {setConfirmDiscard(false); setReferenceDraft(undefined);}}>放弃更改</Button>
+        </ModalFooter></ModalContent>
+    </Modal>
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
