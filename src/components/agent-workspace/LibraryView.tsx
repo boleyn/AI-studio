@@ -539,14 +539,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             finally { setSaving(false); }
           }}>永久删除</Button></ModalFooter>
       </ModalContent></Modal>
-    <Modal isOpen={Boolean(rename)} initialFocusRef={renameInput} onClose={() => setRename(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
-      <ModalHeader>重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
+    <Modal isOpen={Boolean(rename)} initialFocusRef={renameInput} onClose={() => setRename(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
+      <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
       <form onSubmit={event => {event.preventDefault(); if(rename && canRename && !saving) void update(rename,{name:newName});}}>
-        <ModalBody><Text as="label" htmlFor="library-rename" fontSize="sm">文件名</Text>
-          <Flex align="center" gap={2} mt={2}><Input id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
-            onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)}/>
+        <ModalBody p={0} mt={3}><Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">文件名</Text>
+          <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
+            onFocus={event => event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => setTitle(event.target.value)}/>
             {suffix && <Text color="gray.600">{suffix}</Text>}</Flex></ModalBody>
-        <ModalFooter gap={2}><Button variant="ghost" onClick={() => setRename(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!canRename}>重命名</Button></ModalFooter>
+        <ModalFooter p={0} mt={3} gap={3}><Button h={8} px={4} borderRadius="full" variant="outline" onClick={() => setRename(undefined)}>取消</Button><Button h={8} px={4} borderRadius="full" bg="#171717" color="white" _hover={{bg:"#303030"}} type="submit" isLoading={saving} isDisabled={!canRename}>重命名</Button></ModalFooter>
       </form></ModalContent></Modal>
   </Flex>;
 }
