@@ -23,6 +23,13 @@ interface Props {
   openSource: () => void;
   toggleFavorite: () => void;
 }
+function displayFileSize(bytes: number) {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log10(Math.max(1,bytes)) / 3));
+  const value = (bytes / 1000 ** index).toLocaleString("zh-CN",{maximumFractionDigits:1});
+  return value + " " + units[index];
+}
+
 type ViewerPanel = "info" | "history";
 
 export default function LibraryFileViewer(props: Props) {
@@ -141,14 +148,17 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
           {version.id === item.id && <Text as="span" fontSize="xs">正在查看</Text>}
         </Button>)}
       </Flex> : <><Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
+      <Text fontSize="xs" color="gray.600" mt={1}>资料空间</Text>
       <Box as="dl" mt={4} fontSize="sm" sx={{"& dt":{color:"gray.600",mt:3}}}>
         <dt>文件类型</dt><dd>{name.match(/\.([^.\/]+)$/)?.[1].toUpperCase() || item.kind}</dd>
         {item.time && <><dt>{item.shareId ? "共享时间" : "最近更新"}</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
         {item.createdAt && <><dt>创建时间</dt><dd><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("zh-CN")}</time>
           {item.createdBy && <Text fontSize="xs" color="gray.600">由 {item.createdBy}</Text>}</dd></>}
-        {item.size !== undefined && <><dt>文件大小</dt><dd>{item.size.toLocaleString("zh-CN")} B</dd></>}
-        {item.permission && <><dt>您的权限</dt><dd>{item.permission}</dd></>}
-      </Box></>}
+        {item.size !== undefined && <><dt>文件大小</dt><dd>{displayFileSize(item.size)}</dd></>}
+      </Box>
+      {item.permission && <Box mt={5} pt={4} borderTopWidth="1px">
+        <Heading as="h3" fontSize="sm">您的权限</Heading><Text mt={2} fontSize="sm">{item.permission}</Text>
+      </Box>}</>}
     </Box>}
     </Flex>
     {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
