@@ -82,14 +82,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const [dropActive,setDropActive] = useState(false);
   const referenceInput = useRef<HTMLInputElement>(null);
-  async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference) {
+  async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference, parentId=folder?.id) {
     if (!selected.length) return;
     setCreating(true);
     try {
       for (const file of selected) {
         const params = new URLSearchParams({name:file.name});
         if (reference) { params.set("referenceType",reference.type); params.set("referenceName",reference.name); }
-        if (folder) params.set("folderId",folder.id);
+        if (parentId) params.set("folderId",parentId);
         const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
         if (!response.ok) {
           toast({status:"error",title:file.name + (response.status === 413 ? " 超过上传大小限制" : " 上传失败")});
@@ -98,12 +98,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         const item:LibraryFile = await response.json();
         setFiles(previous => [item,...previous || []]);
         if (reference) setReferenceDraft(undefined);
-        if (openCreated) openItem(item);
+        if (openCreated && parentId) {
+          recordOpen(item);
+          navigateList("全部","推荐",parentId,item.id,true);
+        } else if (openCreated) openItem(item);
       }
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
   }
-  async function createSlides(template?: SlideTemplateName) {
+  async function createSlides(template?: SlideTemplateName, parentId=folder?.id) {
     if (creating) return;
     setCreating(true);
     try {
@@ -112,7 +115,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       if (!response.ok) throw new Error();
       await uploadFiles([new File([await response.blob()], (template ?? "无标题演示文稿") + ".pptx", {
         type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"
-      })], true);
+      })], true, undefined, parentId);
     } catch {
       toast({status:"error", title:"无法创建幻灯片，请重试"});
     } finally {
@@ -422,6 +425,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
           <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
           <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
+          <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem>
         </MenuList>
       </Menu>} createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
