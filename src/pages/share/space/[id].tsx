@@ -1,4 +1,5 @@
 import { Box, Button, Heading, Link, Stack, Text } from "@chakra-ui/react";
+import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -28,7 +29,7 @@ export default function SharedSpace() {
     {error ? <Text role="alert">{error}</Text> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id}>{item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
-        <Text whiteSpace="pre-wrap">{data.body}</Text>}
+        <LibraryMarkdown>{data.body || ""}</LibraryMarkdown>}
     </>}
   </Box>;
 }
