@@ -11,6 +11,8 @@ import LibraryItemIcon from "./LibraryItemIcon";
 
 interface Props {
   item: LibraryFile;
+  versions: LibraryFile[];
+  openVersion: (file: LibraryFile) => void;
   download: ReactNode;
   share?:()=>void;
   fileChatOpen:boolean;
@@ -21,8 +23,8 @@ interface Props {
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite}:Props) {
-  const [showInfo,setShowInfo] = useState(false);
+export default function LibraryFileViewer({item,versions,openVersion,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite}:Props) {
+  const [panel,setPanel] = useState<"info" | "history">();
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
@@ -72,7 +74,7 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
       node instanceof Element && node.classList.contains("flyfish-pptx-presentation")
     );
     if (inSlideshow) return;
-    if (showInfo) setShowInfo(false);
+    if (panel) setPanel(undefined);
     else close();
   }}>
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
@@ -81,7 +83,8 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
         <MenuList>
           <MenuItem icon={<Library size={16}/>} onClick={openLibrary}>资料空间</MenuItem>
           <MenuDivider/>
-          <MenuItem onClick={()=>setShowInfo(true)}>文件信息</MenuItem><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
+          <MenuItem onClick={()=>setPanel("info")}>文件信息</MenuItem><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
+          <MenuItem onClick={()=>setPanel("history")}>版本历史记录</MenuItem>
           {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
       </Menu><Box flex="1"/>{image && <Menu>
         <MenuButton as={Button} size="sm" variant="ghost" rightIcon={<ChevronDown size={14}/>} aria-label="图像缩放">
@@ -112,12 +115,19 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
         </Flex>}
     </Box>
-    {showInfo && <Box as="aside" aria-label="文件详情" position={{base:"absolute",lg:"relative"}}
+    {panel && <Box as="aside" aria-label={panel === "info" ? "文件详情" : "版本历史记录"} position={{base:"absolute",lg:"relative"}}
       insetY={0} right={0} w="min(100%, 300px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" p={4}>
-      <Flex align="center" justify="space-between"><Heading size="sm">文件详情</Heading>
-        <IconButton size="sm" variant="ghost" aria-label="关闭文件信息面板" icon={<X size={16}/>} onClick={()=>setShowInfo(false)}/>
+      <Flex align="center" justify="space-between"><Heading size="sm">{panel === "info" ? "文件详情" : "版本历史记录"}</Heading>
+        <IconButton size="sm" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
       </Flex>
-      <Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
+      {panel === "history" ? <Flex direction="column" mt={4} gap={1}>
+        {versions.map(version => <Button key={version.id} variant={version.id === item.id ? "solid" : "ghost"}
+          justifyContent="space-between" size="sm" aria-current={version.id === item.id ? "true" : undefined}
+          onClick={()=>{if (version.id !== item.id) openVersion(version);}}>
+          {version.shareId ? "共享版本" : version.time ? new Date(version.time).toLocaleString("zh-CN") : version.name}
+          {version.id === item.id && <Text as="span" fontSize="xs">正在查看</Text>}
+        </Button>)}
+      </Flex> : <><Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
       <Box as="dl" mt={4} fontSize="sm" sx={{"& dt":{color:"gray.600",mt:3}}}>
         <dt>文件类型</dt><dd>{name.match(/\.([^.\/]+)$/)?.[1].toUpperCase() || item.kind}</dd>
         {item.time && <><dt>{item.shareId ? "共享时间" : "最近更新"}</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
@@ -125,7 +135,7 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
           {item.createdBy && <Text fontSize="xs" color="gray.600">由 {item.createdBy}</Text>}</dd></>}
         {item.size !== undefined && <><dt>文件大小</dt><dd>{item.size.toLocaleString("zh-CN")} B</dd></>}
         {item.permission && <><dt>您的权限</dt><dd>{item.permission}</dd></>}
-      </Box>
+      </Box></>}
     </Box>}
     </Flex>
     {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
