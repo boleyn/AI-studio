@@ -194,6 +194,8 @@ export default function AgentWorkspace({
     if (view === activeNav) return;
     const nextQuery = {...router.query};
     if (view !== "library") {
+      delete nextQuery.libraryItem;
+      delete nextQuery.libraryFolder;
       delete nextQuery.librarySection;
       delete nextQuery.libraryTab;
     }

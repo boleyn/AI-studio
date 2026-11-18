@@ -39,7 +39,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [attempt, setAttempt] = useState(0);
   const [globalSearch,setGlobalSearch] = useState(false);
   const [query, setQuery] = useState("");
-  const [editor,setEditor] = useState<LibraryFile>();
+
   const [showTemplates,setShowTemplates] = useState(true);
   const [creating,setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -79,7 +79,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const [galleryOpen, setGalleryOpen] = useState(false);
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
-  const [folder,setFolder] = useState<LibraryFile>();
+
   const [newKind,setNewKind] = useState<"文件夹"|"资料空间">();
   const [move,setMove] = useState<LibraryFile>();
   const [destination,setDestination] = useState("");
@@ -101,22 +101,31 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     setFiles(current => current?.map(item => item.id === file.id ? {...item, openedAt} : item));
     void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
       body:JSON.stringify({openedId:file.id})}).catch(() => undefined);
-    setDetail(undefined);
-    setEditor(undefined);
     if (isContainer(file)) {
-      changeSection("全部");
-      setFolder(file);
-    } else if (file.kind === "页面") setEditor(file);
-    else setDetail(file);
+      setSelected([]);
+      setQuery("");
+      setTypes([]);
+      navigateList("全部", "推荐", file.id);
+    } else {
+      navigateList(section, tab, folder?.id, file.id);
+    }
   }
   const router = useRouter();
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "回收站"];
   const tabs = ["推荐", "收藏", "你的条目", "与你共享"];
   const section = sections.find(value => value === router.query.librarySection) || "全部";
   const tab = tabs.find(value => value === router.query.libraryTab) || "推荐";
-  function navigateList(nextSection: string, nextTab: string) {
-    if (nextSection === section && nextTab === tab) return;
+  const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
+  const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
+  const editor = opened?.kind === "页面" ? opened : undefined;
+  const detail = opened?.kind !== "页面" ? opened : undefined;
+  function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string) {
+    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId) return;
     const query = {...router.query};
+    if (folderId) query.libraryFolder = folderId;
+    else delete query.libraryFolder;
+    if (itemId) query.libraryItem = itemId;
+    else delete query.libraryItem;
     if (nextSection === "全部") delete query.librarySection;
     else query.librarySection = nextSection;
     if (nextTab === "推荐") delete query.libraryTab;
@@ -126,18 +135,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   useEffect(() => { setSelected([]); }, [section, tab]);
   const [sidebar, setSidebar] = useState(true);
   const search = useRef<HTMLInputElement>(null);
-  const [detail, setDetail] = useState<LibraryFile>();
   const [sharing,setSharing] = useState<LibraryFile>();
   const [purge,setPurge] = useState<LibraryFile[]>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
-    setEditor(undefined);
     setSelected([]);
-    setDetail(undefined);
     navigateList(next, "推荐");
-    setFolder(undefined);
     setQuery("");
     setTypes([]);
   };
@@ -235,21 +240,21 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.id} item={files?.find(item=>item.id===detail.id) || detail}
-      share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>setDetail(undefined)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={editor} onBack={() => setEditor(undefined)}
+      share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={editor} onBack={() => navigateList(section, tab, folder?.id)}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time} : item))}/> :
     <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
-        <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}{folder && <Button variant="ghost" size="xs" onClick={() => {const parent=files?.find(item => item.id===folder.folderId);setFolder(parent);}}>返回</Button>}<Heading fontSize="24px" lineHeight="36px" fontWeight="500">{folder?.name || section}</Heading></Flex>
+        <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}{folder && <Button variant="ghost" size="xs" onClick={() => {const parent=files?.find(item => item.id===folder.folderId);navigateList(section,tab,parent?.id);}}>返回</Button>}<Heading fontSize="24px" lineHeight="36px" fontWeight="500">{folder?.name || section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label="搜索文件、项目或会话" placeholder="搜索" maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
           {createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>
-          <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name);}}>{name}</Button>)}</Flex>
+          <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}</Flex>
         <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label="打开筛选器" icon={<ListFilter size={17}/>} size="sm" variant={types.length ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => setTypes(Array.isArray(value) ? value : [value])}>
