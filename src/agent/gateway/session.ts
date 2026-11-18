@@ -1,3 +1,4 @@
+import { schedulePlugin } from "@server/schedules/plugin";
 import { AgentTaskStore } from "../context/tasks";
 import { ContextArtifacts } from "../context/artifacts";
 import { contextIdentity, replayCheckpoint, type ContextCheckpoint } from "../context/transcript";
@@ -163,7 +164,10 @@ export async function runAgentSession(
   let plugins: PluginRuntime | undefined;
   try {
     plugins = await PluginRuntime.create(
-      [...builtinPlugins, createMcpPlugin(loadMcpConfigsFromEnv())],
+      [...builtinPlugins, createMcpPlugin(loadMcpConfigsFromEnv()),
+        schedulePlugin(input.userId && input.token && input.chatId && !input.isSubagent
+          ? { owner: input.userId, token: input.token, chatId: input.chatId } : undefined),
+      ],
       {
         enabled: [
           ...(pluginPolicy.enabled || []),

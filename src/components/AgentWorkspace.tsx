@@ -667,8 +667,11 @@ export default function AgentWorkspace({
       )}
       {activeNav === "schedules" && (
         <SchedulesView
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+          currentChatId={visibleChatId}
+          chats={projects.flatMap(project => project.conversations.map(chat => ({
+            token: project.token, id: chat.id, label: project.name + " / " + chat.title,
+          })))}
+          onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }}
         />
       )}
       <Flex

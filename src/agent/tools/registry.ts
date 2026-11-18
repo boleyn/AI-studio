@@ -52,7 +52,7 @@ export class ToolRegistry {
 
   async dispatch(name: string, rawArgs: string | Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const tool = this.get(name);
-    if (!tool) return { content: `Unknown tool: ${name}`, isError: true };
+    if (!tool) return { content: `Unknown tool: ${name}. Search for an available tool, then correct the call.`, isError: true };
     if (ctx.signal?.aborted) return { content: "Tool call cancelled.", isError: true };
     const denied = this.accessError(tool, ctx);
     if (denied) return { content: denied, isError: true };
@@ -60,7 +60,7 @@ export class ToolRegistry {
     try {
       args = typeof rawArgs === "string" ? (rawArgs.trim() ? JSON.parse(rawArgs) : {}) : rawArgs;
     } catch (error) {
-      return { content: `Invalid JSON arguments for ${name}: ${(error as Error).message}`, isError: true };
+      return { content: `Invalid JSON arguments for ${name}. No action ran. Correct the JSON object and submit a new call.`, isError: true };
     }
     if (!args || typeof args !== "object" || Array.isArray(args)) {
       return { content: `Arguments for ${name} must be a JSON object.`, isError: true };
@@ -74,7 +74,7 @@ export class ToolRegistry {
     } catch {
       return { content: `Invalid tool schema for ${tool.name}; execution refused.`, isError: true };
     }
-    if (!validate(args)) return { content: `Invalid arguments for ${tool.name}: ${this.validator.errorsText(validate.errors)}`, isError: true };
+    if (!validate(args)) return { content: `Invalid arguments for ${tool.name}: ${this.validator.errorsText(validate.errors)}. No action ran. Correct the indicated fields using the tool schema and submit a new call.`, isError: true };
     try {
       return await tool.handler(args, ctx);
     } catch (error) {

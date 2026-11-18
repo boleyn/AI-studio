@@ -1,254 +1,278 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Box,
   Button,
   Flex,
-  Grid,
-  HStack,
-  IconButton,
+  FormControl,
+  FormLabel,
+  Heading,
+  Input,
+  Select,
   Text,
-  Tooltip,
-  useToast,
+  Textarea,
   VStack,
+  useToast,
 } from "@chakra-ui/react";
-import {
-  CalendarClock,
-  ChevronRight,
-  Clock,
-  FileSpreadsheet,
-  GitBranch,
-  MailCheck,
-  PanelLeftClose,
-  Plus,
-  Search,
-  SlidersHorizontal,
-} from "lucide-react";
+import { DateTime } from "luxon";
+import type { Schedule, ScheduleSpec } from "@/shared/schedules/types";
+import { withAuthHeaders } from "@features/auth/client/authClient";
 
-type TaskTemplate = {
-  id: string;
-  title: string;
-  description: string;
-  icon: typeof CalendarClock;
-  iconColor: string;
+type Chat = { token: string; id: string; label: string };
+type Props = {
+  chats: Chat[];
+  currentChatId?: string;
+  onOpen: (token: string, chatId: string) => void;
 };
-
-const TASK_TEMPLATES: TaskTemplate[] = [
-  {
-    id: "weekly-summary",
-    title: "每周工作周报汇总",
-    description: "每周五自动整理项目工作成果与进展，输出结构化 Markdown 周报。",
-    icon: CalendarClock,
-    iconColor: "#16a34a",
-  },
-  {
-    id: "repo-check",
-    title: "代码仓库定时巡检",
-    description: "定期检查项目构建状态、依赖变更与潜在问题并推送关注摘要。",
-    icon: GitBranch,
-    iconColor: "#2563eb",
-  },
-  {
-    id: "data-report",
-    title: "数据表格定期分析",
-    description: "按计划读取工作区报表数据，自动更新趋势图表与 Excel 汇总。",
-    icon: FileSpreadsheet,
-    iconColor: "#d97706",
-  },
-  {
-    id: "inbox-digest",
-    title: "信息监控与日报",
-    description: "每天定时收集关注领域的更新动态，整理成简洁摘要发送到会话。",
-    icon: MailCheck,
-    iconColor: "#7c3aed",
-  },
-];
-
-type SchedulesViewProps = {
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
+const states = {
+  paused: "已暂停",
+  active: "已启用",
+  running: "执行中",
+  completed: "已完成",
 };
+const repeats = { once: "单次", daily: "每天", weekly: "每周" };
 
-export default function SchedulesView({
-  sidebarOpen,
-  onToggleSidebar,
-}: SchedulesViewProps) {
+async function request(body?: object) {
+  const response = await fetch("/api/schedules", {
+    method: body ? "POST" : "GET",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "定时任务请求失败");
+  return data;
+}
+
+export default function SchedulesView({ chats, currentChatId, onOpen }: Props) {
+  const [tasks, setTasks] = useState<Schedule[]>([]);
+  const [editing, setEditing] = useState<Schedule | "new" | null>(null);
+  const [chatKey, setChatKey] = useState("");
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [time, setTime] = useState("");
+  const [zone, setZone] = useState("");
+  const [repeat, setRepeat] = useState<ScheduleSpec["repeat"]>("once");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const toast = useToast();
-  const [showPaused, setShowPaused] = useState(false);
-
-  const handleSelectTemplate = (title: string) => {
-    toast({
-      title: `已选择模板「${title}」`,
-      description: "定时调度后端接口将在后续阶段接入。",
-      status: "info",
-      duration: 2500,
-    });
-  };
-
+  const reload = useCallback(async () => {
+    try {
+      setTasks((await request()).tasks);
+      setError("");
+    } catch (err) {
+      setError(String(err));
+    }
+  }, []);
+  useEffect(() => {
+    void reload();
+    const timer = setInterval(() => void reload(), 10000);
+    return () => clearInterval(timer);
+  }, [reload]);
+  function edit(task?: Schedule) {
+    const chat = task || chats.find((c) => c.id === currentChatId) || chats[0];
+    setChatKey(
+      chat
+        ? JSON.stringify([chat.token, "chatId" in chat ? chat.chatId : chat.id])
+        : "",
+    );
+    setTitle(task?.title || "");
+    setPrompt(task?.prompt || "");
+    const timezone =
+      task?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    setZone(timezone);
+    setTime(
+      (task
+        ? DateTime.fromISO(task.firstAt)
+        : DateTime.now().plus({ hours: 1 })
+      )
+        .setZone(timezone)
+        .toFormat("yyyy-MM-dd'T'HH:mm"),
+    );
+    setRepeat(task?.repeat || "once");
+    setEditing(task || "new");
+  }
+  async function mutate(body: object) {
+    setBusy(true);
+    try {
+      await request(body);
+      setEditing(null);
+      await reload();
+    } catch (err) {
+      toast({ title: String(err), status: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+  function save(event: FormEvent) {
+    event.preventDefault();
+    const date = DateTime.fromISO(time, { zone });
+    if (!date.isValid || date.toFormat("yyyy-MM-dd'T'HH:mm") !== time) {
+      toast({ title: "该时区或当地时间无效", status: "error" });
+      return;
+    }
+    const spec = {
+      title,
+      prompt,
+      timezone: zone,
+      firstAt: date.toISO(),
+      repeat,
+    };
+    if (editing && editing !== "new")
+      void mutate({ action: "edit", id: editing._id, spec });
+    else {
+      const [token, chatId] = JSON.parse(chatKey);
+      void mutate({ action: "create", token, chatId, spec });
+    }
+  }
   return (
-    <Flex flex="1" h="100%" minW={0} bg="surface.canvas">
-      {/* 定时任务专属次级侧边栏（1:1 对齐 ChatGPT 定时任务页左侧） */}
-      {sidebarOpen ? (
-        <Flex
-          w={{ base: "240px", md: "244px" }}
-          flexShrink={0}
-          direction="column"
-          bg="surface.sidebar"
-          borderRight="1px solid"
-          borderColor="stroke.light"
-        >
-          <Flex px={3.5} pt={3} pb={2} align="center" justify="space-between">
-            <Text fontWeight="600" fontSize="15px" color="ink.primary">
-              定时任务
-            </Text>
-            <HStack spacing={0.5}>
-              <Tooltip label="筛选">
-                <IconButton
-                  aria-label="筛选定时任务"
-                  icon={<SlidersHorizontal size={14} />}
-                  size="xs"
-                  variant="ghost"
-                  color="ink.secondary"
-                />
-              </Tooltip>
-              <Tooltip label="搜索">
-                <IconButton
-                  aria-label="搜索定时任务"
-                  icon={<Search size={14} />}
-                  size="xs"
-                  variant="ghost"
-                  color="ink.secondary"
-                />
-              </Tooltip>
-              <Tooltip label="收起侧边栏">
-                <IconButton
-                  aria-label="收起侧边栏"
-                  icon={<PanelLeftClose size={15} />}
-                  size="xs"
-                  variant="ghost"
-                  color="ink.secondary"
-                  onClick={onToggleSidebar}
-                />
-              </Tooltip>
-            </HStack>
-          </Flex>
-
-          <Box px={2.5} py={1.5}>
-            <Button
-              size="sm"
-              w="full"
-              justifyContent="flex-start"
-              fontWeight="500"
-              fontSize="13.5px"
-              bg="surface.active"
-              color="ink.primary"
-              borderRadius="10px"
-              px={3}
-              leftIcon={<Plus size={15} />}
-              _hover={{ bg: "surface.active" }}
-              onClick={() => handleSelectTemplate("新建定时任务")}
-            >
-              新建任务
-            </Button>
-          </Box>
-
-          <Box px={3} pt={3}>
-            <HStack
-              as="button"
-              type="button"
-              spacing={1}
-              fontSize="12px"
-              color="ink.muted"
-              cursor="pointer"
-              _hover={{ color: "ink.primary" }}
-              onClick={() => setShowPaused((v) => !v)}
-            >
-              <Text>已暂停</Text>
-              <Box
-                transform={showPaused ? "rotate(90deg)" : "rotate(0deg)"}
-                transition="transform 0.15s"
-              >
-                <ChevronRight size={13} />
-              </Box>
-            </HStack>
-            {showPaused && (
-              <Text fontSize="12px" color="ink.muted" mt={2} pl={1}>
-                暂无已暂停的任务
-              </Text>
-            )}
-          </Box>
+    <Box flex="1" overflowY="auto" p={{ base: 4, md: 8 }}>
+      <VStack maxW="760px" mx="auto" align="stretch" spacing={4}>
+        <Flex align="center" justify="space-between">
+          <Heading size="md">定时任务</Heading>
+          <Button size="sm" onClick={() => edit()} isDisabled={!chats.length}>
+            新建任务
+          </Button>
         </Flex>
-      ) : null}
-
-      {/* 右侧居中「安排任务」页面（1:1 对齐 ChatGPT 安排任务主区） */}
-      <Flex flex="1" h="100%" overflowY="auto" align="center" justify="center" p={{ base: 5, md: 10 }}>
-        <VStack maxW="680px" w="full" spacing={7} align="center">
-          <VStack spacing={2.5} textAlign="center">
-            <Flex
-              w="48px"
-              h="48px"
-              borderRadius="full"
-              bg="surface.sidebar"
-              border="1px solid"
-              borderColor="stroke.subtle"
-              align="center"
-              justify="center"
-            >
-              <Clock size={24} color="#5d5d5d" />
-            </Flex>
-            <Text fontSize="20px" fontWeight="600" color="ink.primary">
-              安排任务
-            </Text>
-            <Text fontSize="13.5px" color="ink.secondary">
-              伯仁可以帮你处理持续性任务，让你不必亲自动手。
-            </Text>
-          </VStack>
-
-          <Grid templateColumns={{ base: "1fr", md: "repeat(2, minmax(0, 1fr))" }} gap={3.5} w="full">
-            {TASK_TEMPLATES.map((tpl) => {
-              const Icon = tpl.icon;
-              return (
-                <Flex
-                  key={tpl.id}
-                  as="button"
-                  type="button"
-                  textAlign="left"
-                  align="flex-start"
-                  gap={3.5}
-                  p={4}
-                  borderRadius="16px"
-                  bg="white"
-                  border="1px solid"
-                  borderColor="stroke.subtle"
-                  transition="all 0.15s"
-                  _hover={{ bg: "surface.sidebar", borderColor: "rgba(0,0,0,0.16)" }}
-                  onClick={() => handleSelectTemplate(tpl.title)}
+        {error && <Text role="alert">{error}</Text>}
+        {editing && (
+          <Box as="form" onSubmit={save} borderWidth="1px" rounded="lg" p={4}>
+            <VStack align="stretch">
+              <FormControl isRequired>
+                <FormLabel>来源会话</FormLabel>
+                <Select
+                  required
+                  value={chatKey}
+                  isDisabled={editing !== "new"}
+                  onChange={(e) => setChatKey(e.target.value)}
                 >
-                  <Flex
-                    w="32px"
-                    h="32px"
-                    borderRadius="10px"
-                    bg="surface.sidebar"
-                    align="center"
-                    justify="center"
-                    flexShrink={0}
-                    mt={0.5}
-                  >
-                    <Icon size={17} color={tpl.iconColor} />
-                  </Flex>
-                  <Box minW={0}>
-                    <Text fontSize="13.5px" fontWeight="600" color="ink.primary">
-                      {tpl.title}
-                    </Text>
-                    <Text fontSize="12px" color="ink.muted" mt={1} lineHeight="1.5">
-                      {tpl.description}
-                    </Text>
-                  </Box>
-                </Flex>
-              );
-            })}
-          </Grid>
-        </VStack>
-      </Flex>
-    </Flex>
+                  {chats.map((c) => (
+                    <option
+                      key={JSON.stringify([c.token, c.id])}
+                      value={JSON.stringify([c.token, c.id])}
+                    >
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>任务名称</FormLabel>
+                <Input
+                  required
+                  maxLength={100}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>执行指令</FormLabel>
+                <Textarea
+                  required
+                  maxLength={4000}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>首次执行时间</FormLabel>
+                <Input
+                  type="datetime-local"
+                  required
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>时区</FormLabel>
+                <Input
+                  required
+                  value={zone}
+                  onChange={(e) => setZone(e.target.value)}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>重复</FormLabel>
+                <Select
+                  value={repeat}
+                  onChange={(e) =>
+                    setRepeat(e.target.value as ScheduleSpec["repeat"])
+                  }
+                >
+                  {Object.entries(repeats).map(([v, label]) => (
+                    <option value={v} key={v}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+              <Flex gap={2}>
+                <Button type="submit" isLoading={busy}>
+                  保存
+                </Button>
+                <Button onClick={() => setEditing(null)}>取消</Button>
+              </Flex>
+            </VStack>
+          </Box>
+        )}
+        {!tasks.length && !error && (
+          <Text color="ink.muted">
+            {chats.length
+              ? "暂无定时任务"
+              : "先在项目里开始一段对话，即可为它设置定时任务。"}
+          </Text>
+        )}
+        {tasks.map((task) => (
+          <Box key={task._id} p={4} borderWidth="1px" rounded="lg">
+            <Heading size="sm">{task.title}</Heading>
+            <Text my={2} whiteSpace="pre-wrap">
+              {task.prompt}
+            </Text>
+            <Text fontSize="sm">
+              {states[task.state]} · {repeats[task.repeat]} ·{" "}
+              {DateTime.fromMillis(task.nextAt, {
+                zone: task.timezone,
+              }).toFormat("yyyy-MM-dd HH:mm")}{" "}
+              ({task.timezone})
+            </Text>
+            {task.lastResult && <Text fontSize="sm">{task.lastResult}</Text>}
+            <Flex gap={2} mt={3} wrap="wrap">
+              <Button size="sm" onClick={() => onOpen(task.token, task.chatId)}>
+                打开会话
+              </Button>
+              <Button
+                size="sm"
+                isDisabled={busy || task.state === "running"}
+                onClick={() => edit(task)}
+              >
+                编辑
+              </Button>
+              {["active", "paused"].includes(task.state) && (
+                <Button
+                  size="sm"
+                  isDisabled={busy}
+                  onClick={() =>
+                    void mutate({
+                      action: task.state === "active" ? "pause" : "resume",
+                      id: task._id,
+                    })
+                  }
+                >
+                  {task.state === "active" ? "暂停" : "启用"}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                isDisabled={busy || task.state === "running"}
+                onClick={() => {
+                  if (window.confirm("删除这个定时任务？"))
+                    void mutate({ action: "delete", id: task._id });
+                }}
+              >
+                删除
+              </Button>
+            </Flex>
+          </Box>
+        ))}
+      </VStack>
+    </Box>
   );
 }

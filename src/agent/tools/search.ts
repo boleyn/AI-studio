@@ -3,6 +3,7 @@ import type { ToolDefinition } from "./types";
 // Deterministic lexical retrieval: exact identifiers + BM25 + bilingual domain
 // hints. This does not pretend to be a semantic embedding service.
 const aliases: Array<[RegExp, string]> = [
+  [/定时|提醒|每周|每天/, "schedules schedule task reminder"],
   [/文件|读取|写入|修改|目录|搜索文件/, "file read write edit glob grep"],
   [/网页|网站|联网|搜索网页/, "web fetch search"],
   [/计划|规划|待办/, "plan todo"], [/技能/, "skill"],

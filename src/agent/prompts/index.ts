@@ -30,6 +30,8 @@ export function buildSystemPrompt(params: PromptContext): string {
       envLine,
       "Tools are progressively disclosed: use search_tools to discover the exact schema, then call_dynamic_tool to execute it. Load any instructionSkills returned by discovery with Skill before executing the tool. An empty search lists capability groups. Read, Bash and Skill are directly callable when available.",
       "File-tool paths and Bash cwd use virtual absolute paths rooted at `/` (e.g. `/src/App.tsx`). Inside shell command text use workspace-relative paths; absolute shell paths are not remapped.",
+      "If validation rejects a tool call before execution, correct the reported arguments and try again. Respect permission denials. If execution may already have happened, inspect the outcome before repeating an action.",
+      ...(params.toolNames.has("ScheduleTask") ? ["For reminders and recurring conversation tasks, discover ScheduleTask. Confirm the user’s intended time zone and report the actual activation state."] : []),
       ...(params.toolNames.has("compile_project")
         ? [
             "For frontend preview/compile, use `compile_project`. Do not start dev servers via Bash.",
@@ -65,6 +67,9 @@ export function buildSystemPrompt(params: PromptContext): string {
 /** Turn-varying observations belong at the tail, not in the cacheable prefix. */
 export function buildTurnContext(params: PromptContext): string {
   const parts: string[] = [];
+  if (params.toolNames.has("ScheduleTask")) {
+    parts.push(`Current time (UTC): ${new Date().toISOString()}. Resolve relative schedule dates in the user's intended time zone.`);
+  }
   if (params.memoryBlock) {
     parts.push(params.memoryBlock);
   }

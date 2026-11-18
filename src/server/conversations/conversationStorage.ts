@@ -515,12 +515,19 @@ export async function appendConversationMessages(
   token: string,
   id: string,
   messages: ConversationMessage[],
-  title?: string
+  title?: string,
+  existingOnly = false,
 ): Promise<void> {
   if (messages.length === 0) return;
 
   const itemCol = await getItemCollection();
-  await ensureMetaByChatId({ token, chatId: id, title });
+  if (existingOnly) {
+    const meta = await getMetaCollection();
+    const updated = await meta.updateOne({ token, chatId: id, deleteTime: null }, { $set: { updateTime: new Date() } });
+    if (!updated.matchedCount) throw new Error("来源会话已删除");
+  } else {
+    await ensureMetaByChatId({ token, chatId: id, title });
+  }
   const now = new Date();
   const docs = messages.map((message, index) =>
     messageToDoc({
