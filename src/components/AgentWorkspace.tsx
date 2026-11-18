@@ -191,6 +191,9 @@ export default function AgentWorkspace({
   const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
     ? query.view : "chat";
   const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
+  const [fileChatWidth, setFileChatWidth] = useState(38);
+  const chatPaneRef = useRef<HTMLDivElement>(null);
+  const clampChatWidth = (width: number) => Math.min(65, Math.max(25, width));
   const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
     fileChat.chatId === visibleChatId ? fileChat : undefined;
   const fileChatOpen = currentFileChat?.minimized === false;
@@ -926,13 +929,34 @@ export default function AgentWorkspace({
         />
       )}
       <Flex
-        flex={fileChatOpen ? {base:"1",md:"0 0 38%"} : "1"}
+        ref={chatPaneRef}
+        flex={fileChatOpen ? {base:"1",md:`0 0 ${fileChatWidth}%`} : "1"}
         minW={0}
         minH={0}
         position={fileChatOpen ? {base:"absolute",md:"relative"} : "relative"}
         display={activeNav === "chat" || fileChatOpen ? "flex" : "none"}
         {...(fileChatOpen ? {role:"region", "aria-label":"聊天", inset:{base:0,md:"auto"},zIndex:4,bg:"white",borderLeftWidth:"1px"} : {})}
       >
+        {fileChatOpen && <Box role="separator" aria-label="调整聊天宽度" aria-orientation="vertical"
+          aria-valuemin={25} aria-valuemax={65} aria-valuenow={fileChatWidth} aria-valuetext={fileChatWidth + "%"}
+          tabIndex={0} display={{base:"none",md:"block"}} position="absolute" insetY={0} left="-4px" w="8px"
+          zIndex={5} cursor="col-resize" style={{touchAction:"none"}} _focusVisible={{outline:"2px solid currentColor"}}
+          onPointerDown={event => {
+            if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={event => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            const bounds = chatPaneRef.current?.parentElement?.getBoundingClientRect();
+            if (bounds?.width) setFileChatWidth(clampChatWidth(Math.round(100 * (bounds.right - event.clientX) / bounds.width)));
+          }}
+          onKeyDown={event => {
+            const widths: Record<string, number> = {ArrowLeft:fileChatWidth + 1, ArrowRight:fileChatWidth - 1, Home:25, End:65};
+            if (Object.prototype.hasOwnProperty.call(widths, event.key)) {
+              event.preventDefault();
+              setFileChatWidth(clampChatWidth(widths[event.key]));
+            }
+          }}
+        />}
         {/* 次级侧边栏（1:1 对齐 ChatGPT 左侧栏） */}
           {sidebarOpen && !fileChatOpen ? (
         <Flex
