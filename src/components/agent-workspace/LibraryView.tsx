@@ -297,7 +297,9 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const key = (file: LibraryFile) => file.id;
   const downloadUrl = (file:LibraryFile) => file.shareId ? "/api/artifact-share?id="+file.shareId+"&file=1" : file.directUpload ? "/api/library/files?id=" + file.id : buildDownloadUrl({storagePath:file.path,token:file.token,chatId:file.chatId});
-  const download = (file: LibraryFile) => file.kind === "上传" ?
+  const download = (file: LibraryFile) => isArtifactImage(file.path || file.name) ?
+    <IconButton size="sm" variant="ghost" borderRadius="full" aria-label="下载文件" title="下载文件"
+      icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> : file.kind === "上传" ?
     <Button as="a" size="xs" variant="ghost" href={downloadUrl(file)}>下载</Button> :
     <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version)
       .catch(() => toast({ status:"error", title:"无法下载此文件" }))}>下载</Button>;

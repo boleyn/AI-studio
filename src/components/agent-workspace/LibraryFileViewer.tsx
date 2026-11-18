@@ -63,8 +63,8 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
     if (!inSlideshow) close();
   }}>
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
-      <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={item.name+" 的文件操作"}>
-        <Text isTruncated>{item.name}</Text></MenuButton>
+      <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
+        <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
         <MenuList><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
           {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
       </Menu><Box flex="1"/>{image && <Menu>
