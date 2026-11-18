@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuDivider, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
-import { CircleAlert, ChevronDown, Library, MessageSquare, X } from "lucide-react";
+import { CircleAlert, ChevronDown, Library, Minus, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -42,6 +42,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
   setPanel: (panel?: ViewerPanel) => void;
 }) {
   const [question,setQuestion] = useState("");
+  const [draftMinimized,setDraftMinimized] = useState(false);
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [body,setBody] = useState<string>();
@@ -87,7 +88,8 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
     </Box>
     <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setError(false);setAttempt(n=>n+1);}}>重新加载</Button>
   </Flex>;
-  return <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
+  return <Flex flex="1" minW={0} minH={0} direction={{base:"column",lg:"row"}}>
+    <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // The PPTX viewer handles its own Escape on document after React bubbling.
     const inSlideshow = event.nativeEvent.composedPath().some(node =>
@@ -168,9 +170,16 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
       </Box>}</>}
     </Box>}
     </Flex>
-    {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
-      onClick={resumeFileChat} aria-label="展开聊天窗口">聊天</Button>}
-    {!fileChatOpen && !resumeFileChat && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
+    {(resumeFileChat || (draftMinimized && !fileChatOpen)) && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
+      onClick={resumeFileChat || (()=>setDraftMinimized(false))} aria-label="展开聊天窗口">聊天</Button>}
+    </Flex>
+    {!fileChatOpen && !resumeFileChat && !draftMinimized && <Flex as="aside" aria-label="新聊天" direction="column"
+      w={{base:"100%",lg:"38%"}} flexShrink={0} minW={0} bg="white" borderInlineStartWidth={{base:0,lg:"1px"}} borderTopWidth={{base:"1px",lg:0}}>
+      <Flex align="center" justify="space-between" px={4} minH="44px">
+        <Heading as="h2" fontSize="sm">新聊天</Heading>
+        <IconButton size="sm" variant="ghost" aria-label="最小化聊天窗口" icon={<Minus size={16}/>} onClick={()=>setDraftMinimized(true)}/>
+      </Flex>
+      <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" mt="auto" p={3}
       onSubmit={async event=>{
         event.preventDefault();
         if (openingChat) return;
@@ -179,6 +188,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
       }}>
       <Input aria-label="询问此文件" placeholder="询问此文件" value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
       <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
+      </Flex>
     </Flex>}
   </Flex>;
 }
