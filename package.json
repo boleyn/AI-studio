@@ -13,7 +13,8 @@
     "typecheck:web": "bun x tsc -p tsconfig.web-check.json --noEmit",
     "lint": "next lint --dir src/pages --dir src/features --dir src/server --dir src/agent --dir src/shared --dir src/contexts --dir src/hooks",
     "test:agent": "bun test src/agent",
-    "preview:assets": "file-viewer-copy-assets ./public/file-viewer"
+    "preview:assets": "file-viewer-copy-assets ./public/file-viewer",
+    "connector:build": "bun build projects/agent-connector/server.ts --compile --outfile .aistudio/bin/aistudio-connector"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
@@ -62,6 +63,7 @@
     "@smithy/node-http-handler": "^4.5.3",
     "@streamdown/code": "^2.0.0",
     "ahooks": "^3.8.5",
+    "ajv": "^8.17.1",
     "asciichart": "^1.5.25",
     "axios": "^1.15.0",
     "bcryptjs": "^2.4.3",
@@ -95,7 +97,6 @@
     "lucide-react": "^0.468.0",
     "material-file-icons": "^2.4.0",
     "mermaid": "^10.9.0",
-    "module-alias": "^2.3.4",
     "monaco-editor": "^0.55.1",
     "mongodb": "^6.12.0",
     "next": "^14.0.0",
@@ -154,6 +155,7 @@
     "autoprefixer": "^10.4.19",
     "eslint-config-next": "^14.0.0",
     "postcss": "^8.4.38",
+    "s3rver": "^3.7.1",
     "tailwindcss": "^3.4.10",
     "tsx": "^4.20.6",
     "typescript": "5.5.4"

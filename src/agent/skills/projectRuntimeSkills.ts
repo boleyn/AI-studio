@@ -1,3 +1,4 @@
+import { parseSkillFrontmatter, skillDescription } from "./frontmatter";
 import type { RuntimeSkill, SkillEntry } from "./registry";
 
 type ProjectFileMap = Record<string, { code?: string }>;
@@ -10,30 +11,6 @@ const safeName = (input: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "skill";
-
-const parseFrontmatter = (markdown: string): Record<string, string> => {
-  const match = markdown.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-  if (!match) return {};
-  return (match[1] || "").split(/\r?\n/).reduce<Record<string, string>>((acc, line) => {
-    const idx = line.indexOf(":");
-    if (idx <= 0) return acc;
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
-    if (key) acc[key] = value;
-    return acc;
-  }, {});
-};
-
-const pickDescription = (markdown: string, frontmatter: Record<string, string>) => {
-  if (frontmatter.description) return frontmatter.description;
-  return (
-    markdown
-      .replace(/^---[\s\S]*?---\s*/m, "")
-      .split(/\r?\n\r?\n/)
-      .map((item) => item.trim())
-      .find(Boolean) || "No description"
-  );
-};
 
 export const collectProjectRuntimeSkills = (
   files: ProjectFileMap,
@@ -60,13 +37,8 @@ export const collectProjectRuntimeSkills = (
     const location = toPosix(filePath.startsWith("/") ? filePath : `/${filePath}`);
     const baseDir = location.replace(/\/SKILL\.md$/i, "");
     const folderName = (baseDir.split("/").filter(Boolean).pop() || "").trim();
-    const frontmatter = parseFrontmatter(markdown);
+    const frontmatter = parseSkillFrontmatter(markdown);
     const name = (frontmatter.name || folderName || "skill").trim();
-    const metadata: Record<string, string> = {};
-    for (const [key, value] of Object.entries(frontmatter)) {
-      if (["name", "description", "license", "compatibility"].includes(key)) continue;
-      metadata[key] = value;
-    }
 
     const issues =
       markdown.trim().length === 0
@@ -82,7 +54,7 @@ export const collectProjectRuntimeSkills = (
 
     entries.push({
       name,
-      description: pickDescription(markdown, frontmatter),
+      description: skillDescription(markdown, frontmatter),
       location: `${sourceLabel}:${location}`,
       relativeLocation: location,
       isLoadable: issues.length === 0,
@@ -92,10 +64,10 @@ export const collectProjectRuntimeSkills = (
     if (issues.length === 0) {
       skills.push({
         name,
-        description: pickDescription(markdown, frontmatter),
+        description: skillDescription(markdown, frontmatter),
         license: frontmatter.license || undefined,
         compatibility: frontmatter.compatibility || undefined,
-        metadata: Object.keys(metadata).length ? metadata : undefined,
+        metadata: frontmatter.metadata,
         location: `${sourceLabel}:${location}`,
         relativeLocation: location,
         baseDir: `${sourceLabel}:${baseDir}`,

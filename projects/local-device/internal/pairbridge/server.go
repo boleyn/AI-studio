@@ -102,7 +102,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	// 桌面多账号模式对主平台也使用邀请确认，旧网页仍可走原来的 /pair。
 	primaryInvite := origin == s.origin && (r.URL.Path == "/status" || r.URL.Path == "/invite")
-	if r.Host == Address && s.LocalInvite != nil && (primaryInvite || isLoopbackOrigin(origin) || r.URL.Path == "/invite" && isWebOrigin(origin)) {
+	if r.Host == Address && s.LocalInvite != nil && (primaryInvite || isLoopbackOrigin(origin) && (r.URL.Path == "/status" || r.URL.Path == "/invite") || r.URL.Path == "/invite" && isWebOrigin(origin)) {
 		s.serveLocalInvite(w, r, origin)
 		return
 	}

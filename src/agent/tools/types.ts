@@ -37,6 +37,13 @@ export type SubagentRunner = (params: {
 }) => Promise<string>;
 
 export type ToolContext = {
+  backgroundTasks?: {
+    start: (prompt: string) => Promise<unknown>;
+    list: () => Promise<unknown>;
+    get: (id: string) => Promise<unknown>;
+    cancel: (id: string) => Promise<unknown>;
+  };
+  skills?: import("../skills/catalog").SkillCatalog;
   sandbox: Sandbox;
   toolUseId: string;
   signal?: AbortSignal;
@@ -55,8 +62,9 @@ export type ToolContext = {
 export type ToolDefinition<Input = Record<string, unknown>> = {
   name: string;
   /** Hermes 风格的 toolset 分组，用于按场景启用/禁用 */
-  toolset: "file" | "terminal" | "planning" | "delegation" | "skills" | "web" | "project" | "mcp" | "memory";
+  toolset: string;
   description: string;
+  instructionSkills?: string[];
   parameters: JsonSchema;
   /** 只读工具在 plan 模式下仍然可用 */
   readOnly?: boolean;
@@ -64,3 +72,6 @@ export type ToolDefinition<Input = Record<string, unknown>> = {
   isAvailable?: (ctx: { sandbox: Sandbox; projectToken?: string }) => boolean;
   handler: (input: Input, ctx: ToolContext) => Promise<ToolResult>;
 };
+
+/** Preserve typed handler inputs while exporting declarative tool contributions. */
+export const defineTool = <Input>(tool: ToolDefinition<Input>): ToolDefinition<Input> => tool;

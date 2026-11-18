@@ -98,7 +98,9 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         ? body.template
         : DEFAULT_PROJECT_TEMPLATE;
       const sandpackTemplate = toSandpackTemplate(requestedTemplate);
-      const templateDefaults = await loadProjectTemplateDefaults(requestedTemplate);
+      const templateDefaults = isCommonProjectTemplate(body.template)
+        ? await loadProjectTemplateDefaults(requestedTemplate)
+        : { files: {}, dependencies: {} };
 
       const project: ProjectData = {
         token,

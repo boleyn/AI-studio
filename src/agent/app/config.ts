@@ -10,7 +10,6 @@ export type AgentRuntimeConfig = {
   apiKey?: string;
   baseUrl?: string;
   memoryEnabled: boolean;
-  memoryAutoExtractEnabled: boolean;
 };
 
 const DEFAULT_RECURSION_LIMIT = 24;
@@ -42,7 +41,6 @@ export const getAgentRuntimeConfig = (): AgentRuntimeConfig => {
     apiKey,
     baseUrl,
     memoryEnabled: process.env.AI_MEMORY_ENABLED !== "0",
-    memoryAutoExtractEnabled: process.env.AI_MEMORY_AUTO_EXTRACT_ENABLED !== "0",
   };
 };
 
@@ -72,8 +70,4 @@ export function getOpenAIClient(options?: {
 
   if (!isCustom) cachedClient = client;
   return client;
-}
-
-export function clearOpenAIClientCache(): void {
-  cachedClient = null;
 }

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { prepareConnectorWorkspace } from "../connectorWorkspace";
 import { normalizeVirtualPath } from "../paths";
 import type {
   Sandbox,
@@ -27,7 +29,9 @@ export class ConnectorClient {
   async call(op: string, payload: Record<string, unknown> = {}, signal?: AbortSignal): Promise<RpcResult> {
     const response = await fetch(`${this.url.replace(/\/$/, "")}/rpc`, {
       method: "POST",
-      signal,
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(op === "exec" ? Number(payload.timeoutMs || 120_000) + 5000 : 15_000)])
+        : AbortSignal.timeout(op === "exec" ? Number(payload.timeoutMs || 120_000) + 5000 : 15_000),
       headers: {
         "content-type": "application/json",
         ...(this.token ? { "x-aistudio-connector-token": this.token } : {}),
@@ -38,6 +42,7 @@ export class ConnectorClient {
     if (!response.ok || data.ok === false) {
       throw new Error(`connector_${op}_failed: ${data.error || response.status}`);
     }
+    if (data.protocolVersion !== CONNECTOR_PROTOCOL_VERSION) throw new Error("connector_protocol_version_mismatch");
     return data;
   }
 }
@@ -80,22 +85,29 @@ class ConnectorFileSystem implements SandboxFileSystem {
   }
 }
 
-export const createConnectorSandbox = (params: {
+export const createConnectorSandbox = async (params: {
   workspaceKey: string;
   url: string;
   token?: string;
-}): Sandbox => {
+  runtimeFiles?: import("../types").ProjectFiles;
+}): Promise<Sandbox> => {
   const client = new ConnectorClient(params.url, params.token);
   const fs = new ConnectorFileSystem(client);
+  const workspace = await prepareConnectorWorkspace(fs, params.runtimeFiles);
   return {
     kind: "connector",
     workspaceKey: params.workspaceKey,
     fs,
     async exec(command: string, options: SandboxExecOptions = {}): Promise<SandboxExecResult> {
+      if (options.signal?.aborted) return { code: 130, stdout: "", stderr: "cancelled" };
+      const requestId = randomUUID();
+      let cancellation: Promise<unknown> | undefined;
+      const cancel = () => { cancellation = client.call("cancel", { requestId }).catch(() => {}); };
+      options.signal?.addEventListener("abort", cancel, { once: true });
       try {
         const data = await client.call(
           "exec",
-          { command, cwd: normalizeVirtualPath(options.cwd || "/"), timeoutMs: options.timeoutMs ?? 120_000 },
+          { requestId, command, cwd: normalizeVirtualPath(options.cwd || "/"), timeoutMs: options.timeoutMs ?? 120_000 },
           options.signal,
         );
         return {
@@ -104,14 +116,16 @@ export const createConnectorSandbox = (params: {
           stderr: String(data.stderr || ""),
         };
       } catch (error) {
-        return { code: 126, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
+        if (!cancellation) cancel();
+        return { code: options.signal?.aborted ? 130 : 126, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
+      } finally {
+        options.signal?.removeEventListener("abort", cancel);
+        await cancellation;
       }
     },
-    // 文件直接落在用户本机，无需持久化，也不回写编辑器
+    // Publish only files changed during this run, never the existing mounted tree.
     async persist() {},
-    async exportProjectFiles() {
-      return {};
-    },
+    exportProjectFiles: workspace.exportChangedFiles,
     async dispose() {},
   };
 };

@@ -1,28 +1,17 @@
-import { runHermesAgent, type RunHermesAgentInput, type RunHermesAgentResult } from "../app";
-import type { SandboxKind } from "../sandbox";
+import {
+  runAgentSession,
+  type AgentSessionInput,
+  type AgentSessionResult,
+} from "./session";
 
-export type RuntimeStrategy = "hermes" | "query_engine";
+export type GatewayRunInput = AgentSessionInput;
 
-export const resolveRuntimeStrategy = (requested?: unknown): RuntimeStrategy => {
-  const normalized = typeof requested === "string" ? requested.trim().toLowerCase() : "";
-  if (normalized === "query_engine") return "query_engine";
-  return "hermes";
-};
-
-export type GatewayRunInput = Omit<RunHermesAgentInput, "sandboxKind"> & {
-  runtimeStrategy?: RuntimeStrategy;
-  sandboxKind?: SandboxKind;
-};
-
-/**
- * Hermes Gateway 入口：接收 Next.js / SSE 层的请求并调度 Agent 主体。
- */
-export async function runAgentGateway(input: GatewayRunInput): Promise<RunHermesAgentResult> {
-  input.onEvent("status", {
-    phase: "runtime_selected",
-    strategy: input.runtimeStrategy || "hermes",
-  });
-  return runHermesAgent(input);
+/** Next.js entry point; session orchestration owns resource lifetime. */
+export async function runAgentGateway(
+  input: GatewayRunInput,
+): Promise<AgentSessionResult> {
+  input.onEvent("status", { phase: "runtime_selected", strategy: "hermes" });
+  return runAgentSession(input);
 }
 
-export { runHermesAgent, type RunHermesAgentInput, type RunHermesAgentResult };
+export type { AgentSessionInput, AgentSessionResult };

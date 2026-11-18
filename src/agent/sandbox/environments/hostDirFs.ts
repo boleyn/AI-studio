@@ -1,7 +1,8 @@
+import { exportWorkspaceFiles } from "../exportFiles";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import type { SandboxDirEntry, SandboxFileSystem } from "../types";
-import { isExportableProjectPath, encodeProjectFile, normalizeVirtualPath, resolveInsideRoot, toVirtualPath } from "../paths";
+import { normalizeVirtualPath, resolveInsideRoot } from "../paths";
 
 /** 基于宿主机目录的文件系统实现（local / remote-vm 共用：remote-vm 在本地保存镜像目录）。 */
 export class HostDirFileSystem implements SandboxFileSystem {
@@ -66,36 +67,7 @@ export class HostDirFileSystem implements SandboxFileSystem {
     await fsp.mkdir(this.abs(virtualPath), { recursive: true });
   }
 
-  /** 遍历导出可同步的文本文件 */
-  async exportTextFiles(maxFileBytes = 2 * 1024 * 1024): Promise<Record<string, { code: string }>> {
-    const files: Record<string, { code: string }> = {};
-    const walk = async (dir: string) => {
-      let entries: import("node:fs").Dirent[];
-      try {
-        entries = await fsp.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        const absolute = path.join(dir, entry.name);
-        const virtualPath = toVirtualPath(this.root, absolute);
-        if (!isExportableProjectPath(virtualPath)) continue;
-        if (entry.isDirectory()) {
-          await walk(absolute);
-          continue;
-        }
-        if (!entry.isFile()) continue;
-        try {
-          const st = await fsp.stat(absolute);
-          if (st.size > maxFileBytes) continue;
-          const buffer = await fsp.readFile(absolute);
-          files[virtualPath] = { code: encodeProjectFile(buffer) };
-        } catch {
-          // 文件可能在遍历期间被删除
-        }
-      }
-    };
-    await walk(path.resolve(this.root));
-    return files;
+  exportTextFiles(maxFileBytes = 2 * 1024 * 1024) {
+    return exportWorkspaceFiles(this, maxFileBytes);
   }
 }

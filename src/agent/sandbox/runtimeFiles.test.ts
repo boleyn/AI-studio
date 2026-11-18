@@ -17,7 +17,10 @@ describe("runtime project files", () => {
       );
       fs.writeFileSync(path.join(skillDir, "index.js"), "export default {};\n");
 
+      const binary = Buffer.from([137, 80, 78, 71, 0, 255]);
+      fs.writeFileSync(path.join(skillDir, "image.png"), binary);
       const files = collectSystemSkillFiles(root);
+      expect(files["/skills/pdf-text-extractor/image.png"].code).toBe(`data:application/octet-stream;base64,${binary.toString("base64")}`);
       expect(files["/skills/pdf-text-extractor/SKILL.md"]?.code).toContain(
         "name: pdf-text-extractor",
       );

@@ -53,10 +53,11 @@ export const createSandbox = async (input: CreateSandboxInput): Promise<Sandbox>
         deviceId: input.connector.deviceId,
         grantId: input.connector.grantId,
         userId: input.connector.userId,
+        runtimeFiles: input.runtimeFiles,
       });
     }
     if (!input.connector?.url) throw new Error("connector sandbox requires connector.url or deviceId+grantId");
-    return createConnectorSandbox({ workspaceKey: projectKey, url: input.connector.url, token: input.connector.token });
+    return createConnectorSandbox({ workspaceKey: projectKey, url: input.connector.url, token: input.connector.token, runtimeFiles: input.runtimeFiles });
   }
 
   // 每用户绑定一台云主机（user-<userId>），各个项目作为主机内 projects/<可读项目名> 文件夹共享 CLI / 依赖 / skills

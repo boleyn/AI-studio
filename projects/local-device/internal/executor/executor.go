@@ -25,6 +25,8 @@ type Result struct {
 	Stdout            string `json:"stdout"`
 	Stderr            string `json:"stderr"`
 	ExitCode          int    `json:"exitCode"`
+	StdoutFile        string `json:"stdoutFile,omitempty"`
+	StderrFile        string `json:"stderrFile,omitempty"`
 	OutputTruncated   bool   `json:"outputTruncated"`
 	ActualWorkdir     string `json:"actualWorkdir"`
 	TerminationReason string `json:"terminationReason,omitempty"`
@@ -34,12 +36,15 @@ type Result struct {
 
 // boundedOutput drains both pipes even after the shared byte limit is reached.
 type boundedOutput struct {
-	mu        sync.Mutex
-	remaining int
-	truncated bool
-	stdout    strings.Builder
-	stderr    strings.Builder
-	stream    *OutputStream
+	mu            sync.Mutex
+	remaining     int
+	truncated     bool
+	stdout        strings.Builder
+	stderr        strings.Builder
+	stream        *OutputStream
+	archiveStdout *os.File
+	archiveStderr *os.File
+	archiveBytes  int
 }
 type outputWriter struct {
 	buffer *boundedOutput
@@ -50,6 +55,19 @@ func (w outputWriter) Write(p []byte) (int, error) {
 	b := w.buffer
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.archiveStdout != nil {
+		if b.archiveBytes+len(p) > 32*1024*1024 {
+			return 0, errors.New("output_archive_limit_exceeded")
+		}
+		file := b.archiveStdout
+		if w.stderr {
+			file = b.archiveStderr
+		}
+		if _, err := file.Write(p); err != nil {
+			return 0, err
+		}
+		b.archiveBytes += len(p)
+	}
 	n := min(len(p), b.remaining)
 	if w.stderr {
 		b.stderr.Write(p[:n])
@@ -121,6 +139,36 @@ func Run(parent context.Context, shell Shell, request Request) (result Result, r
 	cmd.Dir = request.Workdir
 	cmd.WaitDelay = 2 * time.Second
 	output := &boundedOutput{remaining: 128 * 1024, stream: request.Output}
+	archiveDir := filepath.Join(request.Workdir, ".aistudio", "context")
+	if err := os.MkdirAll(archiveDir, 0700); err != nil {
+		return result, err
+	}
+	resolvedDir, err := filepath.EvalSymlinks(archiveDir)
+	if err != nil {
+		return result, err
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(request.Workdir)
+	if err != nil || !strings.HasPrefix(resolvedDir, resolvedRoot+string(os.PathSeparator)) {
+		return result, errors.New("archive_outside_workspace")
+	}
+	output.archiveStdout, err = os.CreateTemp(archiveDir, "native-*.stdout.txt")
+	if err != nil {
+		return result, err
+	}
+	output.archiveStderr, err = os.CreateTemp(archiveDir, "native-*.stderr.txt")
+	if err != nil {
+		output.archiveStdout.Close()
+		os.Remove(output.archiveStdout.Name())
+		return result, err
+	}
+	defer func() {
+		output.archiveStdout.Close()
+		output.archiveStderr.Close()
+		if !output.truncated {
+			os.Remove(output.archiveStdout.Name())
+			os.Remove(output.archiveStderr.Name())
+		}
+	}()
 	cmd.Stdout = outputWriter{buffer: output}
 	cmd.Stderr = outputWriter{buffer: output, stderr: true}
 	// Nil stdin means /dev/null (or Windows equivalent); there is no password input channel.
@@ -163,6 +211,10 @@ func Run(parent context.Context, shell Shell, request Request) (result Result, r
 	result.Stdout = strings.ToValidUTF8(output.stdout.String(), "�")
 	result.Stderr = strings.ToValidUTF8(output.stderr.String(), "�")
 	result.OutputTruncated = output.truncated
+	if output.truncated {
+		result.StdoutFile = output.archiveStdout.Name()
+		result.StderrFile = output.archiveStderr.Name()
+	}
 	output.mu.Unlock()
 	result.ExitCode = cmd.ProcessState.ExitCode()
 	switch {

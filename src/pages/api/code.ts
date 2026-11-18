@@ -14,6 +14,7 @@ import {
   updateFile,
   updateFiles,
 } from "@server/projects/projectStorage";
+import { getProjectOutputs } from "@server/projects/projectOutputs";
 import { requireAuth } from "@server/auth/session";
 
 export const config = {
@@ -214,7 +215,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       // 返回Sandpack格式的数据
       res.status(200).json({
         template: project.template,
-        files: project.files,
+        files: action === "outputs" ? await getProjectOutputs(project) : project.files,
         dependencies: project.dependencies || {},
         sandpackCompileInfo: project.sandpackCompileInfo || null,
         name: project.name,

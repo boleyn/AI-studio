@@ -1,10 +1,10 @@
+import { loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
 import { randomBytes } from "node:crypto";
-import "module-alias/register";
 import path from "node:path";
 import type {
   ChatCompletionMessageParam,
 } from "@aistudio/ai/compat/global/core/ai/type";
-import { getAgentRuntimeConfig } from "@/agent/app";
+import { getAgentRuntimeConfig } from "@/agent/app/config";
 import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
 import { toTokenBudget } from "@/agent/app/context";
 import { getUserModelConfigsFromUser } from "@server/auth/userModelConfig";
@@ -28,7 +28,7 @@ import {
   unregisterActiveConversationRun,
 } from "@server/chat/activeRuns";
 import { bindAgentAbortToConnection } from "@server/chat/completions/agentConnectionLifecycle";
-import { runAgentGateway, resolveRuntimeStrategy } from "@/agent/gateway";
+import { runAgentGateway } from "@/agent/gateway";
 import { createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import {
@@ -610,7 +610,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : typeof req.body?.selectedSkill === "string" && req.body.selectedSkill.trim()
     ? [req.body.selectedSkill.trim()]
     : [];
-  const runtimeStrategy = resolveRuntimeStrategy(req.body?.runtimeStrategy);
   const permissionMode =
     typeof req.body?.permissionMode === "string" && req.body.permissionMode.trim()
       ? req.body.permissionMode.trim()
@@ -675,7 +674,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const runtimeStatusLog = (event: SdkStreamEventName, data: Record<string, unknown>) => {
       if (
         event === SdkStreamEventEnum.status &&
-        (data.phase === "runtime_selected" || data.phase === "query_engine_attempt")
+        data.phase === "runtime_selected"
       ) {
         console.info("[v2/chat runtime]", {
           phase: data.phase,
@@ -716,7 +715,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     touchUserCloudHost(String(auth.user._id));
 
+    const checkpoint = conversationId ? await loadAgentContext(token, conversationId, persistedHistoryMessages) : undefined;
     const runResult = await runAgentGateway({
+      checkpoint,
+      currentMessages: incomingAgentMessages,
       token,
       projectName: isProjectToken ? project?.name : skill?.name,
       userId: String(auth.user._id),
@@ -755,7 +757,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         runtimeStatusLog(event, data);
         streamEvent(res, event, data);
       },
-      runtimeStrategy,
     });
 
     const updatedFiles = {
@@ -845,6 +846,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ...incomingMessages,
         assistantStored,
       ]);
+      if (runResult.checkpoint) {
+        const committed = await getConversation(token, conversationId);
+        if (committed) await saveAgentContext(token, conversationId, committed.messages, runResult.checkpoint).catch(error => {
+          console.warn("[agent-context] checkpoint save failed", error instanceof Error ? error.message : "unknown");
+        });
+      }
     }
 
     streamEvent(res, SdkStreamEventEnum.done, {

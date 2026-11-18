@@ -1,5 +1,6 @@
 import type { GetServerSideProps } from "next";
 import AgentWorkspace from "../../components/AgentWorkspace";
+import { getProjectOutputs } from "@server/projects/projectOutputs";
 import { getProject } from "@server/projects/projectStorage";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
 
@@ -49,7 +50,7 @@ export const getServerSideProps: GetServerSideProps<ProjectPageProps> = async (c
       initialProject: {
         token: project.token,
         name: project.name,
-        files: project.files || {},
+        files: await getProjectOutputs(project),
       },
     },
   };

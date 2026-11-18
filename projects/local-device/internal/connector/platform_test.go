@@ -194,3 +194,25 @@ func TestRemoteExpiryBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestNextJSDirectDiscoveryResponse(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			data := map[string]any{"available": true, "protocolVersion": 1, "gatewayUrl": "wss://example.test/local-device/connect"}
+			if wrapped {
+				json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": data})
+			} else {
+				json.NewEncoder(w).Encode(data)
+			}
+		}))
+		client, err := NewPlatformClient(server.URL, server.Client())
+		if err != nil {
+			t.Fatal(err)
+		}
+		gateway, err := client.Discover(context.Background())
+		server.Close()
+		if err != nil || gateway != "wss://example.test/local-device/connect" {
+			t.Fatalf("wrapped=%v: %s %v", wrapped, gateway, err)
+		}
+	}
+}

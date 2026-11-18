@@ -39,7 +39,10 @@ const safeErrors = new Set([
   "operation_output_unavailable",
 ]);
 
-export const createLocalDeviceGateway = () => {
+export const createLocalDeviceGateway = (
+  dispatch: (body: object, signal: AbortSignal) => Promise<Response> =
+    (body, signal) => getEmbeddedDeviceGateway().dispatch(body, signal),
+) => {
   const call = async <T>({
     body,
     schema,
@@ -65,7 +68,7 @@ export const createLocalDeviceGateway = () => {
         AbortSignal.timeout(timeoutMs),
         ...(signal ? [signal] : []),
       ]);
-      response = await getEmbeddedDeviceGateway().dispatch(body, requestSignal);
+      response = await dispatch(body, requestSignal);
       if (!response.body) throw new Error("missing_response_body");
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
@@ -161,7 +164,9 @@ export const createLocalDeviceGateway = () => {
           leaseExpiresAt: input.leaseExpiresAt,
         },
         schema: GatewayGrantSchema,
-        timeoutMs: input.action === "grant_request" ? 90_000 : 10_000,
+        // Native confirmation allows two minutes; keep the response channel alive
+        // long enough to receive its approval or explicit timeout.
+        timeoutMs: input.action === "grant_request" ? 130_000 : 10_000,
         signal,
         unknownError: "grant_outcome_unknown",
       });
@@ -171,13 +176,14 @@ export const createLocalDeviceGateway = () => {
       input: z.infer<typeof TargetSchema> & { operation: z.infer<typeof OperationSchema> },
       signal?: AbortSignal,
     ) => {
-      const { deviceId, ...principal } = TargetSchema.parse(input);
+      const { operation: rawPayload, ...target } = input;
+      const { deviceId, ...principal } = TargetSchema.parse(target);
       return call({
         body: {
           action: "execute",
           principal,
           deviceId,
-          operation: OperationSchema.parse(input.operation),
+          operation: OperationSchema.parse(rawPayload),
         },
         schema: RecordSchema,
         timeoutMs: Math.min(Math.max(input.operation.timeoutMs + 10_000, 15_000), 620_000),
@@ -190,13 +196,14 @@ export const createLocalDeviceGateway = () => {
       input: z.infer<typeof TargetSchema> & { query: z.infer<typeof OperationQuerySchema> },
       signal?: AbortSignal,
     ) => {
-      const { deviceId, ...principal } = TargetSchema.parse(input);
+      const { query: rawPayload, ...target } = input;
+      const { deviceId, ...principal } = TargetSchema.parse(target);
       return call({
         body: {
           action: "query",
           principal,
           deviceId,
-          query: OperationQuerySchema.parse(input.query),
+          query: OperationQuerySchema.parse(rawPayload),
         },
         schema: RecordSchema,
         timeoutMs: 10_000,
@@ -209,13 +216,14 @@ export const createLocalDeviceGateway = () => {
       input: z.infer<typeof TargetSchema> & { outputQuery: z.infer<typeof OutputQuerySchema> },
       signal?: AbortSignal,
     ) => {
-      const { deviceId, ...principal } = TargetSchema.parse(input);
+      const { outputQuery: rawPayload, ...target } = input;
+      const { deviceId, ...principal } = TargetSchema.parse(target);
       return call({
         body: {
           action: "output",
           principal,
           deviceId,
-          outputQuery: OutputQuerySchema.parse(input.outputQuery),
+          outputQuery: OutputQuerySchema.parse(rawPayload),
         },
         schema: OutputPageSchema,
         timeoutMs: 10_000,
@@ -228,13 +236,14 @@ export const createLocalDeviceGateway = () => {
       input: z.infer<typeof TargetSchema> & { query: z.infer<typeof OperationQuerySchema> },
       signal?: AbortSignal,
     ) => {
-      const { deviceId, ...principal } = TargetSchema.parse(input);
+      const { query: rawPayload, ...target } = input;
+      const { deviceId, ...principal } = TargetSchema.parse(target);
       return call({
         body: {
           action: "cancel",
           principal,
           deviceId,
-          query: OperationQuerySchema.parse(input.query),
+          query: OperationQuerySchema.parse(rawPayload),
         },
         schema: RecordSchema,
         timeoutMs: 10_000,

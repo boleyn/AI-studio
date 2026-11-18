@@ -1,3 +1,4 @@
+import { parseSkillFrontmatter, skillDescription } from "./frontmatter";
 import path from "path";
 import { promises as nativeFs, type Dirent } from "node:fs";
 
@@ -68,55 +69,23 @@ const toSkillDisplayPath = (
   return `${sourcePrefix}${relative}`.replace(/\/{2,}/g, "/");
 };
 
-const parseFrontmatter = (markdown: string): Record<string, string> => {
-  const match = markdown.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-  if (!match) return {};
-  const body = match[1] || "";
-  const lines = body.split(/\r?\n/);
-  const parsed: Record<string, string> = {};
-  for (const line of lines) {
-    const idx = line.indexOf(":");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
-    if (!key) continue;
-    parsed[key] = value;
-  }
-  return parsed;
-};
-
-const pickDescription = (markdown: string, frontmatter: Record<string, string>): string => {
-  if (frontmatter.description) return frontmatter.description;
-  const firstParagraph = markdown
-    .replace(/^---[\s\S]*?---\s*/m, "")
-    .split(/\r?\n\r?\n/)
-    .map((item) => item.trim())
-    .find(Boolean);
-  return firstParagraph || "No description";
-};
-
 const buildRuntimeSkill = (
   skillFile: string,
   markdown: string,
   skillsRoot: string,
   sourcePrefix: SkillSourcePrefix
 ): RuntimeSkill => {
-  const frontmatter = parseFrontmatter(markdown);
+  const frontmatter = parseSkillFrontmatter(markdown);
   const skillDir = path.dirname(skillFile);
   const folderName = path.basename(skillDir);
   const name = (frontmatter.name || folderName).trim();
-  const metadata: Record<string, string> = {};
-  for (const [key, value] of Object.entries(frontmatter)) {
-    if (["name", "description", "license", "compatibility"].includes(key)) continue;
-    metadata[key] = value;
-  }
 
   return {
     name,
-    description: pickDescription(markdown, frontmatter),
+    description: skillDescription(markdown, frontmatter),
     license: frontmatter.license || undefined,
     compatibility: frontmatter.compatibility || undefined,
-    metadata: Object.keys(metadata).length ? metadata : undefined,
+    metadata: frontmatter.metadata,
     location: toSkillDisplayPath(skillFile, skillsRoot, sourcePrefix),
     relativeLocation: toRootRelativeSkillPath(skillFile, skillsRoot),
     baseDir: toSkillDisplayPath(skillDir, skillsRoot, sourcePrefix),

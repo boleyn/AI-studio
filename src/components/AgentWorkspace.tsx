@@ -144,7 +144,7 @@ export default function AgentWorkspace({
   useEffect(() => {
     if (!activeToken) return;
     let cancelled = false;
-    void apiJson<{ files: Record<string, { code: string }> }>(`/code?token=${encodeURIComponent(activeToken)}`)
+    void apiJson<{ files: Record<string, { code: string }> }>(`/code?${new URLSearchParams({ token: activeToken, action: "outputs" })}`)
       .then(({ files }) => {
         if (!cancelled) setFilesByProject((prev) => ({
           ...prev, [activeToken]: { ...files, ...prev[activeToken] },
@@ -530,7 +530,7 @@ export default function AgentWorkspace({
 
   const fileKeys = useMemo(() => Object.keys(workspaceFiles).sort(), [workspaceFiles]);
   const artifactFiles = useMemo(
-    () => Object.fromEntries(Object.entries(workspaceFiles).filter(([path]) => !/^\/*\.files(?:\/|$)/.test(path))),
+    () => Object.fromEntries(Object.entries(workspaceFiles).filter(([path]) => !/^\/*(?:\.files|\.aistudio)(?:\/|$)/.test(path))),
     [workspaceFiles],
   );
   const artifactCount = Object.keys(artifactFiles).length;

@@ -6,7 +6,7 @@ import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
 import type { ToolCall } from "../../types/conversation";
 import type { ChatCompletionMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
-import { getContextWindowForModel } from "@/agent/app";
+import { getConfiguredContextWindow as getContextWindowForModel } from "@/agent/gateway/modelConnection";
 
 import { getMongoDb } from "../db/mongo";
 

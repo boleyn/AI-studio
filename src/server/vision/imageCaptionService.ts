@@ -1,5 +1,5 @@
 import { getChatModelCatalog, getChatModelProfile } from "@server/aiProxy/catalogStore";
-import { getOpenAIClient } from "@/agent/app";
+import { getOpenAIClient } from "@/agent/app/config";
 import { appendModelUsageEvent } from "@server/usage/modelUsageEventStorage";
 
 export type ImageCaptionMediaType =

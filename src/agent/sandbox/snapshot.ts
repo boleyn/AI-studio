@@ -70,7 +70,8 @@ const shouldSkipSnapshotPath = (relativePath: string, isDirectory: boolean): boo
   }
   if (
     normalized.startsWith('.aistudio/') &&
-    !normalized.startsWith('.aistudio/skills')
+    !normalized.startsWith('.aistudio/skills') &&
+    !normalized.startsWith('.aistudio/context')
   ) {
     return true
   }

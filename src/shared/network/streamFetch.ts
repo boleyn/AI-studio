@@ -110,8 +110,8 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
           clearTimeout(timeoutId);
           const contentType = res.headers.get("content-type");
           if (!res.ok || !contentType?.startsWith(EventStreamContentType) || res.status !== 200) {
-            const errText = await res.clone().text();
-            failedFinish(new Error(errText || "stream failed"));
+            const errorBody = await res.clone().json().catch(() => null);
+            throw new Error(typeof errorBody?.error === "string" ? errorBody.error : `服务请求失败（HTTP ${res.status}），请稍后重试。`);
           }
         },
         onmessage: ({ event, data }) => {
@@ -138,6 +138,10 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
             parseJson = undefined;
           }
 
+          if (normalizedEvent === SdkStreamEventEnum.error) {
+            const payload = parseJson as { message?: unknown } | undefined;
+            throw new Error(typeof payload?.message === "string" ? payload.message : "智能体执行失败，请重试。");
+          }
           if (parseJson && typeof parseJson === "object") {
             pushDataToQueue({ event: normalizedEvent, ...(parseJson as Record<string, unknown>) });
           } else {
@@ -150,6 +154,7 @@ export const streamFetch = ({ url, data, onMessage, abortCtrl, headers }: Stream
         onerror(err) {
           clearTimeout(timeoutId);
           failedFinish(err);
+          throw err;
         },
         openWhenHidden: true,
       });

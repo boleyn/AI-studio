@@ -1,3 +1,4 @@
+import { decodeDataUrlToBuffer } from "./paths";
 import {
   mkdir as fsMkdir,
   readdir as fsReaddir,
@@ -61,17 +62,6 @@ function isPathInsideRoot(targetPath: string, rootPath: string): boolean {
   )
 }
 
-function decodeDataUrlToBuffer(value: string): Buffer | null {
-  const trimmed = (value || '').trim()
-  const matched = trimmed.match(/^data:([^;,]+)?;base64,(.+)$/is)
-  if (!matched || !matched[2]) return null
-  try {
-    return Buffer.from(matched[2], 'base64')
-  } catch {
-    return null
-  }
-}
-
 async function ensureDir(dirPath: string): Promise<void> {
   await fsMkdir(dirPath, { recursive: true })
 }
@@ -126,6 +116,8 @@ function toRelativeFromS3ObjectKey(
 function shouldSkipPersistenceRelativePath(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
   if (!normalized) return false
+  // Recoverable context is private runtime state, persisted across cold starts.
+  if (/(^|\/)\.aistudio\/context\/(?:[a-f0-9]{64}|exec-[a-f0-9-]+\.(?:stdout|stderr))\.txt$/.test(normalized)) return false
   // /skills contains repository-provided runtime dependencies. Bash and other
   // tools open their own workspace handles, so this must be a global rule
   // rather than relying only on the runtimeFiles set from the query adapter.

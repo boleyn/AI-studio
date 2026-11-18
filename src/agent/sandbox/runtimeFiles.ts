@@ -1,3 +1,4 @@
+import { encodeProjectFile } from "./paths";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
@@ -30,6 +31,7 @@ export const collectSystemSkillFiles = (systemSkillsRoot: string): RuntimeProjec
     }
 
     for (const entry of entries) {
+      if (entry.name.startsWith(".") || ["node_modules", "__pycache__"].includes(entry.name)) continue;
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
@@ -40,7 +42,7 @@ export const collectSystemSkillFiles = (systemSkillsRoot: string): RuntimeProjec
       const relative = path.relative(normalizedRoot, fullPath).replace(/\\/g, "/");
       if (!relative || relative.startsWith("..")) continue;
       try {
-        files[`/skills/${relative}`] = { code: readFileSync(fullPath, "utf8") };
+        files[`/skills/${relative}`] = { code: encodeProjectFile(readFileSync(fullPath)) };
       } catch {
         // A skill file may disappear during a development rebuild. Skip it and
         // let the next request rebuild the runtime overlay.

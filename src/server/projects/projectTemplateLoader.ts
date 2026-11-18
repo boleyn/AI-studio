@@ -16,7 +16,6 @@ export type ProjectTemplateDefaults = {
 };
 
 const TEMPLATE_ROOT = path.join(process.cwd(), "data", "project-templates");
-const GLOBAL_SKILLS_ROOT = path.join(process.cwd(), "skills");
 
 const toPosixPath = (relativePath: string): string =>
   `/${relativePath.split(path.sep).join(path.posix.sep)}`;
@@ -64,21 +63,6 @@ export async function loadProjectTemplateDefaults(
     console.error(`Failed to load template files for ${template}:`, err);
   }
 
-  // 2. Load global default skills and put them under .aistudio/skills/
-  try {
-    const ignorePatterns = [/^node_modules$/, /^\.git$/, /^\.DS_Store$/, /^__pycache__$/, /\.pyc$/];
-    const skillFiles = await walkFiles(GLOBAL_SKILLS_ROOT, ignorePatterns);
-    await Promise.all(
-      skillFiles.map(async (absPath) => {
-        const relative = path.relative(GLOBAL_SKILLS_ROOT, absPath);
-        const filePath = `/.aistudio/skills${toPosixPath(relative)}`;
-        const code = await fs.readFile(absPath, "utf8");
-        files[filePath] = { code };
-      })
-    );
-  } catch (err) {
-    console.error(`Failed to load global skills:`, err);
-  }
 
   return {
     files,

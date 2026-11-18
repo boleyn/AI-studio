@@ -130,6 +130,7 @@ func (p *PlatformClient) call(ctx context.Context, path string, input, output an
 	var envelope struct {
 		Code    int             `json:"code"`
 		Message string          `json:"message"`
+		Error   string          `json:"error"`
 		Data    json.RawMessage `json:"data"`
 	}
 	if json.Unmarshal(raw, &envelope) != nil {
@@ -137,6 +138,25 @@ func (p *PlatformClient) call(ctx context.Context, path string, input, output an
 			return &InviteRequestError{HTTPStatus: response.StatusCode}
 		}
 		return errors.New("invalid_platform_response")
+	}
+	// Next.js routes return a direct JSON object; older platforms wrap it in
+	// {code, data}. HTTP status and operation-specific validators remain required.
+	var shape map[string]json.RawMessage
+	if json.Unmarshal(raw, &shape) != nil || shape == nil {
+		return errors.New("invalid_platform_response")
+	}
+	_, wrapped := shape["code"]
+	if response.StatusCode == 200 && !wrapped && envelope.Error == "" {
+		if json.Unmarshal(raw, output) != nil {
+			return errors.New("invalid_platform_response")
+		}
+		if date, err := http.ParseTime(response.Header.Get("Date")); err == nil {
+			p.clock.Observe(date.UnixMilli())
+		}
+		return nil
+	}
+	if envelope.Message == "" {
+		envelope.Message = envelope.Error
 	}
 	if response.StatusCode != 200 || envelope.Code != 200 || len(envelope.Data) == 0 || bytes.Equal(envelope.Data, []byte("null")) {
 		// 只有挑战入口明确拒绝设备才删除绑定。交换失败、限流和代理错误可重试。

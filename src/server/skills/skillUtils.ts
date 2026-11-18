@@ -14,25 +14,7 @@ export const toKebab = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "new-skill";
 
-export const readFrontmatter = (content: string) => {
-  const trimmed = content.trimStart();
-  if (!trimmed.startsWith("---")) return {} as { name?: string; description?: string };
-  const match = trimmed.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-  if (!match) return {} as { name?: string; description?: string };
-  try {
-    const parsed = yaml.load(match[1]);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {} as { name?: string; description?: string };
-    }
-    const data = parsed as Record<string, unknown>;
-    return {
-      name: typeof data.name === "string" ? data.name.trim() : undefined,
-      description: typeof data.description === "string" ? data.description.trim() : undefined,
-    };
-  } catch {
-    return {} as { name?: string; description?: string };
-  }
-};
+export { parseSkillFrontmatter as readFrontmatter } from "@/agent/skills/frontmatter";
 
 export const writeFrontmatter = (
   content: string,

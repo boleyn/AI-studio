@@ -1,22 +1,13 @@
 {
-  // 已使用 json5 进行解析，会自动去掉注释，无需手动去除
   "customPdfParse": {
     "url": "https://mineru.net/api/v4/extract/task",
-    // 自定义 PDF 解析服务地址
     "mode": "async",
-    // 自定义 PDF 解析接口模式：sync(同步) / async(异步)
     "key": "",
-    // 自定义 PDF 解析服务密钥
     "doc2xKey": "",
-    // doc2x 服务密钥
     "modelVersion": "vlm",
-    // MinerU 模型版本：pipeline / vlm（仅对 MinerU async 生效）
     "textinAppId": "",
-    // 合合信息 Textin 服务 App ID
     "textinSecretCode": "",
-    // 合合信息 Textin 服务 Secret Code
     "price": 0
-    // PDF 解析服务价格
   },
   "model": [
     {
@@ -24,13 +15,7 @@
       "label": "GPT-6.1 Sol",
       "protocol": "openai",
       "baseUrl": "http://43.131.228.121:13001/v1",
-      "key": "your-api-key-2333",
-      "maxContext": 400000,
-      "maxTemperature": 1.2,
-      "reasoning": true,
-      "vision": true,
-      "defaultConfig": {},
-      "fieldMap": {},
+      "toolChoiceMode": "auto",
       "icon": "openai.svg"
     },
     {
@@ -38,13 +23,7 @@
       "label": "GPT-6.1 Terra",
       "protocol": "openai",
       "baseUrl": "http://43.131.228.121:13001/v1",
-      "key": "your-api-key-2333",
-      "maxContext": 400000,
-      "maxTemperature": 1.2,
-      "reasoning": true,
-      "vision": true,
-      "defaultConfig": {},
-      "fieldMap": {},
+      "toolChoiceMode": "auto",
       "icon": "openai.svg"
     }
   ]

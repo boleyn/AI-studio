@@ -90,6 +90,7 @@ export const isExportableProjectPath = (virtualPath: string): boolean => {
   const segments = normalizeVirtualPath(virtualPath).split("/").filter(Boolean);
   const top = segments[0]?.toLowerCase();
   if (top === "skills" || top === "workspace") return false;
+  if (segments.some((segment) => ["node_modules", "__pycache__"].includes(segment))) return false;
   if (segments.some((segment) => segment.startsWith("."))) return false;
   return true;
 };
@@ -105,3 +106,14 @@ export const encodeProjectFile = (buffer: Buffer): string => {
   if (!isLikelyBinary(buffer) && Buffer.from(text, "utf8").equals(buffer)) return text;
   return `data:application/octet-stream;base64,${buffer.toString("base64")}`;
 };
+
+export function decodeDataUrlToBuffer(value: string): Buffer | null {
+  const trimmed = (value || '').trim()
+  const matched = trimmed.match(/^data:([^;,]+)?;base64,(.+)$/is)
+  if (!matched || !matched[2]) return null
+  try {
+    return Buffer.from(matched[2], 'base64')
+  } catch {
+    return null
+  }
+}

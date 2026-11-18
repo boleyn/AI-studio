@@ -141,6 +141,8 @@ export default function WorkspaceRuntimeModal({
   const toast = useToast();
   const urlInputId = useId();
   const tokenInputId = useId();
+  const workdirInputId = useId();
+  const [requestedWorkdirs, setRequestedWorkdirs] = useState<Record<string, string>>({});
 
   const [draft, setDraft] = useState<ProjectRuntimeConfig>(config);
   const [showToken, setShowToken] = useState(false);
@@ -209,16 +211,29 @@ export default function WorkspaceRuntimeModal({
       const bridgeRes = await fetch("http://127.0.0.1:13005/pair", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ platformUrl: window.location.origin }),
+        body: JSON.stringify({ nonce: crypto.randomUUID() }),
       });
       if (!bridgeRes.ok) {
-        throw new Error("未检测到本机连接器客户端，请先启动桌面端连接器");
+        const reason = (await bridgeRes.text()).trim();
+        const hints: Record<string, string> = {
+          no_pending_pairing: "配对已过期，请在连接器中重新连接后重试",
+          origin_not_allowed: "连接器的平台地址与当前网页不同，请检查连接设置",
+          invalid_request: "网页与连接器的配对协议不兼容，请更新连接器",
+          local_pairing_rejected: "本机配对已取消",
+        };
+        throw new Error(hints[reason] || `本机连接器配对失败（HTTP ${bridgeRes.status}）`);
       }
       const bridgeData = (await bridgeRes.json()) as {
+        deviceId?: string;
         pairingId?: string;
         confirmationCode?: string;
         name?: string;
       };
+      if (bridgeData.deviceId) {
+        await loadDevicesAndGrants();
+        toast({ title: "本机电脑已绑定", status: "success", duration: 2500 });
+        return;
+      }
       if (!bridgeData.pairingId || !bridgeData.confirmationCode) {
         throw new Error("本机配对桥返回格式异常");
       }
@@ -250,7 +265,7 @@ export default function WorkspaceRuntimeModal({
     }
   };
 
-  const handleRequestDeviceGrant = async (device: PairedDeviceItem) => {
+  const handleRequestDeviceGrant = async (device: PairedDeviceItem, initialWorkdir: string) => {
     setRequestingGrantId(device.deviceId);
     try {
       const res = await fetch("/api/core/localDevice/grant", {
@@ -260,6 +275,7 @@ export default function WorkspaceRuntimeModal({
           action: "request",
           appId: projectToken,
           deviceId: device.deviceId,
+          initialWorkdir: initialWorkdir.trim(),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -374,16 +390,15 @@ export default function WorkspaceRuntimeModal({
         </HStack>
       }
       subtitle="选择默认云电脑，或连接你的本地电脑（Mac / Windows），支持随时切换。"
-      onSubmit={handleSubmit}
       footer={
-        <>
+        <Box as="form" method="post" onSubmit={handleSubmit} display="flex" gap={2}>
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             取消
           </Button>
           <Button type="submit" variant="primary" size="sm">
             保存并应用
           </Button>
-        </>
+        </Box>
       }
     >
       <VStack align="stretch" spacing={4}>
@@ -531,7 +546,14 @@ export default function WorkspaceRuntimeModal({
                     const isSelected = draft.deviceId === dev.deviceId && Boolean(draft.grantId);
                     return (
                       <Box
+                        as="form"
+                        method="post"
                         key={dev.deviceId}
+                        aria-label={`${dev.name} 工作目录授权`}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleRequestDeviceGrant(dev, requestedWorkdirs[dev.deviceId] ?? existingGrant?.workdir ?? "");
+                        }}
                         p={2.5}
                         borderRadius="10px"
                         bg="white"
@@ -578,18 +600,30 @@ export default function WorkspaceRuntimeModal({
                               </Button>
                             )}
                             <Button
-                              type="button"
+                              type="submit"
                               size="xs"
                               variant={isSelected ? "primary" : "outline"}
                               leftIcon={isSelected ? <FolderCheck size={12} /> : undefined}
                               isDisabled={!dev.online}
                               isLoading={requestingGrantId === dev.deviceId}
-                              onClick={() => void handleRequestDeviceGrant(dev)}
                             >
                               {isSelected ? "已授权目录" : "选择工作目录"}
                             </Button>
                           </HStack>
                         </HStack>
+                        <FormControl mt={3} isRequired>
+                          <FormLabel htmlFor={`${workdirInputId}-${dev.deviceId}`} fontSize="sm">初始工作目录</FormLabel>
+                          <Text id={`${workdirInputId}-${dev.deviceId}-hint`} fontSize="sm" color="ink.muted" mb={2}>
+                            输入本机目录的完整路径；仍需在本机弹窗确认，可以重新选择目录。
+                          </Text>
+                          <Input id={`${workdirInputId}-${dev.deviceId}`} name="initialWorkdir" required maxLength={4096}
+                            aria-describedby={`${workdirInputId}-${dev.deviceId}-hint`}
+                            autoCorrect="off" autoCapitalize="none" spellCheck={false}
+                            value={requestedWorkdirs[dev.deviceId] ?? existingGrant?.workdir ?? ""}
+                            onChange={(event) => setRequestedWorkdirs(prev => ({ ...prev, [dev.deviceId]: event.target.value }))}
+                            sx={{ "&:user-invalid": { borderColor: "red.500" } }}
+                          />
+                        </FormControl>
                       </Box>
                     );
                   })}

@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { HostDirFileSystem } from "../sandbox/environments/hostDirFs";
 import type { Sandbox } from "../sandbox";
-import { registry } from "./index";
+import { ToolRegistry } from "./registry";
+import { builtinTools } from "./builtins";
+const registry = new ToolRegistry();
+for (const tool of builtinTools) registry.register(tool as import("./types").ToolDefinition<any>);
 
 const createTempSandbox = (): { sandbox: Sandbox; cleanup: () => void } => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-tools-test-"));

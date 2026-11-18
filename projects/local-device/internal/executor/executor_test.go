@@ -92,6 +92,10 @@ func TestOutputLimitAndValidation(t *testing.T) {
 	if err != nil || !result.OutputTruncated || len(result.Stdout) != 128*1024 {
 		t.Fatalf("limit failed: %d %v", len(result.Stdout), err)
 	}
+	archive, readErr := os.ReadFile(result.StdoutFile)
+	if readErr != nil || len(archive) != 200000 {
+		t.Fatalf("full output archive missing: %d %v", len(archive), readErr)
+	}
 	for _, req := range []Request{
 		{Command: "echo ok", Workdir: "relative", Timeout: time.Second}, {Command: "echo ok", Workdir: filepath.Join(dir, "absent"), Timeout: time.Second},
 		{Workdir: dir, Timeout: time.Second}, {Command: "echo ok", Workdir: dir}, {Command: "echo ok", Workdir: dir, Timeout: 11 * time.Minute},

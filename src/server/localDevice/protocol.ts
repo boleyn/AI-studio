@@ -94,6 +94,8 @@ export const RecordSchema = z
         stderr: z.string(),
         exitCode: z.number().int(),
         outputTruncated: z.boolean(),
+        stdoutFile: z.string().optional(),
+        stderrFile: z.string().optional(),
         actualWorkdir: z.string(),
         terminationReason: z.string().max(100).optional(),
         startedAt: z.number().int().nonnegative().optional(),

@@ -1,7 +1,7 @@
-import { registry } from "../tools/registry";
+import { defineTool } from "../tools/types";
 import { MemoryStore, type MemoryTarget } from "./store";
 
-registry.register<{
+export const MemoryTool = defineTool<{
   action: "read" | "add" | "replace" | "remove";
   target?: MemoryTarget;
   content?: string;
@@ -24,7 +24,7 @@ registry.register<{
     },
     required: ["action"],
   },
-  async handler(input, { projectToken }) {
+  async handler(input, { projectToken, permissionMode }) {
     if (!projectToken) return { content: "Memory unavailable without projectToken.", isError: true };
     const store = new MemoryStore(projectToken);
     const target: MemoryTarget = input.target === "user" ? "user" : "memory";
@@ -33,6 +33,7 @@ registry.register<{
       const entries = await store.loadEntries(target);
       return { content: entries.length ? entries.map((e, i) => `${i + 1}. ${e}`).join("\n") : `(no ${target} entries)` };
     }
+    if (permissionMode === "plan") return { content: "Memory updates are disabled in plan mode.", isError: true };
     if (input.action === "add") {
       const res = await store.add(target, String(input.content || ""));
       return { content: res.message, isError: !res.ok };
