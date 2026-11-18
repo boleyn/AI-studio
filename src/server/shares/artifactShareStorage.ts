@@ -7,6 +7,7 @@ export type ArtifactShareMember = { userId: string; username: string; invitedAt?
 type ArtifactShare = {
   _id: string;
   libraryItemId?: string;
+  livePage?: boolean;
   projectToken: string;
   ownerId: string;
   ownerName: string;
@@ -19,18 +20,21 @@ const objectKey = (id: string) => `artifact-shares/${id}/snapshot`;
 
 export async function createArtifactShare(input: {
   libraryItemId?: string;
+  livePage?: boolean;
   projectToken: string;
   ownerId: string;
   ownerName: string;
   path: string;
   bytes: Buffer;
 }) {
-  const id = createHash("sha256").update(JSON.stringify([input.libraryItemId || input.projectToken, input.ownerId, input.path]))
+  const id = input.livePage
+    ? createHash("sha256").update(JSON.stringify(["library-page", input.ownerId, input.libraryItemId])).digest("hex")
+    : createHash("sha256").update(JSON.stringify([input.libraryItemId || input.projectToken, input.ownerId, input.path]))
     .update(input.bytes).digest("hex");
   const shares = await collection();
   const existing = await shares.findOne({ _id: id });
-  if (existing) return existing;
-  await uploadObjectToStorage({
+  if (existing && !input.livePage) return existing;
+  if (!input.livePage) await uploadObjectToStorage({
     key: objectKey(id),
     body: input.bytes,
     contentType: "application/octet-stream",
@@ -39,13 +43,15 @@ export async function createArtifactShare(input: {
   const share = {
     _id: id,
     projectToken: input.projectToken,
+    ...(input.livePage ? {livePage:true} : {}),
     ...(input.libraryItemId ? {libraryItemId:input.libraryItemId} : {}),
     ownerId: input.ownerId,
     ownerName: input.ownerName,
     filename: input.path.split("/").pop() || "file",
     members: [],
   };
-  return shares.findOneAndUpdate({ _id: id }, { $setOnInsert: share }, { upsert: true, returnDocument: "after" });
+  const {filename, ...identity} = share;
+  return shares.findOneAndUpdate({ _id: id }, { $setOnInsert: identity, $set: {filename} }, { upsert: true, returnDocument: "after" });
 }
 
 export async function getArtifactShare(id: string) {
