@@ -22,6 +22,12 @@ import LibrarySidebar from "./LibrarySidebar";
 
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 const isNative = (file:LibraryFile) => file.kind === "页面" || isContainer(file);
+function renameSuffix(file?: LibraryFile) {
+  if (!file || isNative(file)) return "";
+  const dot = file.name.lastIndexOf(".");
+  return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
+}
+
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 function fileType(path: string) {
   if (isArtifactImage(path)) return "图像";
@@ -153,6 +159,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [purge,setPurge] = useState<LibraryFile[]>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
+  const suffix = renameSuffix(rename);
+  const newName = title.trim() + suffix;
+  const canRename = Boolean(title.trim() && rename && newName !== rename.name);
+  const renameInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
     setSelected([]);
@@ -247,7 +257,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
     <MenuList>{file.deleted ? <><MenuItem onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem onClick={()=>setSharing(file)}>分享</MenuItem>}
-      <MenuItem onClick={() => { setTitle(file.name); setRename(file); }}>重命名</MenuItem>
+      <MenuItem onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {isNative(file) ? <MenuItem onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuItem onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹移除" : "添加到收藏夹"}</MenuItem>
@@ -427,10 +437,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             finally { setSaving(false); }
           }}>永久删除</Button></ModalFooter>
       </ModalContent></Modal>
-    <Modal isOpen={Boolean(rename)} onClose={() => setRename(undefined)} isCentered><ModalOverlay/><ModalContent>
-      <ModalHeader>重命名</ModalHeader><ModalCloseButton/><form onSubmit={event => {event.preventDefault(); if(rename && title.trim()) void update(rename,{name:title.trim()});}}>
-        <ModalBody><Input aria-label="名称" autoFocus value={title} maxLength={255} onChange={event => setTitle(event.target.value)}/></ModalBody>
-        <ModalFooter gap={2}><Button variant="ghost" onClick={() => setRename(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!title.trim()}>保存</Button></ModalFooter>
+    <Modal isOpen={Boolean(rename)} initialFocusRef={renameInput} onClose={() => setRename(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
+      <ModalHeader>重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
+      <form onSubmit={event => {event.preventDefault(); if(rename && canRename && !saving) void update(rename,{name:newName});}}>
+        <ModalBody><Text as="label" htmlFor="library-rename" fontSize="sm">文件名</Text>
+          <Flex align="center" gap={2} mt={2}><Input id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
+            onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)}/>
+            {suffix && <Text color="gray.600">{suffix}</Text>}</Flex></ModalBody>
+        <ModalFooter gap={2}><Button variant="ghost" onClick={() => setRename(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!canRename}>重命名</Button></ModalFooter>
       </form></ModalContent></Modal>
   </Flex>;
 }
