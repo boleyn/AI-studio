@@ -307,8 +307,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <li key={index}>{name}</li>)}</Box></Box>});
         return;
       }
-      if (!attachments.length) return;
       if (action === "chat") {await onChat(attachments,question,itemId); return;}
+      if (!attachments.length) return;
       let blob:Blob = attachments[0];
       let name = attachments[0].name;
       if (attachments.length > 1) {
@@ -324,6 +324,24 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch(error) {toast({status:"error",title:error instanceof Error ? error.message : "操作失败"});}
     finally {setBatchBusy(false);}
+  }
+  function startSpaceChat(space:LibraryFile) {
+    const folders = new Set([space.id]);
+    const children = new Map<string,LibraryFile[]>();
+    for (const file of files || []) {
+      if (file.deleted || !file.folderId) continue;
+      const siblings = children.get(file.folderId);
+      if (siblings) siblings.push(file);
+      else children.set(file.folderId,[file]);
+    }
+    const attachments:LibraryFile[] = [];
+    for (const folderId of folders) {
+      for (const file of children.get(folderId) || []) {
+        if (isContainer(file)) folders.add(file.id);
+        else if (!file.siteId) attachments.push(file);
+      }
+    }
+    return usePicked("chat",attachments);
   }
   const key = (file: LibraryFile) => file.id;
   const downloadUrl = (file:LibraryFile) => file.shareId ? "/api/artifact-share?id="+file.shareId+"&file=1" : file.directUpload ? "/api/library/files?id=" + file.id : buildDownloadUrl({storagePath:file.path,token:file.token,chatId:file.chatId});
@@ -425,6 +443,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
           <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
           <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
+          <MenuItem isDisabled={batchBusy} onClick={()=>startSpaceChat(space)}>新聊天</MenuItem>
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem>
         </MenuList>
