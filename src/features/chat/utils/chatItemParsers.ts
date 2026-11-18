@@ -419,11 +419,14 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   }) : [];
   if (!Array.isArray(files) || !files.length) return attachments;
   const remaining = [...attachments];
-  const merged = files.filter((file):file is MessageFile => Boolean(file && typeof file === "object")).map(file => {
+  const artifactFiles = files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
+  const reservedPaths = new Set(artifactFiles.map(file => file.storagePath?.replace(/^\/+/, ""))
+    .filter(path => path?.startsWith("chat_uploads/")));
+  const merged = artifactFiles.map(file => {
     const path = file.storagePath?.replace(/^\/+/, "");
     const index = path?.startsWith("chat_uploads/")
       ? remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path)
-      : remaining.findIndex(item => item.name === file.name);
+      : remaining.findIndex(item => item.name === file.name && !reservedPaths.has(item.storagePath?.replace(/^\/+/, "")));
     if (index < 0) return file;
     const [block] = remaining.splice(index, 1);
     return {
