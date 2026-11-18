@@ -19,6 +19,7 @@ import {
   Text,
   Textarea,
   useTheme,
+  useToast,
 } from "@chakra-ui/react";
 import {
   ArrowUp,
@@ -93,6 +94,7 @@ const ChatInput = ({
   onSend,
   onStop,
 }: ChatInputProps) => {
+  const toast = useToast();
   const ModeIcon = modeOptions[mode].Icon;
   const { t } = useTranslation();
   const theme = useTheme() as Record<string, any>;
@@ -521,7 +523,7 @@ const ChatInput = ({
     return Array.from(data.files || []);
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     if (!canSend) return;
     const selectedFiles: ChatInputFile[] = files.map((item) => ({
       id: item.id,
@@ -543,19 +545,20 @@ const ChatInput = ({
     };
 
     setIsSubmitting(true);
-    setText("");
-    setFiles([]);
-    setSelectedFilePaths([]);
-    resetTextareaHeight();
-    window.requestAnimationFrame(() => {
-      resetTextareaHeight();
-    });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
-    Promise.resolve(onSend(payload)).finally(() => {
+    try {
+      await onSend(payload, { onAccepted: () => {
+        setText("");
+        setFiles([]);
+        setSelectedFilePaths([]);
+        resetTextareaHeight();
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } });
+    } catch {
+      toast({ status: "error", title: "发送失败", description: "请检查连接后重试。", isClosable: true });
+    } finally {
       setIsSubmitting(false);
-    });
-  }, [canSend, files, onSend, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
+    }
+  }, [canSend, files, onSend, toast, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
 
   return (
     <Box px={4} py={3}>

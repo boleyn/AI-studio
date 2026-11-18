@@ -67,6 +67,7 @@ export type ChatPanelViewContextValue = {
   onSend: (
     payload: ChatInputSubmitPayload,
     options?: {
+      onAccepted?: () => void;
       echoUserMessage?: boolean;
       persistIncomingMessages?: boolean;
       continueAssistantMessageId?: string;

@@ -136,5 +136,5 @@ export interface ChatInputProps {
   onChangeSelectedSkills?: (skillNames: string[]) => void;
   onUploadFiles: (files: ChatInputFile[]) => Promise<UploadedFileArtifact[]>;
   onStop?: () => void;
-  onSend: (payload: ChatInputSubmitPayload) => Promise<void> | void;
+  onSend: (payload: ChatInputSubmitPayload, options: { onAccepted: () => void }) => Promise<void> | void;
 }

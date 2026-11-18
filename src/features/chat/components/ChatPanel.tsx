@@ -1057,6 +1057,7 @@ const ChatPanel = ({
     async (
       payload: ChatInputSubmitPayload,
       options?: {
+        onAccepted?: () => void;
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
         continueAssistantMessageId?: string;
@@ -1193,6 +1194,7 @@ const ChatPanel = ({
           })
         );
       }
+      options?.onAccepted?.();
       setIsSending(true);
       setContextStatus("pending");
 
