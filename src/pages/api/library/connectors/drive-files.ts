@@ -29,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!tokenResponse.ok || typeof data.access_token !== "string") return res.status(502).json({error:"Google Drive 授权不可用，请重新连接"});
     if (req.query.file !== undefined) {
       if (typeof req.query.file !== "string" || !/^[\w-]{1,256}$/.test(req.query.file)) return res.status(400).end();
-      return await sendDriveAttachment(req.query.file,data.access_token,res);
+      return await sendDriveAttachment(req.query.file,data.access_token,res,req.query.download === "1");
     }
     const scope = req.query.scope || "mine";
     const terms = ["trashed = false"];
@@ -48,5 +48,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const response = await fetch("https://www.googleapis.com/drive/v3/files?" + params, {headers:{Authorization:"Bearer " + data.access_token}});
     if (!response.ok) return res.status(502).json({error:"无法读取 Google Drive 文件夹"});
     return res.json(await response.json());
-  } catch { return res.status(502).json({error:"Google Drive 暂时不可用"}); }
+  } catch { if (res.destroyed || res.headersSent) return; return res.status(502).json({error:"Google Drive 暂时不可用"}); }
 }

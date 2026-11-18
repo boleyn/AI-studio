@@ -1,6 +1,6 @@
-import { Box, Button, Flex, Heading, Input, Link, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { Folder } from "lucide-react";
+import { Folder, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import { formatRelativeTime } from "./relativeTime";
@@ -73,7 +73,11 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
           <Link href={file.webViewLink || "https://drive.google.com/open?id="+encodeURIComponent(file.id)} isExternal>{file.name}</Link>}</td>
         <td>{recent && file.viewedByMeTime && file.viewedByMeTime >= (file.modifiedTime || "") ? formatRelativeTime(file.viewedByMeTime)+"打开" : formatRelativeTime(file.modifiedTime) || "—"}</td>
         {!recent && <td>{file.size ? new Intl.NumberFormat("zh-CN",{style:"unit",unit:"byte"}).format(Number(file.size)) : "—"}</td>}
-        <td>{file.mimeType!=="application/vnd.google-apps.folder" && <Button size="xs" variant="ghost" isLoading={attaching===file.id} isDisabled={Boolean(attaching)} onClick={()=>attach(file)}>添加到聊天</Button>}</td>
+        <td>{file.mimeType!=="application/vnd.google-apps.folder" && <Button size="xs" variant="ghost" isLoading={attaching===file.id} isDisabled={Boolean(attaching)} onClick={()=>attach(file)}>添加到聊天</Button>}
+          {file.mimeType!=="application/vnd.google-apps.folder" && <Menu placement="bottom-end">
+            <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
+            <MenuList><MenuItem as="a" download href={"/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id,download:"1"})}>下载</MenuItem></MenuList>
+          </Menu>}</td>
       </tr>)}</tbody></Box></Box>{!result.files.length && <Text>{query ? "没有符合条件的文件" : folder!=="root" ? "此文件夹为空" : "暂无文件"}</Text>}
       <Flex gap={2} mt={3}>{pages.length>1 && <Button onClick={()=>setPages(pages.slice(0,-1))}>上一页</Button>}
         {result.nextPageToken && <Button onClick={()=>setPages([...pages,result.nextPageToken!])}>下一页</Button>}</Flex></>}
