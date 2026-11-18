@@ -15,7 +15,7 @@ const ChatInteractionSurface = ({
 
   if (pending.type === "permission") {
     return (
-      <InteractionShell title="工具权限审批" tone="amber">
+      <InteractionShell title="工具权限审批" kind="permission">
         <PermissionApprovalCard interaction={interaction} pending={pending} />
       </InteractionShell>
     );
@@ -23,14 +23,14 @@ const ChatInteractionSurface = ({
 
   if (pending.type === "plan_approval") {
     return (
-      <InteractionShell title={pending.approval.title || "计划模式审批"} tone="purple">
-        <PlanApprovalCard interaction={interaction} pending={pending} />
+      <InteractionShell title={pending.approval.title || "计划模式审批"} kind="approval">
+        <PlanApprovalCard key={pending.requestId} interaction={interaction} pending={pending} />
       </InteractionShell>
     );
   }
 
   return (
-    <InteractionShell title="计划问题" tone="purple">
+    <InteractionShell title="需要你确认" kind="question">
       <PlanQuestionsCard interaction={interaction} pending={pending} />
     </InteractionShell>
   );

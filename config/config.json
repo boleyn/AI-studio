@@ -14,6 +14,7 @@
       "id": "gpt-6.1-sol",
       "label": "GPT-6.1 Sol",
       "protocol": "openai",
+      "keyEnv": "GPT_61_SOL_API_KEY",
       "baseUrl": "http://43.131.228.121:13001/v1",
       "toolChoiceMode": "auto",
       "icon": "openai.svg"

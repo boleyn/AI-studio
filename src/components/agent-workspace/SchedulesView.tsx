@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  useRef,
+} from "react";
 import {
   Box,
   Button,
@@ -6,21 +13,65 @@ import {
   FormControl,
   FormLabel,
   Heading,
+  Grid,
+  IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
+  Menu,
+  MenuButton,
+  MenuDivider,
+  MenuItem,
+  MenuList,
+  MenuOptionGroup,
+  MenuItemOption,
+  Portal,
+  Popover,
+  PopoverBody,
+  PopoverContent,
+  PopoverTrigger,
   Select,
+  Spinner,
   Text,
   Textarea,
   VStack,
   useToast,
 } from "@chakra-ui/react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  Clock,
+  ChevronRight,
+  Ellipsis,
+  ExternalLink,
+  Pause,
+  ListFilter,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Play,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { DateTime } from "luxon";
 import type { Schedule, ScheduleSpec } from "@/shared/schedules/types";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+
+import { AppDialog } from "../ui";
 
 type Chat = { token: string; id: string; label: string };
 type Props = {
   chats: Chat[];
   currentChatId?: string;
+  conversation: ReactNode;
+  onSelectConversation: (
+    task: Pick<
+      Schedule,
+      "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"
+    > | null,
+  ) => void;
   onOpen: (token: string, chatId: string) => void;
 };
 const states = {
@@ -29,7 +80,15 @@ const states = {
   running: "执行中",
   completed: "已完成",
 };
+const taskStates = ["running", "active", "paused", "completed"] as const;
 const repeats = { once: "单次", daily: "每天", weekly: "每周" };
+
+function timing(task: Schedule) {
+  if (task.state !== "active") return repeats[task.repeat];
+
+  const next = DateTime.fromMillis(task.nextAt, { zone: task.timezone });
+  return `下次运行 ${next.toFormat("M月d日 HH:mm")} · ${repeats[task.repeat]}`;
+}
 
 async function request(body?: object) {
   const response = await fetch("/api/schedules", {
@@ -42,10 +101,37 @@ async function request(body?: object) {
   return data;
 }
 
-export default function SchedulesView({ chats, currentChatId, onOpen }: Props) {
+export default function SchedulesView({
+  chats,
+  currentChatId,
+  onOpen,
+  conversation,
+  onSelectConversation,
+}: Props) {
   const [tasks, setTasks] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Schedule["state"] | "all">("all");
+  const query = search.trim().toLocaleLowerCase();
+  const visibleTasks = tasks.filter(
+    (task) =>
+      (filter === "all" || task.state === filter) &&
+      task.title.toLocaleLowerCase().includes(query),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected =
+    visibleTasks.find((task) => task._id === selectedId) ?? visibleTasks[0];
+  const showMobileDetail = Boolean(selected && selected._id === selectedId);
+  const hideDesktopList = sidebarCollapsed && Boolean(selected);
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
   const [editing, setEditing] = useState<Schedule | "new" | null>(null);
   const [chatKey, setChatKey] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [time, setTime] = useState("");
@@ -60,6 +146,8 @@ export default function SchedulesView({ chats, currentChatId, onOpen }: Props) {
       setError("");
     } catch (err) {
       setError(String(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -123,156 +211,623 @@ export default function SchedulesView({ chats, currentChatId, onOpen }: Props) {
       void mutate({ action: "create", token, chatId, spec });
     }
   }
+  const selectedTaskId = selected?._id;
+  const selectedToken = selected?.token;
+  const selectedChatId = selected?.chatId;
+  const selectedState = selected?.state;
+  const selectedNextAt = selected?.nextAt;
+  const selectedResult = selected?.lastResult;
+  useEffect(() => {
+    onSelectConversation(
+      selectedTaskId &&
+        selectedToken &&
+        selectedChatId &&
+        selectedState &&
+        selectedNextAt !== undefined
+        ? {
+            _id: selectedTaskId,
+            token: selectedToken,
+            chatId: selectedChatId,
+            state: selectedState,
+            nextAt: selectedNextAt,
+            lastResult: selectedResult,
+          }
+        : null,
+    );
+  }, [
+    onSelectConversation,
+    selectedTaskId,
+    selectedToken,
+    selectedChatId,
+    selectedState,
+    selectedNextAt,
+    selectedResult,
+  ]);
+
   return (
-    <Box flex="1" overflowY="auto" p={{ base: 4, md: 8 }}>
-      <VStack maxW="760px" mx="auto" align="stretch" spacing={4}>
-        <Flex align="center" justify="space-between">
-          <Heading size="md">定时任务</Heading>
-          <Button size="sm" onClick={() => edit()} isDisabled={!chats.length}>
+    <Grid
+      as="section"
+      aria-label="定时任务"
+      flex="1"
+      minW={0}
+      minH={0}
+      templateColumns={{
+        base: "minmax(0, 1fr)",
+        md: hideDesktopList
+          ? "minmax(0, 1fr)"
+          : "minmax(240px, 288px) minmax(0, 1fr)",
+      }}
+      templateRows="minmax(0, 1fr)"
+    >
+      <Flex
+        direction="column"
+        display={{
+          base: showMobileDetail ? "none" : "flex",
+          md: hideDesktopList ? "none" : "flex",
+        }}
+        bg="surface.sidebar"
+        borderInlineEndWidth={{ md: "1px" }}
+        borderColor="stroke.subtle"
+        minH={0}
+      >
+        <Box px={3} pt={3} pb={3}>
+          <Flex align="center" gap={1} mb={2} px={1}>
+            <Heading as="h1" size="sm" flex="1">
+              定时任务
+            </Heading>
+            <Menu placement="bottom-end" isLazy>
+              <MenuButton
+                as={IconButton}
+                size="sm"
+                variant="ghost"
+                aria-label="筛选任务"
+                icon={<ListFilter size={17} />}
+                color={filter === "all" ? "ink.secondary" : "ink.primary"}
+                bg={filter === "all" ? undefined : "surface.active"}
+              />
+              <Portal>
+                <MenuList minW="136px" fontSize="sm" zIndex="dropdown">
+                  <MenuOptionGroup
+                    type="radio"
+                    value={filter}
+                    onChange={(value) => setFilter(value as typeof filter)}
+                  >
+                    <MenuItemOption value="all">全部状态</MenuItemOption>
+                    {taskStates.map((state) => (
+                      <MenuItemOption value={state} key={state}>
+                        {states[state]}
+                      </MenuItemOption>
+                    ))}
+                  </MenuOptionGroup>
+                </MenuList>
+              </Portal>
+            </Menu>
+            <IconButton
+              size="sm"
+              variant="ghost"
+              aria-label={searchOpen ? "关闭搜索" : "搜索定时任务"}
+              aria-expanded={searchOpen}
+              icon={<Search size={17} />}
+              color="ink.secondary"
+              onClick={() => {
+                setSearchOpen(!searchOpen);
+                if (searchOpen) setSearch("");
+              }}
+            />
+            <IconButton
+              display={{ base: "none", md: "inline-flex" }}
+              size="sm"
+              variant="ghost"
+              aria-label="收起任务列表"
+              isDisabled={!selected}
+              icon={<PanelLeftClose size={17} />}
+              color="ink.secondary"
+              onClick={() => setSidebarCollapsed(true)}
+            />
+          </Flex>
+          {searchOpen && (
+            <InputGroup size="sm" mb={2}>
+              <InputLeftElement pointerEvents="none" color="ink.secondary">
+                <Search size={14} aria-hidden="true" />
+              </InputLeftElement>
+              <Input
+                ref={searchRef}
+                type="search"
+                aria-label="任务名称"
+                placeholder="搜索任务"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                borderRadius="md"
+              />
+            </InputGroup>
+          )}
+          <Button
+            w="full"
+            variant="ghost"
+            size="sm"
+            h={10}
+            justifyContent="flex-start"
+            borderRadius="lg"
+            leftIcon={<Plus size={17} />}
+            onClick={() => edit()}
+            isDisabled={!chats.length || busy}
+          >
             新建任务
           </Button>
-        </Flex>
-        {error && <Text role="alert">{error}</Text>}
-        {editing && (
-          <Box as="form" onSubmit={save} borderWidth="1px" rounded="lg" p={4}>
-            <VStack align="stretch">
-              <FormControl isRequired>
-                <FormLabel>来源会话</FormLabel>
-                <Select
-                  required
-                  value={chatKey}
-                  isDisabled={editing !== "new"}
-                  onChange={(e) => setChatKey(e.target.value)}
+        </Box>
+
+        <Box overflowY="auto" px={3} pb={4}>
+          {error && (
+            <Text role="alert" color="red.700" fontSize="sm" px={2} mb={3}>
+              {error}
+            </Text>
+          )}
+          {loading ? (
+            <Flex
+              role="status"
+              align="center"
+              gap={2}
+              px={2}
+              py={4}
+              color="ink.secondary"
+              fontSize="sm"
+            >
+              <Spinner size="sm" />
+              正在加载任务
+            </Flex>
+          ) : !tasks.length && !error ? (
+            <Text px={2} py={3} color="ink.secondary" fontSize="sm">
+              {chats.length
+                ? "暂无定时任务"
+                : "在项目中开始对话后，即可创建任务。"}
+            </Text>
+          ) : null}
+
+          {tasks.length > 0 && visibleTasks.length === 0 && (
+            <Text
+              role="status"
+              px={2}
+              py={3}
+              color="ink.secondary"
+              fontSize="sm"
+            >
+              没有符合条件的任务
+            </Text>
+          )}
+          {taskStates.map((state) => {
+            const group = visibleTasks.filter((task) => task.state === state);
+            if (!group.length) return null;
+            return (
+              <Box
+                key={state}
+                as="section"
+                aria-labelledby={`schedule-group-${state}`}
+                mb={4}
+              >
+                <Heading
+                  id={`schedule-group-${state}`}
+                  as="h2"
+                  fontSize="xs"
+                  fontWeight="600"
+                  color="ink.secondary"
+                  px={2}
+                  py={2}
                 >
-                  {chats.map((c) => (
-                    <option
-                      key={JSON.stringify([c.token, c.id])}
-                      value={JSON.stringify([c.token, c.id])}
+                  {states[state]}
+                </Heading>
+                <VStack
+                  as="ul"
+                  role="list"
+                  listStyleType="none"
+                  m={0}
+                  p={0}
+                  spacing={1}
+                  align="stretch"
+                >
+                  {group.map((task) => (
+                    <Grid
+                      key={task._id}
+                      as="li"
+                      templateColumns="minmax(0, 1fr) 36px"
+                      alignItems="center"
+                      borderRadius="lg"
+                      bg={
+                        selected?._id === task._id
+                          ? "surface.active"
+                          : undefined
+                      }
+                      _hover={{
+                        bg:
+                          selected?._id === task._id
+                            ? "surface.active"
+                            : "surface.hover",
+                      }}
                     >
-                      {c.label}
-                    </option>
+                      <Box
+                        as="button"
+                        type="button"
+                        textAlign="start"
+                        minW={0}
+                        borderRadius="lg"
+                        px={2}
+                        py={2}
+                        aria-current={
+                          selected?._id === task._id ? true : undefined
+                        }
+                        _focusVisible={{ boxShadow: "outline" }}
+                        onClick={() => setSelectedId(task._id)}
+                      >
+                        <Text fontSize="sm" fontWeight="600" noOfLines={1}>
+                          {task.title}
+                        </Text>
+                        <Text
+                          mt={1}
+                          fontSize="xs"
+                          color="ink.secondary"
+                          overflowWrap="anywhere"
+                        >
+                          {timing(task)}
+                        </Text>
+                      </Box>
+                      <Menu placement="bottom-end" isLazy>
+                        <MenuButton
+                          as={IconButton}
+                          aria-label={`${task.title}的操作`}
+                          icon={<Ellipsis size={18} />}
+                          variant="ghost"
+                          size="sm"
+                          borderRadius="lg"
+                          _expanded={{ bg: "surface.active" }}
+                        />
+                        <Portal>
+                          <MenuList
+                            minW="160px"
+                            fontSize="sm"
+                            zIndex="dropdown"
+                          >
+                            <MenuItem
+                              icon={<ExternalLink size={15} />}
+                              onClick={() => onOpen(task.token, task.chatId)}
+                            >
+                              打开会话
+                            </MenuItem>
+                            <MenuItem
+                              icon={<Pencil size={15} />}
+                              isDisabled={busy || task.state === "running"}
+                              onClick={() => edit(task)}
+                            >
+                              编辑任务
+                            </MenuItem>
+                            {(task.state === "active" ||
+                              task.state === "paused") && (
+                              <MenuItem
+                                icon={
+                                  task.state === "active" ? (
+                                    <Pause size={15} />
+                                  ) : (
+                                    <Play size={15} />
+                                  )
+                                }
+                                isDisabled={busy}
+                                onClick={() =>
+                                  void mutate({
+                                    action:
+                                      task.state === "active"
+                                        ? "pause"
+                                        : "resume",
+                                    id: task._id,
+                                  })
+                                }
+                              >
+                                {task.state === "active"
+                                  ? "暂停任务"
+                                  : "启用任务"}
+                              </MenuItem>
+                            )}
+                            <MenuDivider />
+                            <MenuItem
+                              icon={<Trash2 size={15} />}
+                              color="red.700"
+                              isDisabled={busy || task.state === "running"}
+                              onClick={() => {
+                                if (window.confirm("删除这个定时任务？"))
+                                  void mutate({
+                                    action: "delete",
+                                    id: task._id,
+                                  });
+                              }}
+                            >
+                              删除任务
+                            </MenuItem>
+                          </MenuList>
+                        </Portal>
+                      </Menu>
+                    </Grid>
                   ))}
-                </Select>
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel>任务名称</FormLabel>
-                <Input
-                  required
-                  maxLength={100}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                </VStack>
+              </Box>
+            );
+          })}
+        </Box>
+      </Flex>
+
+      <Flex
+        as="article"
+        direction="column"
+        minW={0}
+        minH={0}
+        bg="surface.canvas"
+        display={{ base: showMobileDetail ? "flex" : "none", md: "flex" }}
+      >
+        {selected ? (
+          <>
+            <Flex
+              as="header"
+              align="center"
+              gap={2}
+              px={{ base: 2, md: 4 }}
+              py={2}
+              minH="52px"
+              flexShrink={0}
+              borderBottomWidth="1px"
+              borderColor="stroke.subtle"
+            >
+              <IconButton
+                display={{ md: "none" }}
+                variant="ghost"
+                size="sm"
+                aria-label="返回任务列表"
+                icon={<ArrowLeft size={17} />}
+                onClick={() => setSelectedId(null)}
+              />
+              {hideDesktopList && (
+                <IconButton
+                  display={{ base: "none", md: "inline-flex" }}
+                  variant="ghost"
+                  size="sm"
+                  aria-label="展开任务列表"
+                  icon={<PanelLeftOpen size={17} />}
+                  onClick={() => setSidebarCollapsed(false)}
                 />
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel>执行指令</FormLabel>
-                <Textarea
-                  required
-                  maxLength={4000}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                />
-              </FormControl>
+              )}
+              <Heading
+                as="h2"
+                size="sm"
+                fontWeight="650"
+                noOfLines={1}
+                flex="1"
+                title={selected.title}
+              >
+                {selected.title}
+              </Heading>
+              <Popover key={selected._id} placement="bottom-end" isLazy>
+                <PopoverTrigger>
+                  <IconButton
+                    variant="ghost"
+                    size="sm"
+                    aria-label="任务摘要"
+                    icon={<SlidersHorizontal size={17} />}
+                    _expanded={{ bg: "surface.active" }}
+                  />
+                </PopoverTrigger>
+                <Portal>
+                  <PopoverContent
+                    w="min(312px, calc(100vw - 24px))"
+                    borderRadius="16px"
+                    borderColor="stroke.subtle"
+                    shadow="0 6px 20px rgba(0, 0, 0, 0.07)"
+                    zIndex="popover"
+                    aria-label="任务摘要"
+                  >
+                    <PopoverBody px={5} py={4}>
+                      <Text fontSize="sm" color="ink.secondary" mb={2}>
+                        定时任务
+                      </Text>
+                      <Flex
+                        as="button"
+                        type="button"
+                        w="full"
+                        textAlign="start"
+                        align="center"
+                        gap={2.5}
+                        py={2}
+                        px={1}
+                        borderRadius="md"
+                        _hover={{ bg: "surface.hover" }}
+                        _focusVisible={{ boxShadow: "outline" }}
+                        _disabled={{ opacity: 0.6, cursor: "not-allowed" }}
+                        disabled={busy || selected.state === "running"}
+                        onClick={() => edit(selected)}
+                        aria-label={`编辑调度：${selected.title}`}
+                      >
+                        <Box flexShrink={0} aria-hidden="true">
+                          <Clock size={16} />
+                        </Box>
+                        <Text noOfLines={1} flex="1" fontSize="sm">
+                          {selected.title}
+                        </Text>
+                        <Text
+                          flexShrink={0}
+                          color="ink.secondary"
+                          fontSize="xs"
+                        >
+                          {states[selected.state]}
+                        </Text>
+                        <Box
+                          flexShrink={0}
+                          color="ink.secondary"
+                          aria-hidden="true"
+                        >
+                          <ChevronRight size={13} />
+                        </Box>
+                      </Flex>
+                      <Box
+                        mt={3}
+                        pt={3}
+                        borderTopWidth="1px"
+                        borderColor="stroke.subtle"
+                        fontSize="sm"
+                      >
+                        <Text color="ink.secondary" mb={2}>
+                          最近运行
+                        </Text>
+                        <Text color="ink.secondary" fontSize="xs">
+                          {selected.lastResult || "暂无运行结果"}
+                        </Text>
+                      </Box>
+                    </PopoverBody>
+                  </PopoverContent>
+                </Portal>
+              </Popover>
+            </Flex>
+            {conversation ?? (
+              <Text role="status" p={4} fontSize="sm" color="ink.secondary">
+                正在打开任务会话
+              </Text>
+            )}
+          </>
+        ) : !loading && !error ? (
+          <VStack justify="center" flex="1" spacing={3} color="ink.secondary">
+            <CalendarClock size={28} strokeWidth={1.5} aria-hidden="true" />
+            <Text fontSize="sm">
+              {tasks.length
+                ? "没有符合条件的任务"
+                : "创建任务后，可在这里查看会话和运行结果。"}
+            </Text>
+          </VStack>
+        ) : null}
+      </Flex>
+
+      <AppDialog
+        isOpen={Boolean(editing)}
+        onClose={() => {
+          if (!busy) setEditing(null);
+        }}
+        title={editing === "new" ? "新建任务" : "编辑任务"}
+        initialFocusRef={titleRef}
+        onSubmit={save}
+        footer={
+          <Flex gap={2} justify="flex-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              borderRadius="lg"
+              onClick={() => setEditing(null)}
+              isDisabled={busy}
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              borderRadius="lg"
+              type="submit"
+              isLoading={busy}
+            >
+              {editing === "new" ? "创建任务" : "保存修改"}
+            </Button>
+          </Flex>
+        }
+      >
+        <VStack
+          align="stretch"
+          spacing={4}
+          sx={{ label: { fontSize: "sm", marginBottom: 1.5 } }}
+        >
+          <FormControl isRequired>
+            <FormLabel>任务名称</FormLabel>
+            <Input
+              ref={titleRef}
+              required
+              maxLength={100}
+              value={title}
+              placeholder="例如：每周项目简报"
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>执行指令</FormLabel>
+            <Textarea
+              required
+              maxLength={4000}
+              value={prompt}
+              rows={3}
+              resize="vertical"
+              placeholder="描述任务运行时要做的事"
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          </FormControl>
+          <Box borderTopWidth="1px" borderColor="stroke.subtle" pt={4}>
+            <Grid
+              templateColumns={{
+                base: "minmax(0, 1fr)",
+                sm: "minmax(0, 2fr) minmax(0, 1fr)",
+              }}
+              gap={3}
+            >
               <FormControl isRequired>
                 <FormLabel>首次执行时间</FormLabel>
                 <Input
                   type="datetime-local"
+                  size="sm"
+                  borderRadius="md"
                   required
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                 />
               </FormControl>
-              <FormControl isRequired>
-                <FormLabel>时区</FormLabel>
-                <Input
-                  required
-                  value={zone}
-                  onChange={(e) => setZone(e.target.value)}
-                />
-              </FormControl>
               <FormControl>
                 <FormLabel>重复</FormLabel>
                 <Select
+                  size="sm"
+                  borderRadius="md"
                   value={repeat}
                   onChange={(e) =>
                     setRepeat(e.target.value as ScheduleSpec["repeat"])
                   }
                 >
-                  {Object.entries(repeats).map(([v, label]) => (
-                    <option value={v} key={v}>
+                  {Object.entries(repeats).map(([value, label]) => (
+                    <option value={value} key={value}>
                       {label}
                     </option>
                   ))}
                 </Select>
               </FormControl>
-              <Flex gap={2}>
-                <Button type="submit" isLoading={busy}>
-                  保存
-                </Button>
-                <Button onClick={() => setEditing(null)}>取消</Button>
-              </Flex>
-            </VStack>
-          </Box>
-        )}
-        {!tasks.length && !error && (
-          <Text color="ink.muted">
-            {chats.length
-              ? "暂无定时任务"
-              : "先在项目里开始一段对话，即可为它设置定时任务。"}
-          </Text>
-        )}
-        {tasks.map((task) => (
-          <Box key={task._id} p={4} borderWidth="1px" rounded="lg">
-            <Heading size="sm">{task.title}</Heading>
-            <Text my={2} whiteSpace="pre-wrap">
-              {task.prompt}
-            </Text>
-            <Text fontSize="sm">
-              {states[task.state]} · {repeats[task.repeat]} ·{" "}
-              {DateTime.fromMillis(task.nextAt, {
-                zone: task.timezone,
-              }).toFormat("yyyy-MM-dd HH:mm")}{" "}
-              ({task.timezone})
-            </Text>
-            {task.lastResult && <Text fontSize="sm">{task.lastResult}</Text>}
-            <Flex gap={2} mt={3} wrap="wrap">
-              <Button size="sm" onClick={() => onOpen(task.token, task.chatId)}>
-                打开会话
-              </Button>
-              <Button
+            </Grid>
+            <FormControl isRequired mt={3}>
+              <FormLabel>时区</FormLabel>
+              <Input
                 size="sm"
-                isDisabled={busy || task.state === "running"}
-                onClick={() => edit(task)}
-              >
-                编辑
-              </Button>
-              {["active", "paused"].includes(task.state) && (
-                <Button
-                  size="sm"
-                  isDisabled={busy}
-                  onClick={() =>
-                    void mutate({
-                      action: task.state === "active" ? "pause" : "resume",
-                      id: task._id,
-                    })
-                  }
-                >
-                  {task.state === "active" ? "暂停" : "启用"}
-                </Button>
-              )}
-              <Button
-                size="sm"
-                isDisabled={busy || task.state === "running"}
-                onClick={() => {
-                  if (window.confirm("删除这个定时任务？"))
-                    void mutate({ action: "delete", id: task._id });
-                }}
-              >
-                删除
-              </Button>
-            </Flex>
+                borderRadius="md"
+                required
+                value={zone}
+                onChange={(e) => setZone(e.target.value)}
+              />
+            </FormControl>
           </Box>
-        ))}
-      </VStack>
-    </Box>
+          {editing === "new" && (
+            <FormControl isRequired>
+              <FormLabel>来源会话</FormLabel>
+              <Select
+                required
+                size="sm"
+                borderRadius="md"
+                value={chatKey}
+                onChange={(e) => setChatKey(e.target.value)}
+              >
+                {chats.map((chat) => {
+                  const value = JSON.stringify([chat.token, chat.id]);
+                  return (
+                    <option key={value} value={value}>
+                      {chat.label}
+                    </option>
+                  );
+                })}
+              </Select>
+            </FormControl>
+          )}
+        </VStack>
+      </AppDialog>
+    </Grid>
   );
 }

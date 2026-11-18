@@ -4,6 +4,7 @@ import { conversationGroups } from "./budget";
 
 export type ContextCheckpoint = {
   version: 1;
+  goal?: import("../app/goal").SessionGoal;
   taskReceipts?: string[];
   identity: string;
   messages: ChatCompletionMessageParam[];

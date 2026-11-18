@@ -208,8 +208,8 @@ const ChatItem = ({
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
       <Box
-        bg={isWorkspaceChat && isUser ? "#f4f4f4" : isUser ? "white" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
-        border={!isWorkspaceChat && (isUser || isAssistant) ? "1px solid" : "none"}
+        bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
+        border={!isWorkspaceChat && isAssistant ? "1px solid" : "none"}
         borderColor={isUser ? "myGray.300" : isAssistant ? "myGray.200" : "transparent"}
         borderRadius={
           isWorkspaceChat && isUser
@@ -220,14 +220,14 @@ const ChatItem = ({
             ? "16px 16px 16px 6px"
             : 0
         }
-        boxShadow={!isWorkspaceChat && (isUser || isAssistant) ? "sm" : "none"}
+        boxShadow="none"
         className="chat-message"
         color="#0d0d0d"
         fontSize={isWorkspaceChat ? "15px" : "sm"}
         lineHeight={isWorkspaceChat ? "1.7" : undefined}
-        maxW={isWorkspaceChat && isUser ? { base: "88%", md: "74%" } : "100%"}
+        maxW={isUser ? { base: "88%", md: "74%" } : "100%"}
         w={isUser ? "fit-content" : "100%"}
-        minW={isUser ? "64px" : isAssistant ? "200px" : 0}
+        minW={0}
         px={isUser || (isAssistant && !isWorkspaceChat && !usePlainAnswer) ? 4 : 0}
         py={isWorkspaceChat && isUser ? 2.5 : isUser || isAssistant ? 3 : 0}
         sx={markdownSx}

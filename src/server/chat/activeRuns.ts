@@ -18,7 +18,9 @@ interface ActiveRunEntry {
   }) => void>;
 }
 
-const activeRuns = new Map<string, ActiveRunEntry>();
+// Separate Next.js API route bundles must share the pending resolver in this process.
+const runtime = globalThis as typeof globalThis & { __boreActiveRuns?: Map<string, ActiveRunEntry> };
+const activeRuns = runtime.__boreActiveRuns ??= new Map<string, ActiveRunEntry>();
 
 const getRunKey = (token: string, chatId: string) => `${token}:${chatId}`;
 

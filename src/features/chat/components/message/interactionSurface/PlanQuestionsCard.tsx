@@ -1,23 +1,32 @@
-import { Box, Button, Flex, Text } from "@chakra-ui/react";
+import { Input, Box, Button, Flex, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 import type { InteractionContext, PendingInteraction } from "./types";
 
-type PlanQuestionsInteraction = Extract<PendingInteraction, { type: "plan_questions" }>;
+type PlanQuestionsInteraction = Extract<
+  PendingInteraction,
+  { type: "plan_questions" }
+>;
 
 const hasMissingAnswer = (
   pending: PlanQuestionsInteraction,
-  selections: Record<string, string>
+  selections: Record<string, string>,
 ) =>
   pending.questions.some((question) => {
-    return typeof selections[question.id] !== "string" || !String(selections[question.id]).trim();
+    return (
+      typeof selections[question.id] !== "string" ||
+      !String(selections[question.id]).trim()
+    );
   });
 
 const buildAnswers = (
   pending: PlanQuestionsInteraction,
-  selections: Record<string, string>
+  selections: Record<string, string>,
 ) =>
   pending.questions.reduce<Record<string, string>>((acc, question) => {
-    const selected = typeof selections[question.id] === "string" ? String(selections[question.id]).trim() : "";
+    const selected =
+      typeof selections[question.id] === "string"
+        ? String(selections[question.id]).trim()
+        : "";
     if (selected) acc[question.id] = selected;
     return acc;
   }, {});
@@ -37,11 +46,19 @@ const PlanQuestionsCard = ({
     setCurrentStep(0);
   }, [pending.requestId]);
 
-  const missingAnswer = useMemo(() => hasMissingAnswer(pending, selections), [pending, selections]);
+  const missingAnswer = useMemo(
+    () => hasMissingAnswer(pending, selections),
+    [pending, selections],
+  );
   const totalSteps = pending.questions.length;
-  const safeStep = Math.min(Math.max(currentStep, 0), Math.max(totalSteps - 1, 0));
+  const safeStep = Math.min(
+    Math.max(currentStep, 0),
+    Math.max(totalSteps - 1, 0),
+  );
   const currentQuestion = pending.questions[safeStep];
-  const currentAnswer = currentQuestion ? (selections[currentQuestion.id] || "").trim() : "";
+  const currentAnswer = currentQuestion
+    ? (selections[currentQuestion.id] || "").trim()
+    : "";
   const isLastStep = safeStep >= totalSteps - 1;
   const canGoPrev = safeStep > 0;
   const canGoNext = !isLastStep && Boolean(currentAnswer);
@@ -50,52 +67,36 @@ const PlanQuestionsCard = ({
     <>
       {currentQuestion ? (
         <Flex direction="column" gap={2} mt={1.5}>
-          <Flex align="center" gap={2}>
-            <Text color="myGray.500" fontSize="11px" fontWeight={600}>
-              {safeStep + 1}/{totalSteps}
-            </Text>
-            <Flex flex={1} gap={1}>
-              {pending.questions.map((question, idx) => {
-                const answered = Boolean((selections[question.id] || "").trim());
-                const active = idx === safeStep;
-                return (
-                  <Box
-                    key={`${pending.requestId}-${question.id}-dot-${idx}`}
-                    bg={active ? "primary.500" : answered ? "primary.200" : "myGray.200"}
-                    borderRadius="999px"
-                    h="4px"
-                    transition="all 0.2s ease"
-                    w={active ? "20px" : "10px"}
-                  />
-                );
-              })}
-            </Flex>
+          <Flex align="baseline" justify="space-between" gap={2} color="#666">
+            <Text fontSize="13px">{currentQuestion.header}</Text>
+            {totalSteps > 1 && (
+              <Text fontSize="12px">
+                {safeStep + 1} / {totalSteps}
+              </Text>
+            )}
           </Flex>
-          <Box
-            key={`${pending.requestId}-${currentQuestion.id}-${safeStep}`}
-            bg="myWhite.100"
-            border="1px solid"
-            borderColor="myGray.250"
-            borderRadius="12px"
-            p={2.5}
-          >
-            <Text color="myGray.500" fontSize="11px" fontWeight={600} mb={1}>
-              {(currentQuestion.header || "确认").toUpperCase()}
-            </Text>
-            <Text color="myGray.800" fontSize="12px" fontWeight={700}>
+          <Box>
+            <Text
+              color="#242424"
+              fontSize="14px"
+              lineHeight="1.55"
+              fontWeight={500}
+            >
               {currentQuestion.question}
             </Text>
-            <Flex direction="column" gap={1.5} mt={2.5}>
+            <Flex direction="column" gap={0.5} mt={2}>
               {currentQuestion.options.map((option, oIndex) => {
-                const isSelected = selections[currentQuestion.id] === option.label;
+                const isSelected =
+                  selections[currentQuestion.id] === option.label;
                 return (
                   <Button
                     key={`${currentQuestion.id}-option-${oIndex}`}
+                    aria-pressed={isSelected}
                     alignItems="flex-start"
-                    bg={isSelected ? "primary.600" : "myWhite.100"}
-                    border="1px solid"
-                    borderColor={isSelected ? "primary.600" : "myGray.250"}
-                    color={isSelected ? "white" : "myGray.800"}
+                    bg={isSelected ? "#f1f1f1" : "transparent"}
+                    whiteSpace="normal"
+                    borderRadius="8px"
+                    color="#242424"
                     h="auto"
                     justifyContent="flex-start"
                     onClick={() =>
@@ -110,71 +111,114 @@ const PlanQuestionsCard = ({
                     variant="unstyled"
                     w="full"
                     _hover={{
-                      bg: isSelected ? "primary.700" : "myGray.50",
+                      bg: isSelected ? "#ececec" : "#f7f7f7",
                       borderColor: isSelected ? "primary.700" : "myGray.350",
                     }}
                   >
                     <Flex align="center" justify="space-between" w="full">
-                      <Text fontSize="12px" fontWeight={isSelected ? 700 : 600}>
-                        {option.label}
-                      </Text>
-                      <Text color={isSelected ? "whiteAlpha.900" : "myGray.400"} fontSize="14px">
-                        {isSelected ? "❯" : ""}
+                      <Box textAlign="left">
+                        <Text fontSize="14px" fontWeight={500}>
+                          {option.label}
+                        </Text>
+                        {option.description && (
+                          <Text
+                            fontSize="12px"
+                            color="#626262"
+                            fontWeight={400}
+                          >
+                            {option.description}
+                          </Text>
+                        )}
+                      </Box>
+                      <Text color="#333" fontSize="14px">
+                        {isSelected ? "✓" : ""}
                       </Text>
                     </Flex>
                   </Button>
                 );
               })}
             </Flex>
-            <Text color="myGray.500" fontSize="11px" mt={2}>
-              请选择一个选项后继续，最后一步提交后才会继续执行。
-            </Text>
+            <Input
+              mt={2}
+              size="sm"
+              aria-label="自定义回答"
+              placeholder="或输入自己的回答"
+              value={
+                currentQuestion.options.some(
+                  (option) => option.label === selections[currentQuestion.id],
+                )
+                  ? ""
+                  : selections[currentQuestion.id] || ""
+              }
+              onChange={(event) =>
+                setSelections({
+                  ...selections,
+                  [currentQuestion.id]: event.target.value,
+                })
+              }
+            />
           </Box>
         </Flex>
       ) : null}
       <Flex justify="flex-end" mt={2.5}>
-        <Button
-          h="30px"
-          isDisabled={Boolean(interaction.planQuestionSubmitting || !canGoPrev)}
-          mr={2}
-          onClick={() => setCurrentStep((step) => Math.max(step - 1, 0))}
-          size="sm"
-          variant="outline"
-        >
-          上一步
-        </Button>
+        {canGoPrev && (
+          <Button
+            h="30px"
+            isDisabled={Boolean(
+              interaction.planQuestionSubmitting || !canGoPrev,
+            )}
+            mr={2}
+            onClick={() => setCurrentStep((step) => Math.max(step - 1, 0))}
+            size="sm"
+            variant="outline"
+          >
+            上一步
+          </Button>
+        )}
         {!isLastStep ? (
           <Button
-            colorScheme="primary"
+            bg="#262626"
+            color="white"
+            borderRadius="full"
+            _hover={{ bg: "#414141" }}
             h="30px"
-            isDisabled={Boolean(interaction.planQuestionSubmitting || !canGoNext)}
-            onClick={() => setCurrentStep((step) => Math.min(step + 1, totalSteps - 1))}
+            isDisabled={Boolean(
+              interaction.planQuestionSubmitting || !canGoNext,
+            )}
+            onClick={() =>
+              setCurrentStep((step) => Math.min(step + 1, totalSteps - 1))
+            }
             size="sm"
           >
             下一步
           </Button>
         ) : null}
-        <Button
-          colorScheme="primary"
-          h="30px"
-          isDisabled={Boolean(
-            interaction.planQuestionSubmitting ||
+        {isLastStep && (
+          <Button
+            bg="#262626"
+            color="white"
+            borderRadius="full"
+            _hover={{ bg: "#414141" }}
+            h="30px"
+            isDisabled={Boolean(
+              interaction.planQuestionSubmitting ||
               !interaction.onPlanQuestionsSubmit ||
               missingAnswer ||
-              !isLastStep
-          )}
-          isLoading={Boolean(interaction.planQuestionSubmitting)}
-          onClick={() => {
-            interaction.onPlanQuestionsSubmit?.({
-              requestId: pending.requestId,
-              answers: buildAnswers(pending, selections),
-            });
-          }}
-          ml={2}
-          size="sm"
-        >
-          提交选择
-        </Button>
+              !isLastStep,
+            )}
+            isLoading={Boolean(interaction.planQuestionSubmitting)}
+            onClick={() => {
+              interaction.onPlanQuestionsSubmit?.({
+                requestId: pending.requestId,
+                answers: buildAnswers(pending, selections),
+              });
+            }}
+            ml={2}
+            size="sm"
+          >
+            提交选择
+          </Button>
+        )}
       </Flex>
     </>
   );

@@ -30,6 +30,7 @@ import type {
   WorkspaceComposerConfig,
 } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
+import { getTimelineItems, type TimelineItem } from "../utils/chatItemParsers";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { type PermissionApprovalPayload } from "../types/chatPanelRuntime";
 import {
@@ -72,6 +73,11 @@ import {
   getPlanModeApprovalPending,
   getPlanQuestions,
 } from "../utils/chatItemParsers";
+
+const formatGoalStatus = (status?: string, objective?: string) => {
+  const label = status === "complete" ? "已完成" : status === "blocked" ? "受阻" : "进行中";
+  return objective ? `目标${label} · ${objective}` : "";
+};
 
 const buildContextUsageCacheKey = (conversationId: string, modelId: string) =>
   `${conversationId}::${modelId}`;
@@ -508,11 +514,22 @@ const toPendingInteractionFromApi = (
 };
 
 
+export type ConversationResources = {
+  token: string;
+  conversationId: string;
+  files: UploadedFileArtifact[];
+  agents: Array<{
+    id: string;
+    label: string;
+    status: NonNullable<TimelineItem["progressStatus"]> | "interrupted";
+  }>;
+};
+
 const ChatPanel = ({
   token,
   onFilesUpdated,
   onAttachmentsAvailable,
-  onConversationSourcesChanged,
+  onConversationResourcesChanged,
   addFileRequest,
   onFilesRefresh,
   height = "100%",
@@ -534,6 +551,7 @@ const ChatPanel = ({
   artifactRevision,
   onOpenWorkspaceFile,
   externalActiveConversationId,
+  externalConversationRevision,
   externalNewConversationSignal,
   onConversationsChanged,
   hideHeader = false,
@@ -541,7 +559,7 @@ const ChatPanel = ({
 }: {
   token: string;
   onFilesUpdated?: (files: Record<string, { code: string }>) => void;
-  onConversationSourcesChanged?: (sources: { token: string; conversationId: string; files: UploadedFileArtifact[] }) => void;
+  onConversationResourcesChanged?: (resources: ConversationResources) => void;
   onAttachmentsAvailable?: (files: UploadedFileArtifact[]) => void;
   addFileRequest?: { path: string; version: number } | null;
   onFilesRefresh?: () => Promise<Record<string, { code: string }> | null>;
@@ -564,6 +582,7 @@ const ChatPanel = ({
   artifactRevision?: { text: string; onApplied: () => void };
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   externalActiveConversationId?: string;
+  externalConversationRevision?: string;
   externalNewConversationSignal?: number;
   onConversationsChanged?: () => void;
   hideHeader?: boolean;
@@ -615,10 +634,26 @@ const ChatPanel = ({
   }, [conversationsSignature, isInitialized, onConversationsChanged]);
 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   useEffect(() => {
-    if (!onConversationSourcesChanged || !activeConversation?.id) return;
+    if (!onConversationResourcesChanged || !activeConversation?.id) return;
     const files = new Map<string, UploadedFileArtifact>();
+    const agents = new Map<string, ConversationResources["agents"][number]>();
     for (const message of messages) {
+      if (message.role === "assistant") {
+        for (const item of getTimelineItems(message)) {
+          if (item.type !== "agent" || !item.id) continue;
+          const status = item.progressStatus ?? "in_progress";
+          agents.set(item.id, {
+            id: item.id,
+            label: item.description || item.agentType || "子智能体",
+            status: status === "in_progress" && (!isSending || message.id !== streamingMessageId)
+              ? "interrupted"
+              : status,
+          });
+        }
+      }
       if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") continue;
       const attachments = (message.artifact as { files?: UploadedFileArtifact[] }).files;
       if (!Array.isArray(attachments)) continue;
@@ -626,14 +661,28 @@ const ChatPanel = ({
         if (file?.storagePath && file.name) files.set(file.storagePath, file);
       }
     }
-    onConversationSourcesChanged({ token, conversationId: activeConversation.id, files: [...files.values()] });
-  }, [activeConversation?.id, messages, onConversationSourcesChanged, token]);
+    onConversationResourcesChanged({
+      token,
+      conversationId: activeConversation.id,
+      files: [...files.values()],
+      agents: [...agents.values()],
+    });
+  }, [activeConversation?.id, isSending, messages, onConversationResourcesChanged, streamingMessageId, token]);
+  const conversationRevision = useRef<{ id?: string; revision?: string }>({});
+  useEffect(() => {
+    const id = externalActiveConversationId;
+    if (!id || !externalConversationRevision || activeConversation?.id !== id || isSending) return;
+    const previous = conversationRevision.current;
+    conversationRevision.current = { id, revision: externalConversationRevision };
+    if (previous.id === id && previous.revision !== externalConversationRevision) {
+      void loadConversation(id, { refresh: true });
+    }
+  }, [activeConversation?.id, externalActiveConversationId, externalConversationRevision, isSending, loadConversation]);
 
-  const [isSending, setIsSending] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(true);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>("high");
-  const [chatMode, setChatMode] = useState<"default" | "plan">("default");
+  const [goalStatus, setGoalStatus] = useState("");
+  const [chatMode, setChatMode] = useState<"default" | "plan" | "goal">("default");
   const [pendingInteractions, setPendingInteractions] = useState<PendingChatInteraction[]>([]);
   const [messageRatings, setMessageRatings] = useState<Record<string, MessageRating | undefined>>(
     {}
@@ -829,6 +878,8 @@ const ChatPanel = ({
     setMessages(normalizedHydratedMessages);
     const nextChatMode = derivePlanModeFromMessages(normalizedHydratedMessages);
     setChatMode(nextChatMode);
+    const lastGoal = normalizedHydratedMessages.map(m => (m.message as { goal?: { status: string; objective: string } } | undefined)?.goal).filter(Boolean).at(-1);
+    setGoalStatus(lastGoal ? formatGoalStatus(lastGoal.status, lastGoal.objective) : "");
     setPendingInteractions(
       buildPendingInteractionsFromMessages(normalizedHydratedMessages, {
         isPlanModeActive: nextChatMode === "plan",
@@ -888,7 +939,10 @@ const ChatPanel = ({
             return true;
           })
           .filter((item: PendingChatInteraction | null): item is PendingChatInteraction => Boolean(item));
-        if (recovered.length === 0) return;
+        if (recovered.length === 0) {
+          if (streamingConversationIdRef.current !== conversationId) setPendingInteractions([]);
+          return;
+        }
         setPendingInteractions((current) => {
           const next = [...current];
           for (const interaction of recovered) {
@@ -1054,7 +1108,7 @@ const ChatPanel = ({
 
       const conversation = await ensureConversation();
       const conversationId = conversation?.id ?? activeConversation?.id;
-      const effectiveMode: "default" | "plan" =
+      const effectiveMode: "default" | "plan" | "goal" =
         payload.planModeApprovalResponse?.decision === "approve"
           ? payload.planModeApprovalResponse.action === "enter"
             ? "plan"
@@ -1117,6 +1171,7 @@ const ChatPanel = ({
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: {
           ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
+          chatMode: effectiveMode,
           planModeState: effectiveMode === "plan",
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
@@ -1148,6 +1203,7 @@ const ChatPanel = ({
           imageInputParts,
           ...(payload.selectedSkill ? { selectedSkill: payload.selectedSkill } : {}),
           ...(payload.selectedSkills ? { selectedSkills: payload.selectedSkills } : {}),
+          chatMode: effectiveMode,
           planModeState: effectiveMode === "plan",
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
@@ -1808,6 +1864,11 @@ const ChatPanel = ({
                 text?: unknown;
                 tokenBudget?: unknown;
               };
+              if (payload.phase === "mode_changed") setChatMode("default");
+              if (payload.phase === "goal_status") {
+                const update = item as { status?: string; objective?: string };
+                setGoalStatus(formatGoalStatus(update.status, update.objective));
+              }
               if (payload.phase === "tool_error") {
                 appendSdkBlock({
                   type: "text",
@@ -2185,6 +2246,7 @@ const ChatPanel = ({
   const handleStop = useCallback(() => {
     const chatId = streamingConversationIdRef.current || activeConversation?.id || null;
     const abortCtrl = streamAbortRef.current;
+    setPendingInteractions([]);
     if (abortCtrl && !abortCtrl.signal.aborted) {
       // 立即停止前端流，确保按钮点击立刻生效
       abortCtrl.abort(new Error("stop"));
@@ -2252,6 +2314,7 @@ const ChatPanel = ({
       activeConversationId: activeConversation?.id,
       conversations,
       contextUsage,
+      goalStatus,
       contextStatus,
       messageCount: messages.length,
       model,
@@ -2321,6 +2384,7 @@ const ChatPanel = ({
       activeConversation?.id,
       conversations,
       contextUsage,
+      goalStatus,
       contextStatus,
       messages.length,
       model,

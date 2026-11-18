@@ -1,168 +1,87 @@
-# Next.js AI Studio
+<p align="center"><img src="public/icon/logo.svg" width="84" height="84" alt="伯仁 Logo"></p>
+<h1 align="center">Bore Agent · 伯仁</h1>
+<p align="center">在项目工作区里和智能体一起做事，从确认需求到交付文件。</p>
 
-基于 Next.js 14（Pages Router）的 AI Studio 示例项目，支持私有化部署。  
-当前版本聚焦 4 条主线：`对话编排`、`项目工作区`、`Skills Studio`、`模型工作台`。
+Bore Agent 是一个支持私有化部署的智能体工作台。你可以把业务需求发进对话，让伯仁读取项目资料、澄清口径、拟定计划，并在你确认后把结果写回工作区。每条对话都能回看执行过程和交付文件。
 
-## 当前能力（2026 版）
+## 从一个真实任务开始
 
-- 聊天与 Agent
-  - `POST /api/chat/completions`
-  - `POST /api/v2/chat/completions`
-  - 对话中断/交互恢复（`/api/v2/chat/stop`、`/api/v2/chat/pending-interactions`、`/api/v2/chat/resolve-interaction`）
-- 项目工作区
-  - 项目列表与编辑：`/`、`/project/[di]`
-  - 兼容旧入口：`/run/[di]` 自动重定向到 `/project/[di]`
-- Skills Studio
-  - 可视化编辑页：`/skills/create`
-  - Skills 管理：`/api/skills/*`、`/api/agent/skills/*`
-  - 工作区初始化：`POST /api/skills/workspaces/create`
-- 模型工作台
-  - 模型管理页：`/models`
-  - 使用统计页：`/models?tab=usage`（`/model-usage` 会重定向）
-- 账号体系
-  - 登录注册与资料管理：`/login`、`/account`、`/api/auth/*`
-  - 飞书登录（可选）：`/auth/feishu/login` 与 `/auth/feishu/callback`
-- 分享能力
-  - `POST /api/share`
-  - `GET /api/share/[shareId]`
-  - `POST /api/share/[shareId]/clone`
+> 帮客服主管做一份每周复盘首次响应超时的 Markdown 模板。只剩渠道范围还没定，请先让我选渠道，再给我看方案，确认后保存。超时阈值保留为待填项。
 
-## 技术栈
+**先确定统计范围。** 在「计划」模式里，伯仁询问模板应覆盖哪个渠道。主管可以选择“在线客服”，也可以输入自己的统计口径。
 
-- Next.js 14
-- TypeScript
-- Chakra UI
-- MongoDB（用户、项目、会话与元数据）
-- S3 兼容对象存储（MinIO / AWS S3）
-- Bun（脚本与依赖管理）
+![在真实工作台对话中选择客服渠道并提交答案](docs/images/plan-question.png)
 
-## 快速开始
+**再确认方案，拿到文件。** 批准后，对话切换到「执行」。伯仁把渠道、数据口径、原因分析和下周改进行动写进 Markdown 模板，阈值保留为待填项。主管可以从对话里的文件卡片打开或下载模板，下周直接复用。
 
-1. 安装依赖
+![伯仁在对话中交付客服周复盘模板，输入框可切换三种模式](docs/images/chat-delivery.png)
+
+## 选择工作方式
+
+| 模式 | 适用场景 | 在对话中会发生什么 |
+| --- | --- | --- |
+| 执行 | 已经明确要做什么 | 读取资料、调用工具、编辑工作区文件并汇报结果。 |
+| 计划 | 需求还有歧义，或希望先审方案 | 先进行只读调查，必要时询问用户。用户可以批准执行、提出修改意见或暂不执行。 |
+| 目标 | 需要跨多步完成并验证一个结果 | 会话保存目标，智能体持续推进，并记录完成证据或需要用户处理的阻塞原因。 |
+
+主智能体可将独立调查委派给只读子智能体，并在当前轮汇总结果。后台任务支持等待、查询和取消。长对话会按模型窗口预算压缩，保留近期工具调用和结果，并将较早的记录归档以供回读。
+
+## 接入工作区
+
+- **工具和技能**：通过工具注册表、项目 Skills 和可选的 MCP 服务扩展能力。
+- **执行环境**：支持项目沙盒和本机连接器。连接器将选定目录作为智能体工作区。
+- **会话与模型**：按项目管理会话和输出文件，配置模型连接、查看用量，也可以在会话中创建定时任务。
+
+## 本地运行
+
+准备 Bun、MongoDB 和可用的模型服务。附件上传与对象存储功能还需要 S3 兼容服务和相应的存储桶。
 
 ```bash
-bun install
-```
-
-2. 初始化环境变量
-
-```bash
+bun install --frozen-lockfile
 cp .env.example .env
 ```
 
-3. 启动开发环境
+在 `.env` 中填写本地环境配置：
+
+| 配置 | 用途 |
+| --- | --- |
+| `MONGODB_URI`、`JWT_SECRET` | 保存账号、项目和会话，并签发登录凭据。为自己的部署生成独立密钥。 |
+| `AIPROXY_API_ENDPOINT`、`AIPROXY_API_TOKEN` | 通过 AIProxy 接入模型；直连兼容服务也可配置 `OPENAI_BASE_URL`、`CHAT_API_KEY`。 |
+| `CHAT_MODEL_CONFIG_FILE` | 指向模型目录。检查模型 ID、连接地址和密钥环境变量，使其与自己的服务一致。 |
+| `STORAGE_*` | 配置 S3 / MinIO 端点、桶和访问凭据。 |
 
 ```bash
 bun run dev
 ```
 
-4. 打开页面
+打开 [本地工作台](http://localhost:3000)，登录后创建项目并开始对话。模型管理入口为 [模型工作台](http://localhost:3000/models)。完整配置见 [.env.example](.env.example) 和 [模型目录](config/config.json)。
 
-- `http://localhost:3000`
-- `http://localhost:3000/skills/create`
-- `http://localhost:3000/models`
+### Docker Compose
 
-## 最小必填环境变量
-
-```env
-# 数据库
-MONGODB_URI=mongodb://127.0.0.1:27017/nextjs_ai_studio
-
-# 鉴权
-JWT_SECRET=replace_with_a_long_random_secret
-AUTH_COOKIE_SECURE=false
-
-# 模型接入（二选一，优先 AIPROXY）
-AIPROXY_API_ENDPOINT=
-AIPROXY_API_TOKEN=
-# 或
-OPENAI_BASE_URL=
-CHAT_API_KEY=
-
-# 对象存储（S3 / MinIO）
-STORAGE_REGION=us-east-1
-STORAGE_ACCESS_KEY_ID=
-STORAGE_SECRET_ACCESS_KEY=
-STORAGE_PUBLIC_BUCKET=
-STORAGE_PRIVATE_BUCKET=
-STORAGE_S3_ENDPOINT=
-STORAGE_S3_FORCE_PATH_STYLE=true
-```
-
-## 常用可选环境变量
-
-```env
-# 模型目录配置
-CHAT_MODEL_CONFIG_FILE=config/config.json
-
-# MCP（JSON 数组）
-MCP_SERVER_URLS=[{"name":"mcp-example","url":"http://127.0.0.1:8000/sse"}]
-
-# Skills 发布到 Hub（可选）
-SKILL_HUB=
-SKILL_HUB_PROXY_SECRET=
-
-# 飞书登录（可选）
-FEISHU_APP_ID=
-FEISHU_REDIRECT_URI=http://localhost:3000/auth/feishu/callback
-FEISHU_APP_SECRET=
-FEISHU_DEFAULT_PASSWORD=Feishu@123456
-```
-
-## 常用命令
-
-```bash
-# 开发
-bun run dev
-
-# 构建与启动
-bun run build
-bun run start
-
-# 类型检查
-bun run typecheck:web
-bun run typecheck:v2chat
-bun run typecheck:agent-now
-bun run typecheck:queryengine-now
-
-# 测试
-bun run test:workspace
-bun run test:agent
-bun run test:regression:saas-runtime
-```
-
-## Docker 部署
+在同一份 `.env` 中设置 `AGENT_SANDBOX_EXEC_TOKEN`，供 Web 与沙盒服务验证调用。MongoDB 和对象存储需要从容器网络可达。
 
 ```bash
 docker compose up -d --build
 ```
 
-默认 `docker-compose.yml` 中：
+默认 Web 入口为 [localhost:18367](http://localhost:18367)。服务和卷挂载见 [docker-compose.yml](docker-compose.yml)。
 
-- Web 暴露端口：`18367 -> 3000`
-- Sandbox 服务：`18080` 与 `18091`
+## 开发与测试
 
-## 项目结构（精简）
-
-```text
-src/pages/          页面与 API Route
-src/server/         服务端核心逻辑（auth / agent / skills / storage）
-src/features/       业务模块
-src/components/     UI 组件
-skills/             本地技能目录
-config/             模型与系统配置
-data/               本地项目模板与运行数据
+```bash
+bun run typecheck
+bun run test:agent
+bun run build
 ```
 
-## 常见问题
+| 目录 | 内容 |
+| --- | --- |
+| `src/agent/` | 会话运行、工具、子智能体委派、上下文压缩与沙盒适配 |
+| `src/features/chat/` | 对话时间线、输入框、文件和交互卡片 |
+| `src/pages/api/`、`src/server/` | API、身份验证、项目存储与模型接入 |
+| `projects/` | 沙盒服务、本机连接器与设备端 |
+| `skills/`、`data/project-templates/` | 内置技能与项目模板 |
 
-- 登录后被重定向回登录页
-  - 本地 HTTP 环境将 `AUTH_COOKIE_SECURE=false`
-- 聊天接口提示模型鉴权失败
-  - 检查 `AIPROXY_API_TOKEN` 或 `CHAT_API_KEY`
-- 上传/附件异常
-  - 检查 `STORAGE_*` 是否完整、bucket 权限是否正确
+进一步阅读：[智能体架构](docs/agent-architecture.md) · [上下文管理](docs/context-engineering.md)。
 
-## License
-
-Apache-2.0
+项目许可：Apache-2.0。

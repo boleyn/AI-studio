@@ -24,7 +24,7 @@ const PermissionApprovalCard = ({
     </Text>
     <Flex gap={2} justify="flex-end" mt={2.5}>
       <Button
-        colorScheme="primary"
+        bg="#262626" color="white" borderRadius="full" _hover={{ bg: "#414141" }}
         h="30px"
         isDisabled={Boolean(interaction.permissionApprovalSubmitting || !interaction.onPermissionApprovalSelect)}
         isLoading={Boolean(interaction.permissionApprovalSubmitting)}
@@ -41,8 +41,8 @@ const PermissionApprovalCard = ({
         允许
       </Button>
       <Button
-        borderColor="red.300"
-        color="red.700"
+        borderColor="#dedede"
+        color="#444"
         h="30px"
         isDisabled={Boolean(interaction.permissionApprovalSubmitting || !interaction.onPermissionApprovalSelect)}
         onClick={() =>
@@ -55,7 +55,7 @@ const PermissionApprovalCard = ({
         }
         size="sm"
         variant="outline"
-        _hover={{ bg: "red.50", borderColor: "red.400" }}
+        _hover={{ bg: "#f4f4f4" }}
       >
         拒绝
       </Button>

@@ -128,6 +128,9 @@ const ChatPanelView = () => {
               if (element) element.scrollTop = element.scrollHeight;
             }} />
         )}
+        {context.chatMode === "goal" && context.goalStatus && (
+          <Text role="status" fontSize="sm" noOfLines={2} mb={2} title={context.goalStatus}>{context.goalStatus}</Text>
+        )}
         <ChatInteractionSurface
           interaction={context.chatInteractionContextValue}
         />

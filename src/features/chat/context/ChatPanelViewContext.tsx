@@ -28,7 +28,7 @@ export type ChatPanelViewContextValue = {
   modelOptions: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }>;
   modelGroups: Array<{ id: "user" | "system"; label: string; options: Array<{ value: string; label: string; channel: string; scope?: "user" | "system"; icon?: string; reasoning?: boolean }> }>;
   onChangeModel: (nextModel: string) => void;
-  onChangeMode: (mode: "default" | "plan") => void;
+  onChangeMode: (mode: "default" | "plan" | "goal") => void;
   onDeleteAllConversations: () => void;
   onDeleteConversation: (id: string) => void;
   onNewConversation: () => void;
@@ -51,7 +51,8 @@ export type ChatPanelViewContextValue = {
   streamingMessageId: string | null;
   thinkingEnabled: boolean;
   reasoningEffort: ReasoningEffortLevel;
-  chatMode: "default" | "plan";
+  goalStatus: string;
+  chatMode: "default" | "plan" | "goal";
   selectedModelSupportsReasoning?: boolean;
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;

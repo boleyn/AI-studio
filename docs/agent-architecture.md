@@ -1,4 +1,4 @@
-# AI Studio Agent 核心架构
+# Bore Agent（伯仁）核心架构
 
 本项目采用 Hermes 的工具注册、插件贡献、技能渐进加载和 gateway 编排思路，以 TypeScript 实现，运行于 Next.js Node 服务端。不是 Python Hermes 插件的二进制兼容层。
 

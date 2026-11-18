@@ -1,6 +1,6 @@
 import { MemoryTool } from "../memory/tool";
 import { compileProjectTool } from "./builtin/compileProjectTool";
-import { AgentTool, AgentTaskTool } from "./builtin/delegationTool";
+import { AgentTool, AgentTaskTool } from "../delegation/tools";
 import { ReadTool, WriteTool, EditTool, GlobTool, GrepTool } from "./builtin/fileTools";
 import { TodoWriteTool, updatePlanTool, AskUserQuestionTool, ExitPlanModeTool } from "./builtin/planningTools";
 import { SkillTool } from "./builtin/skillTool";

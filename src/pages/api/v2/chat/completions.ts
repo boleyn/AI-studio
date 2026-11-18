@@ -1,4 +1,4 @@
-import { loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
+import { loadConversationGoal, saveConversationGoal, loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type {
@@ -40,6 +40,7 @@ import {
 import { SdkStreamEventEnum, type SdkStreamEventName } from "@shared/network/sdkStreamEvents";
 import { sendSseEvent, startSse, startSseHeartbeat } from "@server/http/sse";
 import { getObjectFromStorage, normalizeStorageKey } from "@server/storage/s3";
+import { saveBackgroundUsage } from "@server/usage/modelUsageEventStorage";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type RequestBodyMessage = {
@@ -718,6 +719,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const checkpoint = conversationId ? await loadAgentContext(token, conversationId, persistedHistoryMessages) : undefined;
     const runResult = await runAgentGateway({
       checkpoint,
+      previousGoal: permissionMode === "goal" && conversationId ? await loadConversationGoal(token, conversationId) : undefined,
+      persistGoal: conversationId ? goal => saveConversationGoal(token, conversationId, goal) : undefined,
+      recordBackgroundUsage: (id, usage) => saveBackgroundUsage({ id, token, chatId, modelId: selectedModel, ...usage }),
       currentMessages: incomingAgentMessages,
       token,
       projectName: isProjectToken ? project?.name : skill?.name,
@@ -835,6 +839,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .filter((message) => (message.message?.role || "user") === "user")
         .map(toConversationMessage);
       const assistantStored = toConversationMessage(runResult.assistantMessage);
+      const savedMode = (runResult.assistantMessage.message as { permissionMode?: string })?.permissionMode;
+      assistantStored.additional_kwargs = { ...assistantStored.additional_kwargs, chatMode: savedMode, planModeState: savedMode === "plan" };
       if (isProjectToken && Object.keys(updatedFiles).length > 0) {
         assistantStored.additional_kwargs = {
           ...assistantStored.additional_kwargs,

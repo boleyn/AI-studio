@@ -43,3 +43,14 @@ test("one oversized message is bounded rather than bypassing compression", async
   expect(result.compacted).toBe(true);
   expect(requestTokens(base.systemPrompt, [], result.messages)).toBeLessThan(base.maxContext);
 });
+
+test("successive compactions preserve a previous user constraint even when summarization is offline", async () => {
+  const constraint = "Only modify docs/releases and quote the exact release ID.";
+  const history: ChatCompletionMessageParam[] = [{ role: "user", content: constraint }];
+  const filler: ChatCompletionMessageParam = { role: "assistant", content: "large observation ".repeat(5000) };
+  const one = await compressContextIfNeeded({ ...base, messages: [...history, filler, { role: "user", content: "Check release 41." }] });
+  const two = await compressContextIfNeeded({ ...base, messages: [...one.messages, filler, { role: "user", content: "Continue." }] });
+  expect(two.compacted).toBe(true);
+  expect(two.messages[0].content).toContain(constraint);
+  expect(two.messages.at(-1)?.content).toBe("Continue.");
+});

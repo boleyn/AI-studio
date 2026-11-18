@@ -1,3 +1,4 @@
+import { researchTools } from "../delegation/roles";
 import Ajv, { type ValidateFunction } from "ajv";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import type { ToolContext, ToolDefinition, ToolResult } from "./types";
@@ -33,6 +34,9 @@ export class ToolRegistry {
   }
 
   private accessError(tool: ToolDefinition<any>, ctx: ToolAccessContext): string | undefined {
+    if (tool.name === "ExitPlanMode" && ctx.permissionMode !== "plan") return "Plan mode required.";
+    if (tool.name === "update_goal" && ctx.isSubagent) return "Only the parent can close a goal.";
+    if (ctx.isSubagent && ctx.permissionMode === "plan" && !researchTools.has(tool.name)) return "Research subagents can only use read-only research tools.";
     if (ctx.permissionMode === "plan" && !tool.readOnly) return `Tool "${tool.name}" is disabled in plan mode (read-only).`;
     if (ctx.isSubagent && ["AskUserQuestion", "ExitPlanMode"].includes(tool.name)) return "Subagents must report questions to the parent instead of opening user interactions.";
     if (ctx.isSubagent && tool.toolset === "delegation") return "Nested subagent delegation is disabled.";

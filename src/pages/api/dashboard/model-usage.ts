@@ -177,13 +177,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     let visionUsageTrendRows: VisionUsageTrendAggRow[] = [];
 
     const recordedRun = "$additional_kwargs.sdkMessage.message.runUsage";
-    const recordedCalls = { $ifNull: [`${recordedRun}.calls`, 1] };
-    const recordedTokens = { $ifNull: [`${recordedRun}.totalTokens`, "$additional_kwargs.contextWindow.usedTokens", 0] };
+    const directRun = "$additional_kwargs.sdkMessage.message.directUsage";
+    const recordedCalls = { $ifNull: [`${directRun}.calls`, `${recordedRun}.calls`, 1] };
+    const recordedTokens = { $ifNull: [`${directRun}.totalTokens`, `${recordedRun}.totalTokens`, "$additional_kwargs.contextWindow.usedTokens", 0] };
 
     if (tokens.length > 0) {
       const db = await getMongoDb();
       const itemCol = db.collection("conversation_items");
       const usageEventCol = db.collection("model_usage_events");
+      const backgroundRows = {
+        $unionWith: { coll: "model_usage_events", pipeline: [
+          { $match: { source: "background_agent", token: { $in: tokens } } },
+          { $project: { time: 1, additional_kwargs: {
+            contextWindow: { model: "$modelId" },
+            sdkMessage: { message: { directUsage: { calls: "$calls", totalTokens: "$usedTokens" } } },
+          } } },
+        ] },
+      };
       usageRows = (await itemCol
         .aggregate([
           {
@@ -193,6 +203,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
               "additional_kwargs.contextWindow.model": { $type: "string", $ne: "" },
             },
           },
+          backgroundRows,
           {
             $group: {
               _id: "$additional_kwargs.contextWindow.model",
@@ -203,7 +214,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
                   $cond: [
                     { $isNumber: "$additional_kwargs.contextWindow.usedPercent" },
                     "$additional_kwargs.contextWindow.usedPercent",
-                    0,
+                    null,
                   ],
                 },
               },
@@ -222,6 +233,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
               "additional_kwargs.contextWindow.model": { $type: "string", $ne: "" },
             },
           },
+          backgroundRows,
           {
             $project: {
               modelId: "$additional_kwargs.contextWindow.model",

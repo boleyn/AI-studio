@@ -38,7 +38,8 @@ export type SubagentRunner = (params: {
 
 export type ToolContext = {
   backgroundTasks?: {
-    start: (prompt: string) => Promise<unknown>;
+    wait: (id: string, signal?: AbortSignal) => Promise<unknown>;
+    start: (prompt: string, role: string, parentMode: string) => Promise<unknown>;
     list: () => Promise<unknown>;
     get: (id: string) => Promise<unknown>;
     cancel: (id: string) => Promise<unknown>;

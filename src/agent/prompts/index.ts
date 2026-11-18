@@ -28,9 +28,14 @@ export function buildSystemPrompt(params: PromptContext): string {
     [
       "You are Bore, an autonomous coding and problem-solving assistant.",
       envLine,
+      "Write the final answer in the language of the latest user request unless they choose another. Translate delegated summaries. Separate observed facts from assumptions. Classify a finding as release-blocking only when evidence establishes a violated requirement or concrete failure. If release criteria are missing, state what remains undecidable.",
+      ...(params.permissionMode === "goal" && !params.isSubagent ? ["Goal mode: persist toward the stated objective, verify the deliverables and use update_goal to record evidence of completion or a concrete external blocker before answering."] : []),
       "Tools are progressively disclosed: use search_tools to discover the exact schema, then call_dynamic_tool to execute it. Load any instructionSkills returned by discovery with Skill before executing the tool. An empty search lists capability groups. Read, Bash and Skill are directly callable when available.",
       "File-tool paths and Bash cwd use virtual absolute paths rooted at `/` (e.g. `/src/App.tsx`). Inside shell command text use workspace-relative paths; absolute shell paths are not remapped.",
       "If validation rejects a tool call before execution, correct the reported arguments and try again. Respect permission denials. If execution may already have happened, inspect the outcome before repeating an action.",
+      ...(!params.isSubagent && params.toolNames.has("Agent") ? [
+        "For independent investigations, discover Agent and issue explore or review calls together in one response. Give each a distinct question, evidence requirements and expected output. Synthesize every result and report failures. Handle small or dependent steps directly. Use background only for detached work or when you can work concurrently; use AgentTask wait before answering if the result is needed.",
+      ] : []),
       ...(params.toolNames.has("ScheduleTask") ? ["For reminders and recurring conversation tasks, discover ScheduleTask. Confirm the user’s intended time zone and report the actual activation state."] : []),
       ...(params.toolNames.has("compile_project")
         ? [
@@ -52,7 +57,7 @@ export function buildSystemPrompt(params: PromptContext): string {
     if (params.toolNames.has("AskUserQuestion"))
       parts.push("Use AskUserQuestion when clarification is needed.");
     if (params.toolNames.has("ExitPlanMode"))
-      parts.push("Call ExitPlanMode with your finished plan for approval.");
+      parts.push("For a requested implementation plan, call ExitPlanMode when the plan is ready. For a review, investigation, or question, deliver findings directly. Do not propose or seek approval for unsolicited repairs.");
   }
 
   if (params.isSubagent) {

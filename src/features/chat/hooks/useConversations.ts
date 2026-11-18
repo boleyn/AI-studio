@@ -24,7 +24,7 @@ export interface UseConversationsResult {
   activeConversation: Conversation | null;
   isLoadingConversation: boolean;
   isInitialized: boolean;
-  loadConversation: (id: string) => Promise<void>;
+  loadConversation: (id: string, options?: { refresh?: boolean }) => Promise<void>;
   createNewConversation: () => Promise<Conversation | null>;
   ensureConversation: () => Promise<Conversation | null>;
   updateConversationTitle: (id: string, title: string) => void;
@@ -82,15 +82,15 @@ export function useConversations(
   }, [token]);
 
   const loadConversation = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { refresh?: boolean }) => {
       if (!token) return;
-      if (activeConversationIdRef.current === id) return;
+      if (activeConversationIdRef.current === id && !options?.refresh) return;
       if (loadingConversationIdRef.current === id) return;
       loadingConversationIdRef.current = id;
       setIsLoadingConversation(true);
       try {
         const conversation = await getConversation(token, id);
-        if (conversation) {
+        if (conversation && loadingConversationIdRef.current === id) {
           activeConversationIdRef.current = conversation.id;
           setActiveConversation(conversation);
           setConversations((prev) => {
@@ -116,8 +116,10 @@ export function useConversations(
           }
         }
       } finally {
-        setIsLoadingConversation(false);
-        loadingConversationIdRef.current = null;
+        if (loadingConversationIdRef.current === id) {
+          setIsLoadingConversation(false);
+          loadingConversationIdRef.current = null;
+        }
       }
     },
     [queryConversationId, router, token]

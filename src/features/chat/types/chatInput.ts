@@ -109,7 +109,7 @@ export interface ChatInputProps {
   thinkingEnabled?: boolean;
   reasoningEffort?: ReasoningEffortLevel;
   showThinkingToggle?: boolean;
-  mode?: "default" | "plan";
+  mode?: "default" | "plan" | "goal";
   thinkingTooltipEnabled?: string;
   thinkingTooltipDisabled?: string;
   selectedSkill?: string;
@@ -123,7 +123,7 @@ export interface ChatInputProps {
   prefillVersion?: number;
   addFileRequest?: { path: string; version: number } | null;
   onChangeModel: (model: string) => void;
-  onChangeMode?: (mode: "default" | "plan") => void;
+  onChangeMode?: (mode: "default" | "plan" | "goal") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;
   onChangeReasoningEffort?: (effort: ReasoningEffortLevel) => void;
   onChangeSelectedSkill?: (skillName?: string) => void;

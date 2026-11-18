@@ -11,6 +11,15 @@ type ModelUsageEventDoc = {
   source: "image_vision";
 };
 
+export async function saveBackgroundUsage(input: { id: string; token: string; chatId: string; modelId: string; calls: number; totalTokens: number }) {
+  const db = await getMongoDb();
+  await db.collection<{ _id: string; token: string; chatId: string; source: string; modelId: string; calls: number; usedTokens: number; time: Date }>(MODEL_USAGE_EVENT_COLLECTION).updateOne(
+    { _id: input.id },
+    { $setOnInsert: { token: input.token, chatId: input.chatId, source: "background_agent", modelId: input.modelId, calls: input.calls, usedTokens: input.totalTokens, time: new Date() } },
+    { upsert: true },
+  );
+}
+
 const getModelUsageEventCollection = async () => {
   const db = await getMongoDb();
   const col = db.collection<ModelUsageEventDoc>(MODEL_USAGE_EVENT_COLLECTION);

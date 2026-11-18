@@ -1,15 +1,22 @@
-import { useEffect, useState } from "react";
-import { Box, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
-import { Plus } from "lucide-react";
-import { getConversation } from "@features/chat/services/conversations";
+import { Box, Flex, Text, VStack } from "@chakra-ui/react";
+import { Bot } from "lucide-react";
 import { buildDownloadUrl } from "@features/chat/services/files";
-import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
+import type { ConversationResources } from "@features/chat/components/ChatPanel";
 import { ArtifactFileIcon } from "../workspace/ArtifactFileIcon";
+
+const agentStatus = {
+  pending: "等待中",
+  in_progress: "运行中",
+  completed: "已完成",
+  error: "失败",
+  interrupted: "已中断",
+};
 
 type FloatingResourcesCardProps = {
   token: string;
   conversationId?: string;
   files: Record<string, { code: string }>;
+  resources?: ConversationResources;
   onSelectFile: (path: string) => void;
 };
 
@@ -17,76 +24,21 @@ export default function FloatingResourcesCard({
   token,
   conversationId,
   files,
+  resources,
   onSelectFile,
 }: FloatingResourcesCardProps) {
   const paths = Object.keys(files).sort();
-  const [sources, setSources] = useState<UploadedFileArtifact[]>([]);
-
-  useEffect(() => {
-    if (!token || !conversationId) {
-      setSources([]);
-      return;
-    }
-    let active = true;
-    void getConversation(token, conversationId)
-      .then((conversation) => {
-        if (!active) return;
-        const attachments = new Map<string, UploadedFileArtifact>();
-        for (const message of conversation?.messages ?? []) {
-          if (message.role !== "user" || !message.artifact || typeof message.artifact !== "object") {
-            continue;
-          }
-          const msgFiles = (message.artifact as { files?: UploadedFileArtifact[] }).files;
-          if (!Array.isArray(msgFiles)) continue;
-          for (const file of msgFiles) {
-            if (file?.storagePath && file.name) attachments.set(file.storagePath, file);
-          }
-        }
-        setSources([...attachments.values()]);
-      })
-      .catch(() => {
-        if (active) setSources([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, [token, conversationId]);
+  const sources = resources?.files ?? [];
+  const agents = resources?.agents ?? [];
 
   return (
-    <Box
-      position="absolute"
-      top={2}
-      right={4}
-      w="256px"
-      maxH="calc(100dvh - 100px)"
-      overflowY="auto"
-      bg="white"
-      borderRadius="18px"
-      border="1px solid"
-      borderColor="stroke.subtle"
-      boxShadow="0 8px 28px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.03)"
-      p={4}
-      zIndex={10}
-    >
+    <Box maxH="calc(100dvh - 100px)" overflowY="auto" p={4}>
       <VStack align="stretch" spacing={4}>
         {/* 输出 */}
         <Box>
-          <HStack justify="space-between" mb={2}>
-            <Text fontSize="13px" fontWeight="500" color="ink.secondary">
-              输出
-            </Text>
-            <IconButton
-              aria-label="展开输出列表"
-              icon={<Plus size={14} color="#8f8f8f" />}
-              size="xs"
-              variant="ghost"
-              h="22px"
-              minW="22px"
-              onClick={() => {
-                if (paths[0]) onSelectFile(paths[0]);
-              }}
-            />
-          </HStack>
+          <Text fontSize="sm" color="ink.secondary" mb={2}>
+            输出
+          </Text>
 
           {paths.length > 0 ? (
             <VStack align="stretch" spacing={1}>
@@ -119,19 +71,16 @@ export default function FloatingResourcesCard({
             </VStack>
           ) : (
             <Text fontSize="13px" color="ink.muted" px={0.5}>
-              创建输出内容
+              暂无输出
             </Text>
           )}
         </Box>
 
         {/* 来源 */}
         <Box>
-          <HStack justify="space-between" mb={2}>
-            <Text fontSize="13px" fontWeight="500" color="ink.secondary">
-              来源
-            </Text>
-            <Plus size={14} color="#8f8f8f" />
-          </HStack>
+          <Text fontSize="sm" color="ink.secondary" mb={2}>
+            来源
+          </Text>
 
           {sources.length > 0 && conversationId ? (
             <VStack align="stretch" spacing={1}>
@@ -162,7 +111,53 @@ export default function FloatingResourcesCard({
             </VStack>
           ) : (
             <Text fontSize="13px" color="ink.muted" px={0.5}>
-              附加文件或连接应用
+              暂无来源
+            </Text>
+          )}
+        </Box>
+        <Box borderTopWidth="1px" borderColor="stroke.subtle" pt={3}>
+          <Text fontSize="sm" color="ink.secondary" mb={2}>
+            子智能体
+          </Text>
+          {agents.length ? (
+            <VStack
+              as="ul"
+              align="stretch"
+              listStyleType="none"
+              spacing={2}
+              m={0}
+            >
+              {agents.map((agent) => (
+                <Flex
+                  as="li"
+                  key={agent.id}
+                  align="center"
+                  gap={2}
+                  fontSize="xs"
+                >
+                  <Box
+                    color={
+                      agent.status === "completed"
+                        ? "green.600"
+                        : "ink.secondary"
+                    }
+                    flexShrink={0}
+                    aria-hidden="true"
+                  >
+                    <Bot size={15} />
+                  </Box>
+                  <Text flex="1" noOfLines={1} title={agent.label}>
+                    {agent.label}
+                  </Text>
+                  <Text color="ink.secondary" flexShrink={0}>
+                    {agentStatus[agent.status]}
+                  </Text>
+                </Flex>
+              ))}
+            </VStack>
+          ) : (
+            <Text fontSize="xs" color="ink.secondary">
+              暂无子智能体
             </Text>
           )}
         </Box>

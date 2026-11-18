@@ -43,6 +43,7 @@ type ConfigModelItem = {
   protocol?: unknown;
   baseUrl?: unknown;
   key?: unknown;
+  keyEnv?: unknown;
   maxContext?: unknown;
   maxTemperature?: unknown;
   reasoning?: unknown;
@@ -138,7 +139,9 @@ const parseModels = (value: unknown) => {
         key:
           typeof record.key === "string" && record.key.trim()
             ? record.key.trim()
-            : undefined,
+            : typeof record.keyEnv === "string" && record.keyEnv.trim()
+              ? process.env[record.keyEnv.trim()]?.trim() || undefined
+              : undefined,
         maxContext: toNumber(record.maxContext),
         maxTemperature: toNumber(record.maxTemperature),
         reasoning: toBoolean(record.reasoning),

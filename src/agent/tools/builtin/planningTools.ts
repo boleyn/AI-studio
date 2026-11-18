@@ -114,7 +114,7 @@ export const AskUserQuestionTool = defineTool<{ questions: Question[] }>({
   toolset: "planning",
   readOnly: true,
   description:
-    "Ask the user one or more clarifying questions (optionally with multiple-choice options) and wait for the answers. Use only when truly blocked by ambiguity.",
+    "Ask the user one or more clarifying questions (optionally with single-select options and a free-text answer) and wait for the answers. Use only when truly blocked by ambiguity.",
   parameters: {
     type: "object",
     properties: {
@@ -171,12 +171,12 @@ export const ExitPlanModeTool = defineTool<{ plan?: string }>({
   },
   async handler(input, { emit, toolUseId, requestInteraction }) {
     const plan = typeof input.plan === "string" ? input.plan.trim() : "";
-    const payload = { action: "exit", title: "计划已完成，是否进入执行？", ...(plan ? { description: plan.slice(0, 1200) } : {}) };
+    const payload = { action: "exit", title: "计划已完成，是否进入执行？", ...(plan ? { description: plan } : {}) };
     emit("control", { interaction: { type: "plan_approval", requestId: toolUseId, payload } });
-    const decision = await requestInteraction("plan_approval", { plan });
+    const decision = await requestInteraction("plan_approval", { ...payload, plan });
     if (!decision) return { content: "User interaction was cancelled before a response was received.", isError: true };
     if (decision.decision === "reject") {
-      return { content: decision.note || "User rejected the current plan. Refine your plan and ask again.", isError: true };
+      return { content: decision.note || "The user declined execution. Stay read-only and wait for further direction.", isError: true };
     }
     return { content: "User has approved your plan. You can now start coding." };
   },

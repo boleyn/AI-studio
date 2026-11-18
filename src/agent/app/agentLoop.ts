@@ -1,3 +1,4 @@
+import { delegationRole, roleInstructions } from "../delegation/roles";
 import { contextLimits } from "../context/budget";
 import { ContextArtifacts } from "../context/artifacts";
 import { createToolDisclosure } from "../tools/disclosure";
@@ -21,6 +22,9 @@ export type InteractionTransport = (request: {
 }) => Promise<InteractionDecision | null>;
 
 export type AgentLoopInput = {
+  onUsage?: (tokens: number) => void;
+  goal?: import("./goal").SessionGoal;
+  executionPrompt?: string;
   backgroundTasks?: import("../tools/types").ToolContext["backgroundTasks"];
   client: AgentModelClient;
   model: string;
@@ -49,6 +53,7 @@ export type AgentLoopResult = {
   assistantBlocks: SdkContentBlock[];
   usage?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
   runUsage: { calls: number; totalTokens: number };
+  permissionMode: string;
   pendingInteraction: boolean;
   stopReason: string | null;
 };
@@ -80,6 +85,7 @@ const visibleCall = (name: string, args: unknown) => {
 };
 
 export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResult> {
+  input = { ...input };
   const maxContext = input.maxContext ?? getContextWindowForModel(input.model);
   const conversation: ChatCompletionMessageParam[] = [...input.messages];
   const assistantBlocks: SdkContentBlock[] = [];
@@ -92,8 +98,8 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
   const session = new AgentSessionTracker();
   const artifacts = new ContextArtifacts(input.sandbox.fs);
 
-  const disclosedTools = createToolDisclosure(input.registry, input);
-  const openAITools = disclosedTools.toOpenAITools(disclosedTools.available(input));
+  let disclosedTools = createToolDisclosure(input.registry, input);
+  let openAITools = disclosedTools.toOpenAITools(disclosedTools.available(input));
 
   const emitBudget = (promptTokens: number, completionTokens: number) => {
     const tokenBudget = toTokenBudget({ promptTokens, completionTokens, model: input.model, maxContext });
@@ -115,6 +121,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       systemPrompt: input.systemPrompt,
       tools: openAITools,
       artifacts,
+      onSummaryUsage(tokens) { input.onUsage?.(tokens); runUsage.calls++; runUsage.totalTokens += tokens; },
       signal: input.signal,
     });
     if (trimmed.compacted) {
@@ -239,6 +246,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       }
     }
 
+    input.onUsage?.(turnTotalTokens);
     runUsage.calls += 1;
     if (turnUsage) {
       lastUsage = turnUsage;
@@ -257,6 +265,10 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
 
     if (orderedCalls.length === 0) {
       if (turnText) conversation.push({ role: "assistant", content: turnText, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) });
+      if (input.goal?.status === "active" && iteration + 1 < input.maxIterations) {
+        conversation.push({ role: "developer", content: "Continue toward the active goal. Verify remaining work or use update_goal with completion evidence or a concrete blocker." });
+        continue;
+      }
       break;
     }
 
@@ -271,7 +283,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
       })),
     });
 
-    for (const call of orderedCalls) {
+    const executeCall = async (call: AccumulatedToolCall) => {
       const parsedInput = parseJsonLoose(call.arguments) ?? {};
       const display = visibleCall(call.name, parsedInput);
       assistantBlocks.push({
@@ -281,11 +293,19 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         input: (display.input && typeof display.input === "object" ? display.input : {}) as Record<string, unknown>,
       });
 
-      const requestInteraction = (kind: InteractionKind, payload: unknown): Promise<InteractionDecision | null> => {
+      const requestInteraction = async (kind: InteractionKind, payload: unknown): Promise<InteractionDecision | null> => {
         pendingInteraction = true;
-        return input.requestInteraction({
+        const decision = await input.requestInteraction({
           kind, toolName: display.name, toolUseId: call.id, input: payload, signal: input.signal,
         });
+        if (kind === "plan_approval" && display.name === "ExitPlanMode" && decision?.decision === "approve" && !input.isSubagent) {
+          input.permissionMode = "default";
+          input.systemPrompt = input.executionPrompt || input.systemPrompt;
+          disclosedTools = createToolDisclosure(input.registry, input);
+          openAITools = disclosedTools.toOpenAITools(disclosedTools.available(input));
+          input.emit("status", { phase: "mode_changed", mode: "default" });
+        }
+        return decision;
       };
 
       const runSubagent = async (subParams: {
@@ -295,18 +315,24 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         subagentType?: string;
         signal?: AbortSignal;
       }) => {
+        const role = delegationRole(subParams.subagentType, input.permissionMode);
         const subResult = await runAgentLoop({
           ...input,
-          systemPrompt: `${input.systemPrompt}\nRole: isolated subagent. Complete only the delegated task. Return concise findings, exact evidence paths and unresolved issues. Do not assume the parent conversation is available.`,
+          systemPrompt: `${input.systemPrompt}\nRole: isolated subagent. ${roleInstructions[role]}`,
           maxContext: Math.min(maxContext, 64000),
           maxIterations: Math.min(12, input.maxIterations),
           messages: [{ role: "user", content: subParams.prompt }],
+          goal: undefined,
           isSubagent: true,
           parentToolUseId: subParams.toolUseId,
+          permissionMode: role === "general-purpose" ? input.permissionMode : "plan",
           signal: subParams.signal ?? input.signal,
         });
         runUsage.calls += subResult.runUsage.calls;
         runUsage.totalTokens += subResult.runUsage.totalTokens;
+        if (subResult.messages.at(-1)?.role !== "assistant" || !subResult.assistantText.trim()) {
+          throw new Error("Subagent ended without a final answer; the task may be incomplete.");
+        }
         return subResult.assistantText;
       };
 
@@ -353,11 +379,27 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
         }
       }
 
-      conversation.push({
-        role: "tool",
+      return {
+        role: "tool" as const,
         tool_call_id: call.id,
         content: result.content,
-      });
+      };
+    };
+
+    const isResearch = (call: AccumulatedToolCall) => {
+      const display = visibleCall(call.name, parseJsonLoose(call.arguments));
+      const args = display.input as { background?: boolean; subagent_type?: string } | undefined;
+      return display.name === "Agent" && !args?.background &&
+        delegationRole(args?.subagent_type, input.permissionMode) !== "general-purpose";
+    };
+    // Only adjacent read-only delegations may overlap. Writes and other tools are barriers.
+    for (let index = 0; index < orderedCalls.length;) {
+      const start = index++;
+      if (isResearch(orderedCalls[start])) {
+        while (index < orderedCalls.length && index - start < 2 && isResearch(orderedCalls[index])) index++;
+      }
+      const results = await Promise.all(orderedCalls.slice(start, index).map(executeCall));
+      conversation.push(...results);
     }
   }
 
@@ -371,6 +413,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<AgentLoopResu
     assistantBlocks,
     usage: lastUsage,
     runUsage,
+    permissionMode: input.permissionMode,
     pendingInteraction,
     stopReason,
   };

@@ -129,8 +129,8 @@ export const parseToolPayload = (...candidates: Array<string | undefined>) => {
   return null;
 };
 
-export const derivePlanModeFromMessages = (list: ConversationMessage[]): "default" | "plan" => {
-  let active = false;
+export const derivePlanModeFromMessages = (list: ConversationMessage[]): "default" | "plan" | "goal" => {
+  let active: "default" | "plan" | "goal" = "default";
   for (const message of list) {
     const kwargs =
       message.additional_kwargs && typeof message.additional_kwargs === "object"
@@ -138,8 +138,8 @@ export const derivePlanModeFromMessages = (list: ConversationMessage[]): "defaul
         : null;
     if (!kwargs) continue;
     if (typeof kwargs.planModeState === "boolean") {
-      active = kwargs.planModeState;
+      active = kwargs.chatMode === "goal" ? "goal" : kwargs.planModeState ? "plan" : "default";
     }
   }
-  return active ? "plan" : "default";
+  return active;
 };

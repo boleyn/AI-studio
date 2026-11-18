@@ -20,6 +20,11 @@ import {
   MenuItem,
   MenuList,
   Spinner,
+  Popover,
+  PopoverBody,
+  PopoverContent,
+  PopoverTrigger,
+  Portal,
   Text,
   Textarea,
   Tooltip,
@@ -42,7 +47,6 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRight,
   Pencil,
   Plus,
   Search,
@@ -60,11 +64,11 @@ import WorkspaceRuntimeModal, {
 } from "./agent-workspace/WorkspaceRuntimeModal";
 import ProjectSettingsModal from "./agent-workspace/ProjectSettingsModal";
 import ProjectsDirectoryView from "./agent-workspace/ProjectsDirectoryView";
+import type { Schedule } from "@/shared/schedules/types";
 import SchedulesView from "./agent-workspace/SchedulesView";
 import FloatingResourcesCard from "./agent-workspace/FloatingResourcesCard";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import type { UploadedFileArtifact } from "@features/chat/types/fileArtifact";
-import ChatPanel from "@features/chat/components/ChatPanel";
+import ChatPanel, { type ConversationResources } from "@features/chat/components/ChatPanel";
 import { useAuth } from "../contexts/AuthContext";
 
 async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -133,8 +137,8 @@ export default function AgentWorkspace({
   const [showAllConvsByProject, setShowAllConvsByProject] = useState<Record<string, boolean>>({});
 
   // 右侧浮动资源卡（输出 / 来源）与文件预览抽屉
-  const [floatingResourcesOpen, setFloatingResourcesOpen] = useState(true);
-  const [conversationSources, setConversationSources] = useState<{ token: string; conversationId: string; files: UploadedFileArtifact[] }>();
+  const [floatingResourcesOpen, setFloatingResourcesOpen] = useState(false);
+  const [conversationResources, setConversationResources] = useState<ConversationResources>();
   const [filesDrawerOpen, setFilesDrawerOpen] = useState(false);
   const [filesByProject, setFilesByProject] = useState<Record<string, Record<string, { code: string }>>>(
     initialProjectToken ? { [initialProjectToken]: initialFiles } : {},
@@ -187,6 +191,14 @@ export default function AgentWorkspace({
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects">("chat");
+  const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
+  const selectScheduleConversation = useCallback((task: typeof scheduleConversation) => {
+    setScheduleConversation(task);
+    if (!task) return;
+    setNewConvSignal(0);
+    setActiveToken(task.token);
+    setActiveChatId(task.chatId);
+  }, []);
   const [pinnedProjectTokens, setPinnedProjectTokens] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -534,6 +546,8 @@ export default function AgentWorkspace({
     [workspaceFiles],
   );
   const artifactCount = Object.keys(artifactFiles).length;
+  const currentResources = conversationResources?.token === activeToken &&
+    conversationResources.conversationId === visibleChatId ? conversationResources : undefined;
 
   const recentConversations = useMemo(() => {
     const items: Array<ConversationItem & { projectToken: string; projectName: string }> = [];
@@ -550,6 +564,260 @@ export default function AgentWorkspace({
       .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
       .slice(0, 8);
   }, [projects]);
+
+  const conversationPane = (
+      <Flex flex="1" direction="column" minW={0} bg="#ffffff">
+        {activeNav !== "schedules" && (
+        <Flex
+          minH="52px"
+          flexWrap="wrap"
+          gap={2}
+          py={2}
+          px={4}
+          align="center"
+          justify="space-between"
+          flexShrink={0}
+        >
+          <HStack spacing={2} minW={0}>
+            {!sidebarOpen ? (
+              <IconButton
+                aria-label="展开侧边栏"
+                icon={<PanelLeftOpen size={17} />}
+                size="sm"
+                variant="ghost"
+                onClick={() => setSidebarOpen(true)}
+              />
+            ) : null}
+            {activeProject ? (
+              <Menu placement="bottom-start" isLazy>
+                <MenuButton
+                  as={Button}
+                  size="sm"
+                  variant="ghost"
+                  px={2}
+                  fontWeight="600"
+                  fontSize="14px"
+                  color="ink.primary"
+                  leftIcon={
+                    activeRuntime.sandboxKind === "connector" ? (
+                      <HardDrive size={15} />
+                    ) : (
+                      <Folder size={15} />
+                    )
+                  }
+                  rightIcon={<ChevronDown size={14} color="#8f8f8f" />}
+                >
+                  <Text noOfLines={1} maxW={{ base: "140px", md: "240px" }}>
+                    {activeProject.name}
+                  </Text>
+                </MenuButton>
+                <MenuList minW="220px">
+                  {projects.map((p) => (
+                    <MenuItem
+                      key={p.token}
+                      fontWeight={p.token === activeProject.token ? "600" : "400"}
+                      bg={p.token === activeProject.token ? "surface.hover" : "transparent"}
+                      icon={<Folder size={14} />}
+                      onClick={() => handleSelectProject(p.token)}
+                    >
+                      <Text noOfLines={1}>{p.name}</Text>
+                    </MenuItem>
+                  ))}
+                  <MenuDivider />
+                  <MenuItem
+                    icon={<Pencil size={14} />}
+                    onClick={() => {
+                      setEditingProject(activeProject);
+                      settingsModal.onOpen();
+                    }}
+                  >
+                    项目设置与说明
+                  </MenuItem>
+                  <MenuItem icon={<FolderPlus size={14} />} onClick={createModal.onOpen}>
+                    新建项目
+                  </MenuItem>
+                </MenuList>
+              </Menu>
+            ) : (
+              <Text fontSize="14px" fontWeight="600" color="ink.primary">
+                请选择或创建项目
+              </Text>
+            )}
+            {activeProject && !sidebarOpen && (
+              <Tooltip label="新建对话">
+                <IconButton
+                  aria-label="新建对话"
+                  icon={<SquarePen size={16} />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleNewConversationInProject(activeProject.token)}
+                />
+              </Tooltip>
+            )}
+          </HStack>
+
+          {activeProject && (
+            <Popover placement="bottom-end" isLazy isOpen={floatingResourcesOpen && !filesDrawerOpen}
+              onOpen={() => {
+                setFilesDrawerOpen(false);
+                setSelectedFilePath("");
+                setFloatingResourcesOpen(true);
+              }}
+              onClose={() => setFloatingResourcesOpen(false)}
+            >
+              <PopoverTrigger>
+                <IconButton aria-label="会话资源" title={`会话资源 (${artifactCount} 项输出)`}
+                  icon={<SlidersHorizontal size={17} />} size="sm" variant="ghost" borderRadius="lg"
+                  bg={floatingResourcesOpen || filesDrawerOpen ? "surface.active" : "transparent"}
+                />
+              </PopoverTrigger>
+              <Portal>
+                <PopoverContent aria-label="会话资源" w="min(284px, calc(100vw - 24px))" borderRadius="16px"
+                  borderColor="stroke.subtle" shadow="0 6px 20px rgba(0,0,0,0.07)" zIndex="popover"
+                >
+                  <PopoverBody p={0}>
+                    <FloatingResourcesCard
+                      token={activeProject.token}
+                      conversationId={visibleChatId}
+                      files={artifactFiles}
+                      resources={currentResources}
+                      onSelectFile={(path) => {
+                        setFloatingResourcesOpen(false);
+                        setArtifactVersion(undefined);
+                        setSelectedFilePath(path);
+                        setFilesDrawerOpen(true);
+                      }}
+                    />
+                  </PopoverBody>
+                </PopoverContent>
+              </Portal>
+            </Popover>
+          )}
+        </Flex>
+
+        )}
+
+        {/* 对话内容区 + 可选右侧文件抽屉 */}
+        <Flex flex="1" minH={0} overflow="hidden" position="relative">
+          <Box flex="1" minW={0} h="100%" position="relative" zIndex={0}>
+            {activeProject ? (
+              <ChatPanel
+                key={activeProject.token}
+                token={activeProject.token}
+                hideHeader
+                emptyStateTitle="我们要做什么？"
+                hideSkillsManager
+                defaultHeaderTitle={activeProject.name}
+                completionsExtraBody={completionsExtraBody}
+                externalActiveConversationId={activeChatId}
+                externalConversationRevision={activeNav === "schedules" && scheduleConversation
+                  ? `${scheduleConversation.nextAt}:${scheduleConversation.state}:${scheduleConversation.lastResult ?? ""}`
+                  : undefined}
+                externalNewConversationSignal={newConvSignal}
+                onConversationsChanged={() => void fetchProjects()}
+                onConversationResourcesChanged={setConversationResources}
+                onFilesUpdated={(files) => {
+                  setFilesByProject((prev) => ({ ...prev, [activeProject.token]: { ...prev[activeProject.token], ...files } }));
+                }}
+                artifactRevision={artifactRevision}
+                onOpenWorkspaceFile={openWorkspaceFile}
+                fileOptions={fileKeys}
+                height="100%"
+                workspaceComposer={{
+                  runtimeKind: activeRuntime.sandboxKind,
+                  runtimeLabel:
+                    activeRuntime.sandboxKind === "connector"
+                      ? activeRuntime.deviceName || "本地电脑"
+                      : "云电脑",
+                  runtimeDeviceId: activeRuntime.deviceId,
+                  cloudHostStatus,
+                  devices: pairedDevices,
+                  onSelectCloudHost: () => {
+                    handleSaveRuntimeConfig(activeProject.token, {
+                      ...activeRuntime,
+                      sandboxKind: "remote-vm",
+                    });
+                  },
+                  onSelectDeviceHost: (device) => {
+                    void (async () => {
+                      if (activeRuntime.deviceId === device.deviceId && activeRuntime.grantId) {
+                        handleSaveRuntimeConfig(activeProject.token, {
+                          ...activeRuntime,
+                          sandboxKind: "connector",
+                          deviceId: device.deviceId,
+                          deviceName: device.name,
+                        });
+                        return;
+                      }
+                      try {
+                        const res = await apiJson<{
+                          grants?: Array<{
+                            grantId?: string;
+                            deviceId?: string;
+                            workdir?: string;
+                            revoked?: boolean;
+                          }>;
+                        }>("/core/localDevice/grant", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "list", appId: activeProject.token }),
+                        });
+                        const activeGrant = Array.isArray(res?.grants)
+                          ? res.grants.find(
+                              (g) => !g.revoked && g.grantId && g.deviceId === device.deviceId,
+                            )
+                          : undefined;
+                        if (activeGrant?.grantId) {
+                          handleSaveRuntimeConfig(activeProject.token, {
+                            ...activeRuntime,
+                            sandboxKind: "connector",
+                            deviceId: device.deviceId,
+                            deviceName: device.name,
+                            grantId: activeGrant.grantId,
+                            workdir: activeGrant.workdir || activeRuntime.workdir,
+                          });
+                          return;
+                        }
+                      } catch {
+                        // fall through to modal
+                      }
+                      setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
+                      runtimeModal.onOpen();
+                    })();
+                  },
+                  onOpenRuntime: () => {
+                    setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
+                    runtimeModal.onOpen();
+                  },
+                  projectToken: activeProject.token,
+                  projectName: activeProject.name,
+                  projects: projects.map((p) => ({ token: p.token, name: p.name })),
+                  onSelectProject: handleSelectProject,
+                  onCreateProject: createModal.onOpen,
+                }}
+              />
+            ) : (
+              <Flex h="100%" align="center" justify="center" direction="column" gap={3}>
+                <Text color="gray.500" fontSize="14px">
+                  创建一个项目文件夹开始与智能体对话
+                </Text>
+                <Button size="sm" onClick={createModal.onOpen}>
+                  新建项目
+                </Button>
+              </Flex>
+            )}
+          </Box>
+
+          {filesDrawerOpen && (
+            <WorkspaceFilesPanel key={visibleChatId || activeToken} token={activeToken} conversationId={visibleChatId} onSelectVersion={setArtifactVersion} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
+              onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
+              sources={currentResources?.files ?? []}
+              onShowList={() => { setArtifactVersion(undefined); setSelectedFilePath(""); }}
+              onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
+          )}
+        </Flex>
+      </Flex>
+  );
 
   return (
     <Flex h="100dvh" w="100%" overflow="hidden" bg="surface.canvas" color="ink.primary">
@@ -671,6 +939,8 @@ export default function AgentWorkspace({
           chats={projects.flatMap(project => project.conversations.map(chat => ({
             token: project.token, id: chat.id, label: project.name + " / " + chat.title,
           })))}
+          onSelectConversation={selectScheduleConversation}
+          conversation={scheduleConversation && activeProject?.token === scheduleConversation.token ? conversationPane : null}
           onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }}
         />
       )}
@@ -1029,249 +1299,7 @@ export default function AgentWorkspace({
         </Flex>
       ) : null}
 
-      {/* 右侧主对话区 */}
-      <Flex flex="1" direction="column" minW={0} bg="#ffffff">
-        {/* 顶部轻量栏（1:1 对齐 ChatGPT 顶部无边框栏） */}
-        <Flex
-          minH="52px"
-          flexWrap="wrap"
-          gap={2}
-          py={2}
-          px={4}
-          align="center"
-          justify="space-between"
-          flexShrink={0}
-        >
-          <HStack spacing={2} minW={0}>
-            {!sidebarOpen ? (
-              <IconButton
-                aria-label="展开侧边栏"
-                icon={<PanelLeftOpen size={17} />}
-                size="sm"
-                variant="ghost"
-                onClick={() => setSidebarOpen(true)}
-              />
-            ) : null}
-            {activeProject ? (
-              <Menu placement="bottom-start" isLazy>
-                <MenuButton
-                  as={Button}
-                  size="sm"
-                  variant="ghost"
-                  px={2}
-                  fontWeight="600"
-                  fontSize="14px"
-                  color="ink.primary"
-                  leftIcon={
-                    activeRuntime.sandboxKind === "connector" ? (
-                      <HardDrive size={15} />
-                    ) : (
-                      <Folder size={15} />
-                    )
-                  }
-                  rightIcon={<ChevronDown size={14} color="#8f8f8f" />}
-                >
-                  <Text noOfLines={1} maxW={{ base: "140px", md: "240px" }}>
-                    {activeProject.name}
-                  </Text>
-                </MenuButton>
-                <MenuList minW="220px">
-                  {projects.map((p) => (
-                    <MenuItem
-                      key={p.token}
-                      fontWeight={p.token === activeProject.token ? "600" : "400"}
-                      bg={p.token === activeProject.token ? "surface.hover" : "transparent"}
-                      icon={<Folder size={14} />}
-                      onClick={() => handleSelectProject(p.token)}
-                    >
-                      <Text noOfLines={1}>{p.name}</Text>
-                    </MenuItem>
-                  ))}
-                  <MenuDivider />
-                  <MenuItem
-                    icon={<Pencil size={14} />}
-                    onClick={() => {
-                      setEditingProject(activeProject);
-                      settingsModal.onOpen();
-                    }}
-                  >
-                    项目设置与说明
-                  </MenuItem>
-                  <MenuItem icon={<FolderPlus size={14} />} onClick={createModal.onOpen}>
-                    新建项目
-                  </MenuItem>
-                </MenuList>
-              </Menu>
-            ) : (
-              <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                请选择或创建项目
-              </Text>
-            )}
-            {activeProject && !sidebarOpen && (
-              <Tooltip label="新建对话">
-                <IconButton
-                  aria-label="新建对话"
-                  icon={<SquarePen size={16} />}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleNewConversationInProject(activeProject.token)}
-                />
-              </Tooltip>
-            )}
-          </HStack>
-
-          <HStack spacing={2}>
-            <Tooltip label={filesDrawerOpen ? "关闭文件预览" : floatingResourcesOpen ? "收起输出与来源" : `输出与来源 (${artifactCount})`}>
-              <IconButton
-                aria-label="切换输出与来源窗口"
-                icon={<PanelRight size={17} />}
-                size="sm"
-                variant="ghost"
-                bg={floatingResourcesOpen || filesDrawerOpen ? "surface.active" : "transparent"}
-                onClick={() => {
-                  if (filesDrawerOpen) {
-                    setFilesDrawerOpen(false);
-                    setSelectedFilePath("");
-                    setFloatingResourcesOpen(true);
-                  } else {
-                    setFloatingResourcesOpen((v) => !v);
-                  }
-                }}
-              />
-            </Tooltip>
-          </HStack>
-        </Flex>
-
-        {/* 对话内容区 + 可选右侧文件抽屉 */}
-        <Flex flex="1" minH={0} overflow="hidden" position="relative">
-          <Box flex="1" minW={0} h="100%" position="relative" zIndex={0}>
-            {activeProject ? (
-              <ChatPanel
-                key={activeProject.token}
-                token={activeProject.token}
-                hideHeader
-                emptyStateTitle="我们要做什么？"
-                hideSkillsManager
-                defaultHeaderTitle={activeProject.name}
-                completionsExtraBody={completionsExtraBody}
-                externalActiveConversationId={activeChatId}
-                externalNewConversationSignal={newConvSignal}
-                onConversationsChanged={() => void fetchProjects()}
-                onConversationSourcesChanged={setConversationSources}
-                onFilesUpdated={(files) => {
-                  setFilesByProject((prev) => ({ ...prev, [activeProject.token]: { ...prev[activeProject.token], ...files } }));
-                }}
-                artifactRevision={artifactRevision}
-                onOpenWorkspaceFile={openWorkspaceFile}
-                fileOptions={fileKeys}
-                height="100%"
-                workspaceComposer={{
-                  runtimeKind: activeRuntime.sandboxKind,
-                  runtimeLabel:
-                    activeRuntime.sandboxKind === "connector"
-                      ? activeRuntime.deviceName || "本地电脑"
-                      : "云电脑",
-                  runtimeDeviceId: activeRuntime.deviceId,
-                  cloudHostStatus,
-                  devices: pairedDevices,
-                  onSelectCloudHost: () => {
-                    handleSaveRuntimeConfig(activeProject.token, {
-                      ...activeRuntime,
-                      sandboxKind: "remote-vm",
-                    });
-                  },
-                  onSelectDeviceHost: (device) => {
-                    void (async () => {
-                      if (activeRuntime.deviceId === device.deviceId && activeRuntime.grantId) {
-                        handleSaveRuntimeConfig(activeProject.token, {
-                          ...activeRuntime,
-                          sandboxKind: "connector",
-                          deviceId: device.deviceId,
-                          deviceName: device.name,
-                        });
-                        return;
-                      }
-                      try {
-                        const res = await apiJson<{
-                          grants?: Array<{
-                            grantId?: string;
-                            deviceId?: string;
-                            workdir?: string;
-                            revoked?: boolean;
-                          }>;
-                        }>("/core/localDevice/grant", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ action: "list", appId: activeProject.token }),
-                        });
-                        const activeGrant = Array.isArray(res?.grants)
-                          ? res.grants.find(
-                              (g) => !g.revoked && g.grantId && g.deviceId === device.deviceId,
-                            )
-                          : undefined;
-                        if (activeGrant?.grantId) {
-                          handleSaveRuntimeConfig(activeProject.token, {
-                            ...activeRuntime,
-                            sandboxKind: "connector",
-                            deviceId: device.deviceId,
-                            deviceName: device.name,
-                            grantId: activeGrant.grantId,
-                            workdir: activeGrant.workdir || activeRuntime.workdir,
-                          });
-                          return;
-                        }
-                      } catch {
-                        // fall through to modal
-                      }
-                      setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                      runtimeModal.onOpen();
-                    })();
-                  },
-                  onOpenRuntime: () => {
-                    setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                    runtimeModal.onOpen();
-                  },
-                  projectToken: activeProject.token,
-                  projectName: activeProject.name,
-                  projects: projects.map((p) => ({ token: p.token, name: p.name })),
-                  onSelectProject: handleSelectProject,
-                  onCreateProject: createModal.onOpen,
-                }}
-              />
-            ) : (
-              <Flex h="100%" align="center" justify="center" direction="column" gap={3}>
-                <Text color="gray.500" fontSize="14px">
-                  创建一个项目文件夹开始与智能体对话
-                </Text>
-                <Button size="sm" onClick={createModal.onOpen}>
-                  新建项目
-                </Button>
-              </Flex>
-            )}
-          </Box>
-
-          {!filesDrawerOpen && floatingResourcesOpen && activeProject && (
-            <FloatingResourcesCard
-              token={activeProject.token}
-              conversationId={visibleChatId}
-              files={artifactFiles}
-              onSelectFile={(path) => {
-                setArtifactVersion(undefined);
-                setSelectedFilePath(path);
-                setFilesDrawerOpen(true);
-              }}
-            />
-          )}
-
-          {filesDrawerOpen && (
-            <WorkspaceFilesPanel key={visibleChatId || activeToken} token={activeToken} conversationId={visibleChatId} onSelectVersion={setArtifactVersion} version={artifactVersion} files={artifactFiles} selectedPath={selectedFilePath}
-              onRequestRevision={(text) => { setArtifactRevision({ text, onApplied: () => setArtifactRevision(undefined) }); setFilesDrawerOpen(false); }}
-              sources={conversationSources && conversationSources.token === activeToken && conversationSources.conversationId === visibleChatId ? conversationSources.files : []}
-              onShowList={() => { setArtifactVersion(undefined); setSelectedFilePath(""); }}
-              onSelect={(path) => { setArtifactVersion(undefined); setSelectedFilePath(path); }} onClose={() => setFilesDrawerOpen(false)} />
-          )}
-        </Flex>
-      </Flex>
+      {activeNav !== "schedules" && conversationPane}
       </Flex>
 
       {/* 新建项目弹窗 */}

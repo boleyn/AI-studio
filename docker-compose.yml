@@ -8,7 +8,7 @@ services:
       FASTGPT_ENABLE_CODE_SERVER: "false"
       FASTGPT_WORKDIR: /workspace
       FASTGPT_EXEC_PORT: "8091"
-      FASTGPT_EXEC_TOKEN: sandbox-exec-token
+      FASTGPT_EXEC_TOKEN: ${AGENT_SANDBOX_EXEC_TOKEN:?Set AGENT_SANDBOX_EXEC_TOKEN in .env}
       FASTGPT_SANDBOX_UID: "1000"
       FASTGPT_SANDBOX_GID: "1000"
       FASTGPT_SYNC_MAX_FILES: "5000"
@@ -46,45 +46,23 @@ services:
       PIP_TRUSTED_HOST: pypi.mirrors.ustc.edu.cn
       CHAT_MODEL_CONFIG_FILE: config/config.json
 
-      MONGODB_URI: mongodb://myusername:mypassword@10.21.8.6:37017/nextjs_ai_studio?authSource=admin&directConnection=true
-      JWT_SECRET: dev-auth-secret-change-me
-      AUTH_COOKIE_SECURE: "false"
-
-      AIPROXY_API_ENDPOINT: http://10.21.8.6:33006
-      AIPROXY_API_TOKEN: aichat-token
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
 
       AGENT_SKILL_FILE: skills/aistudio-mcp-code-workflow/SKILL.md
-      FEISHU_APP_ID: cli_a9283dab3d4cdcb2
-      FEISHU_REDIRECT_URI: https://aistudio.asiainfo.tech/auth/feishu/callback
-      
-      FEISHU_APP_SECRET: HxxPdVdgN7ILDwY78VlYmfscDmehzqLs
-      FEISHU_DEFAULT_PASSWORD: Feishu@123456
 
       STORAGE_VENDOR: minio
       STORAGE_REGION: us-east-1
-      STORAGE_ACCESS_KEY_ID: minio_admin_9xK2pQw
-      STORAGE_SECRET_ACCESS_KEY: M!n10S3cur32024!XyZ9@Kp7
-      STORAGE_PUBLIC_BUCKET: aichat-public
-      STORAGE_PRIVATE_BUCKET: aichat-private
-      STORAGE_EXTERNAL_ENDPOINT: https://aisrv-minio.asiainfo.tech
-      STORAGE_S3_ENDPOINT: https://aisrv-minio.asiainfo.tech
       STORAGE_S3_FORCE_PATH_STYLE: "true"
       STORAGE_S3_MAX_RETRIES: "3"
       AGENT_SANDBOX_S3_ENABLED: "true"
       AGENT_SANDBOX_S3_PREFIX: agent_sandbox_workspaces
       AGENT_SANDBOX_URL: http://agent-sandbox:8080
       AGENT_SANDBOX_EXEC_URL: http://agent-sandbox:8091/exec
-      AGENT_SANDBOX_EXEC_TOKEN: sandbox-exec-token
+      AGENT_SANDBOX_EXEC_TOKEN: ${AGENT_SANDBOX_EXEC_TOKEN:?Set AGENT_SANDBOX_EXEC_TOKEN in .env}
       AGENT_SANDBOX_SYNC_MAX_FILES: "5000"
       AGENT_SANDBOX_SYNC_MAX_TOTAL_BYTES: "104857600"
       AGENT_SANDBOX_SYNC_MAX_FILE_BYTES: "26214400"
 
-      SKILL_HUB: https://claw.asiainfo.tech
-      # ClawHub one-click edit key validation
-      AI_STUDIO_KEY: d0a88f10bc8e4069020c78c74a1176a7f9f3bb5c90f3f02880cf564234f6e299
-      SKILL_HUB_PROXY_SECRET: ch_81547e7a828f846d80511c4d5ac4a4eefd3f99b1597b293d
-
-      
       # 自动压缩阈值覆盖（默认为根据模型动态计算，设置为 80 可以在使用 80% 上下文时主动触发压缩）
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "80"
 

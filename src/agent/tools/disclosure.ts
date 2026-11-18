@@ -4,7 +4,7 @@ import { ToolRegistry } from "./registry";
 
 // Keep wire schemas stable. Deferred schemas travel in tool results, never at
 // the front of the next request. Execution still uses the authoritative registry.
-const CORE = new Set(["Read", "Bash", "Skill"]);
+const CORE = new Set(["Read", "Bash", "Skill", "update_goal"]);
 
 export function createToolDisclosure(registry: ToolRegistry, access: Pick<ToolContext, "sandbox" | "projectToken" | "permissionMode" | "isSubagent">): ToolRegistry {
   const exposed = new ToolRegistry();

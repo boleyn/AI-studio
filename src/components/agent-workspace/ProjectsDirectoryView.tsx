@@ -102,7 +102,7 @@ export default function ProjectsDirectoryView({
       <Box maxW="980px" mx="auto">
         {/* 顶部标题 + 搜索框 + 创建按钮（1:1 对齐 ChatGPT 项目列表页） */}
         <Flex align="center" justify="space-between" gap={4} mb={7} wrap="wrap">
-          <Text fontSize="22px" fontWeight="600" color="ink.primary">
+          <Text as="h1" fontSize="22px" fontWeight="600" color="ink.primary">
             项目
           </Text>
 
@@ -116,6 +116,8 @@ export default function ProjectsDirectoryView({
                 borderRadius="full"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                type="search"
+                aria-label="搜索项目"
                 placeholder="搜索项目"
                 fontSize="13.5px"
               />
@@ -226,7 +228,7 @@ export default function ProjectsDirectoryView({
                       <Menu placement="bottom-end" isLazy>
                         <MenuButton
                           as={IconButton}
-                          aria-label="更多操作"
+                          aria-label={project.name + "的更多操作"}
                           icon={<MoreHorizontal size={15} />}
                           size="xs"
                           variant="ghost"

@@ -1,3 +1,4 @@
+import { ChatModeOptions, modeOptions } from "./ChatModeOptions";
 import {
   Box,
   Button,
@@ -24,11 +25,10 @@ import {
   Laptop,
   Layers,
   Plus,
-  SlidersHorizontal,
   Square,
 } from "lucide-react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
-import { AgentSkillsIcon, ModeToggleIcon } from "@components/common/Icon";
+import { AgentSkillsIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
 import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -88,6 +88,7 @@ const ChatInput = ({
   onSend,
   onStop,
 }: ChatInputProps) => {
+  const ModeIcon = modeOptions[mode].Icon;
   const { t } = useTranslation();
   const theme = useTheme() as Record<string, any>;
   const chatInputTheme = theme?.workspace?.chatInput || {};
@@ -1036,7 +1037,7 @@ const ChatInput = ({
                         {workspaceComposer.projectName || "项目"}
                       </Text>
                     </MenuButton>
-                    <MenuList minW="190px" maxH="240px" overflowY="auto">
+                    <MenuList minW="160px" maxH="240px" overflowY="auto">
                       {workspaceComposer.projects.map((proj) => (
                         <MenuItem
                           key={proj.token}
@@ -1122,30 +1123,17 @@ const ChatInput = ({
                     variant="ghost"
                     fontSize="12.5px"
                     fontWeight="500"
-                    color={mode === "plan" ? "#b45309" : "#374151"}
-                    bg={mode === "plan" ? "rgba(251, 191, 36, 0.14)" : "transparent"}
-                    _hover={{ bg: mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "#f4f4f5" }}
-                    leftIcon={<SlidersHorizontal size={13} />}
+                    color="#374151"
+                    bg={mode === "default" ? "transparent" : "#f3f3f3"}
+                    _hover={{ bg: "#ededed" }}
+                    leftIcon={<ModeIcon size={15} />}
                     rightIcon={<ChevronRight size={13} color="#9ca3af" />}
                     flexShrink={0}
                   >
-                    {mode === "plan" ? "PLAN 模式" : "模式"}
+                    {modeOptions[mode].label}
                   </MenuButton>
-                  <MenuList minW="190px">
-                    <MenuItem
-                      fontSize="13px"
-                      fontWeight={mode === "default" ? "600" : "400"}
-                      onClick={() => onChangeMode?.("default")}
-                    >
-                      RUN 执行模式（默认）
-                    </MenuItem>
-                    <MenuItem
-                      fontSize="13px"
-                      fontWeight={mode === "plan" ? "600" : "400"}
-                      onClick={() => onChangeMode?.("plan")}
-                    >
-                      PLAN 规划模式（只读）
-                    </MenuItem>
+                  <MenuList minW="160px">
+                    <ChatModeOptions mode={mode} onChangeMode={onChangeMode} />
                     {showThinkingToggle && (
                       <>
                         <MenuDivider />
@@ -1232,47 +1220,14 @@ const ChatInput = ({
                     />
                   </MyTooltip>
                 ) : null}
-                <MyTooltip
-                  fontSize="12px"
-                  label={
-                    mode === "plan"
-                      ? "当前模式: PLAN。点击可切换到 RUN。"
-                      : "当前模式: RUN。点击可切换到 PLAN。"
-                  }
-                  openDelay={120}
-                >
-                  <IconButton
-                    _hover={{ bg: "rgba(0, 0, 0, 0.04)" }}
-                    aria-label={mode === "plan" ? "切换到执行模式" : "切换到计划模式"}
-                    bg="transparent"
-                    border="1px solid transparent"
-                    borderRadius="8px"
-                    h="30px"
-                    icon={
-                      <Flex
-                        align="center"
-                        bg={mode === "plan" ? "rgba(251, 191, 36, 0.22)" : "transparent"}
-                        border="1px solid"
-                        borderColor={mode === "plan" ? "rgba(180, 83, 9, 0.55)" : "#CBD5E1"}
-                        borderRadius="999px"
-                        h="20px"
-                        justify="center"
-                        w="20px"
-                      >
-                        <Box
-                          as={ModeToggleIcon}
-                          color={mode === "plan" ? "orange.700" : "myGray.600"}
-                          h="14px"
-                          w="14px"
-                        />
-                      </Flex>
-                    }
-                    isDisabled={Boolean(isSending || isSubmitting)}
-                    minW="30px"
-                    onClick={() => onChangeMode?.(mode === "plan" ? "default" : "plan")}
-                    variant="ghost"
-                  />
-                </MyTooltip>
+                <Menu>
+                  <MenuButton as={Button} size="sm" variant="ghost" isDisabled={Boolean(isSending || isSubmitting)} aria-label="选择工作模式" leftIcon={<ModeIcon size={15} />}>
+                    {mode === "goal" ? "目标" : mode === "plan" ? "计划" : "执行"}
+                  </MenuButton>
+                  <MenuList>
+                    <ChatModeOptions mode={mode} onChangeMode={onChangeMode} />
+                  </MenuList>
+                </Menu>
               </>
             )}
             {hasUploadingFiles ? (
