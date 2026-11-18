@@ -93,10 +93,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const block of blocks) if (block?.type === "attachment" && !block.library_item_id) attachment(block.source_storage_path || block.storage_path, block.name);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1,appearance:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
-    rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",path:page.originalName || id,token:"",project:"",chatId:"",conversation:"",
+    rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",fromTemplate:page.fromTemplate,path:page.originalName || id,token:"",project:"",chatId:"",conversation:"",
       ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:auth.user.displayName || auth.user.username} : {}),
       permission:"所有者",appearance:page.appearance,reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }

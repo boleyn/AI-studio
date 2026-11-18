@@ -11,6 +11,7 @@ import { addLibraryAttachments } from "../services/libraryAttachment";
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
   if (item.conversation) return "来自会话「" + item.conversation + "」";
+  if (item.fromTemplate) return "在资料空间中创建";
   if (item.directUpload) return "上传到资料空间";
   return item.kind === "生成" ? "会话生成的文件" : item.kind;
 }

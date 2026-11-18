@@ -28,6 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "POST") return res.setHeader("Allow","POST, GET").status(405).end();
   const name = req.query.name;
   if (typeof name !== "string" || !name.trim() || name.length > 255 || /[\/\\\x00-\x1f]/.test(name)) return res.status(400).end();
+  const fromTemplate = req.query.fromTemplate === "1";
   let reference: ImageReference | undefined;
   if (req.query.referenceType !== undefined) {
     const type = referenceTypes.find(value => value === req.query.referenceType);
@@ -52,11 +53,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const time = new Date().toISOString();
   await uploadObjectToStorage({key:storageKey,body:Buffer.concat(chunks),contentType:"application/octet-stream"});
   try {
-    await items.insertOne({_id,owner,name,time,createdAt:time,size,reference,folderId,kind:"上传",storageKey,originalName:name});
+    await items.insertOne({_id,owner,name,time,createdAt:time,size,fromTemplate,reference,folderId,kind:"上传",storageKey,originalName:name});
   } catch (error) {
     await deleteStorageObjects({keys:[storageKey]});
     throw error;
   }
-  const file:LibraryFile = {id,kind:"上传",directUpload:true,createdAt:time,createdBy:auth.user.displayName || auth.user.username,permission:"所有者",size,reference,name,path:name,time,folderId,token:"",project:"",conversation:"",chatId:""};
+  const file:LibraryFile = {id,kind:"上传",directUpload:true,fromTemplate,createdAt:time,createdBy:auth.user.displayName || auth.user.username,permission:"所有者",size,reference,name,path:name,time,folderId,token:"",project:"",conversation:"",chatId:""};
   return res.status(201).json(file);
 }

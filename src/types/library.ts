@@ -10,6 +10,7 @@ export interface LibraryFile {
   sharedPage?: boolean;
   reference?: ImageReference;
   directUpload?: boolean;
+  fromTemplate?: boolean;
   createdAt?: string;
   firstSeenAt?: string;
   createdBy?: string;
