@@ -38,7 +38,12 @@ export default function LibraryFileViewer({item,download,share,close,openSource,
     return () => controller.abort();
   },[item,markdown,plain,attempt]);
   return <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
-    if (event.key === "Escape" && !event.defaultPrevented) close();
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    // The PPTX viewer handles its own Escape on document after React bubbling.
+    const inSlideshow = event.nativeEvent.composedPath().some(node =>
+      node instanceof Element && node.classList.contains("flyfish-pptx-presentation")
+    );
+    if (!inSlideshow) close();
   }}>
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
       <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={item.name+" 的文件操作"}>
