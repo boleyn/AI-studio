@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Cache-Control", "private, no-store");
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
   if (req.method === "DELETE") {
     const id = req.query.id;
     if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "PATCH") {
     const result = z.object({
       id: z.string().regex(/^[a-f0-9]{64}$/),
-      changes: z.object({ folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(), name: z.string().trim().min(1).max(255).optional(), favorite: z.boolean().optional(), deleted: z.boolean().optional() }).strict(),
+      changes: z.object({ folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(), name: z.string().trim().min(1).max(255).optional(), favorite: z.boolean().optional(), pinned:z.boolean().optional(), deleted: z.boolean().optional() }).strict(),
     }).safeParse(req.body);
     if (!result.success) return res.status(400).json({ error: "无效的文件操作" });
     const { id, changes } = result.data;
@@ -106,6 +106,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
     const entry = preferences.get(owner + "/" + file.id);
-    return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, deleted: entry.deleted ?? file.deleted } : file;
+    return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time)));
 }
