@@ -54,6 +54,8 @@ func startupErrorLabel(code string) string {
 		return "平台地址保存失败，请重试"
 	case "invalid_local_settings", "local_settings_changed":
 		return "本地配置无法读取，已停止连接，请联系支持"
+	case "device_keychain_requires_local_access":
+		return "设备身份不可用：请在本机解锁登录钥匙串并检查连接器的访问权限"
 	case "device_reauthentication_required":
 		return "设备认证失效，请在授权管理中移除账号后重新添加"
 	default:

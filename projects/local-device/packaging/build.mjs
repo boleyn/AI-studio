@@ -74,7 +74,7 @@ export function parseOptions(argv, host = { platform: process.platform, arch: pr
     (host.platform !== platform || (host.arch === 'x64' ? 'amd64' : host.arch) !== arch)
   )
     throw new Error('macOS/Linux GUI builds require a native host and architecture');
-  const signingIdentity = values['--signing-identity'];
+  const signingIdentity = values['--signing-identity'] ?? (platform === 'darwin' ? process.env.CONNECTOR_MAC_SIGNING_IDENTITY : undefined);
   if (
     signingIdentity &&
     (platform !== 'darwin' ||
@@ -129,8 +129,10 @@ export function validatePlatformURL(value, devLoopback = false) {
 /** Builds a fresh package. Explicit macOS identities sign the app, helper and DMG; notarization is separate. */
 export async function build(options) {
   const platformURL = validatePlatformURL(options.platformURL, options.devLoopback);
+  if (options.platform === 'darwin' && !options.signingIdentity && !options.devLoopback)
+    throw new Error('Remote Mac packages require --signing-identity or CONNECTOR_MAC_SIGNING_IDENTITY');
   const { name, iconPath: brandingIconPath, bundleId } = await readBranding(options.config);
- let iconPath = brandingIconPath;
+  let iconPath = brandingIconPath;
   const run = (program, args, env = process.env) => {
     const result = spawnSync(program, args, { cwd: project, env, stdio: 'inherit', shell: false });
     if (result.error) throw result.error;
@@ -298,7 +300,7 @@ export async function build(options) {
       `Version ${options.version}; ${options.platform}/${options.arch}`,
       'Run the connector as your normal user, not Administrator/root.',
       `Platform: ${platformURL}. Open the platform in your browser to pair this computer.`,
-      'Pairing does not authorize commands. Approve each conversation locally.',
+      'Authorize the account once on this computer. It can then reconnect and switch working directories until access is paused or removed.',
       'Use the tray menu to pause, stop the current command, revoke approvals, or quit.',
       `Windows: launch ${name}.exe. PowerShell is the default; no policy bypass.`,
       `macOS: open the DMG and drag ${name}.app into Applications.`,
