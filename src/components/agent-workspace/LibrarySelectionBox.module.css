@@ -1,9 +1,4 @@
-.control {
-  position: absolute;
-  inset-inline-start: -32px;
-  top: 50%;
-  transform: translateY(-50%);
-}
+.control { vertical-align: middle; }
 
 .cardControl {
   position: absolute;
@@ -31,9 +26,4 @@
 @media (hover: hover) and (min-width: 768px) {
   tr:not(:hover):not(:focus-within) .control[aria-checked="false"] { opacity: 0; }
   table:has(.control[aria-checked="true"]) tr .control { opacity: 1; }
-}
-
-@media (max-width: 767px) {
-  .control { inset-inline-start: 0; }
-  th:has(> .control), td:has(> .control) { padding-inline-start: 26px !important; }
 }

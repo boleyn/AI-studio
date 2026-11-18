@@ -327,20 +327,19 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",verticalAlign:"middle"},
-          "& th:first-of-type, & td:first-of-type":{position:"relative",paddingLeft:"16px"},
+          "& th:first-of-type, & td:first-of-type":{padding:0},
           "& td button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child button":{opacity:0}}
         }}>
-          <colgroup><col style={{width:"62%"}}/><col style={{width:"19%"}}/><col/><col style={{width:"30px"}}/></colgroup>
-          <thead><tr>{(["name", "source", "time"] as const).map(column =>
+          <colgroup><col style={{width:"24px"}}/><col style={{width:"calc(62% - 24px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:"30px"}}/></colgroup>
+          <thead><tr><th scope="col"><LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
+                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></th>{(["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "name" && <LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
-                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/>}
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : section === "回收站" ? "删除日期" : "上次活动时间"}</button>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" _hover={{bg:"surface.hover"}}>
-            <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
-              <Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><button type="button" onClick={() => openItem(file)}>{file.name}</button></Flex></td>
+            <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><button type="button" onClick={() => openItem(file)}>{file.name}</button></Flex></td>
             <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : file.time ? new Date(file.time).toLocaleDateString("zh-CN") : "—"}</td><td>{actions(file)}</td>
           </Box>)}</tbody>
