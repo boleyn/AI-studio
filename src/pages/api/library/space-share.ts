@@ -48,8 +48,8 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   }
   const included = [];
   for (const parent of folders) for (const entry of children.get(parent) || []) {
-    if (entry.kind === "文件夹") folders.add(String(entry._id));
-    else included.push({id:String(entry._id),name:entry.name});
+    folders.add(String(entry._id));
+    if (entry.kind !== "文件夹") included.push({id:String(entry._id),name:entry.name});
   }
   if (req.query.page) {
     const page = included.find(item=>item.id === req.query.page);

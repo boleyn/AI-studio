@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsed = fields.extend({kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
     if (!parsed.success) return res.status(400).end();
     const time = new Date().toISOString();
-    if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
+    if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:parsed.data.kind === "页面" ? ["文件夹","资料空间","页面",null] : ["文件夹","资料空间"]},deleted:{$ne:true},purging:{$ne:true}})) return res.status(400).end();
     const { insertedId } = await pages.insertOne({ owner, ...parsed.data, time });
     const id = insertedId.toHexString();
     const item: LibraryFile = { id, kind:parsed.data.kind, folderId:parsed.data.folderId, token:"", project:"", chatId:"", conversation:"", path:id, name:parsed.data.name, time };

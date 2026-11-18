@@ -140,7 +140,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setNewKind(undefined);
       if (parentId && page.kind === "页面") {
         recordOpen(page);
-        navigateList("全部","推荐",parentId,page.id,true);
+        navigateList("全部","推荐",files?.some(item=>item.id===parentId && item.kind==="页面") ? folder?.id : parentId,page.id,true);
       } else openItem(page);
     } catch { toast({status:"error",title:"无法创建"+kind+"，请重试"}); }
     finally {setCreating(false);}
@@ -181,6 +181,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
   const editor = opened?.kind === "页面" || opened?.editablePageId ? opened : undefined;
+  const parentPage = editor && files?.find(item=>item.id===editor.folderId && item.kind==="页面" && !item.deleted);
   const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
@@ -342,8 +343,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     const attachments:LibraryFile[] = [];
     for (const folderId of folders) {
       for (const file of children.get(folderId) || []) {
-        if (isContainer(file)) folders.add(file.id);
-        else if (!file.siteId) attachments.push(file);
+        if (isContainer(file) || file.kind === "页面") folders.add(file.id);
+        if (!isContainer(file) && !file.siteId) attachments.push(file);
       }
     }
     return usePicked("chat",attachments);
@@ -486,7 +487,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         file.chatId === detail.chatId && file.path === detail.path
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} backLabel={folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => navigateList(section, tab, folder?.id)}
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
+      subpages={!editor.shareId && <Flex direction="column" align="start" gap={1} mt={4}>
+        {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=><Button key={item.id} size="sm" variant="ghost" onClick={()=>openItem(item)}>{item.name}</Button>)}
+        <Button size="sm" variant="ghost" leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
+      </Flex>}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
       outline={dropActive ? "2px dashed #777" : undefined} outlineOffset="-4px"
