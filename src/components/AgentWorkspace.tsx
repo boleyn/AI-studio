@@ -204,7 +204,7 @@ export default function AgentWorkspace({
     }
     if (view === "chat") delete nextQuery.view;
     else nextQuery.view = view;
-    void router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});
+    return router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});
   }
 
   const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
@@ -884,8 +884,8 @@ export default function AgentWorkspace({
         const chat = await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text});
+        await setActiveNav("chat", chat.id);
         handleSelectConversation(token,chat.id);
-        setActiveNav("chat", chat.id);
       }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
