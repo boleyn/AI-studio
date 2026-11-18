@@ -114,7 +114,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const search = useRef<HTMLInputElement>(null);
   const [detail, setDetail] = useState<LibraryFile>();
   const [sharing,setSharing] = useState<LibraryFile>();
-  const [purge,setPurge] = useState<LibraryFile>();
+  const [purge,setPurge] = useState<LibraryFile[]>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -197,7 +197,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end">
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <MenuList>{file.deleted ? <><MenuItem onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem color="red.600" onClick={() => setPurge(file)}>永久删除</MenuItem></> : <>
+    <MenuList>{file.deleted ? <><MenuItem onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem onClick={()=>setSharing(file)}>分享</MenuItem>}
       <MenuItem onClick={() => { setTitle(file.name); setRename(file); }}>重命名</MenuItem>
       {isNative(file) ? <MenuItem onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem as="a" href={downloadUrl(file)}>下载</MenuItem> :
@@ -247,6 +247,11 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => setGrid(false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
       </Flex>
       </Box>
+      {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
+        <Text fontSize="sm" color="gray.600">恢复最近删除的项目。</Text>
+        <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
+          onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
+      </Flex>}
       <Box>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !types.length &&
         <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
@@ -306,17 +311,25 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       <ModalFooter gap={2}><Button onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving} onClick={async () => {if (!move) return; const targets=batchMove ? picked : [move]; for(const item of targets) await update(item,{folderId:destination || null});setBatchMove(false);}}>移动</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
-      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>永久删除项目？</ModalHeader>
-        <ModalBody>“{purge?.name}”将被永久删除，此操作无法撤销。</ModalBody>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "清空回收站？" : "永久删除项目？"}</ModalHeader>
+        <ModalBody>{purge?.length === 1 ? "“" + purge[0].name + "”" : (purge?.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
         <ModalFooter gap={2}><Button isDisabled={saving} onClick={() => setPurge(undefined)}>取消</Button>
           <Button colorScheme="red" isLoading={saving} onClick={async () => {
             if (!purge || saving) return;
             setSaving(true);
             try {
-              const response = await fetch("/api/library?id=" + encodeURIComponent(purge.id), {method:"DELETE", headers:withAuthHeaders({})});
-              if (!response.ok) throw new Error(response.status === 409 ? "请先移出或删除文件夹中的条目" : "删除失败，请重试");
-              setFiles(items => items?.filter(item => item.id !== purge.id));
-              setSelected(ids => ids.filter(id => id !== purge.id));
+              const pending = [...purge].sort((a,b) => Number(isContainer(a)) - Number(isContainer(b)));
+              const removed = new Set<string>();
+              for (const item of pending) {
+                const response = await fetch("/api/library?id=" + encodeURIComponent(item.id), {method:"DELETE", headers:withAuthHeaders({})});
+                if (!response.ok) {
+                  setPurge(pending.filter(entry => !removed.has(entry.id)));
+                  throw new Error(response.status === 409 ? "请先移出或删除文件夹中的条目" : "删除失败，请重试");
+                }
+                removed.add(item.id);
+                setFiles(items => items?.filter(entry => entry.id !== item.id));
+                setSelected(ids => ids.filter(id => id !== item.id));
+              }
               setPurge(undefined);
             } catch (error) { toast({status:"error", title:error instanceof Error ? error.message : "删除失败，请重试"}); }
             finally { setSaving(false); }
