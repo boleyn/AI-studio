@@ -23,20 +23,6 @@ export async function recordSiteVisit(share: ShareLinkData, cookie?: string) {
   );
 }
 
-export async function listVisitedSites(viewer: string) {
-  const db = await getMongoDb();
-  return db.collection<SiteVisit>("site_visits").aggregate<{ id: string; name: string; shared: boolean }>([
-    { $match: { viewer } },
-    { $sort: { visitedAt: -1 } },
-    { $lookup: { from: "share_links", localField: "shareId", foreignField: "shareId", as: "link" } },
-    { $unwind: "$link" },
-    { $lookup: { from: "projects", localField: "projectToken", foreignField: "token", as: "project" } },
-    { $unwind: "$project" },
-    { $match: { "link.mode": "preview", $expr: { $eq: ["$project.userId", "$link.ownerUserId"] } } },
-    { $project: { _id: 0, id: "$shareId", name: "$project.name", shared: { $literal: true } } },
-  ]).toArray();
-}
-
 export async function countRecentSiteVisitors(tokens: string[]) {
   const db = await getMongoDb();
   const cutoff = new Date(Date.now() - 30 * 86400000);

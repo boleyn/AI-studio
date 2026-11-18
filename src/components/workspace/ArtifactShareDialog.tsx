@@ -9,12 +9,13 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 type Member = { username: string };
 type Share = { id: string; filename: string; owner: string; members: Member[] };
 
-export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, displayName, onClose }: {
+export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, displayName, onClose }: {
   token: string;
   path: string;
   version?: string;
   libraryItemId?: string;
   chatId?: string;
+  siteId?: string;
   displayName?: string;
   onClose: () => void;
 }) {
@@ -26,10 +27,10 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/artifact-share", {
-      method: "POST",
+    void fetch(siteId ? `/api/share/${siteId}/members` : "/api/artifact-share", {
+      method: siteId ? "GET" : "POST",
       headers: withAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ token, path, version,libraryItemId,chatId,chatUpload:Boolean(chatId) }),
+      body: siteId ? undefined : JSON.stringify({ token, path, version,libraryItemId,chatId,chatUpload:Boolean(chatId) }),
       signal: controller.signal,
     }).then(async (response) => {
       const data = await response.json();
@@ -39,14 +40,14 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
       if (!controller.signal.aborted) setError(reason.message || "无法准备分享链接");
     });
     return () => controller.abort();
-  }, [token, path, version,libraryItemId,chatId]);
+  }, [token, path, version,libraryItemId,chatId,siteId]);
 
   const updateMember = async (name: string, remove = false) => {
     if (!share || !name.trim() || busy) return;
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/artifact-share?id=${share.id}`, {
+      const response = await fetch(siteId ? `/api/share/${siteId}/members` : `/api/artifact-share?id=${share.id}`, {
         method: "PATCH",
         headers: withAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ username: name, remove }),
@@ -79,7 +80,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>
             </Flex>
             <Text mt={5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
-            <Menu placement="bottom-start">
+            {siteId ? <Text fontSize="sm">拥有链接的人可以查看</Text> : <Menu placement="bottom-start">
               <MenuButton as={Button} variant="ghost" size="sm" mt={1} leftIcon={<LockKeyhole size={15}/>}
                 rightIcon={<ChevronDown size={14}/>}>仅限受邀者</MenuButton>
               <MenuList borderRadius="12px" shadow="lg" p={1}>
@@ -88,7 +89,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
                   <Text fontSize="xs" color="gray.600">已有访问权限的用户可以使用此链接</Text>
                 </MenuItemOption></MenuOptionGroup>
               </MenuList>
-            </Menu>
+            </Menu>}
             <Text mt={4} fontSize="sm" fontWeight="semibold">谁有访问权限</Text>
             <Flex py={2} justify="space-between" fontSize="sm"><Text>{share.owner}</Text><Text color="gray.600">所有者</Text></Flex>
             {share.members.map((member) => (
@@ -104,7 +105,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
         <ModalFooter gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
             try {
-              await navigator.clipboard.writeText(new URL(`/share/file/${share.id}`, window.location.origin).href);
+              await navigator.clipboard.writeText(new URL(siteId ? `/share/preview/${siteId}` : `/share/file/${share.id}`, window.location.origin).href);
               setCopied(true);
             } catch {
               setError("无法复制链接");
