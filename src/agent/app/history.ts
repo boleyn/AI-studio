@@ -1,4 +1,4 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { ChatCompletionMessageParam as CompatMessageParam } from "@aistudio/ai/compat/global/core/ai/type";
 import { sdkContentToText } from "@shared/chat/sdkMessages";
 
@@ -92,7 +92,7 @@ export const toOpenAIHistory = (
     if (entry.role !== "user" && entry.role !== "assistant") continue;
     const content = normalizeMessageContent((entry as { content?: unknown }).content).trim();
     if (entry.role === "user" && Array.isArray(entry.content)) {
-      const blocks: import("openai/resources/chat/completions").ChatCompletionContentPart[] = [];
+      const blocks: ChatCompletionContentPart[] = [];
       for (const item of entry.content as unknown[]) {
         const block = item as {type?:string; source?:{type?:string; media_type?:string; data?:string}} | null;
         const source = block?.source;
@@ -116,6 +116,8 @@ export const toOpenAIHistory = (
     const last = result[result.length - 1];
     if (last.role === "user" && typeof last.content === "string") {
       last.content = `${last.content}\n\n${notes.join("\n")}`;
+    } else if (last.role === "user" && Array.isArray(last.content)) {
+      last.content.push({type:"text",text:notes.join("\n")});
     } else {
       result.push({ role: "user", content: notes.join("\n") });
     }
