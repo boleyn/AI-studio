@@ -144,8 +144,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
-  const editor = opened?.kind === "页面" ? opened : undefined;
-  const detail = opened?.kind !== "页面" ? opened : undefined;
+  const editor = opened?.kind === "页面" || opened?.editablePageId ? opened : undefined;
+  const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !(clearTypes && router.query.libraryType)) return;
     void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
@@ -339,8 +339,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={editor} onBack={() => navigateList(section, tab, folder?.id)}
-      onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time} : item))}/> :
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onBack={() => navigateList(section, tab, folder?.id)}
+      onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name:editor.shareId ? name+".md" : name,time} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">

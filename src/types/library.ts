@@ -3,6 +3,7 @@ export type ImageReference = { type: typeof referenceTypes[number]; name: string
 export interface LibraryFile {
   id: string;
   shareId?: string;
+  editablePageId?: string;
   reference?: ImageReference;
   directUpload?: boolean;
   folderId?: string | null;

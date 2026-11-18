@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
 
-export default function LibraryPageEditor({page,shareId,onBack,onSaved}:{page:Pick<LibraryFile,"id">;shareId?:string;onBack:()=>void;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onSaved:(name:string,time:string)=>void}) {
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();
@@ -41,7 +41,7 @@ export default function LibraryPageEditor({page,shareId,onBack,onSaved}:{page:Pi
     finally { setBusy(false); }
   }
   return <Box flex="1" minW={0} p={6} overflowY="auto"><Flex align="center" justify="space-between">
-    <Button variant="ghost" size="sm" onClick={onBack}>{shareId ? "返回预览" : "返回资料空间"}</Button>
+    <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text><Button size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
     </Flex>{failed ? <Button onClick={() => setAttempt(attempt+1)}>加载失败，重试</Button> :
     content && <Box maxW="760px" mx="auto" mt="8vh">

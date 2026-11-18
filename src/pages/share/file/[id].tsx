@@ -52,7 +52,7 @@ export default function SharedArtifactPage() {
   const url = `${endpoint}&file=1`;
   const isSpreadsheet = isSpreadsheetFile(current.filename);
   const retry = () => setAttempt((value) => value + 1);
-  if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id}
+  if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
     onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:name+".md"})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
