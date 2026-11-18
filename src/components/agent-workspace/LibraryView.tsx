@@ -130,11 +130,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
 
   const [appearance,setAppearance] = useState({icon:"",color:"默认"});
   const [inviteQuery,setInviteQuery] = useState("");
-  const [confirmDiscard,setConfirmDiscard] = useState(false);
+  const [confirmSpaceDiscard,setConfirmSpaceDiscard] = useState(false);
   const continueEditing = useRef<HTMLButtonElement>(null);
   function closeSpaceDialog() {
     if (creating) return;
-    if (title || inviteQuery || invitees.length || appearance.icon || appearance.color !== "默认") setConfirmDiscard(true);
+    if (title || inviteQuery || invitees.length || appearance.icon || appearance.color !== "默认") setConfirmSpaceDiscard(true);
     else setNewKind(undefined);
   }
   const [invitees,setInvitees] = useState<string[]>([]);
@@ -142,7 +142,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   function openSpaceDialog() {
     setAppearance({icon:"",color:"默认"});
     setInviteQuery("");
-    setConfirmDiscard(false);
+    setConfirmSpaceDiscard(false);
     setInvitees([]);
     setInviteOpen(false);
     setTitle("");
@@ -761,11 +761,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             {inviteOpen && <Box mt={2}><SpaceInviteInput query={inviteQuery} setQuery={setInviteQuery} accounts={invitees} onChange={setInvitees}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
           </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={closeSpaceDialog}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
         </form></ModalContent></Modal>
-    <Modal isOpen={confirmDiscard} initialFocusRef={continueEditing} onClose={()=>setConfirmDiscard(false)} isCentered>
+    <Modal isOpen={confirmSpaceDiscard} initialFocusRef={continueEditing} onClose={()=>setConfirmSpaceDiscard(false)} isCentered>
       <ModalOverlay/><ModalContent mx={3} borderRadius="20px">
         <ModalHeader>放弃更改？</ModalHeader><ModalBody>你的更改将丢失</ModalBody>
-        <ModalFooter gap={2}><Button ref={continueEditing} borderRadius="full" onClick={()=>setConfirmDiscard(false)}>继续编辑</Button>
-          <Button borderRadius="full" colorScheme="red" onClick={()=>{setConfirmDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
+        <ModalFooter gap={2}><Button ref={continueEditing} borderRadius="full" onClick={()=>setConfirmSpaceDiscard(false)}>继续编辑</Button>
+          <Button borderRadius="full" colorScheme="red" onClick={()=>{setConfirmSpaceDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
       </ModalContent>
     </Modal>
     <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
