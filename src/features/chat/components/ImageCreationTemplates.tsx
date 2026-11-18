@@ -1,4 +1,5 @@
-import { Box, Button, Flex, Grid, Text } from "@chakra-ui/react";
+import { useState } from "react";
+import { Tabs, TabList, Tab, Box, Button, Flex, Grid, Text } from "@chakra-ui/react";
 
 const templates = [
   ["海报","poster","cf2b8f454736ef49959494dc07b81107bc3c4278e82756104b74abaadcbbc89b","设计一张海报，请先和我确认主题、必备文字、展示场景和版式。"],
@@ -19,13 +20,46 @@ const templates = [
   ["网站效果图","website-mockup","ee1bb9e068c9b5998f97c526e13c416e16e6fd60c50ee798590949a8b439342c","设计网站效果图，请先确认页面目标、内容和品牌风格。"],
 ];
 
+const popular = [
+  ["Anime reaction GIF","promptworks/2026-11-05/anime-reaction-a4d03da6dd758476ce894a37a40e3ccd06a2cab0def66b5c37207b9da150199a"],
+  ["航拍视角","promptworks/2026-10-02/drone-view-ada14b68403f230a0210b2dee6ff8353f52a5632e06cfb38f55048a1990853b6"],
+  ["收藏版铁盒","promptworks/2026-10-03/collectors-tin-31391d96e4f005b1bebdd4b3c266513aa8964303352764954dc583c60ce15e4e"],
+  ["重返 80 年代","promptworks/2026-09-08/80s-flashback-a00031b0a07c584db431969185a66fa7a682675803f4be5cda3ba17c61d405eb"],
+  ["夸张漫画","promptworks/2026-10-02/caricature-32705045db0710f0d140c562c82cd424c0d0a4cb4cbcf546a9cd9e8b278bdee3"],
+  ["素描","promptworks/2026-10-02/sketch-d7b1709f2b3a7a60e79fa8bfbe7c843c18f27f4c6a221fc5c0ecf6d18d3a1fe2"],
+  ["贴纸","promptworks/2026-07-29/stickers-18de392f7686bfb1d3099d5196f05a69f915a95c3078b1f3f8d618dba2a21cae"],
+  ["拍照亭","promptworks/2026-09-30/photo-booth-afb1f5541d9765123efa3f17cf069e4f62f635e639bd8463d1a3976a9433baa8"],
+  ["Y2K 数码相机风","promptworks/2026-09-30/y2k-c83c217f3d66d6330f707c270ae4e4f2446f8716c94e29788606288649151db5"],
+  ["动漫风","anime-sheet"],
+  ["70 年代风格人像","promptworks/2026-09-30/70s-bc70a746219f072abdc031abae89d9083624826fe20cf80e77e613710e1ef913"],
+  ["印象派绘画","promptworks/2026-09-30/impressionism-8a90c0c21d2cca8fe4d5c3309d39bafb03315cbb05c2750729f9229fc57cd680"],
+  ["置顶合集","promptworks/2026-07-10/pin-collection-34b419410824b90fed76556057d79f55a58cfd5c4734417add1c8f28954abbf3"],
+  ["水下","underwater-sheet"],["3D 头像","3d-avatar-sheet"],
+  ["丙烯画","promptworks/2026-09-30/acrylic-fd94a9623f976f198b81481543db5f65a3258ce5dee1434de0cc782ad9b7f25a"],
+  ["羊毛毡微缩模型","promptworks/2026-09-30/felt-2d344687da002475665d73044e8e231076f6e442bc2c3af80ea5f52637acaebb"],
+  ["塔罗牌","tarot-sheet"],["雕像","statue-sheet"],
+  ["黏土动画世界","promptworks/2026-09-30/claymation-8dc8d845f2b2055bbf733ac6d3198da20ce189bcd5fea80081777bf22d451a68"],
+  ["拼装模型套件","promptworks/2026-09-30/sprue-card-5d286404f357929d1af0b7bb053bc80ddd6b3af1a40acc4854f46f2fe8216c31"],
+  ["16 位街机风格","promptworks/2026-09-30/8-bit-01eba4a7418ca463afb19b8160d7637be348bc2d6f9e8f55f87193121aa1cf68"],
+  ["手写批注风格","white-lines-sheet"],["美妆指南","makeup-analysis-sheet"],["涂鸦","scribble-sheet"],
+  ["你的摇头娃娃","promptworks/2026-09-30/bobblehead-7a2b94522f03cfa193d080b5daea01ec5faf1fb9fc103c8b64d063517faadba8"],
+  ["迷你分身","mini-me-global-sheet"],["剖面图","cross-section-sheet"],["增强照片","enhance-sheet"],
+  ["远方情结","wanderlust-postcard-sheet"],["夜拍闪光","flash-sheet"],["蓝图海报","blueprint-sheet"],
+  ["色彩分析","color-analysis-new"],["漫画","comic-sheet"],["动漫风漫画","anime-comic-sheet"],
+  ["奇幻报纸","fantasy-newspaper-sheet"],["胶片条","film-strip-sheet"],["超写实壁纸","hyper-real-sheet"],
+];
+
 export default function ImageCreationTemplates({onPick,onUpload}:{onPick:(prompt:string)=>void;onUpload:()=>void}) {
+  const [tab,setTab] = useState(0);
+  const cards = tab === 0 ? templates.map(([label,slug,hash,prompt])=>({
+    label,prompt,path:`promptworks/2026-09-${slug==="thumbnail"?"08":"04"}/professional-${slug}-${hash}`
+  })) : popular.map(([label,path])=>({label,path,prompt:"以「"+label+"」为主题创作图像。"}));
   return <Box as="section" aria-label="创建图像" mt={3} maxH="32vh" overflowY="auto">
-    <Flex align="center" justify="space-between" mb={2}><Text fontSize="sm" fontWeight="600">模板</Text><Button size="sm" variant="ghost" onClick={onUpload}>上传照片</Button></Flex>
-    <Grid templateColumns="repeat(auto-fill,minmax(104px,1fr))" gap={2}>{templates.map(([label,slug,hash,prompt])=>
-      <Box as="button" type="button" key={slug} textAlign="left" onClick={()=>onPick(prompt)}>
+    <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs><Button size="sm" variant="ghost" onClick={onUpload}>上传照片</Button></Flex>
+    <Grid templateColumns="repeat(auto-fill,minmax(104px,1fr))" gap={2}>{cards.map(({label,path,prompt})=>
+      <Box as="button" type="button" key={path} textAlign="left" onClick={()=>onPick(prompt)}>
         <Box as="img" alt="" loading="lazy" borderRadius="10px" w="100%" aspectRatio="1" objectFit="cover"
-          src={`https://persistent.oaistatic.com/images-app/promptworks/2026-09-${slug==="thumbnail"?"08":"04"}/professional-${slug}-${hash}.webp`}/>
+          src={`https://persistent.oaistatic.com/images-app/${path}.webp`}/>
         <Text mt={1} fontSize="sm">{label}</Text>
       </Box>)}</Grid>
   </Box>;
