@@ -58,6 +58,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
     finally { setCreating(false); }
   }
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const galleryTrigger = useRef<HTMLButtonElement | null>(null);
   const [folder,setFolder] = useState<LibraryFile>();
   const [newKind,setNewKind] = useState<"文件夹"|"资料空间">();
   const [move,setMove] = useState<LibraryFile>();
@@ -182,7 +183,11 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       <MenuItem color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Menu>;
   const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
-            <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
+            <MenuList><MenuItem onClick={event => {
+              const menu = event.currentTarget.closest('[role="menu"]');
+              galleryTrigger.current = document.getElementById(menu?.getAttribute("aria-labelledby") || "") as HTMLButtonElement | null;
+              setGalleryOpen(true);
+            }}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
               <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
@@ -263,7 +268,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>}
     </Box>
   </Box>}
-    {galleryOpen && <TemplateGallery onClose={() => setGalleryOpen(false)} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
+    {galleryOpen && <TemplateGallery triggerRef={galleryTrigger} onClose={() => setGalleryOpen(false)} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}

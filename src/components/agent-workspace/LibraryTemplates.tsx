@@ -25,7 +25,8 @@ export default function LibraryTemplates({ onPick, onClose }: {onPick:(name:stri
   </Box>;
 }
 
-export function TemplateGallery({ onClose, onPick }: {
+export function TemplateGallery({ onClose, onPick, triggerRef }: {
+  triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
   onPick: (name: string, body: string) => void;
 }) {
@@ -36,7 +37,7 @@ export function TemplateGallery({ onClose, onPick }: {
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
 
-  return <Modal isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
+  return <Modal finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
       <ModalHeader>Templates</ModalHeader>
@@ -47,7 +48,7 @@ export function TemplateGallery({ onClose, onPick }: {
             variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}>{label}</Button>
         )}
         <Box flex={1} />
-        {searching && <Input autoFocus size="sm" w="min(200px, 30vw)" placeholder="搜索模板"
+        {searching && <Input autoFocus aria-label="搜索模板" size="sm" w="min(200px, 30vw)" placeholder="搜索模板"
           value={query} onChange={event => setQuery(event.target.value)} />}
         <IconButton size="sm" variant="ghost" aria-label="搜索" aria-expanded={searching} icon={<Search size={18} />}
           onClick={() => { setSearching(!searching); setQuery(""); }} />
@@ -55,7 +56,7 @@ export function TemplateGallery({ onClose, onPick }: {
       <ModalBody>
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
           {pages.map(({name, body, icon: Icon, color}) =>
-            <Button key={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
+            <Button key={name} aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
               textAlign="left" onClick={() => onPick(name, body)}>
               <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
