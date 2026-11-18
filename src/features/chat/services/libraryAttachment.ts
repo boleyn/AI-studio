@@ -23,3 +23,26 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   const blob = await response.blob();
   return new File([blob],item.name,{type:blob.type});
 }
+
+export async function addLibraryAttachments(
+  items: LibraryFile[],
+  upload: (files: File[]) => Promise<(string | undefined)[]>,
+) {
+  const reads = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
+  const ready: File[] = [];
+  const errors = new Map<string, string>();
+  reads.forEach((read, index) => {
+    if (read.status === "fulfilled") ready.push(read.value);
+    else errors.set(items[index].id, "无法读取“" + items[index].name + "”");
+  });
+  if (ready.length) {
+    const uploadErrors = await upload(ready);
+    let uploadedIndex = 0;
+    reads.forEach((read, index) => {
+      if (read.status !== "fulfilled") return;
+      const reason = uploadErrors[uploadedIndex++];
+      if (reason) errors.set(items[index].id, reason);
+    });
+  }
+  return errors;
+}

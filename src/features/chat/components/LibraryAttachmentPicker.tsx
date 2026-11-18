@@ -4,7 +4,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
 import { Check, Search } from "lucide-react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { readLibraryAttachment } from "../services/libraryAttachment";
+import { addLibraryAttachments } from "../services/libraryAttachment";
 
 export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const [items,setItems] = useState<LibraryFile[]>();
@@ -30,12 +30,10 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     setError("");
     try {
       const picked = items.filter(item => selected.includes(item.id));
-      const files = await Promise.all(picked.map(item => readLibraryAttachment(item)));
-      const errors = await onAdd(files);
-      const failed = picked.filter((_, index) => errors[index]);
-      if (failed.length) {
-        setSelected(failed.map(item => item.id));
-        setError(errors.find(Boolean) || "添加失败，请重试");
+      const errors = await addLibraryAttachments(picked, onAdd);
+      if (errors.size) {
+        setSelected([...errors.keys()]);
+        setError([...new Set(errors.values())].join("；"));
       } else {
         onClose();
       }
