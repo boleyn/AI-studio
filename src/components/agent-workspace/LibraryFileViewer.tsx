@@ -29,6 +29,20 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
   const markdown = /\.(md|markdown)$/i.test(name);
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
   const document = isArtifactImage(name) || /\.(pdf|docx|xlsx|pptx|csv|tsv)$/i.test(name);
+  const image = isArtifactImage(name);
+  const viewport = useRef<HTMLDivElement>(null);
+  const [dimensions,setDimensions] = useState({width:0,height:0});
+  const [fit,setFit] = useState(1);
+  const [scale,setScale] = useState<number>();
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element || !dimensions.width || !dimensions.height) return;
+    const resize = () => setFit(Math.min(1, element.clientWidth / dimensions.width, element.clientHeight / dimensions.height));
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  },[dimensions]);
   useEffect(() => {closeButton.current?.focus();},[]);
   useEffect(() => {
     if (!markdown && !plain) return;
@@ -53,15 +67,29 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
         <Text isTruncated>{item.name}</Text></MenuButton>
         <MenuList><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
           {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
-      </Menu><Box flex="1"/>{download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}<IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
+      </Menu><Box flex="1"/>{image && <Menu>
+        <MenuButton as={Button} size="sm" variant="ghost" rightIcon={<ChevronDown size={14}/>} aria-label="图像缩放">
+          {Math.round((scale ?? fit)*100)}%
+        </MenuButton>
+        <MenuList minW="120px">
+          <MenuItem onClick={()=>setScale(undefined)}>适应窗口</MenuItem>
+          {[50,75,100,125,150,200].map(percent=><MenuItem key={percent} onClick={()=>setScale(percent/100)}>{percent}%</MenuItem>)}
+        </MenuList>
+      </Menu>}{download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}<IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
     </Flex>
-    <Box flex="1" minH={0} overflow="auto">
+    <Box ref={viewport} flex="1" minH={0} overflow="auto">
       {markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}
         sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.7em"},"& h2":{fontSize:"1.3em"},"& p":{marginBottom:3,whiteSpace:"pre-wrap"},"& ul, & ol":{paddingInlineStart:6},"& pre":{overflowX:"auto"}}}>
         {error ? <Button size="sm" onClick={()=>setAttempt(n=>n+1)}>读取失败，重试</Button> : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
           markdown ? <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{body}</ReactMarkdown> :
           <Text as="pre" whiteSpace="pre-wrap">{body}</Text>}
-      </Box> : document ? <ExtendedFilePreview key={attempt} url={libraryAttachmentUrl(item)} name={name} onRetry={()=>setAttempt(n=>n+1)}/> :
+      </Box> : image ? <Flex minH="full" minW="full" w="max-content" align="center" justify="center">
+        {error ? <Button onClick={()=>{setError(false);setAttempt(n=>n+1);}}>读取失败，重试</Button> :
+          <Box as="img" key={attempt} src={libraryAttachmentUrl(item)} alt={item.name} maxW="none"
+            width={dimensions.width ? dimensions.width*(scale ?? fit)+"px" : undefined}
+            onLoad={(event:React.SyntheticEvent<HTMLImageElement>)=>setDimensions({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight})}
+            onError={()=>setError(true)}/>}
+      </Flex> : document ? <ExtendedFilePreview key={attempt} url={libraryAttachmentUrl(item)} name={name} onRetry={()=>setAttempt(n=>n+1)}/> :
         <Flex h="100%" align="center" justify="center" direction="column" gap={2} textAlign="center" px={4}>
           <LibraryItemIcon item={item}/><Text fontSize="xs" color="gray.500">无法预览</Text><Heading size="md">{item.name}</Heading>
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
