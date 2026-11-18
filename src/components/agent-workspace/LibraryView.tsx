@@ -62,14 +62,9 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
     if (creating) return;
     setCreating(true);
     try {
-      const { default: Presentation } = await import("pptxgenjs");
-      const deck = new Presentation();
-      deck.layout = "LAYOUT_WIDE";
-      deck.title = "无标题演示文稿";
-      deck.addSlide();
-      const blob = await deck.write({outputType:"blob"});
-      if (!(blob instanceof Blob)) throw new Error();
-      await uploadFiles([new File([blob], deck.title + ".pptx", {
+      const response = await fetch("/library-templates/blank.pptx");
+      if (!response.ok) throw new Error();
+      await uploadFiles([new File([await response.blob()], "无标题演示文稿.pptx", {
         type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"
       })], true);
     } catch {
