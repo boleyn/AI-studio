@@ -19,9 +19,15 @@ export function libraryAttachmentUrl(item: LibraryFile) {
   return url;
 }
 
+export class LibraryReadError extends Error {
+  constructor(readonly status:number, name:string) {
+    super("读取失败：" + name);
+  }
+}
+
 export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSignal):Promise<File> {
   const response = await fetch(libraryAttachmentUrl(item),{headers:withAuthHeaders(),signal});
-  if (!response.ok) throw new Error("读取失败：" + item.name);
+  if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
     const page = await response.json();
     return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"}),item.id);

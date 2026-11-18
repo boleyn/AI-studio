@@ -5,7 +5,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
-import { readLibraryAttachment } from "../services/libraryAttachment";
+import { LibraryReadError, readLibraryAttachment } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -126,31 +126,29 @@ const ChatItem = ({
       const response = url ? await fetch(url, {signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined}) : undefined;
       if (preview.libraryItemId && (!response || response.status === 404 || response.status === 410)) {
         const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
-        if (library.ok) {
-          const items: LibraryFile[] = await library.json();
-          const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
-          if (item) {
-            const value = await (await readLibraryAttachment(item,signal)).text();
-            if (!signal.aborted) {
-              setPreviewText(value);
-              setShowLibrarySource(true);
-            }
-            return;
+        if (!library.ok) throw new LibraryReadError(library.status,preview.name);
+        const items: LibraryFile[] = await library.json();
+        const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
+        if (item) {
+          const value = await (await readLibraryAttachment(item,signal)).text();
+          if (!signal.aborted) {
+            setPreviewText(value);
+            setShowLibrarySource(true);
           }
+          return;
         }
       }
-      if (!response?.ok) {
-        if (!controller.signal.aborted) setPreviewError(
-          response?.status === 403 ? "当前账号没有读取该附件的权限。" :
-          response?.status === 401 ? "请重新登录后打开附件。" :
-          !response || response.status === 404 ? "暂时找不到这份附件，请检查原文件是否仍可打开。" :
-          "暂时无法读取附件，请稍后重试。"
-        );
-        return;
-      }
+      if (!response?.ok) throw new LibraryReadError(response?.status ?? 404,preview.name);
       const value = await response.text();
       if (!controller.signal.aborted) setPreviewText(value);
-    })().catch(() => {if (!controller.signal.aborted) setPreviewError("连接失败，请检查网络后重试。");});
+    })().catch(error => {
+      if (controller.signal.aborted) return;
+      const status = error instanceof LibraryReadError ? error.status : undefined;
+      setPreviewError(status === 401 ? "请重新登录后打开附件。" :
+        status === 403 ? "当前账号没有读取该附件的权限。" :
+        status === 404 || status === 410 ? "找不到这份附件，请检查原文件是否仍可打开。" :
+        status ? "暂时无法读取附件，请稍后重试。" : "连接失败，请检查网络后重试。");
+    });
     return () => controller.abort();
   },[preview]);
   const [activityOpen, setActivityOpen] = React.useState<boolean>();
