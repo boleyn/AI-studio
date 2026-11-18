@@ -150,7 +150,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || (file.kind === "页面" ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" ? "页面" : fileType(file.path))) &&
-    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * a[sort.column].localeCompare(b[sort.column], "zh-CN", { numeric: true }));
+    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * (section === "回收站" && sort.column === "time" ? a.deletedAt || "" : a[sort.column]).localeCompare(section === "回收站" && sort.column === "time" ? b.deletedAt || "" : b[sort.column], "zh-CN", { numeric: true }));
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
   const allChecked = Boolean(visible?.length && visible.length === picked.length);
@@ -187,7 +187,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       const response = await fetch((isNative(file) || file.directUpload) ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
         body: JSON.stringify((isNative(file) || file.directUpload) ? changes : {id:file.id, changes}) });
       if (!response.ok) throw new Error();
-      setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes} : item));
+      setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} : item));
       setRename(undefined);
       setMove(undefined);
     } catch {
@@ -250,13 +250,13 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
-        !visible.length ? <Text>{files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
-        grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
+        !visible.length ? <Text>{section === "回收站" ? "回收站为空" : files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
+        grid && section !== "回收站" ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} p={4} borderWidth="1px" borderRadius="14px">
             <Checkbox aria-label={"选择"+file.name} isChecked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/><LibraryItemIcon item={file}/><Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
             {actions(file)}
           </Box>)}
-        </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="推荐内容" sx={{
+        </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{position:"relative",paddingLeft:"16px"},
@@ -268,13 +268,13 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "name" && <LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/>}
-              {column === "source" ? "来源" : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : "上次活动时间"}</button>}
+              {column === "source" ? (section === "回收站" ? "大小" : "来源") : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : section === "回收站" ? "删除日期" : "上次活动时间"}</button>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" _hover={{bg:"surface.hover"}}>
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
               <Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><button type="button" onClick={() => openItem(file)}>{file.name}</button></Flex></td>
-            <td>{file.chatId ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
-            <td>{file.time ? new Date(file.time).toLocaleDateString("zh-CN") : "—"}</td><td>{actions(file)}</td>
+            <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
+            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : file.time ? new Date(file.time).toLocaleDateString("zh-CN") : "—"}</td><td>{actions(file)}</td>
           </Box>)}</tbody>
         </Box>}
       {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="sticky" bottom={3} zIndex={3} mx="auto" mt={4}

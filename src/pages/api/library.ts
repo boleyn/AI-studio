@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Cache-Control", "private, no-store");
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; openedAt?: string; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
   if (req.method === "POST") {
     const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
     if (!operation.success) return res.status(400).end();
@@ -31,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!result.success) return res.status(400).json({ error: "无效的文件操作" });
     const { id, changes } = result.data;
     if (changes.folderId && !await db.collection("library_pages").findOne({owner,_id:new ObjectId(changes.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
-    await settings.updateOne({ _id: owner + "/" + id, owner }, { $set: changes }, { upsert: true });
+    await settings.updateOne({ _id: owner + "/" + id, owner }, { $set: {...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} }, { upsert: true });
     return res.status(204).end();
   }
   const projects = await listProjectOverviewItems(owner);
@@ -77,11 +77,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const block of blocks) if (block?.type === "attachment") attachment(block.source_storage_path || block.storage_path, block.name);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,deletedAt:1,size:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",path:page.originalName || id,token:"",project:"",chatId:"",conversation:"",
-      favorite:page.favorite,deleted:page.deleted});
+      size:page.size,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
   const received = await listReceivedArtifactShares(owner);
   for (const share of received) {
@@ -95,6 +95,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].map(file => {
     const entry = preferences.get(owner + "/" + file.id);
-    return entry ? { ...file, openedAt:entry.openedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, deleted: entry.deleted ?? file.deleted } : file;
+    return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time)));
 }

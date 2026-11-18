@@ -37,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!await pages.findOne({ ...filter,kind:{$nin:["文件夹","资料空间"]} })) return res.status(400).end();
       if (!await pages.findOne({owner,_id:new ObjectId(patch.data.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
     }
-    const result = await pages.updateOne(filter,{$set:{...patch.data,time}});
+    const result = await pages.updateOne(filter,{$set:{...patch.data,time,...(patch.data.deleted === undefined ? {} : {deletedAt:patch.data.deleted ? time : null})}});
     return result.matchedCount ? res.json({time}) : res.status(404).end();
   }
   return res.setHeader("Allow","GET, POST, PATCH").status(405).end();

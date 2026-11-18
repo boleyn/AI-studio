@@ -5,6 +5,8 @@ export interface LibraryFile {
   folderId?: string | null;
   favorite?: boolean;
   deleted?: boolean;
+  deletedAt?: string | null;
+  size?: number;
   kind: "生成" | "上传" | "页面" | "文件夹" | "资料空间";
   token: string;
   project: string;
