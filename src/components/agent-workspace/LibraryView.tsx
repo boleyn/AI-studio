@@ -126,6 +126,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [galleryOpen, setGalleryOpen] = useState(false);
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
 
+  const [invitees,setInvitees] = useState("");
+  const [inviteOpen,setInviteOpen] = useState(false);
+  function openSpaceDialog() {
+    setInvitees("");
+    setInviteOpen(false);
+    setTitle("");
+    setNewKind("资料空间");
+  }
   const [newKind,setNewKind] = useState<"文件夹"|"资料空间">();
   const [move,setMove] = useState<LibraryFile>();
   const [newDestinationName, setNewDestinationName] = useState<string>();
@@ -134,8 +142,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,folderId:kind === "资料空间" ? null : parentId})});
-      if (!response.ok) throw new Error();
+      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,...(kind === "资料空间" ? {invitees:invitees.split(/[,，;；\s]+/).filter(Boolean)} : {}),folderId:kind === "资料空间" ? null : parentId})});
+      if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error);
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
       setNewKind(undefined);
@@ -143,7 +151,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         recordOpen(page);
         navigateList("全部","推荐",files?.some(item=>item.id===parentId && item.kind==="页面") ? folder?.id : parentId,page.id,true);
       } else openItem(page);
-    } catch { toast({status:"error",title:"无法创建"+kind+"，请重试"}); }
+    } catch (error) { toast({status:"error",title:"无法创建"+kind+"，请重试",description:error instanceof Error ? error.message : undefined}); }
     finally {setCreating(false);}
   }
   function recordOpen(file:LibraryFile) {
@@ -462,7 +470,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <MenuItem icon={<PanelsTopLeft size={20} aria-hidden/>} onClick={() => startCreativeChat("站点")}>站台</MenuItem>
               <MenuItem icon={<ImageIcon size={20} aria-hidden/>} onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
               {!folderMenu && <MenuDivider my="8px"/>}
-              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={20} aria-hidden/> : <Layers size={20} aria-hidden/>} key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
+              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={20} aria-hidden/> : <Layers size={20} aria-hidden/>} key={kind} onClick={() => {if (kind === "资料空间") openSpaceDialog(); else {setTitle("");setNewKind(kind);}}}>{kind}</MenuItem>)}
               {!folderMenu && <MenuDivider my="8px"/>}
               <MenuItem icon={<Upload size={20} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={20} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
           </Menu>;
@@ -498,7 +506,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
-      </Menu>} createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
+      </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder?.name || section} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
@@ -730,7 +738,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     {sharing && <ArtifactShareDialog spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
-    <Modal isOpen={Boolean(newKind)} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
+    <Modal isOpen={newKind === "资料空间"} onClose={()=>{if (!creating) setNewKind(undefined);}} isCentered>
+      <ModalOverlay/><ModalContent mx={3} maxW="512px" minH="238px" borderRadius="24px">
+        <ModalHeader as="h2" fontSize="20px">创建资料空间</ModalHeader><ModalCloseButton aria-label="关闭对话框" isDisabled={creating}/>
+        <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
+          <ModalBody><Flex align="center" gap={4}><Layers size={26}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
+            <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
+            {inviteOpen && <Box mt={2}><Input aria-label="受邀账号" placeholder="输入账号，多个账号用逗号分隔" value={invitees} onChange={event=>setInvitees(event.target.value)}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
+          </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={()=>setNewKind(undefined)}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
+        </form></ModalContent></Modal>
+    <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">新建{newKind}</ModalHeader><form onSubmit={event => {event.preventDefault(); if (title.trim() && newKind) void createPage(title.trim(),"",newKind);}}>
         <ModalBody p={0} mt="12px"><FormLabel m={0} mb="8px" lineHeight="24px" htmlFor="library-container-name">{newKind}名称</FormLabel><Input h="36px" fontSize="14px" borderRadius="6px" id="library-container-name" autoFocus value={title} maxLength={255}
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter p={0} mt="12px" gap="12px"><Button minW="66px" h="32px" borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>

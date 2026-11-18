@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
+import { findUserByUsername } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 import type { LibraryFile } from "@/types/library";
 
@@ -29,7 +30,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!parsed.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:parsed.data.kind === "页面" ? ["文件夹","资料空间","页面",null] : ["文件夹","资料空间"]},deleted:{$ne:true},purging:{$ne:true}})) return res.status(400).end();
-    const { insertedId } = await pages.insertOne({ owner, ...parsed.data, time });
+    const members: {username:string;userId:string}[] = [];
+    if (input.invitees !== undefined) {
+      const names = z.array(z.string().trim().min(1).max(100)).max(50).safeParse(input.invitees);
+      if (parsed.data.kind !== "资料空间" || !names.success) return res.status(400).end();
+      for (const name of new Set(names.data)) {
+        const member = await findUserByUsername(name);
+        if (!member || String(member._id) === owner) return res.status(400).json({error:"请检查受邀账号：" + name});
+        if (!members.some(item => item.userId === String(member._id))) members.push({username:member.username,userId:String(member._id)});
+      }
+    }
+    const { insertedId } = await pages.insertOne({ owner, ...parsed.data, time,
+      ...(members.length ? {members,sharedBy:auth.user.displayName || auth.user.username} : {}) });
     const id = insertedId.toHexString();
     const item: LibraryFile = { id, kind:parsed.data.kind, folderId:parsed.data.folderId, token:"", project:"", chatId:"", conversation:"", path:id, name:parsed.data.name, time };
     return res.status(201).json(item);
