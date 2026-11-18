@@ -460,6 +460,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem data-copy-link="" onClick={()=>copySpace(space,"链接")}>资料空间链接</MenuItem>
           <MenuItem onClick={()=>copySpace(space,"ID")}>资料空间 ID</MenuItem>
         </> : <>
+          <MenuItem onClick={()=>setSharing(space)}>分享</MenuItem>
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
           <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
           <MenuItem data-copy-trigger="" aria-haspopup="menu" closeOnSelect={false}
@@ -698,7 +699,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     }}/>}
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
-    {sharing && <ArtifactShareDialog siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
+    {sharing && <ArtifactShareDialog spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
     <Modal isOpen={Boolean(newKind)} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent borderRadius="20px">

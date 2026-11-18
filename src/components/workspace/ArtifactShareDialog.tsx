@@ -9,13 +9,14 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 type Member = { username: string; canEdit?: boolean };
 type Share = { id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
 
-export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, displayName, onClose }: {
+export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, spaceId, displayName, onClose }: {
   token: string;
   path: string;
   version?: string;
   libraryItemId?: string;
   chatId?: string;
   siteId?: string;
+  spaceId?: string;
   displayName?: string;
   onClose: () => void;
 }) {
@@ -27,10 +28,10 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(siteId ? `/api/share/${siteId}/members` : "/api/artifact-share", {
-      method: siteId ? "GET" : "POST",
+    void fetch(spaceId ? "/api/library/space-share?id="+spaceId : siteId ? `/api/share/${siteId}/members` : "/api/artifact-share", {
+      method: siteId || spaceId ? "GET" : "POST",
       headers: withAuthHeaders({ "Content-Type": "application/json" }),
-      body: siteId ? undefined : JSON.stringify({ token, path, version,libraryItemId,chatId,chatUpload:Boolean(chatId) }),
+      body: siteId || spaceId ? undefined : JSON.stringify({ token, path, version,libraryItemId,chatId,chatUpload:Boolean(chatId) }),
       signal: controller.signal,
     }).then(async (response) => {
       const data = await response.json();
@@ -40,14 +41,14 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
       if (!controller.signal.aborted) setError(reason.message || "无法准备分享链接");
     });
     return () => controller.abort();
-  }, [token, path, version,libraryItemId,chatId,siteId]);
+  }, [token, path, version,libraryItemId,chatId,siteId,spaceId]);
 
   const updateMember = async (name: string, remove = false, canEdit?: boolean) => {
     if (!share || !name.trim() || busy) return;
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(siteId ? `/api/share/${siteId}/members` : `/api/artifact-share?id=${share.id}`, {
+      const response = await fetch(spaceId ? "/api/library/space-share?id="+spaceId : siteId ? `/api/share/${siteId}/members` : `/api/artifact-share?id=${share.id}`, {
         method: "PATCH",
         headers: withAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ username: name, remove, canEdit }),
@@ -70,6 +71,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
         <ModalHeader pr={10} overflowWrap="anywhere">共享 {displayName || path.split("/").pop()}</ModalHeader>
         <ModalCloseButton aria-label="关闭分享对话框" />
         <ModalBody>
+          {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}
           {share && <>
             <Flex as="form" gap={2} align="end" onSubmit={(event) => { event.preventDefault(); void updateMember(username); }}>
@@ -107,7 +109,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
         <ModalFooter gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
             try {
-              await navigator.clipboard.writeText(new URL(siteId ? `/share/preview/${siteId}` : `/share/file/${share.id}`, window.location.origin).href);
+              await navigator.clipboard.writeText(new URL(spaceId ? "/share/space/"+spaceId : siteId ? `/share/preview/${siteId}` : `/share/file/${share.id}`, window.location.origin).href);
               setCopied(true);
             } catch {
               setError("无法复制链接");
