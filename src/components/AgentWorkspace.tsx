@@ -190,6 +190,9 @@ export default function AgentWorkspace({
   type WorkspaceView = "chat" | "schedules" | "projects" | "library";
   const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
     ? query.view : "chat";
+  const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
+  const fileChatOpen = activeNav === "library" && fileChat?.itemId === query.libraryItem &&
+    fileChat?.chatId === visibleChatId && fileChat?.minimized === false;
   function setActiveNav(view: WorkspaceView, conversation?:string) {
     if (view === activeNav && !conversation) return;
     const nextQuery = {...router.query};
@@ -584,7 +587,8 @@ export default function AgentWorkspace({
 
   const conversationPane = (
       <Flex flex="1" direction="column" minW={0} bg="#ffffff">
-        {activeNav !== "schedules" && (
+        {fileChatOpen && <Flex align="center" justify="space-between" px={4} h="52px"><Text fontWeight="600">聊天</Text><Button size="sm" variant="ghost" onClick={()=>setFileChat(prev=>prev && {...prev,minimized:true})}>最小化聊天窗口</Button></Flex>}
+        {activeNav !== "schedules" && !fileChatOpen && (
         <Flex
           minH="52px"
           flexWrap="wrap"
@@ -868,7 +872,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text) => {
+      {activeNav === "library" && <LibraryView fileChatOpen={fileChatOpen} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
         let token = activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
@@ -881,10 +885,12 @@ export default function AgentWorkspace({
           }
           await fetchProjects();
         }
-        const chat = await createConversation(token,[]);
+        const chat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? {id:fileChat.chatId} : await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text});
-        await setActiveNav("chat", chat.id);
+        if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
+        else setFileChat(undefined);
+        await setActiveNav(itemId ? "library" : "chat", chat.id);
         handleSelectConversation(token,chat.id);
       }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
@@ -919,14 +925,15 @@ export default function AgentWorkspace({
         />
       )}
       <Flex
-        flex="1"
+        flex={fileChatOpen ? {base:"1",md:"0 0 38%"} : "1"}
         minW={0}
         minH={0}
-        position="relative"
-        display={activeNav === "chat" ? "flex" : "none"}
+        position={fileChatOpen ? {base:"absolute",md:"relative"} : "relative"}
+        display={activeNav === "chat" || fileChatOpen ? "flex" : "none"}
+        {...(fileChatOpen ? {role:"region", "aria-label":"聊天", inset:{base:0,md:"auto"},zIndex:4,bg:"white",borderLeftWidth:"1px"} : {})}
       >
         {/* 次级侧边栏（1:1 对齐 ChatGPT 左侧栏） */}
-          {sidebarOpen ? (
+          {sidebarOpen && !fileChatOpen ? (
         <Flex
           position={{ base: "absolute", md: "relative" }}
           insetY={0}

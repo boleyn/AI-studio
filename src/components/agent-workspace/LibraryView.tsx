@@ -47,7 +47,7 @@ function fileType(path: string) {
   return "其他";
 }
 
-export default function LibraryView({ projects, onProject, onOpen, onBack, onChat }: { projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ fileChatOpen, projects, onProject, onOpen, onBack, onChat }: { fileChatOpen:boolean; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
@@ -274,11 +274,11 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
   const allChecked = Boolean(visible?.length && visible.length === picked.length);
-  async function usePicked(action:"chat"|"download", items = picked, question?:string) {
+  async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string) {
     setBatchBusy(true);
     try {
       const attachments = await Promise.all(items.map(item => readLibraryAttachment(item)));
-      if (action === "chat") {await onChat(attachments,question); return;}
+      if (action === "chat") {await onChat(attachments,question,itemId); return;}
       let blob:Blob = attachments[0];
       let name = attachments[0].name;
       if (attachments.length > 1) {
@@ -392,7 +392,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.id} item={files?.find(item=>item.id===detail.id) || detail}
-      askAboutFile={question=>usePicked("chat",[detail],question)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
+      fileChatOpen={fileChatOpen} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onBack={() => navigateList(section, tab, folder?.id)}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>

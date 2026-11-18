@@ -13,12 +13,13 @@ interface Props {
   item: LibraryFile;
   download: ReactNode;
   share?:()=>void;
+  fileChatOpen:boolean;
   askAboutFile:(question:string)=>Promise<void>;
   close: () => void;
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,download,share,askAboutFile,close,openSource,toggleFavorite}:Props) {
+export default function LibraryFileViewer({item,download,share,fileChatOpen,askAboutFile,close,openSource,toggleFavorite}:Props) {
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
@@ -102,7 +103,7 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
         </Flex>}
     </Box>
-    {isArtifactImage(name) && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
+    {image && !fileChatOpen && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
       onSubmit={async event=>{
         event.preventDefault();
         if (openingChat) return;
