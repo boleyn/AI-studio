@@ -500,12 +500,12 @@ const ChatInput = ({
     },
     [uploadSingleFile]
   );
-  const consumedLibraryDraft = useRef<string>();
+  const consumedLibraryDrafts = useRef(new WeakSet<object>());
   useEffect(() => {
     const draft = workspaceComposer?.libraryDraft;
-    if (!draft || consumedLibraryDraft.current === draft.chatId ||
+    if (!draft || consumedLibraryDrafts.current.has(draft) ||
       draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
-    consumedLibraryDraft.current = draft.chatId;
+    consumedLibraryDrafts.current.add(draft);
     if (draft.text) {
       setText(draft.text);
       requestAnimationFrame(() => textAreaRef.current?.focus());
