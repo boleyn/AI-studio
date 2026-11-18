@@ -248,7 +248,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       </Flex>
       </Box>
       {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
-        <Text fontSize="sm" color="gray.600">恢复最近删除的项目。</Text>
+        <Text fontSize="sm" color="gray.600">恢复最近删除的项目。这些项目将在 30 天后被永久删除。</Text>
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
           onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
       </Flex>}

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { listReceivedArtifactShares } from "@server/shares/artifactShareStorage";
-import { deleteStorageObjects } from "@server/storage/s3";
+import { purgeLibraryItem } from "@server/library/trash";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -20,20 +20,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "DELETE") {
     const id = req.query.id;
     if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
-    if (id.length === 64) {
-      const result = await settings.updateOne({_id:owner + "/" + id, owner, deleted:true}, {$set:{purged:true}});
-      return res.status(result.matchedCount ? 204 : 404).end();
-    }
-    const pages = db.collection("library_pages");
-    const filter = {_id:new ObjectId(id), owner, deleted:true};
-    if (await pages.findOne({owner,folderId:id}) || await settings.findOne({owner,folderId:id,purged:{$ne:true}}))
-      return res.status(409).json({error:"请先移出或删除文件夹中的条目"});
-    const item = await pages.findOneAndUpdate(filter, {$set:{purging:true}}, {returnDocument:"after"});
-    if (!item) return res.status(404).end();
-    if (item.storageKey) await deleteStorageObjects({keys:[item.storageKey]});
-    await pages.deleteOne({...filter,purging:true});
-    await settings.deleteOne({owner,_id:owner + "/" + id});
-    return res.status(204).end();
+    const status = await purgeLibraryItem(db, owner, id);
+    return status === 409 ? res.status(status).json({error:"请先移出或删除文件夹中的条目"}) : res.status(status).end();
   }
   if (req.method === "POST") {
     const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
