@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputR
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -469,7 +469,12 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
       </Flex>}
       <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
-      {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
+      {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
+          <CircleAlert size={22} color="#777" aria-hidden/>
+          <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
+            <Text mt={1} fontSize="sm" color="gray.600">请稍后重新加载。</Text></Box>
+          <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重新加载</Button>
+        </Flex> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
@@ -487,14 +492,14 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
             "@container (min-width:48rem)":{columnCount:4}, "@container (min-width:64rem)":{columnCount:5},
             "@container (min-width:80rem)":{columnCount:6}
           }}>
-            {visible.map(file => <Box key={key(file)} position="relative" mb={4} sx={{breakInside:"avoid",
+            {visible.map(file => <Box key={key(file)} position="relative" mb={4} data-selecting={picked.length > 0} sx={{breakInside:"avoid",
               "& [role=checkbox]":{background:"white",insetBlockStart:"auto",insetBlockEnd:"19px",insetInlineEnd:"19px",
                 width:"20px",height:"20px",borderRadius:"4px",boxShadow:"0 1px 4px #0003"},
               "& [role=checkbox][aria-checked=true]":{background:"#171717",color:"white",borderColor:"transparent"},
-              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions:not(:has([aria-expanded=true])), &:not(:hover):not(:focus-within) [role=checkbox][aria-checked=false]":{opacity:0}}
+              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions:not(:has([aria-expanded=true])), &[data-selecting=false]:not(:hover):not(:focus-within) [role=checkbox]":{opacity:0}}
             }}>
               <Box as="button" display="block" w="full" overflow="hidden" borderRadius="16px" borderWidth="1px"
-                onClick={() => openItem(file)} aria-label={file.name}>
+                onClick={() => picked.length ? checkItem(file.id) : openItem(file)} aria-label={picked.length ? (selected.includes(file.id) ? "取消选择" : "选择") + "图像 " + file.name : file.name}>
                 <Box as="img" src={libraryAttachmentUrl(file)} alt="" loading="lazy" w="full" h="auto"/>
               </Box>
               <Box className="image-actions" position="absolute" top="13px" insetInlineEnd="13px"
