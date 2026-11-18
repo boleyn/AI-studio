@@ -52,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       const share = await createArtifactShare({projectToken:libraryItemId ? "" : token,libraryItemId,livePage,ownerId:userId,ownerName:auth.user.username,path:filename,bytes});
       if (!share) throw new Error("Share creation did not return a record");
-      return res.status(201).json({ id: share._id, filename: share.filename, owner: share.ownerName, members: share.members });
+      return res.status(201).json({ id: share._id, filename: share.filename, owner: share.ownerName, members: share.members, livePage:share.livePage });
     }
 
     if (req.method !== "GET" && req.method !== "PATCH") {
@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? await findUserByUsername(username).then((user) => user ? { userId: String(user._id), username: user.username } : undefined)
           : undefined;
       if (!member || member.userId === userId) return res.status(400).json({ error: "请选择有效的 Hermes 账号" });
-      const updated = await updateArtifactShareMember(id, userId, member, body.remove === true);
+      const updated = await updateArtifactShareMember(id, userId, {...member, ...(share.livePage && typeof body.canEdit === "boolean" ? {canEdit:body.canEdit} : {})}, body.remove === true);
       return res.status(200).json({ members: updated?.members ?? [] });
     }
 
@@ -97,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).send(buffer);
     }
 
-    return res.status(200).json({ filename, owner: share.ownerName });
+    return res.status(200).json({ filename, owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
   } catch (error) {
     console.error("Artifact share request failed", error);
     return res.status(500).json({ error: "暂时无法处理共享文件" });

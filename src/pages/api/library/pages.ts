@@ -5,6 +5,8 @@ import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
 import type { LibraryFile } from "@/types/library";
 
+import { getArtifactShare } from "@server/shares/artifactShareStorage";
+
 const fields = z.object({ name: z.string().trim().min(1).max(255), body: z.string().max(500000) });
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const auth = await requireAuth(req, res);
@@ -24,7 +26,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(201).json(item);
   }
   if (typeof req.query.id !== "string" || !/^[0-9a-f]{24}$/.test(req.query.id)) return res.status(400).end();
-  const filter = { owner, purging:{$ne:true}, _id:new ObjectId(req.query.id) };
+  let pageOwner = owner;
+  const shareId = req.query.share;
+  if (shareId !== undefined) {
+    const share = typeof shareId === "string" ? await getArtifactShare(shareId) : null;
+    if (!share?.livePage || share.libraryItemId !== req.query.id ||
+      (share.ownerId !== owner && !share.members.some(m => m.userId === owner && m.canEdit))) return res.status(404).end();
+    pageOwner = share.ownerId;
+    if (req.method === "PATCH" && !fields.extend({expectedRevision:z.number().int().nonnegative()}).strict().safeParse(req.body).success) return res.status(400).end();
+  }
+  const filter = { owner:pageOwner, ...(shareId !== undefined ? {deleted:{$ne:true}} : {}), purging:{$ne:true}, _id:new ObjectId(req.query.id) };
   if (req.method === "GET") {
     const page = await pages.findOne(filter,{projection:{body:1,name:1,revision:1}});
     return page ? res.json(page) : res.status(404).end();

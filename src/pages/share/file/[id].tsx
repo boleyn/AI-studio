@@ -8,11 +8,14 @@ import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
 import FilePreviewPanel, { isSpreadsheetFile } from "@/components/workspace/FilePreviewPanel";
 import ExtendedFilePreview from "@/components/workspace/ExtendedFilePreview";
 
+import LibraryPageEditor from "@/components/agent-workspace/LibraryPageEditor";
+
 export default function SharedArtifactPage() {
   const { query } = useRouter();
   const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
-  const [result, setResult] = useState<{ id: string; filename?: string; error?: string; needsLogin?: boolean }>();
+  const [result, setResult] = useState<{ id: string; filename?: string; editablePageId?: string; error?: string; needsLogin?: boolean }>();
+  const [editing,setEditing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
   const current = result?.id === id ? result : undefined;
@@ -29,8 +32,8 @@ export default function SharedArtifactPage() {
           return;
         }
         if (!response.ok) throw new Error("共享文件不可用或未向你开放。");
-        const data = await response.json() as { filename: string };
-        if (!controller.signal.aborted) setResult({ id, filename: data.filename });
+        const data = await response.json() as { filename: string; editablePageId?: string };
+        if (!controller.signal.aborted) setResult({ id, filename: data.filename, editablePageId:data.editablePageId });
       })
       .catch((reason) => {
         if (!controller.signal.aborted) setResult({ id, error: reason.message || "共享文件不可用。" });
@@ -49,10 +52,13 @@ export default function SharedArtifactPage() {
   const url = `${endpoint}&file=1`;
   const isSpreadsheet = isSpreadsheetFile(current.filename);
   const retry = () => setAttempt((value) => value + 1);
+  if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id}
+    onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:name+".md"})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
       <ArtifactFileIcon name={current.filename} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
+      {current.editablePageId && <Button size="sm" onClick={()=>setEditing(true)}>编辑页面</Button>}
       {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
       <Button as="a" href={url} download={current.filename} leftIcon={<Download size={16} />} size="sm" variant="ghost">下载</Button>
     </Flex>

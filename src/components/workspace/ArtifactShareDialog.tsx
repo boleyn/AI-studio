@@ -6,8 +6,8 @@ import { ChevronDown, Link2, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
-type Member = { username: string };
-type Share = { id: string; filename: string; owner: string; members: Member[] };
+type Member = { username: string; canEdit?: boolean };
+type Share = { id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
 
 export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, displayName, onClose }: {
   token: string;
@@ -42,7 +42,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
     return () => controller.abort();
   }, [token, path, version,libraryItemId,chatId,siteId]);
 
-  const updateMember = async (name: string, remove = false) => {
+  const updateMember = async (name: string, remove = false, canEdit?: boolean) => {
     if (!share || !name.trim() || busy) return;
     setBusy(true);
     setError("");
@@ -50,7 +50,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
       const response = await fetch(siteId ? `/api/share/${siteId}/members` : `/api/artifact-share?id=${share.id}`, {
         method: "PATCH",
         headers: withAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ username: name, remove }),
+        body: JSON.stringify({ username: name, remove, canEdit }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法更新访问权限");
@@ -95,6 +95,8 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
             {share.members.map((member) => (
               <Flex key={member.username} align="center" justify="space-between" gap={3} fontSize="sm">
                 <Text isTruncated>{member.username}</Text>
+                {share.livePage && <FormControl w="auto" ml="auto"><select aria-label={member.username + " 的页面权限"} disabled={busy} value={member.canEdit ? "edit" : "view"}
+                  onChange={e=>void updateMember(member.username,false,e.target.value==="edit")}><option value="view">可查看</option><option value="edit">可编辑</option></select></FormControl>}
                 <Button size="xs" variant="ghost" isDisabled={busy} aria-label={`移除 ${member.username}`}
                   onClick={() => void updateMember(member.username, true)}>移除</Button>
               </Flex>

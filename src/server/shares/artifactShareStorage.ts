@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getMongoDb } from "@server/db/mongo";
 import { deleteStorageObjects, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
 
-export type ArtifactShareMember = { userId: string; username: string; invitedAt?: string };
+export type ArtifactShareMember = { userId: string; username: string; canEdit?: boolean; invitedAt?: string };
 
 type ArtifactShare = {
   _id: string;
@@ -66,6 +66,7 @@ export async function updateArtifactShareMember(id: string, ownerId: string, mem
     return shares.findOneAndUpdate(filter, { $pull: { members: { userId: member.userId } } }, { returnDocument: "after" });
   }
   await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
+  if (member.canEdit !== undefined) await shares.updateOne({...filter,"members.userId":member.userId}, {$set:{"members.$.canEdit":member.canEdit}});
   return shares.findOne(filter);
 }
 
