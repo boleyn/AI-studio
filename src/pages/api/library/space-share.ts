@@ -37,25 +37,40 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   }
   if (owner && !req.query.page) return res.json({owner:true,name:space.name});
   // Resolve membership from the live folder tree so moved and trashed pages leave the share.
-  const entries = await pages.find({owner:space.owner,...active,kind:{$in:["文件夹","页面",null]}},
-    {projection:{name:1,kind:1,folderId:1}}).toArray();
-  const folders = new Set([id]);
-  const children = new Map<string,typeof entries>();
-  for (const entry of entries) {
-    if (!entry.folderId) continue;
-    const siblings = children.get(entry.folderId);
-    if (siblings) siblings.push(entry); else children.set(entry.folderId,[entry]);
+  const pageId = req.query.page;
+  if (pageId !== undefined && (typeof pageId !== "string" || !/^[a-f0-9]{24}$/.test(pageId))) {
+    return res.status(404).end();
   }
-  const included = [];
-  for (const parent of folders) for (const entry of children.get(parent) || []) {
-    folders.add(String(entry._id));
-    if (entry.kind !== "文件夹") included.push({id:String(entry._id),name:entry.name});
-  }
-  if (req.query.page) {
-    const page = included.find(item=>item.id === req.query.page);
+  const accessible = {owner:space.owner,...active,kind:{$in:["文件夹","页面",null]}};
+  if (pageId) {
+    // Opening a page only requires checking its own chain of parents.
+    const page = await pages.findOne({...accessible,_id:new ObjectId(pageId),kind:{$in:["页面",null]}},
+      {projection:{name:1,body:1,folderId:1}});
     if (!page) return res.status(404).end();
-    const content = await pages.findOne({...active,owner:space.owner,_id:new ObjectId(page.id),folderId:{$in:[...folders]}},{projection:{name:1,body:1}});
-    return content ? res.json(content) : res.status(404).end();
+    let parent = page.folderId;
+    const seen = new Set([pageId]);
+    while (parent !== id) {
+      if (!parent || !/^[a-f0-9]{24}$/.test(parent) || seen.has(parent)) return res.status(404).end();
+      seen.add(parent);
+      const ancestor = await pages.findOne({...accessible,_id:new ObjectId(parent)},{projection:{folderId:1}});
+      parent = ancestor?.folderId;
+    }
+    return res.json({name:page.name,body:page.body});
+  }
+  const included: {id:string;name:string}[] = [];
+  const visited = new Set([id]);
+  let parents = [id];
+  while (parents.length) {
+    const children = await pages.find({...accessible,folderId:{$in:parents}},
+      {projection:{name:1,kind:1}}).toArray();
+    parents = [];
+    for (const child of children) {
+      const childId = String(child._id);
+      if (visited.has(childId)) continue;
+      visited.add(childId);
+      parents.push(childId);
+      if (child.kind !== "文件夹") included.push({id:childId,name:child.name});
+    }
   }
   return res.json({name:space.name,pages:included});
 }
