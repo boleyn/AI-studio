@@ -319,12 +319,26 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       }
     } finally { setBatchBusy(false); }
   }
-  const actions = (file: LibraryFile) => <Menu placement="bottom-end">
+  async function copyPage(file:LibraryFile, markdown:boolean) {
+    try {
+      const value = markdown ? await (await readLibraryAttachment(file)).text()
+        : new URL((router.asPath.split("?")[0] || "/") + "?" + new URLSearchParams({
+            view:"library", libraryItem:file.id, ...(file.folderId ? {libraryFolder:file.folderId} : {})
+          }), window.location.origin).href;
+      await navigator.clipboard.writeText(value);
+      toast({status:"success",title:markdown ? "已复制 Markdown" : "已复制链接"});
+    } catch {toast({status:"error",title:"复制失败，请重试"});}
+  }
+  const [copyMenuId,setCopyMenuId] = useState<string>();
+  const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
+    <MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{copyMenuId === file.id ? <>
+      <MenuItem onClick={()=>copyPage(file,false)}>复制链接</MenuItem>
+      <MenuItem onClick={()=>copyPage(file,true)}>复制为 Markdown</MenuItem></> : file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
+      {file.kind === "页面" && <MenuItem closeOnSelect={false} icon={<Copy size={16}/>} onClick={()=>setCopyMenuId(file.id)}>复制<ChevronRight size={14}/></MenuItem>}
       {file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuDivider my={2}/>
