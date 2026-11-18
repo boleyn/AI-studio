@@ -20,10 +20,11 @@ export const templates = [
 ];
 export default function LibraryTemplates({ collection, onPick, onClose, onStrategy }: {collection:"页面"|"幻灯片"|"全部"; onStrategy:()=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
   const strategyCard = <Button aria-label="Product Strategy" variant="unstyled" h="auto" minW={0} pb="8px" onClick={onStrategy}>
-        <Flex aspectRatio="16/9" bg="#113b82" borderRadius="12px" direction="column" align="start" justify="center" pl="25%" textAlign="left">
-          <Text fontWeight="400" color="#43caea">2027</Text><Text fontSize="lg" fontWeight="400" lineHeight="1.05" color="white">Product<br/>Strategy</Text>
-        </Flex><Text mt="10px" lineHeight="20px" fontSize="sm">Product Strategy</Text><Text fontSize="xs" fontWeight="400" color="gray.500">幻灯片</Text>
-      </Button>;
+    <Box as="img" src="/library-templates/product-strategy-cover.png" alt="" draggable={false} w="full"
+      aspectRatio="16/9" objectFit="cover" borderRadius="12px" border="1px solid #e9e9e9"/>
+    <Text mt="10px" lineHeight="20px" fontSize="sm" fontWeight="400">Product Strategy</Text>
+    <Text fontSize="xs" fontWeight="400" color="gray.500">幻灯片</Text>
+  </Button>;
   return <Box as="section" mb="40px" role="group">
     <Flex align="center" justify="space-between"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
       <IconButton opacity={{base:1,md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} aria-label="关闭“在资料空间中共同创建”" size="xs" variant="ghost" icon={<X size={14}/>} onClick={onClose}/></Flex>
