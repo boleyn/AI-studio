@@ -50,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return page ? res.json(page) : res.status(404).end();
   }
   if (req.method === "PATCH") {
-    const patch = fields.partial().extend({expectedRevision:z.number().int().nonnegative().optional(),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(),favorite:z.boolean().optional(),deleted:z.boolean().optional()}).strict().safeParse(req.body);
+    const patch = fields.partial().extend({expectedRevision:z.number().int().nonnegative().optional(),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(),favorite:z.boolean().optional(),pinned:z.boolean().optional(),deleted:z.boolean().optional()}).strict().safeParse(req.body);
     if (!patch.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (patch.data.folderId) {

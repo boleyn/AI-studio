@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, 
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -258,7 +258,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
     (!sources.length || (file.kind === "上传" && !file.sharedPage && sources.includes("已上传")) || (file.kind === "生成" && sources.includes("生成的文件"))) &&
     (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path))) &&
-    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
+    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
   const allChecked = Boolean(visible?.length && visible.length === picked.length);
@@ -289,7 +289,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     <Button as="a" size="xs" variant="ghost" href={downloadUrl(file)}>下载</Button> :
     <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version)
       .catch(() => toast({ status:"error", title:"无法下载此文件" }))}>下载</Button>;
-  async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "deleted" | "folderId">>) {
+  async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>) {
     setSaving(true);
     try {
       const response = await fetch((isNative(file) || file.directUpload) ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
@@ -336,6 +336,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       <MenuItem onClick={()=>copyPage(file,false)}>复制链接</MenuItem>
       <MenuItem onClick={()=>copyPage(file,true)}>复制为 Markdown</MenuItem></> : file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
+      {file.kind === "页面" && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
       <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <MenuItem closeOnSelect={false} icon={<Copy size={16}/>} onClick={()=>setCopyMenuId(file.id)}>复制<ChevronRight size={14}/></MenuItem>}
@@ -477,7 +478,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" _hover={{bg:"surface.hover"}}>
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time) || "—"}</time></td>
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file)) || "—"}</time>}</td></>}<td>{actions(file)}</td>

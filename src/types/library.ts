@@ -9,6 +9,7 @@ export interface LibraryFile {
   directUpload?: boolean;
   folderId?: string | null;
   favorite?: boolean;
+  pinned?: boolean;
   deleted?: boolean;
   deletedAt?: string | null;
   size?: number;
