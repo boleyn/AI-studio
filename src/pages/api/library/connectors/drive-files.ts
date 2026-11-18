@@ -40,8 +40,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       terms.push("name contains '" + escaped + "'");
     }
     const recent = folder === "root" && scope === "recent";
-    const params = new URLSearchParams({q:terms.join(" and "), pageSize:"100", orderBy:recent ? "recency desc" : "folder,name_natural",
-      supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"nextPageToken,files(id,name,mimeType,webViewLink)"});
+    const sortKey = req.query.sort === "modified" ? "modifiedTime" : req.query.sort === "size" ? "quotaBytesUsed" : "name_natural";
+    const order = "folder," + sortKey + (req.query.direction === "desc" ? " desc" : "");
+    const params = new URLSearchParams({q:terms.join(" and "), pageSize:"100", orderBy:recent ? "recency desc" : order,
+      supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,viewedByMeTime,size)"});
     if (typeof req.query.page === "string") params.set("pageToken",req.query.page);
     const response = await fetch("https://www.googleapis.com/drive/v3/files?" + params, {headers:{Authorization:"Bearer " + data.access_token}});
     if (!response.ok) return res.status(502).json({error:"无法读取 Google Drive 文件夹"});
