@@ -35,6 +35,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     if (!owner) return res.status(403).end();
     return res.json({id,filename:space.name,owner:auth.user.username,members:space.members || []});
   }
+  if (owner && !req.query.page) return res.json({owner:true,name:space.name});
   // Resolve membership from the live folder tree so moved and trashed pages leave the share.
   const entries = await pages.find({owner:space.owner,...active,kind:{$in:["文件夹","页面",null]}},
     {projection:{name:1,kind:1,folderId:1}}).toArray();

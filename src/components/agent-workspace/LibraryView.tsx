@@ -398,8 +398,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   async function copySpace(space:LibraryFile,field:"链接"|"ID") {
     try {
-      const url = new URL(window.location.pathname,window.location.origin);
-      url.search = new URLSearchParams({view:"library",libraryFolder:space.id}).toString();
+      const url = new URL("/share/space/"+space.id,window.location.origin);
       await navigator.clipboard.writeText(field === "ID" ? space.id : url.href);
       toast({status:"success",title:"已复制资料空间"+field});
     } catch { toast({status:"error",title:"复制失败，请重试"}); }

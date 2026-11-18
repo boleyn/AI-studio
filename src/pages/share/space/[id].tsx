@@ -20,10 +20,15 @@ export default function SharedSpace() {
     fetch("/api/library/space-share?"+params,{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
       if (!response.ok) throw new Error(response.status === 401 ? "请登录受邀账号后查看。" : "无法访问这份共享内容。");
       const value = await response.json();
-      if (!controller.signal.aborted) setData(value);
+      if (controller.signal.aborted) return;
+      if (value.owner === true) {
+        await router.replace({pathname:"/",query:{view:"library",libraryFolder:id}});
+        return;
+      }
+      setData(value);
     }).catch(reason=>{if (!controller.signal.aborted) setError(reason.message);});
     return ()=>controller.abort();
-  },[id,page]);
+  },[id,page,router]);
   return <Box as="main" maxW="780px" mx="auto" p={6}>
     {page && <Button as="a" href={"/share/space/"+id} variant="ghost" mb={4}>返回资料空间</Button>}
     {error ? <Text role="alert">{error}</Text> : !data ? <Text role="status">正在加载…</Text> : <>
