@@ -134,7 +134,6 @@ const ChatMessageTimeline = ({
         {rows.map((row, rowIndex) => {
           const isLastRow = rowIndex === rows.length - 1;
           const isUser = row.role === "user";
-          const isAssistant = row.role === "assistant";
           const maxWidth = { base: "calc(100% - 12px)", md: "calc(100% - 20px)" };
 
           return (

@@ -23,7 +23,7 @@ const App = ({ Component, pageProps }: AppProps) => {
       </Head>
       <AuthProvider>
         <AuthGuard>
-          {isWorkspaceRoute ? (
+          {isWorkspaceRoute || router.pathname === "/login" ? (
             <Component {...pageProps} />
           ) : (
             <Box minH="100vh" position="relative">

@@ -243,12 +243,16 @@ export const buildDownloadUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
-export async function downloadWorkspaceArtifact(token: string, path: string, version?: string) {
+export async function fetchWorkspaceArtifact(token: string, path: string, version?: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ token, action: "view", path });
   if (version) query.set("version", version);
-  const response = await fetch(`/api/code?${query}`, { headers: withAuthHeaders() });
+  const response = await fetch(`/api/code?${query}`, { headers: withAuthHeaders(), signal });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const url = URL.createObjectURL(await response.blob());
+  return response.blob();
+}
+
+export async function downloadWorkspaceArtifact(token: string, path: string, version?: string) {
+  const url = URL.createObjectURL(await fetchWorkspaceArtifact(token, path, version));
   const link = document.createElement("a");
   link.href = url;
   link.download = path.split("/").pop() || "file";

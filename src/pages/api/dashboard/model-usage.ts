@@ -114,7 +114,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return;
   }
 
-  const trendDays = 7;
   const trendTimezone = "Asia/Shanghai";
   const requestedDays = Number(req.query.days || 7);
   const safeTrendDays = Number.isFinite(requestedDays) ? Math.max(7, Math.min(30, Math.floor(requestedDays))) : 7;

@@ -9,7 +9,7 @@ import Markdown from "@/components/Markdown";
 import StreamdownMarkdown from "@/components/Markdown/StreamdownMarkdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
 import { useCopyData } from "@/hooks/useCopyData";
-import { ToolStreamText, useChatItemViewModel } from "../hooks/useChatItemViewModel";
+import { useChatItemViewModel } from "../hooks/useChatItemViewModel";
 import type { MessageExecutionSummary } from "../utils/executionSummary";
 import AgentTimelineCard from "./message/timeline/AgentTimelineCard";
 import ToolTimelineCard from "./message/timeline/ToolTimelineCard";
@@ -101,6 +101,7 @@ const ChatItem = ({
   const [activityOpen, setActivityOpen] = React.useState<boolean>();
   const activityExpanded = activityOpen ?? Boolean(isStreaming);
   const { copyData } = useCopyData();
+  const { token } = useChatPanelViewContext();
   const {
     content,
     isUser,
@@ -109,7 +110,6 @@ const ChatItem = ({
     files,
     sortedFiles,
     timelineItems,
-    timelineStepIndexes,
     expandedTimelineReasoningKeys,
     expandedTimelineToolKeys,
     expandedTimelineAgentKeys,
@@ -138,32 +138,44 @@ const ChatItem = ({
 
   const artifactVersion = message.additional_kwargs?.workspaceArtifactVersion;
   const artifactPaths = message.additional_kwargs?.workspaceArtifactPaths;
-  const workspaceArtifacts = Array.isArray(artifactPaths)
+  const workspaceArtifacts = React.useMemo(() => Array.isArray(artifactPaths)
     ? [...new Set(artifactPaths.filter((path): path is string => typeof path === "string" && path.length > 0))]
-    : [];
+    : [], [artifactPaths]);
 
-  const openReplyArtifact = (path: string) => {
+  const findReplyArtifact = React.useCallback((path: string) => {
+    let decodedPath = path;
+    try {
+      decodedPath = decodeURIComponent(path);
+    } catch {
+      // Tool paths can contain literal percent signs.
+    }
+    const candidates = [path, decodedPath];
+    for (const candidate of [path, decodedPath]) {
+      const normalized = `/${candidate.replace(/^\/+/, "")}`;
+      candidates.push(normalized);
+      if (normalized.startsWith("/mnt/data/")) {
+        candidates.push(normalized.slice("/mnt/data".length));
+      }
+    }
+    return candidates.find((candidate) => workspaceArtifacts.includes(candidate));
+  }, [workspaceArtifacts]);
+
+  const openReplyArtifact = React.useCallback((path: string) => {
     if (!onOpenWorkspaceFile) return false;
     if (typeof artifactVersion === "string") {
-      let decodedPath = path;
-      try {
-        decodedPath = decodeURIComponent(path);
-      } catch {
-        // Tool paths can contain literal percent signs.
-      }
-      const candidates = [path, decodedPath];
-      for (const candidate of [path, decodedPath]) {
-        const normalized = `/${candidate.replace(/^\/+/, "")}`;
-        candidates.push(normalized);
-        if (normalized.startsWith("/mnt/data/")) {
-          candidates.push(normalized.slice("/mnt/data".length));
-        }
-      }
-      const artifact = candidates.find((candidate) => workspaceArtifacts.includes(candidate));
+      const artifact = findReplyArtifact(path);
       if (artifact) return onOpenWorkspaceFile(artifact, artifactVersion);
     }
     return onOpenWorkspaceFile(path);
-  };
+  }, [artifactVersion, findReplyArtifact, onOpenWorkspaceFile]);
+
+  const resolveWorkspaceImage = React.useCallback((source: string) => {
+    if (!token || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(source)) return;
+    const path = findReplyArtifact(source);
+    if (path && /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path)) {
+      return { token, path, version: typeof artifactVersion === "string" ? artifactVersion : undefined };
+    }
+  }, [token, findReplyArtifact, artifactVersion]);
 
   const isWorkspaceChat = Boolean(onOpenWorkspaceFile);
   const visibleToolCount = timelineItems.filter((item) =>
@@ -191,7 +203,6 @@ const ChatItem = ({
     ? `用时 ${Math.floor(seconds / 60)} 分钟 ${seconds % 60} 秒`
     : `用时 ${seconds} 秒`;
   const showElapsedLabel = isWorkspaceChat && !isStreaming && duration !== undefined;
-  const shouldShowExecutionMeta = !isUser && !isSystem && Boolean(executionSummary);
 
   if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
 
@@ -508,6 +519,7 @@ const ChatItem = ({
                         {isWorkspaceChat ? (
                           <StreamdownMarkdown
                             onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                            resolveWorkspaceImage={workspaceArtifacts.length ? resolveWorkspaceImage : undefined}
                             showAnimation={showAssistantAnimation && index === latestAnswerIndex}
                             source={item.text || ""}
                           />
@@ -529,6 +541,7 @@ const ChatItem = ({
               isWorkspaceChat ? (
                 <StreamdownMarkdown
                   onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                  resolveWorkspaceImage={workspaceArtifacts.length ? resolveWorkspaceImage : undefined}
                   showAnimation={showAssistantAnimation}
                   source={content}
                 />

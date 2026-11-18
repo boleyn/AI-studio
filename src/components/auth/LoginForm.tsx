@@ -1,5 +1,5 @@
 import { type Dispatch, useState } from "react";
-import { Flex, Button, Box, Text } from "@chakra-ui/react";
+import { Flex, Button, Box } from "@chakra-ui/react";
 import FormLayout from "./FormLayout";
 import { LoginPageTypeEnum } from "./constants";
 import { useToast } from "@chakra-ui/react";
@@ -65,18 +65,15 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
 
   return (
     <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.password}>
-      <Box
-        mt={8}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !requesting) {
-            handleSubmit();
-          }
-        }}
-      >
+      <form method="post" action="/api/auth/login" onSubmit={(event) => {
+        event.preventDefault();
+        if (!requesting) void handleSubmit();
+      }}>
         <AuthInputField
           icon={<UserRound size={16} />}
           isInvalid={!!error}
-          placeholder="邮箱 / 手机号 / 账号"
+          label="账号" name="username" autoComplete="username" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+          placeholder="邮箱、手机号或账号"
           value={form.username}
           onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
         />
@@ -85,16 +82,13 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
             icon={<LockKeyhole size={16} />}
             isInvalid={!!error}
             type="password"
+            label="密码" name="password" autoComplete="current-password"
             placeholder="输入密码"
             value={form.password}
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
             error={error}
           />
         </Box>
-        <Text mt={2} color="myGray.400" fontSize="mini">
-          你的账号凭证将被安全加密，仅用于身份验证。
-        </Text>
-
         <Button
           mt={6}
           w="100%"
@@ -104,35 +98,18 @@ const LoginForm = ({ setPageType, onSuccess }: Props) => {
           fontSize="md"
           lineHeight="1"
           fontWeight="medium"
-          variant="primary"
+          bg="var(--ws-text-main)" color="white" borderRadius="12px" _hover={{ bg: "#303a48" }}
           isLoading={requesting}
-          onClick={handleSubmit}
+          type="submit"
         >
-          进入工作台
+          登录
         </Button>
 
-        <Flex align="center" justifyContent={["flex-end", "center"]} color="primary.700" fontWeight="medium" mt={4}>
-          <Box
-            cursor="pointer"
-            _hover={{ textDecoration: "underline" }}
-            onClick={() => setPageType(LoginPageTypeEnum.forgot)}
-            fontSize="mini"
-          >
-            忘记密码
-          </Box>
-          <Flex alignItems="center">
-            <Box mx={3} h="12px" w="1px" bg="myGray.250" />
-            <Box
-              cursor="pointer"
-              _hover={{ textDecoration: "underline" }}
-              onClick={() => setPageType(LoginPageTypeEnum.register)}
-              fontSize="mini"
-            >
-              创建账号
-            </Box>
-          </Flex>
+        <Flex justify="space-between" mt={3} color="var(--ws-text-subtle)" fontSize="sm">
+          <button type="button" onClick={() => setPageType(LoginPageTypeEnum.forgot)}>忘记密码？</button>
+          <button type="button" onClick={() => setPageType(LoginPageTypeEnum.register)}>创建账号</button>
         </Flex>
-      </Box>
+      </form>
     </FormLayout>
   );
 };

@@ -21,7 +21,7 @@ import (
 )
 
 // ProductName is embedded from the platform OEM configuration at packaging time.
-var ProductName = "本机连接器"
+var ProductName = "伯仁连接器"
 
 // ClientVersion comes from the executable build version, shared by tray and native windows.
 var ClientVersion = "development"

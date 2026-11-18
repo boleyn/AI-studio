@@ -1,24 +1,88 @@
 import React, { useMemo } from "react";
-import { Streamdown } from "streamdown";
+import { Streamdown, defaultRehypePlugins } from "streamdown";
 import { code } from "@streamdown/code";
 import { Box } from "@chakra-ui/react";
+import type { Root } from "hast";
+import { visit } from "unist-util-visit";
+import { fetchWorkspaceArtifact } from "@features/chat/services/files";
 import "katex/dist/katex.min.css";
+
+type WorkspaceImage = { token: string; path: string; version?: string };
 
 interface StreamdownMarkdownProps {
   source?: string;
   showAnimation?: boolean;
   onOpenWorkspaceFile?: (path: string) => boolean;
+  resolveWorkspaceImage?: (source: string) => WorkspaceImage | undefined;
 }
 
 const STREAMDOWN_PLUGINS = { code };
+
+function WorkspaceArtifactImage({ token, path, version, alt }: WorkspaceImage & { alt: string }) {
+  const [src, setSrc] = React.useState("");
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    fetchWorkspaceArtifact(token, path, version, controller.signal)
+      .then((blob) => {
+        if (controller.signal.aborted) return;
+        const extension = path.split(".").pop()?.toLowerCase();
+        const imageType = `image/${extension === "jpg" ? "jpeg" : extension}`;
+        if (blob.type !== imageType && blob.type !== "application/octet-stream") {
+          setFailed(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob.type === imageType ? blob : blob.slice(0, blob.size, imageType));
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [token, path, version]);
+
+  if (failed) return <span>{alt}（图片加载失败，可打开附件查看）</span>;
+  return (
+    <Box as="span" display="block" maxW="100%" w="256px" aspectRatio={src ? undefined : 1}>
+      {src && <img src={src} alt={alt} style={{ display: "block", maxWidth: "100%", height: "auto" }}
+        onError={() => setFailed(true)} />}
+    </Box>
+  );
+}
 
 const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
   source = "",
   showAnimation = false,
   onOpenWorkspaceFile,
+  resolveWorkspaceImage,
 }) => {
+  const rehypePlugins = useMemo(() => resolveWorkspaceImage ? [
+    defaultRehypePlugins.raw,
+    defaultRehypePlugins.sanitize,
+    () => (tree: Root) => {
+      visit(tree, "element", (node) => {
+        const { src, alt } = node.properties;
+        if (node.tagName !== "img" || typeof src !== "string" || !resolveWorkspaceImage(src)) return;
+        // Route known reply artifacts through the authenticated renderer before URL hardening.
+        node.tagName = "workspace-artifact-image";
+        node.properties = { artifactSource: src, alt };
+      });
+    },
+    defaultRehypePlugins.harden,
+  ] : undefined, [resolveWorkspaceImage]);
   const components = useMemo(
     () => ({
+      "workspace-artifact-image": ({ artifactSource, alt }: Record<string, unknown>) => {
+        const image = typeof artifactSource === "string" ? resolveWorkspaceImage?.(artifactSource) : undefined;
+        return image
+          ? <WorkspaceArtifactImage key={JSON.stringify(image)} {...image}
+              alt={typeof alt === "string" && alt ? alt : image.path.split("/").pop() || "图片"} />
+          : null;
+      },
       a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
         const cleanHref = typeof href === "string" ? href : "";
         const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -46,7 +110,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
         );
       },
     }),
-    [onOpenWorkspaceFile],
+    [onOpenWorkspaceFile, resolveWorkspaceImage],
   );
 
   return (
@@ -141,6 +205,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
       <Streamdown
         className="w-full"
         plugins={STREAMDOWN_PLUGINS}
+        rehypePlugins={rehypePlugins}
         shikiTheme={["github-light", "github-light"]}
         isAnimating={showAnimation}
         mode={showAnimation ? "streaming" : "static"}

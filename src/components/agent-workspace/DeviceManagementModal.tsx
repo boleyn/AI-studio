@@ -109,8 +109,8 @@ export default function DeviceManagementModal({ isOpen, onClose }: DeviceManagem
       setInviteLink("");
       setPairMessage("正在联系伯仁连接器…");
       const status = await fetch("http://127.0.0.1:13005/status").then(r => r.ok ? r.json() : null).catch(() => null);
-      if (status?.inviteDecision) {
-        if (devices.some(device => device.deviceId === status.deviceId || status.deviceIds?.includes(device.deviceId))) {
+      if (status?.inviteDecision || !status) {
+        if (status && devices.some(device => device.deviceId === status.deviceId || status.deviceIds?.includes(device.deviceId))) {
           setPairMessage("此电脑已在设备列表中。");
           return;
         }
@@ -120,10 +120,12 @@ export default function DeviceManagementModal({ isOpen, onClose }: DeviceManagem
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ code, waitForDecision: true }),
         });
-        if (!result.ok) throw new Error(result.status === 403 ? "本机授权未完成。可以再次连接。" : "连接器未能完成邀请，请重试。");
-        setPairMessage("连接器已接受请求，正在刷新设备列表。");
-        await loadDevices();
-        return;
+        if (result.status !== 404) {
+          if (!result.ok) throw new Error(result.status === 403 ? "本机授权未完成。可以再次连接。" : "连接器未能完成邀请，请重试。");
+          setPairMessage("连接器已接受请求，正在刷新设备列表。");
+          await loadDevices();
+          return;
+        }
       }
       const bridgeRes = await fetch("http://127.0.0.1:13005/pair", {
         method: "POST",
@@ -181,9 +183,9 @@ export default function DeviceManagementModal({ isOpen, onClose }: DeviceManagem
 
   const footer = (
     <HStack w="full" justify="space-between">
-      <Menu placement="top-start">
+      <Menu placement="top-start" strategy="fixed">
         <MenuButton as={Button} size="sm" variant="ghost" leftIcon={<Plus size={15} />}>添加电脑</MenuButton>
-        <MenuList fontSize="sm">
+        <MenuList zIndex={20} fontSize="sm">
           <MenuItem icon={<Link2 size={15} />} onClick={() => void handlePairLocalBridge()} isDisabled={pairingLocal}>连接此电脑</MenuItem>
           <MenuItem icon={<Laptop size={15} />} onClick={() => void inviteOtherDevice()}>邀请其他电脑</MenuItem>
           <MenuItem as="a" href="/downloads/AIStudio-Connector-macOS.dmg" download="伯仁连接器-macOS.dmg" icon={<Download size={15} />}>下载 Mac 连接器</MenuItem>
@@ -194,13 +196,47 @@ export default function DeviceManagementModal({ isOpen, onClose }: DeviceManagem
     </HStack>
   );
 
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(inviteLink);
+        toast({ title: "邀请链接已复制", status: "success" });
+        return;
+      }
+    } catch {
+      // Fallback to execCommand in non-HTTPS / restricted clipboard contexts
+    }
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = inviteLink;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (copied) {
+        toast({ title: "邀请链接已复制", status: "success" });
+        return;
+      }
+    } catch {
+      // Ignore fallback error
+    }
+    setPairMessage("无法自动写入剪贴板，请直接选中下方链接手动复制。");
+  };
+
   return (
     <AppDialog isOpen={isOpen} onClose={onClose} size="md" title="我的设备" footer={footer}>
       <VStack align="stretch" spacing={2}>
         {pairMessage && <Text role="status" color="ink.secondary" fontSize="sm">{pairMessage}</Text>}
-        {inviteLink && <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(inviteLink)
-          .then(() => toast({ title: "邀请链接已复制", status: "success" }))
-          .catch(() => setPairMessage("无法访问剪贴板，请允许此页面复制链接。"))}>复制邀请链接</Button>}
+        {inviteLink && (
+          <VStack align="stretch" spacing={2}>
+            <Input size="sm" value={inviteLink} isReadOnly onClick={(e) => e.currentTarget.select()} aria-label="邀请链接" />
+            <Button size="sm" variant="outline" onClick={() => void copyInviteLink()}>复制邀请链接</Button>
+          </VStack>
+        )}
         {inviteLink && ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname) && (
           <Text color="ink.secondary" fontSize="sm">连接其他电脑时，请从两台电脑都能访问的平台地址打开工作台并创建邀请。</Text>
         )}

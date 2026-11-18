@@ -1,0 +1,49 @@
+.page {
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  position: relative;
+  isolation: isolate;
+  background: #f7f6fb;
+  color: var(--ws-text-main);
+}
+.brand {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px clamp(20px, 4vw, 64px);
+}
+.brand strong { font-size: 21px; }
+.brand span { color: var(--ws-text-subtle); font-size: 15px; }
+.panel {
+  position: relative;
+  z-index: 1;
+  width: min(360px, 35vw);
+  align-self: center;
+  margin-left: 58%;
+  padding-block: 32px clamp(40px, 12vh, 120px);
+}
+.panel h1 {
+  margin: 0 0 30px;
+  font-size: clamp(28px, 4vw, 34px);
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -.04em;
+}
+.panel button:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: 3px;
+}
+.panel form button[type="button"] { min-height: 40px; }
+.panel form button[type="button"]:hover { text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .panel {
+    align-self: start;
+    width: min(360px, calc(100% - 48px));
+    margin: 0 auto;
+    padding-block: 170px 32px;
+  }
+}

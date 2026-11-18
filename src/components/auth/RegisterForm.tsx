@@ -1,5 +1,5 @@
 import { type Dispatch, useState } from "react";
-import { Box, Button, Flex, Text } from "@chakra-ui/react";
+import { Box, Button, Text } from "@chakra-ui/react";
 import FormLayout from "./FormLayout";
 import { LoginPageTypeEnum } from "./constants";
 import { useToast } from "@chakra-ui/react";
@@ -57,18 +57,15 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
 
   return (
     <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.register}>
-      <Box
-        mt={6}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !requesting) {
-            handleSubmit();
-          }
-        }}
-      >
+      <form method="post" action="/api/auth/register" onSubmit={(event) => {
+        event.preventDefault();
+        if (!requesting) void handleSubmit();
+      }}>
         <AuthInputField
           icon={<UserRound size={16} />}
           isInvalid={!!error}
-          placeholder="邮箱 / 手机号 / 账号"
+          label="账号" name="username" autoComplete="username" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+          placeholder="邮箱、手机号或账号"
           value={form.username}
           onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
         />
@@ -77,6 +74,7 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
             icon={<LockKeyhole size={16} />}
             isInvalid={!!error}
             type="password"
+            label="密码" name="password" autoComplete="new-password"
             placeholder="设置登录密码"
             value={form.password}
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
@@ -87,6 +85,7 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
             icon={<ShieldCheck size={16} />}
             isInvalid={!!error}
             type="password"
+            label="确认密码" name="confirm-password" autoComplete="new-password"
             placeholder="再次输入密码"
             value={form.password2}
             onChange={(e) => setForm((prev) => ({ ...prev, password2: e.target.value }))}
@@ -105,26 +104,13 @@ const RegisterForm = ({ setPageType, onSuccess }: Props) => {
           fontSize="md"
           lineHeight="1"
           fontWeight="medium"
-          variant="primary"
+          bg="var(--ws-text-main)" color="white" borderRadius="12px" _hover={{ bg: "#303a48" }}
           isLoading={requesting}
-          onClick={handleSubmit}
+          type="submit"
         >
           创建账号
         </Button>
-        <Flex justify="flex-end" align="center" gap={3} mt={4} fontSize="mini" fontWeight="medium" color="primary.700">
-          <Box
-            cursor="pointer"
-            _hover={{ textDecoration: "underline" }}
-            onClick={() => setPageType(LoginPageTypeEnum.forgot)}
-          >
-            忘记密码
-          </Box>
-          <Box h="12px" w="1px" bg="myGray.250" />
-          <Box cursor="pointer" _hover={{ textDecoration: "underline" }} onClick={() => setPageType(LoginPageTypeEnum.password)}>
-            已有账号，去登录
-          </Box>
-        </Flex>
-      </Box>
+      </form>
     </FormLayout>
   );
 };

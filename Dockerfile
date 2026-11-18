@@ -48,8 +48,6 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js
 COPY --from=builder /app/skills ./skills
-COPY --from=builder /app/data/project-templates ./data/project-templates
-COPY --from=builder /app/AGENTS.md ./AGENTS.md
 
 RUN mkdir -p /app/.aistudio/sandboxes /app/.aistudio/runtime \
   && chmod -R 775 /app/.aistudio

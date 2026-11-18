@@ -175,7 +175,7 @@ dialog.app-dialog {
   box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.18), 0 4px 16px -4px rgba(0, 0, 0, 0.06);
   max-height: 86dvh;
   width: calc(100vw - 32px);
-  overflow: hidden;
+  overflow: visible;
   opacity: 0;
   transition-property: opacity, transform, display, overlay;
   transition-duration: 0.2s;

@@ -50,7 +50,7 @@
 | --- | --- | --- |
 | 平台地址 | 打包参数 `--platform-url` | 嵌入客户端，需要重新构建 |
 | 名称、macOS bundleId | App `config.json` 中公开 OEM 字段 | 打包读取，需要重新构建客户端 |
-| 托盘与应用图标 | macOS 使用 `native/macos/ConnectorIcon.swift`，Windows 托盘使用 `internal/desktop/tray.go` | 运行时托盘图标与应用文件图标分别构建，见下文 |
+| 托盘与应用图标 | macOS 使用 `public/icon/logo.svg`，Windows 托盘使用 `internal/desktop/tray.go` | 运行时托盘图标与应用文件图标分别构建，见下文 |
 | 默认通信地址 | App 请求的协议和 Host | 服务发现返回同源 WebSocket 地址 |
 | 配对身份、授权、任务状态 | 当前用户状态目录 | 由客户端管理，不随包分发 |
 | 下载入口 | OEM releases 或安装包上传接口 | 见分发文档 |
@@ -113,12 +113,12 @@ macOS 支持 `--signing-identity` 指定 Developer ID Application 企业证书�
 
 **macOS**
 
-- 图案源文件是 `native/macos/ConnectorIcon.swift`。打包时分别生成应用用的 `Connector.png` 和托盘用的 `tray.png`。构建器用 `sips` 把托盘图缩到 32×32，再通过 Go 链接参数写入 `desktop.ProductIconBase64`。状态点由 `internal/desktop/status_darwin.m` 单独绘制。
+- 默认图案源文件是仓库的 `public/icon/logo.svg`，也可通过 OEM 配置指定本地图标。打包时分别生成应用用的 `Connector.png` 和托盘用的 `tray.png`。构建器用 `sips` 把托盘图缩到 32×32，再通过 Go 链接参数写入 `desktop.ProductIconBase64`。状态点由 `internal/desktop/status_darwin.m` 单独绘制。
 - 应用 PNG 经 `sips` 生成多尺寸 iconset，再由 `iconutil` 输出 `Contents/Resources/Connector.icns`。`packaging/macos/Info.plist` 通过 `CFBundleIconFile` 引用它。改图后重新构建，再签名和公证。
 
 **Windows 通知区域**
 
-- `internal/desktop/run.go` 启动时调用 `systray.SetTemplateIcon`，图像来自 `internal/desktop/tray.go` 的 `trayIcon()`。当前 Windows 包使用该函数绘制的默认图案。要接入品牌图案，可在 `packaging/build.mjs` 的 Windows 分支准备透明背景的 32×32 PNG，并复用 `-X=fastgpt.local/local-device/internal/desktop.ProductIconBase64=<PNG 的 Base64>` 注入路径。
+- `internal/desktop/run.go` 启动时调用 `systray.SetIcon`，图像来自 `internal/desktop/tray.go` 的 `trayIcon()`。当前 Windows 包使用该函数绘制的默认图案。要接入品牌图案，可在 `packaging/build.mjs` 的 Windows 分支准备透明背景的 32×32 PNG，并复用 `-X=fastgpt.local/local-device/internal/desktop.ProductIconBase64=<PNG 的 Base64>` 注入路径。
 - `trayIcon()` 会检查 PNG 尺寸，输入缺失或无效时回退到默认图案。它在 Windows 上会把 PNG 封装成 ICO 字节再交给托盘库。因此构建注入的原始素材应是 PNG，托盘库接收的是 ICO。
 
 **Windows EXE 应用图标**

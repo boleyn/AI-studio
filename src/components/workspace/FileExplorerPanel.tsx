@@ -146,17 +146,6 @@ const getSkillRootPath = (path: string) => {
   return match?.[0] || "";
 };
 
-const slugifySkillName = (value: string) => {
-  return (
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "") || "new-skill"
-  );
-};
-
 type FileExplorerPanelProps = {
   token: string;
   onOpenFile: (filePath: string) => void;
@@ -685,27 +674,6 @@ const FileExplorerPanel = ({
       return next;
     });
   }, []);
-
-  const handleCreateSkill = useCallback(async () => {
-    const nextFiles: SandpackFilesPayload = { ...files };
-    const usedRoots = new Set(
-      Object.keys(nextFiles)
-        .map((path) => getSkillRootPath(path).replace(/^\/+/, ""))
-        .filter(Boolean)
-    );
-    let suffix = 1;
-    let candidateSlug = "new-skill";
-    while (usedRoots.has(candidateSlug)) {
-      suffix += 1;
-      candidateSlug = `new-skill-${suffix}`;
-    }
-    const safeSlug = slugifySkillName(candidateSlug);
-    const candidateFile = `/${safeSlug}/SKILL.md`;
-
-    nextFiles[candidateFile] = { code: buildInitialFileCode(candidateFile) };
-    ensureFolderExpanded(`/${safeSlug}`);
-    await applyFullFiles(nextFiles, candidateFile);
-  }, [applyFullFiles, ensureFolderExpanded, files]);
 
   useEffect(() => {
     if (!sandpack.activeFile) return;

@@ -44,10 +44,6 @@ import {
   EmptyIcon,
   CloseIcon,
   EditCustomIcon,
-  ModelContextIcon,
-  ModelProtocolIcon,
-  ModelReasoningIcon,
-  ModelVisionIcon,
   SearchIcon,
 } from "@components/common/Icon";
 import { AppPanelFooter } from "../ui";
@@ -172,29 +168,6 @@ export const AccountModelConfigPanel = forwardRef<AccountModelConfigPanelRef, Ac
     });
   }, [keyword, models, scopeFilter]);
 
-  const actionBtnSx = {
-    variant: "ghost" as const,
-    boxSize: "32px",
-    minW: "32px",
-    borderRadius: "10px",
-    border: "1px solid",
-    borderColor: "myGray.250",
-    bg: "rgba(255,255,255,0.92)",
-    color: "myGray.500",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.92)",
-    transition: "all 0.22s cubic-bezier(0.2, 0.65, 0.2, 1)",
-    _hover: {
-      transform: "translateY(-1px)",
-      borderColor: "primary.300",
-      bg: "rgba(242,251,244,0.92)",
-      color: "primary.700",
-      boxShadow: "0 8px 16px -12px rgba(50,165,73,0.45)",
-    },
-    _active: {
-      transform: "translateY(0)",
-      boxShadow: "inset 0 1px 2px rgba(17,24,36,0.12)",
-    },
-  };
 
   const openCreateDrawer = () => {
     setEditingIndex(null);

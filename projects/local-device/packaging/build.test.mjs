@@ -32,7 +32,7 @@ test('OEM name uses connector override, then platform name, and rejects unsafe f
       await writeFile(config, JSON.stringify({ feConfigs, systemEnv: { secret: 'never bundled' } }));
       const branding = await readBranding(config);
       assert.equal(branding.name, expected);
-      assert.ok(branding.iconPath.endsWith(join('public', 'favicon.ico')));
+      assert.ok(branding.iconPath.endsWith(join('public', 'icon', 'logo.svg')));
       assert.equal(branding.bundleId, 'ai.studio.local-device');
     }
     await writeFile(config, JSON.stringify({ feConfigs: { connector: { name: '../escape' } } }));

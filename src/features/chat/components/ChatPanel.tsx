@@ -2303,7 +2303,6 @@ const ChatPanel = ({
     setSelectedSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]));
   }, []);
 
-  const handleCreateSkillViaChat = useCallback(() => {}, []);
   const showInitialLoading = !isInitialized && messages.length === 0;
 
   const chatPanelViewContextValue = useMemo(
@@ -2373,7 +2372,6 @@ const ChatPanel = ({
       onFilesApplied: onFilesUpdated,
       artifactRevision,
       onOpenWorkspaceFile,
-      onCreateSkillViaChat: handleCreateSkillViaChat,
       onUseSkill: handleUseSkill,
       workspaceComposer,
     }),
@@ -2434,7 +2432,6 @@ const ChatPanel = ({
       onFilesUpdated,
       artifactRevision,
       onOpenWorkspaceFile,
-      handleCreateSkillViaChat,
       handleUseSkill,
       workspaceComposer,
     ]

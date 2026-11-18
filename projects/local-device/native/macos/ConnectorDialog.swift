@@ -1,6 +1,23 @@
 import AppKit
 import SwiftUI
 
+private struct ConnectorLogo: View {
+    private static let image = NSImage(contentsOf: Bundle.main.executableURL!
+        .deletingLastPathComponent().appendingPathComponent("../Resources/Connector.icns"))
+
+    var body: some View {
+        Group {
+            if let image = Self.image {
+                Image(nsImage: image).resizable().scaledToFit()
+            } else {
+                Image(systemName: "desktopcomputer")
+            }
+        }
+        .frame(width: 48, height: 48)
+        .accessibilityHidden(true)
+    }
+}
+
 struct DialogInput: Decodable {
     let mode: String
     let title: String
@@ -322,10 +339,7 @@ struct AuthorizationCard: View {
         }
         return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
-                Image(systemName: "person.crop.circle.badge.checkmark")
-                    .font(.system(size: 24)).foregroundColor(.blue)
-                    .frame(width: 48, height: 48)
-                    .background(Color.blue.opacity(0.08)).cornerRadius(14)
+                ConnectorLogo()
                 VStack(alignment: .leading, spacing: 5) {
                     Text("已授权用户").font(.system(size: 22, weight: .semibold))
                     Text("管理谁可以使用这台电脑").font(.system(size: 12)).foregroundColor(.secondary)
@@ -752,9 +766,7 @@ struct ConnectionWorkspace: View {
                             .font(.system(size: 12, weight: .medium))
                     }.buttonStyle(.plain).foregroundColor(.secondary).disabled(testing)
                     HStack(spacing: 12) {
-                        Image(systemName: page == "add" ? "link" : "globe")
-                            .font(.system(size: 24)).foregroundColor(.blue)
-                            .frame(width: 48, height: 48).background(Color.blue.opacity(0.08)).cornerRadius(14)
+                        ConnectorLogo()
                         VStack(alignment: .leading, spacing: 5) {
                             Text(page == "add" ? "添加授权" : "连接设置").font(.system(size: 22, weight: .semibold))
                             Text(page == "add" ? "粘贴浏览器中复制的授权链接" : "保存时自动检查平台连接")

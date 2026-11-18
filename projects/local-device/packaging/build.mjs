@@ -26,7 +26,7 @@ export async function readBranding(configPath) {
     /[\x00-\x1f\x7f/\\:"'<>|?*]/u.test(name)
   )
     throw new Error('OEM connector name must be a valid application filename');
-  const icon = feConfigs.connector?.icon ?? feConfigs.favicon ?? '/favicon.ico';
+  const icon = feConfigs.connector?.icon ?? feConfigs.favicon ?? '/icon/logo.svg';
   const publicRoot = resolve(repoRoot, 'public');
   if (typeof icon !== 'string' || !icon.startsWith('/') || icon.startsWith('//'))
     throw new Error('Connector icon must reference a local public PNG/ICO/ICNS asset');
@@ -145,8 +145,8 @@ export async function build(options) {
   const trayPath = join(directory, 'tray.png');
   if (options.platform === 'darwin') {
     iconPath = join(directory, 'Connector.png');
-    run('/usr/bin/swift', [join(project, 'native/macos/ConnectorIcon.swift'), iconPath, trayPath]);
-    run('/usr/bin/sips', ['-z', '32', '32', trayPath, '--out', trayPath]);
+    run('/usr/bin/sips', ['-s', 'format', 'png', '-z', '1024', '1024', brandingIconPath, '--out', iconPath]);
+    run('/usr/bin/sips', ['-z', '32', '32', iconPath, '--out', trayPath]);
   }
   const staging = join(directory, 'installer');
   const bundle = join(staging, `${name}.app`);

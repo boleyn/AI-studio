@@ -104,7 +104,7 @@ func Run(parent context.Context, input connector.StartOptions) error {
 	}
 	systray.Run(func() {
 		log.Print("connector: initializing tray")
-		systray.SetTemplateIcon(trayIcon(), trayIcon())
+		systray.SetIcon(trayIcon())
 		systray.SetTitle("")
 		installStatusHook()
 		setNativeStatus("connecting")

@@ -68,7 +68,6 @@ services:
 
     volumes:
       - ./config:/app/config:ro
-      - ./data/project-templates:/app/data/project-templates:ro
       - ./data/projects:/app/data/projects
       - ./data/sandboxes:/app/.aistudio/sandboxes
 

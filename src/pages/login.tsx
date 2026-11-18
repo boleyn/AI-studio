@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { Box, Flex, Grid, GridItem, Heading, Text, VStack, Link } from "@chakra-ui/react";
-import { AnimatePresence, motion } from "framer-motion";
-import VectorBackground from "../components/auth/VectorBackground";
-import AsiaInfoLogo from "../components/auth/AsiaInfoLogo";
-import FloatingGraph from "../components/auth/FloatingGraph";
-import FeatureFooter from "../components/auth/FeatureFooter";
+import Head from "next/head";
+import styles from "../components/auth/AuthPage.module.css";
+import BoreCompanion from "../components/auth/BoreCompanion";
 import LoginForm, { type AuthSuccessPayload } from "../components/auth/LoginForm";
 import RegisterForm from "../components/auth/RegisterForm";
 import FeishuForm from "../components/auth/FeishuForm";
@@ -20,40 +17,17 @@ const getLastRoute = (value: string | string[] | undefined) => {
   return raw.split("?lastRoute=")[0];
 };
 
-const pageMetaMap: Record<
-  LoginPageTypeEnum,
-  {
-    title: string;
-    description: (productName: string) => string;
-  }
-> = {
-  [LoginPageTypeEnum.password]: {
-    title: "继续你的创作",
-    description: (productName: string) => `登录 ${productName}，回到你的工作台`,
-  },
-  [LoginPageTypeEnum.register]: {
-    title: "创建新账号",
-    description: (productName: string) => `注册 ${productName} 账号，开启你的实验室`,
-  },
-  [LoginPageTypeEnum.feishu]: {
-    title: "飞书快捷登录",
-    description: (productName: string) => `使用飞书扫码登录 ${productName}`,
-  },
-  [LoginPageTypeEnum.forgot]: {
-    title: "找回账号",
-    description: () => "需要帮助？我们会尽快为你找回账号",
-  },
+const titles = {
+  [LoginPageTypeEnum.password]: "欢迎回来",
+  [LoginPageTypeEnum.register]: "创建账号",
+  [LoginPageTypeEnum.feishu]: "飞书登录",
+  [LoginPageTypeEnum.forgot]: "找回密码",
 };
-
-const bottomLinks = ["功能概览", "安全与合规", "获取支持"];
 
 const Login = () => {
   const router = useRouter();
   const { lastRoute = "" } = router.query as { lastRoute: string };
   const [pageType, setPageType] = useState<LoginPageTypeEnum>(LoginPageTypeEnum.password);
-  const productName = "伯仁";
-  const brandTitle = "伯仁";
-  const brandSubtitle = "AGENT WORKSPACE";
   const redirectWithReload = useCallback(
     (target: string) => {
       if (typeof window !== "undefined") {
@@ -104,7 +78,7 @@ const Login = () => {
   );
 
   const safeLastRoute = getLastRoute(lastRoute);
-  const currentMeta = pageMetaMap[pageType] || pageMetaMap[LoginPageTypeEnum.password];
+
 
   const DynamicComponent = useMemo(() => {
     if (pageType === LoginPageTypeEnum.register) {
@@ -120,215 +94,18 @@ const Login = () => {
   }, [pageType, loginSuccess, safeLastRoute]);
 
   return (
-    <>
-      <VectorBackground />
-
-      <Flex
-        alignItems="center"
-        justifyContent="center"
-        minH="100vh"
-        position="relative"
-        zIndex={1}
-        overflow="hidden"
-        px={[4, 6]}
-        py={[6, 8]}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.56, ease: [0.22, 1, 0.36, 1] }}
-          style={{ width: "100%", maxWidth: "1220px" }}
-        >
-          <Box w="100%" h={["auto", "auto", "85vh"]} minH={["720px", "740px", "unset"]} maxH="820px" zIndex={10}>
-            <Box
-              w="full"
-              h="full"
-              borderRadius="2rem"
-              overflow="hidden"
-              boxShadow="0 28px 64px -36px rgba(15, 23, 42, 0.42)"
-              border="1px solid rgba(148,163,184,0.28)"
-              bg="rgba(255,255,255,0.62)"
-              backdropFilter="blur(28px)"
-              position="relative"
-            >
-              <Box
-                position="absolute"
-                top="-100px"
-                left="-80px"
-                w="280px"
-                h="280px"
-                borderRadius="full"
-                bg="radial-gradient(circle at center, rgba(51,112,255,0.25), rgba(51,112,255,0))"
-                pointerEvents="none"
-              />
-              <Box
-                position="absolute"
-                bottom="-120px"
-                right="-100px"
-                w="320px"
-                h="320px"
-                borderRadius="full"
-                bg="radial-gradient(circle at center, rgba(18,183,106,0.2), rgba(18,183,106,0))"
-                pointerEvents="none"
-              />
-              <Grid templateColumns={["1fr", "1fr", "repeat(12, 1fr)"]} h="full">
-                <GridItem
-                  colSpan={[12, 12, 7]}
-                  display={["none", "none", "flex"]}
-                  flexDirection="column"
-                  p={12}
-                  position="relative"
-                  bg="rgba(255,255,255,0.25)"
-                >
-                  <Flex direction="column" h="full" justify="space-between">
-                    <motion.div
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.44, delay: 0.14, ease: "easeOut" }}
-                    >
-                      <VStack align="start" spacing={8} w="full">
-                        <Box>
-                          <AsiaInfoLogo width="48px" height="48px" showText={true} titleText={brandTitle} subtitleText={brandSubtitle} />
-                        </Box>
-
-                        <Box>
-                            <Text
-                              display="inline-flex"
-                              px={3}
-                              py={1}
-                              mb={4}
-                              borderRadius="full"
-                              bg="rgba(255,255,255,0.6)"
-                              border="1px solid rgba(148,163,184,0.35)"
-                              color="blue.700"
-                              fontSize="xs"
-                              fontWeight="700"
-                              letterSpacing="0.06em"
-                            >
-                              专属云电脑 · 本机连接器 · 智能体
-                            </Text>
-                          <Heading
-                            size="2xl"
-                            fontWeight="extrabold"
-                            lineHeight="1.2"
-                            mb={4}
-                            color="slate.900"
-                            letterSpacing="tight"
-                            display="flex"
-                            alignItems="center"
-                            gap={3}
-                            flexWrap="nowrap"
-                          >
-                            <Box as="span" bgClip="text" bgGradient="linear(to-r, blue.600, purple.500)" color="transparent">
-                              从想法到交付
-                            </Box>
-                            <Box as="span" color="myGray.800">
-                              一步到位
-                            </Box>
-                          </Heading>
-                          <Text color="myGray.600" fontSize="lg" fontWeight="medium" lineHeight="1.6" maxW="xlg">
-                            为每个账号配备独立云主机与项目文件夹，支持本机设备直连、技能编排与深度推理，让伯仁替你完成复杂任务。
-                          </Text>
-                        </Box>
-                      </VStack>
-                    </motion.div>
-
-                    <Flex flex={1} alignItems="center" justifyContent="center">
-                      <FloatingGraph />
-                    </Flex>
-
-                    <Box>
-                      <FeatureFooter />
-                    </Box>
-                  </Flex>
-                </GridItem>
-
-                <GridItem
-                  colSpan={[12, 12, 5]}
-                  position="relative"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  bg="rgba(255,255,255,0.78)"
-                  backdropFilter="blur(40px)"
-                  borderLeft={["none", "none", "1px solid rgba(148,163,184,0.26)"]}
-                  boxShadow={["none", "none", "-12px 0 40px rgba(15,23,42,0.06)"]}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, x: 18 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.4, delay: 0.12, ease: "easeOut" }}
-                    style={{ width: "100%" }}
-                  >
-                    <Box position="absolute" top={8} left={8} display={["block", "block", "none"]}>
-                      <AsiaInfoLogo width="120px" height="30px" titleText={brandTitle} subtitleText={brandSubtitle} />
-                    </Box>
-
-                    <Box w="full" maxW="md" px={6} pt={[16, 14, 0]}>
-                      <motion.div
-                        key={pageType}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.32, ease: "easeOut" }}
-                      >
-                        <Box mb={8} textAlign="left">
-                          <Heading size="lg" mb={2} color="myGray.800">
-                            {currentMeta.title}
-                          </Heading>
-                          <Text color="myGray.500" fontSize="sm">
-                            {currentMeta.description(productName)}
-                          </Text>
-                        </Box>
-                      </motion.div>
-
-                      <Box w="100%">
-                        <AnimatePresence mode="wait" initial={false}>
-                          <motion.div
-                            key={pageType}
-                            initial={{ opacity: 0, y: 14 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.28, ease: "easeOut" }}
-                          >
-                            {DynamicComponent}
-                          </motion.div>
-                        </AnimatePresence>
-                      </Box>
-                    </Box>
-
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.35, delay: 0.28, ease: "easeOut" }}
-                    >
-                      <Box position="absolute" bottom={6} w="full" textAlign="center">
-                        <Flex justify="center" gap={4} fontSize="xs" color="#94a3b8" fontWeight="medium" mb={2}>
-                          {bottomLinks.map((item, index) => (
-                            <Box key={item} display="inline-flex" alignItems="center" gap={4}>
-                              {index > 0 ? (
-                                <Box as="span" color="myGray.250">
-                                  |
-                                </Box>
-                              ) : null}
-                              <Link _hover={{ color: "primary.500", textDecoration: "underline" }} cursor="pointer">
-                                {item}
-                              </Link>
-                            </Box>
-                          ))}
-                        </Flex>
-                        <Text fontSize="10px" color="myGray.300" fontFamily="mono" textTransform="uppercase" letterSpacing="wider">
-                          © {new Date().getFullYear()} 伯仁
-                        </Text>
-                      </Box>
-                    </motion.div>
-                  </motion.div>
-                </GridItem>
-              </Grid>
-            </Box>
-          </Box>
-        </motion.div>
-      </Flex>
-    </>
+    <main className={styles.page}>
+      <Head><title>{titles[pageType]} · 伯仁</title></Head>
+      <BoreCompanion />
+      <header className={styles.brand}>
+        <img src="/icon/logo.svg" alt="" width="38" height="38" />
+        <strong>伯仁</strong><span>Bore Agent</span>
+      </header>
+      <section className={styles.panel} aria-labelledby="auth-title">
+        <h1 id="auth-title">{titles[pageType]}</h1>
+        {DynamicComponent}
+      </section>
+    </main>
   );
 };
 
