@@ -492,16 +492,22 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter gap={2}><Button borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
           <Button borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
-    <Modal isOpen={Boolean(move)} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton top={4} right={4} boxSize={6} aria-label="关闭对话框"/>
+    <Modal isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton top={4} right={4} boxSize={6} aria-label="关闭对话框"/>
       <ModalBody p={0} mt={3}><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
         {destination ? <Button size="sm" h={6} variant="link" onClick={()=>setDestination("")}>资料库</Button> : <Text lineHeight="24px">资料库</Text>}
         {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/><Button size="sm" variant="ghost" isDisabled={item.id===destination} onClick={()=>setDestination(item.id)}>{item.name}</Button></Flex>)}
       </Flex><Box as="ul" listStyleType="none" mt={2} mb={0} maxH="36vh" overflowY="auto">
         {childFolders.map(item=><Box as="li" key={item.id}><Button w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<Folder size={18}/>} onClick={()=>setDestination(item.id)}>{item.name}</Button></Box>)}
         {!childFolders.length && <Box as="li" py={5} textAlign="center" color="gray.500">此文件夹为空</Box>}
-      </Box>{newDestinationName !== undefined && <Flex as="form" gap={2} onSubmit={async event=>{
+      </Box></ModalBody>
+      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
+    </ModalContent></Modal>
+    <Modal isOpen={Boolean(move) && newDestinationName !== undefined} onClose={()=>{if (!saving) setNewDestinationName(undefined);}} isCentered>
+      <ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
+        <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">新建文件夹</ModalHeader>
+        <form onSubmit={async event=>{
         event.preventDefault();
-        if (!newDestinationName.trim() || saving) return;
+        if (!newDestinationName?.trim() || saving) return;
         setSaving(true);
         try {
           const response = await fetch("/api/library/pages",{method:"POST",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({kind:"文件夹",name:newDestinationName.trim(),body:"",folderId:destination || null})});
@@ -510,9 +516,16 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           setFiles(previous=>[item,...previous || []]); setNewDestinationName(undefined); setDestination(item.id);
         } catch { toast({status:"error",title:"创建文件夹失败，请重试"}); }
         finally { setSaving(false); }
-      }}><Input autoFocus aria-label="文件夹名称" maxLength={255} value={newDestinationName} onChange={event=>setNewDestinationName(event.target.value)}/><Button type="submit" isDisabled={!newDestinationName.trim()} isLoading={saving}>创建</Button></Flex>}</ModalBody>
-      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
-    </ModalContent></Modal>
+      }}>
+          <ModalBody p={0} mt={3}><FormLabel htmlFor="move-folder-name" fontSize="sm">文件夹名称</FormLabel>
+            <Input id="move-folder-name" autoFocus maxLength={255} value={newDestinationName ?? ""} onChange={event=>setNewDestinationName(event.target.value)}/>
+          </ModalBody>
+          <ModalFooter p={0} mt={3} gap={3}><Button size="sm" borderRadius="full" isDisabled={saving} onClick={()=>setNewDestinationName(undefined)}>取消</Button>
+            <Button size="sm" borderRadius="full" type="submit" isDisabled={!newDestinationName?.trim()} isLoading={saving}>创建</Button>
+          </ModalFooter>
+        </form>
+      </ModalContent>
+    </Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "清空回收站？" : "永久删除项目？"}</ModalHeader>
         <ModalBody>{purge?.length === 1 ? "“" + purge[0].name + "”" : (purge?.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
