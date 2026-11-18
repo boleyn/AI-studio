@@ -191,8 +191,9 @@ export default function AgentWorkspace({
   const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
     ? query.view : "chat";
   const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
-  const fileChatOpen = activeNav === "library" && fileChat?.itemId === query.libraryItem &&
-    fileChat?.chatId === visibleChatId && fileChat?.minimized === false;
+  const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
+    fileChat.chatId === visibleChatId ? fileChat : undefined;
+  const fileChatOpen = currentFileChat?.minimized === false;
   function setActiveNav(view: WorkspaceView, conversation?:string) {
     if (view === activeNav && !conversation) return;
     const nextQuery = {...router.query};
@@ -872,7 +873,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView fileChatOpen={fileChatOpen} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
+      {activeNav === "library" && <LibraryView fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
         let token = activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");

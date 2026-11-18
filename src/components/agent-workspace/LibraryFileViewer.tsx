@@ -14,12 +14,13 @@ interface Props {
   download: ReactNode;
   share?:()=>void;
   fileChatOpen:boolean;
+  resumeFileChat?:()=>void;
   askAboutFile:(question:string)=>Promise<void>;
   close: () => void;
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,download,share,fileChatOpen,askAboutFile,close,openSource,toggleFavorite}:Props) {
+export default function LibraryFileViewer({item,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openSource,toggleFavorite}:Props) {
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
@@ -103,7 +104,9 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,askA
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
         </Flex>}
     </Box>
-    {image && !fileChatOpen && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
+    {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
+      onClick={resumeFileChat} aria-label="展开聊天窗口">聊天</Button>}
+    {image && !fileChatOpen && !resumeFileChat && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
       onSubmit={async event=>{
         event.preventDefault();
         if (openingChat) return;
