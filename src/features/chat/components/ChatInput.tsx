@@ -1,3 +1,4 @@
+import ImageCreationTemplates from "./ImageCreationTemplates";
 import { getCloudHostStatusMeta } from "@shared/sandbox/cloudHostStatus";
 import { ChatModeOptions, modeOptions } from "./ChatModeOptions";
 import {
@@ -1202,6 +1203,10 @@ const ChatInput = ({
           </Flex>
         </Flex>
       </Flex>
+      {imageMode && <ImageCreationTemplates onUpload={()=>fileInputRef.current?.click()} onPick={prompt=>{
+        setText(previous=>previous.trim() ? previous.trimEnd()+"\n\n"+prompt : prompt);
+        requestAnimationFrame(()=>textAreaRef.current?.focus());
+      }}/>}
     </Box>
   );
 };
