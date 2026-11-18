@@ -1,5 +1,5 @@
-import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
-import { CircleAlert, ChevronDown, MessageSquare, X } from "lucide-react";
+import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuDivider, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
+import { CircleAlert, ChevronDown, Library, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,10 +17,11 @@ interface Props {
   resumeFileChat?:()=>void;
   askAboutFile:(question:string)=>Promise<void>;
   close: () => void;
+  openLibrary: () => void;
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openSource,toggleFavorite}:Props) {
+export default function LibraryFileViewer({item,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite}:Props) {
   const [showInfo,setShowInfo] = useState(false);
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
@@ -77,7 +78,10 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
       <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
         <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
-        <MenuList><MenuItem onClick={()=>setShowInfo(true)}>文件信息</MenuItem><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
+        <MenuList>
+          <MenuItem icon={<Library size={16}/>} onClick={openLibrary}>资料空间</MenuItem>
+          <MenuDivider/>
+          <MenuItem onClick={()=>setShowInfo(true)}>文件信息</MenuItem><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹中移除":"添加到收藏夹"}</MenuItem>
           {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
       </Menu><Box flex="1"/>{image && <Menu>
         <MenuButton as={Button} size="sm" variant="ghost" rightIcon={<ChevronDown size={14}/>} aria-label="图像缩放">
