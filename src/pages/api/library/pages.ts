@@ -16,7 +16,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const pages = db.collection("library_pages");
   res.setHeader("Cache-Control", "private, no-store");
   if (req.method === "POST") {
-    const parsed = fields.extend({kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(req.body);
+    let input = req.body;
+    if (input?.duplicateId !== undefined) {
+      const id = z.string().regex(/^[a-f0-9]{24}$/).safeParse(input.duplicateId);
+      if (!id.success) return res.status(400).end();
+      const source = await pages.findOne({_id:new ObjectId(id.data),owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true}},
+        {projection:{name:1,body:1,folderId:1}});
+      if (!source) return res.status(404).end();
+      input = {name:source.name.slice(0,252)+" 副本",body:source.body,folderId:source.folderId,kind:"页面"};
+    }
+    const parsed = fields.extend({kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
     if (!parsed.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();

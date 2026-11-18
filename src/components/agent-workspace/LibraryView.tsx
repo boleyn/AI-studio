@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, 
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -112,11 +112,11 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [move,setMove] = useState<LibraryFile>();
   const [newDestinationName, setNewDestinationName] = useState<string>();
   const [destination,setDestination] = useState("");
-  async function createPage(name:string, body:string, kind:"页面"|"文件夹"|"资料空间"="页面") {
+  async function createPage(name:string, body:string, kind:"页面"|"文件夹"|"资料空间"="页面",duplicateId?:string) {
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,folderId:kind === "资料空间" ? null : folder?.id})});
+      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,folderId:kind === "资料空间" ? null : folder?.id})});
       if (!response.ok) throw new Error();
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
@@ -324,6 +324,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     <MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
+      {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuDivider my={2}/>
