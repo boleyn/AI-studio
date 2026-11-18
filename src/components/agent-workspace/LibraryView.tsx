@@ -58,6 +58,26 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
   }
+  async function createSlides() {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const { default: Presentation } = await import("pptxgenjs");
+      const deck = new Presentation();
+      deck.layout = "LAYOUT_WIDE";
+      deck.title = "无标题演示文稿";
+      deck.addSlide();
+      const blob = await deck.write({outputType:"blob"});
+      if (!(blob instanceof Blob)) throw new Error();
+      await uploadFiles([new File([blob], deck.title + ".pptx", {
+        type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      })], true);
+    } catch {
+      toast({status:"error", title:"无法创建幻灯片，请重试"});
+    } finally {
+      setCreating(false);
+    }
+  }
   const [galleryOpen, setGalleryOpen] = useState(false);
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
   const [folder,setFolder] = useState<LibraryFile>();
@@ -186,6 +206,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
   const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
             <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
+              <MenuItem onClick={createSlides}>幻灯片</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
               <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
           </Menu>;
@@ -265,7 +286,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>}
     </Box>
   </Box>}
-    {galleryOpen && <TemplateGallery onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
+    {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}

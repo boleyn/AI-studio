@@ -51,7 +51,8 @@ function TemplateActions({label, onUse}: {label:string; onUse:()=>void}) {
 </Menu>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload }: {
+export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload, onSlides }: {
+  onSlides: () => void;
   onUpload: () => void;
   onWorkbook: (file: File) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
@@ -102,6 +103,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
           <MenuList>
             <MenuItem onClick={() => onPick("无标题页", "")}>Page</MenuItem>
+            <MenuItem onClick={onSlides}>Slides</MenuItem>
             <MenuItem onClick={onUpload}>上传文件</MenuItem>
           </MenuList>
         </Menu>
