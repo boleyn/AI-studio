@@ -391,6 +391,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       toast({status:"success",title:markdown ? "已复制 Markdown" : "已复制链接"});
     } catch {toast({status:"error",title:"复制失败，请重试"});}
   }
+  async function copySpace(space:LibraryFile,field:"链接"|"ID") {
+    try {
+      const url = new URL(window.location.pathname,window.location.origin);
+      url.search = new URLSearchParams({view:"library",libraryFolder:space.id}).toString();
+      await navigator.clipboard.writeText(field === "ID" ? space.id : url.href);
+      toast({status:"success",title:"已复制资料空间"+field});
+    } catch { toast({status:"error",title:"复制失败，请重试"}); }
+  }
   const [copyMenuId,setCopyMenuId] = useState<string>();
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
@@ -437,15 +445,20 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar spaceActions={space=><Menu placement="bottom-end">
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
-        <MenuList>
+        <MenuList>{copyMenuId === space.id ? <>
+          <MenuItem onClick={()=>copySpace(space,"链接")}>资料空间链接</MenuItem>
+          <MenuItem onClick={()=>copySpace(space,"ID")}>资料空间 ID</MenuItem>
+        </> : <>
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
           <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
+          <MenuItem closeOnSelect={false} onClick={()=>setCopyMenuId(space.id)}
+            onKeyDown={event=>{if (event.key === "ArrowRight") {event.preventDefault();setCopyMenuId(space.id);}}}>复制<ChevronRight size={14}/></MenuItem>
           <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
           <MenuItem isDisabled={batchBusy} onClick={()=>startSpaceChat(space)}>新聊天</MenuItem>
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
-          <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem>
+          <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
       </Menu>} createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
