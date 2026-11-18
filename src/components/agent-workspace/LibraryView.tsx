@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
@@ -115,11 +116,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     } catch { toast({status:"error",title:"创建页面失败"}); }
     finally {setCreating(false);}
   }
-  function openItem(file:LibraryFile) {
+  function recordOpen(file:LibraryFile) {
     const openedAt = new Date().toISOString();
     setFiles(current => current?.map(item => item.id === file.id ? {...item, openedAt} : item));
     void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
       body:JSON.stringify({openedId:file.id})}).catch(() => undefined);
+  }
+  function openItem(file:LibraryFile) {
+    recordOpen(file);
     if (isContainer(file)) {
       setSelected([]);
       setQuery("");
@@ -141,6 +145,9 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const detail = opened?.kind !== "页面" ? opened : undefined;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !(clearTypes && router.query.libraryType)) return;
+    void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
+  }
+  function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     const query = {...router.query};
     if (clearTypes) delete query.libraryType;
     if (folderId) query.libraryFolder = folderId;
@@ -151,7 +158,19 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     else query.librarySection = nextSection;
     if (nextTab === "推荐") delete query.libraryTab;
     else query.libraryTab = nextTab;
-    void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
+    return { pathname: router.pathname, query };
+  }
+  function itemLink(file: LibraryFile) {
+    if (file.deleted) return <span>{file.name}</span>;
+    const container = isContainer(file);
+    const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
+    return <Link href={href} shallow scroll={false} prefetch={false} onClick={event=>{
+      recordOpen(file);
+      if (container && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+        setSelected([]);
+        setQuery("");
+      }
+    }}>{file.name}</Link>;
   }
   useEffect(() => { setSelected([]); }, [section, tab]);
   const [sidebar, setSidebar] = useState(true);
@@ -365,7 +384,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
             <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>{imageSection ? <Box as="button" w="full" onClick={() => openItem(file)} aria-label={"打开 " + file.name}>
               <Box as="img" src={libraryAttachmentUrl(file)} alt={file.name} loading="lazy" w="full" aspectRatio="1" objectFit="cover" borderRadius="8px"/>
-            </Box> : <LibraryItemIcon item={file}/>}<Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
+            </Box> : <LibraryItemIcon item={file}/>}<Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
@@ -373,7 +392,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           "& td":{height:"50px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0},
           "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"24px"},
-          "& td button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+          "& td button, & td a":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child button":{opacity:0}}
         }}>
           <colgroup><col style={{width:"24px"}}/><col style={{width:"calc(62% - 24px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:"30px"}}/></colgroup>
@@ -384,7 +403,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" _hover={{bg:"surface.hover"}}>
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}><button type="button" onClick={() => openItem(file)}>{file.name}</button>{file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file)) || "—"}</time>}</td><td>{actions(file)}</td>
           </Box>)}</tbody>
