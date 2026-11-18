@@ -146,7 +146,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const section = sections.find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
   const sitesSection = section === "站点";
-  const tabs = sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const pagesSection = section === "页面";
+  const tabs = pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
@@ -257,7 +258,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     (section === "全部" || section === "回收站" || (file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
     (!sources.length || (file.kind === "上传" && !file.sharedPage && sources.includes("已上传")) || (file.kind === "生成" && sources.includes("生成的文件"))) &&
-    (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path))) &&
+    (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目") || !file.shareId) && (!types.length || types.includes(file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
@@ -392,10 +393,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label={sitesSection ? "搜索站点" : "搜索文件、项目或会话"} placeholder={sitesSection ? "搜索站点" : "搜索"} maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
-            onClick={() => startCreativeChat("图像")}>创建图像</Button> : createMenu(false)}</Flex>}
+            onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : "资料库分区"}>
+        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" px="18px" borderRadius="full" variant={tab === name ? "solid" : "ghost"}
@@ -411,12 +412,12 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
               }}
               onClick={() => {setSelected([]);navigateList(section, name);}}>{name}</Button>)}
         </Flex>
-        {!imageSection && !sitesSection && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
+        {!imageSection && !sitesSection && !pagesSection && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
           {[...types,...sources].map(filter => <Button key={filter} size="sm" borderRadius="full" variant="outline"
             aria-label={`移除${filter}筛选条件`} rightIcon={<X size={14}/>}
             onClick={()=>updateListOptions(types.filter(type=>type!==filter),grid,sources.filter(source=>source!==filter))}>{filter}</Button>)}
         </Flex>}
-        {!imageSection && <>{!sitesSection && <Menu closeOnSelect={false}>
+        {!imageSection && <>{!sitesSection && !pagesSection && <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" variant={filterCount ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
@@ -443,7 +444,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
           onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
       </Flex>}
-      <Box>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !filterCount &&
+      <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || (pagesSection && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
