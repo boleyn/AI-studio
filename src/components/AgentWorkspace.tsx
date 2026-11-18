@@ -130,7 +130,8 @@ export default function AgentWorkspace({
 
   const [activeToken, setActiveToken] = useState<string>(initialProjectToken || "");
   const [activeChatId, setActiveChatId] = useState<string | undefined>(undefined);
-  const { query } = useRouter();
+  const router = useRouter();
+  const { query } = router;
   const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
@@ -186,10 +187,16 @@ export default function AgentWorkspace({
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects" | "library">("chat");
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("view") === "library") setActiveNav("library");
-  }, []);
+  type WorkspaceView = "chat" | "schedules" | "projects" | "library";
+  const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
+    ? query.view : "chat";
+  function setActiveNav(view: WorkspaceView) {
+    if (view === activeNav) return;
+    const nextQuery = {...router.query};
+    if (view === "chat") delete nextQuery.view;
+    else nextQuery.view = view;
+    void router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});
+  }
 
   const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
   const selectScheduleConversation = useCallback((task: typeof scheduleConversation) => {
