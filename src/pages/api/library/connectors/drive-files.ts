@@ -31,7 +31,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (typeof req.query.file !== "string" || !/^[\w-]{1,256}$/.test(req.query.file)) return res.status(400).end();
       return await sendDriveAttachment(req.query.file,data.access_token,res);
     }
-    const params = new URLSearchParams({q:"trashed = false and '" + folder + "' in parents", pageSize:"100", orderBy:"folder,name_natural",
+    const scope = req.query.scope || "mine";
+    const terms = ["trashed = false"];
+    if (folder !== "root" || scope === "mine") terms.push("'" + folder + "' in parents");
+    else if (scope === "shared") terms.push("sharedWithMe");
+    if (typeof req.query.query === "string" && req.query.query.trim()) {
+      const escaped = req.query.query.trim().replaceAll("\\","\\\\").replaceAll("'","\\'");
+      terms.push("name contains '" + escaped + "'");
+    }
+    const recent = folder === "root" && scope === "recent";
+    const params = new URLSearchParams({q:terms.join(" and "), pageSize:"100", orderBy:recent ? "recency desc" : "folder,name_natural",
       supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"nextPageToken,files(id,name,mimeType,webViewLink)"});
     if (typeof req.query.page === "string") params.set("pageToken",req.query.page);
     const response = await fetch("https://www.googleapis.com/drive/v3/files?" + params, {headers:{Authorization:"Bearer " + data.access_token}});
