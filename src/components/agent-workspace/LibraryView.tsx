@@ -225,13 +225,17 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     return () => controller.abort();
   }, [attempt]);
   const destinations = files?.filter(item => isContainer(item) && !item.deleted) || [];
-  const destinationPath: LibraryFile[] = [];
-  let ancestor = destinations.find(item => item.id === destination);
-  while (ancestor && !destinationPath.includes(ancestor)) {
-    destinationPath.unshift(ancestor);
-    const parentId: string | null | undefined = ancestor.folderId;
-    ancestor = destinations.find(item => item.id === parentId);
+  function folderPath(id?:string) {
+    const path: LibraryFile[] = [];
+    let current = destinations.find(item => item.id === id);
+    while (current && !path.includes(current)) {
+      path.unshift(current);
+      const parentId: string | null | undefined = current.folderId;
+      current = destinations.find(item => item.id === parentId);
+    }
+    return path;
   }
+  const destinationPath = folderPath(destination);
   const childFolders = destinations.filter(item => (item.folderId || "") === destination);
   function rowTime(file: LibraryFile) {
     if (section === "回收站") return file.deletedAt || "";
@@ -327,7 +331,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     catch { toast({status:"error", title:"无法开始" + kind + "对话，请重试"}); }
     finally { setCreating(false); }
   }
-  const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
+  const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : folder ? "新建 ﹀" : "创建 ﹀"}</MenuButton>
             <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
               <MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
@@ -353,15 +357,18 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
-        <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}{folder && <Button variant="ghost" size="xs" onClick={() => {const parent=files?.find(item => item.id===folder.folderId);navigateList(section,tab,parent?.id);}}>返回</Button>}<Heading fontSize="24px" lineHeight="36px" fontWeight="500">{folder?.name || section}</Heading></Flex>
+        <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}<Heading as="h1" display="flex" alignItems="center" gap={2} fontSize="24px" lineHeight="36px" fontWeight="500">
+          {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
+            {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center"><ChevronRight size={16}/>
+              {item.id===folder.id ? item.name : <Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}>{item.name}</Button>}</Flex>)}</> : section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label={sitesSection ? "搜索站点" : "搜索文件、项目或会话"} placeholder={sitesSection ? "搜索站点" : "搜索"} maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : "资料库分区"}>
-          {section !== "回收站" && tabs.map((name,index) =>
+        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : "资料库分区"}>
+          {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" px="18px" borderRadius="full" variant={tab === name ? "solid" : "ghost"}
               onKeyDown={event => {
@@ -374,7 +381,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
                 next?.focus();
                 next?.click();
               }}
-              onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}
+              onClick={() => {setSelected([]);navigateList(section, name);}}>{name}</Button>)}
         </Flex>
         {!imageSection && <>{!sitesSection && <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" variant={filterCount ? "solid" : "ghost"} />
