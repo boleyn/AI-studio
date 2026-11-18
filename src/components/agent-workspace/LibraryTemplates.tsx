@@ -42,6 +42,15 @@ const workbookTemplates = [
   {name: "Three-Statement Forecast", columns: ["Period", "Revenue", "Expenses", "Net income"], formula: "B2-C2"},
 ];
 
+function TemplateActions({label, onUse}: {label:string; onUse:()=>void}) {
+  return <Menu>
+  <MenuButton as={IconButton} aria-label={label} icon={<MoreHorizontal size={16} />}
+    size="xs" position="absolute" top={2} right={2} borderRadius="full" bg="white"
+    opacity={{base:1, md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} _expanded={{opacity:1}} />
+  <MenuList><MenuItem onClick={onUse}>Use template</MenuItem></MenuList>
+</Menu>;
+}
+
 export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
   onWorkbook: (file: File) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
@@ -58,6 +67,21 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
   const workbooks = workbookTemplates.filter(template =>
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
+  async function createWorkbook(template: typeof workbookTemplates[number]) {
+    const XLSX = await import("xlsx");
+    const sheet = XLSX.utils.aoa_to_sheet([template.columns]);
+    if (template.formula) {
+      XLSX.utils.sheet_add_aoa(sheet, [[{t:"n", f:template.formula}]], {
+        origin: {r:1, c:template.columns.length - 1}
+      });
+    }
+    sheet["!cols"] = template.columns.map(() => ({wch:20}));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, template.name);
+    onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
+      {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  }
+
   return <Modal finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
@@ -86,37 +110,22 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
               </Box>
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
             </Button>
-            <Menu>
-              <MenuButton as={IconButton} aria-label={`Actions for ${name}`} icon={<MoreHorizontal size={16} />}
-                size="xs" position="absolute" top={2} right={2} borderRadius="full" bg="white"
-                opacity={{base:1, md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} _expanded={{opacity:1}} />
-              <MenuList><MenuItem onClick={() => onPick(name, body)}>Use template</MenuItem></MenuList>
-            </Menu>
+            <TemplateActions label={`Actions for ${name}`} onUse={() => onPick(name, body)} />
             </Box>
           )}
           {category !== "页面" && workbooks.map(template =>
-            <Button key={template.name} aria-label={`Use ${template.name}`} variant="unstyled" height="auto"
-              textAlign="left" whiteSpace="normal" onClick={async () => {
-                const XLSX = await import("xlsx");
-                const sheet = XLSX.utils.aoa_to_sheet([template.columns]);
-                if (template.formula) {
-                  XLSX.utils.sheet_add_aoa(sheet, [[{t:"n", f:template.formula}]], {
-                    origin: {r:1, c:template.columns.length - 1}
-                  });
-                }
-                sheet["!cols"] = template.columns.map(() => ({wch:20}));
-                const book = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(book, sheet, template.name);
-                onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
-                  {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
-              }}>
+            <Box key={template.name} position="relative" role="group">
+            <Button w="full" aria-label={`Use ${template.name}`} variant="unstyled" height="auto"
+              textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
               <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
                 <Flex bg="white">{template.columns.map(column =>
                   <Text key={column} flex={1} p={1} fontSize="8px" border="1px solid #ddd">{column}</Text>)}</Flex>
               </Box>
               <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
-            </Button>)}
+            </Button>
+            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
+            </Box>)}
         </SimpleGrid>
         {(category === "电子表格" || !pages.length) && (category === "页面" || !workbooks.length) && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
       </ModalBody>
