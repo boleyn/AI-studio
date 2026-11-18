@@ -26,8 +26,7 @@
 .control:focus-visible, .cardControl:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 @media (hover: hover) and (min-width: 768px) {
-  tr:not(:hover):not(:focus-within) .control[aria-checked="false"] { opacity: 0; }
-  table:has(.control[aria-checked="true"]) tr .control { opacity: 1; }
+  table[data-selecting="false"] tbody tr:not(:hover):not(:focus-within) .control { opacity: 0; }
 }
 
 .indicator { flex-shrink: 0; }

@@ -509,7 +509,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
             <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
-        </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
+        </Box> : <Box as="table" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
