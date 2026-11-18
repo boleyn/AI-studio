@@ -257,7 +257,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   };
   const requestedTypes = [router.query.libraryType].flat();
   const types = slidesSection ? [] : fileTypes.filter(type => requestedTypes.includes(type));
-  const sources = fileSources.filter(source => [router.query.librarySource].flat().includes(source));
+  const sources = slidesSection ? fileSources.filter(source => [router.query.librarySource].flat().includes(source)) : [];
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
   const [listTime, setListTime] = useState(Date.now);
@@ -597,9 +597,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuList>{!slidesSection && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup>}
-          <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
+          {slidesSection && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
             {fileSources.map(source => <MenuItemOption key={source} value={source}>{source}</MenuItemOption>)}
-          </MenuOptionGroup></MenuList>
+          </MenuOptionGroup>}</MenuList>
         </Menu>}
         <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
         <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
