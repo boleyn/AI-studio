@@ -3,6 +3,15 @@
   inset-inline-start: -32px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+.cardControl {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+}
+
+.control, .cardControl {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -16,8 +25,8 @@
   cursor: pointer;
 }
 
-.control:hover { background: #f5f5f5; }
-.control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.control:hover, .cardControl:hover { background: #f5f5f5; }
+.control:focus-visible, .cardControl:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 @media (hover: hover) and (min-width: 768px) {
   tr:not(:hover):not(:focus-within) .control[aria-checked="false"] { opacity: 0; }

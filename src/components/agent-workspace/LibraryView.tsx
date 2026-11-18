@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Flex, Heading, Input, Text, Checkbox, IconButton, Menu, MenuButton, Select, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, Select, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import type { LibraryFile } from "@/types/library";
@@ -252,8 +252,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? <Text>{section === "回收站" ? "回收站为空" : files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
         grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
-          {visible.map(file => <Box key={key(file)} p={4} borderWidth="1px" borderRadius="14px">
-            <Checkbox aria-label={"选择"+file.name} isChecked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/><LibraryItemIcon item={file}/><Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
+          {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
+            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/><LibraryItemIcon item={file}/><Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
             {actions(file)}
           </Box>)}
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
