@@ -1,3 +1,4 @@
+import { inferAttachmentMimeType } from "./attachmentMimeType";
 import { extractText } from "@shared/chat/messages";
 import type { ChatInputFile } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
@@ -319,19 +320,6 @@ export const toSelectedPathArtifacts = ({
   token: string;
   chatId?: string;
 }): UploadedFileArtifact[] => {
-  const inferMimeType = (inputPath: string): string => {
-    const lower = inputPath.toLowerCase();
-    if (lower.endsWith(".pdf")) return "application/pdf";
-    if (lower.endsWith(".txt")) return "text/plain";
-    if (lower.endsWith(".md")) return "text/markdown";
-    if (lower.endsWith(".json")) return "application/json";
-    if (lower.endsWith(".csv")) return "text/csv";
-    if (lower.endsWith(".png")) return "image/png";
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    if (lower.endsWith(".webp")) return "image/webp";
-    return "application/octet-stream";
-  };
-
   const normalized = Array.isArray(paths)
     ? paths
         .filter((item): item is string => typeof item === "string")
@@ -343,7 +331,7 @@ export const toSelectedPathArtifacts = ({
     id: `selected-file-${index + 1}`,
     name: toFileTagLabel(path),
     size: 0,
-    type: inferMimeType(path),
+    type: inferAttachmentMimeType(path),
     storagePath: path,
     publicUrl: toProjectFileViewUrl({ storagePath: path, token }),
     previewUrl: toProjectFileViewUrl({ storagePath: path, token }),

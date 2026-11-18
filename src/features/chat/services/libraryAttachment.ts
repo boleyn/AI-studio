@@ -1,12 +1,8 @@
+import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
-
-const imageTypes: Record<string, string> = {
-  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
-  webp: "image/webp", avif: "image/avif", bmp: "image/bmp",
-};
 
 export function libraryAttachmentUrl(item: LibraryFile) {
   if (item.shareId) return "/api/artifact-share?id=" + item.shareId + "&file=1";
@@ -34,9 +30,8 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   }
   const blob = await response.blob();
   if (item.sharedPage) return fromLibrary(new File([blob],item.path,{type:"text/markdown"}),item.id);
-  const extension = item.name.split(".").pop()?.toLowerCase() ?? "";
-  const type = !blob.type || blob.type === "application/octet-stream"
-    ? imageTypes[extension] ?? blob.type
+  const type = !blob.type || blob.type.split(";")[0].trim() === "application/octet-stream"
+    ? inferAttachmentMimeType(item.name)
     : blob.type;
   return fromLibrary(new File([blob],item.name,{type}),item.id);
 }
