@@ -84,11 +84,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const block of blocks) if (block?.type === "attachment" && !block.library_item_id) attachment(block.source_storage_path || block.storage_path, block.name);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",path:page.originalName || id,token:"",project:"",chatId:"",conversation:"",
-      reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
+      ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:auth.user.displayName || auth.user.username} : {}),
+      permission:"所有者",reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
   const received = await listReceivedArtifactShares(owner);
   const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
@@ -101,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
     const id = share._id;
     const filename = share.livePage && page ? page.name + ".md" : share.filename;
-    rows.set(id,{id,shareId:id,sharedPage:share.livePage,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {

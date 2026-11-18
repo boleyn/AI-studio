@@ -7,6 +7,9 @@ export interface LibraryFile {
   sharedPage?: boolean;
   reference?: ImageReference;
   directUpload?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  permission?: "所有者" | "可编辑" | "可查看";
   folderId?: string | null;
   favorite?: boolean;
   pinned?: boolean;

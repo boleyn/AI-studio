@@ -116,8 +116,11 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
       <Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
       <Box as="dl" mt={4} fontSize="sm" sx={{"& dt":{color:"gray.600",mt:3}}}>
         <dt>文件类型</dt><dd>{name.match(/\.([^.\/]+)$/)?.[1].toUpperCase() || item.kind}</dd>
-        {item.time && <><dt>最近更新</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
+        {item.time && <><dt>{item.shareId ? "共享时间" : "最近更新"}</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
+        {item.createdAt && <><dt>创建时间</dt><dd><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("zh-CN")}</time>
+          {item.createdBy && <Text fontSize="xs" color="gray.600">由 {item.createdBy}</Text>}</dd></>}
         {item.size !== undefined && <><dt>文件大小</dt><dd>{item.size.toLocaleString("zh-CN")} B</dd></>}
+        {item.permission && <><dt>您的权限</dt><dd>{item.permission}</dd></>}
       </Box>
     </Box>}
     </Flex>
