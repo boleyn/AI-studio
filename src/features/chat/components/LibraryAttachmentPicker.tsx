@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
-import { Check, Search } from "lucide-react";
+import { CircleAlert, Check, Search } from "lucide-react";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { addLibraryAttachments } from "../services/libraryAttachment";
@@ -23,6 +23,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
   const [query,setQuery] = useState("");
   const [selected,setSelected] = useState<string[]>([]);
   const [error,setError] = useState("");
+  const [fileErrors,setFileErrors] = useState(new Map<string,string>());
   const [busy,setBusy] = useState(false);
   const [attempt,setAttempt] = useState(0);
   useEffect(() => {
@@ -43,9 +44,10 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     try {
       const picked = items.filter(item => selected.includes(item.id));
       const errors = await addLibraryAttachments(picked, onAdd);
+      setFileErrors(errors);
       if (errors.size) {
         setSelected([...errors.keys()]);
-        setError([...new Set(errors.values())].join("；"));
+
       } else {
         onClose();
       }
@@ -65,7 +67,10 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       <Search size={16} color="#777"/><Input variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
     </Flex><ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
       {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
-      {error && <Text role="alert" p={3}>{error} {!items && <Button size="xs" onClick={()=>setAttempt(attempt+1)}>重试</Button>}</Text>}
+      {error && <Flex role="alert" mx={2} my={2} p={3} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
+        <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/><Text flex="1" minW={0} overflowWrap="anywhere" fontSize="sm">{error}</Text>
+        {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
+      </Flex>}
       {visible?.length===0 && <Text color="gray.500" p={3}>没有符合条件的文件或页面</Text>}
       {visible?.map(item=>{
         const checked=selected.includes(item.id);
@@ -74,7 +79,9 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated>{item.name}</Text>
-            <Text color="#707070" fontSize="xs" isTruncated>{item.project || item.kind}</Text></Box>
+            <Text color="#707070" fontSize="xs" isTruncated>{item.project || item.kind}</Text>
+            {fileErrors.has(item.id) && <Text role="alert" color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
+          </Box>
           <Flex boxSize="16px" flexShrink={0} align="center" justify="center" borderRadius="4px" border="1px solid" borderColor={checked?"#222":"#ccc"} bg={checked?"#222":"white"}>
             {checked && <Check size={12} color="white" aria-hidden/>}</Flex>
         </Flex>;
