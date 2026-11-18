@@ -21,6 +21,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     return new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"});
   }
   const blob = await response.blob();
+  if (item.sharedPage) return new File([blob],item.path,{type:"text/markdown"});
   return new File([blob],item.name,{type:blob.type});
 }
 

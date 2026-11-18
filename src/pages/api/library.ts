@@ -101,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
     const id = share._id;
     const filename = share.livePage && page ? page.name + ".md" : share.filename;
-    rows.set(id,{id,shareId:id,sharedPage:share.livePage,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    rows.set(id,{id,shareId:id,sharedPage:share.livePage,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {

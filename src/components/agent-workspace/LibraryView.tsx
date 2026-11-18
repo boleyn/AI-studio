@@ -346,7 +346,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     {detail ? <LibraryFileViewer key={detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onBack={() => navigateList(section, tab, folder?.id)}
-      onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name:editor.shareId ? name+".md" : name,time} : item))}/> :
+      onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
