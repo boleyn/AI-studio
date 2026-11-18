@@ -22,6 +22,11 @@ export async function purgeLibraryItem(db: Db, owner: string, id: string, cutoff
 
 export async function expireLibraryTrash(db: Db, now = Date.now()) {
   const cutoff = new Date(now - 30 * 86400000).toISOString();
+  // Older entries have no reliable deletion date. Give them a full retention window.
+  const undated = {deleted:true, deletedAt:null, purged:{$ne:true}};
+  await Promise.all(["library_pages", "library_file_settings"].map(collection =>
+    db.collection(collection).updateMany(undated, {$set:{deletedAt:new Date(now).toISOString()}})
+  ));
   const expired = {deleted:true, deletedAt:{$lte:cutoff}};
   await db.collection("library_file_settings").updateMany({...expired,purged:{$ne:true}}, {$set:{purged:true}});
   const items = db.collection("library_pages").find(expired, {projection:{owner:1}});
