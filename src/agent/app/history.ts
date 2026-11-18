@@ -91,6 +91,22 @@ export const toOpenAIHistory = (
     if (!entry || typeof entry !== "object") continue;
     if (entry.role !== "user" && entry.role !== "assistant") continue;
     const content = normalizeMessageContent((entry as { content?: unknown }).content).trim();
+    if (entry.role === "user" && Array.isArray(entry.content)) {
+      const blocks: import("openai/resources/chat/completions").ChatCompletionContentPart[] = [];
+      for (const item of entry.content as unknown[]) {
+        const block = item as {type?:string; source?:{type?:string; media_type?:string; data?:string}} | null;
+        const source = block?.source;
+        if (block?.type === "image" && source?.type === "base64" && source.data &&
+            /^image\/(png|jpeg|gif|webp)$/.test(source.media_type ?? "")) {
+          blocks.push({type:"image_url",image_url:{url:`data:${source.media_type};base64,${source.data}`}});
+        }
+      }
+      if (blocks.length) {
+        if (content) blocks.unshift({type:"text",text:content});
+        result.push({role:"user",content:blocks});
+        continue;
+      }
+    }
     if (!content) continue;
     result.push({ role: entry.role, content });
   }

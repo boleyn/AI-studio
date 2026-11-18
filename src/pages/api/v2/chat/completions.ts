@@ -107,7 +107,8 @@ const isImageInputPart = (value: unknown): value is ImageInputPart => {
 const extractImageInputParts = (messages: unknown): ImageInputPart[] => {
   if (!Array.isArray(messages)) return [];
   const output: ImageInputPart[] = [];
-  for (const item of messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const item = messages[index];
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const msg = item as RequestBodyMessage;
     const role = (msg.type || msg.role || msg.message?.role || "").trim();
@@ -116,13 +117,14 @@ const extractImageInputParts = (messages: unknown): ImageInputPart[] => {
       msg.additional_kwargs && typeof msg.additional_kwargs === "object" && !Array.isArray(msg.additional_kwargs)
         ? (msg.additional_kwargs as Record<string, unknown>)
         : null;
-    if (!kwargs) continue;
+    if (!kwargs) break;
     const raw = kwargs.imageInputParts;
-    if (!Array.isArray(raw)) continue;
+    if (!Array.isArray(raw)) break;
     for (const candidate of raw) {
       if (!isImageInputPart(candidate)) continue;
       output.push(candidate);
     }
+    break;
   }
   return output;
 };
