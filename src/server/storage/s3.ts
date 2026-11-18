@@ -223,7 +223,7 @@ export const deleteStorageObjects = async ({
 
   for (let i = 0; i < normalizedKeys.length; i += 1000) {
     const batch = normalizedKeys.slice(i, i + 1000);
-    await client.send(
+    const result = await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
         Delete: {
@@ -232,6 +232,7 @@ export const deleteStorageObjects = async ({
         },
       })
     );
+    if (result.Errors?.length) throw new Error("Storage could not delete all requested objects");
   }
 };
 

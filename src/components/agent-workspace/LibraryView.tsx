@@ -319,19 +319,20 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             setSaving(true);
             try {
               const pending = [...purge].sort((a,b) => Number(isContainer(a)) - Number(isContainer(b)));
-              const removed = new Set<string>();
               for (const item of pending) {
                 const response = await fetch("/api/library?id=" + encodeURIComponent(item.id), {method:"DELETE", headers:withAuthHeaders({})});
-                if (!response.ok) {
-                  setPurge(pending.filter(entry => !removed.has(entry.id)));
+                if (response.status === 404) {
+                  // Another tab may already have restored or removed this item.
+                  setAttempt(value => value + 1);
+                } else if (!response.ok) {
                   throw new Error(response.status === 409 ? "请先移出或删除文件夹中的条目" : "删除失败，请重试");
                 }
-                removed.add(item.id);
-                setFiles(items => items?.filter(entry => entry.id !== item.id));
+                setPurge(items => items?.filter(entry => entry.id !== item.id));
+                if (response.ok) setFiles(items => items?.filter(entry => entry.id !== item.id));
                 setSelected(ids => ids.filter(id => id !== item.id));
               }
               setPurge(undefined);
-            } catch (error) { toast({status:"error", title:error instanceof Error ? error.message : "删除失败，请重试"}); }
+            } catch (error) { toast({status:"error", title:error instanceof TypeError ? "网络连接中断，请重试" : error instanceof Error ? error.message : "删除失败，请重试"}); }
             finally { setSaving(false); }
           }}>永久删除</Button></ModalFooter>
       </ModalContent></Modal>
