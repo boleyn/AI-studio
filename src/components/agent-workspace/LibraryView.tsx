@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputR
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -454,14 +454,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
     return <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : folder ? "新建 ﹀" : "创建 ﹀"}</MenuButton>
-            <MenuList>{!folderMenu && <MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
-              <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
-              {!folderMenu && <><MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
-              <MenuItem isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
-              <MenuItem onClick={() => startCreativeChat("站点")}>站台</MenuItem>
-              <MenuItem onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
-              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
-              <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
+            <MenuList sx={{"& [role=menuitem]":{minHeight:"36px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{!folderMenu && <MenuItem icon={<LayoutGrid size={18} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
+              <MenuItem icon={<FileText size={18} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>
+              {!folderMenu && <><MenuItem icon={<Presentation size={18} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>
+              <MenuItem icon={<Sheet size={18} aria-hidden/>} isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
+              <MenuItem icon={<PanelsTopLeft size={18} aria-hidden/>} onClick={() => startCreativeChat("站点")}>站台</MenuItem>
+              <MenuItem icon={<ImageIcon size={18} aria-hidden/>} onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
+              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={18} aria-hidden/> : <Layers size={18} aria-hidden/>} key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
+              <MenuItem icon={<Upload size={18} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={18} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
           </Menu>;
   };
   return <Flex flex="1" minW={0} minH={0}>
