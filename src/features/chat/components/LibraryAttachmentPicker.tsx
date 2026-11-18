@@ -6,7 +6,7 @@ import { Check, Search } from "lucide-react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { readLibraryAttachment } from "../services/libraryAttachment";
 
-export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<void>}) {
+export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const [items,setItems] = useState<LibraryFile[]>();
   const [query,setQuery] = useState("");
   const [selected,setSelected] = useState<string[]>([]);
@@ -31,8 +31,14 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     try {
       const picked = items.filter(item => selected.includes(item.id));
       const files = await Promise.all(picked.map(item => readLibraryAttachment(item)));
-      await onAdd(files);
-      onClose();
+      const errors = await onAdd(files);
+      const failed = picked.filter((_, index) => errors[index]);
+      if (failed.length) {
+        setSelected(failed.map(item => item.id));
+        setError(errors.find(Boolean) || "添加失败，请重试");
+      } else {
+        onClose();
+      }
     } catch (err) {setError(err instanceof Error ? err.message : "添加失败");}
     finally {setBusy(false);}
   }

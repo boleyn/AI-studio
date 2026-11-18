@@ -159,21 +159,21 @@ export const uploadChatFiles = async ({
   files: ChatInputFile[];
   onProgress?: (phase: UploadPhase, progress: number) => void;
 }): Promise<UploadedFileArtifact[]> => {
-  const uploadable = files.filter((item) => item.file.size <= MAX_UPLOAD_FILE_SIZE);
-  if (uploadable.length === 0) return [];
+  if (!files.length) return [];
+  const oversized = files.find(item => item.file.size > MAX_UPLOAD_FILE_SIZE);
+  if (oversized) throw new Error(`“${oversized.file.name}”超过单个附件 10 MB 的上限`);
 
   const presignedFiles = await requestPresignedUploads({
     token,
     chatId,
-    files: uploadable,
+    files,
   });
 
-  const totalBytes = uploadable.reduce((sum, item) => sum + item.file.size, 0);
+  const totalBytes = files.reduce((sum, item) => sum + item.file.size, 0);
   let finishedBytes = 0;
 
-  for (const uploadItem of presignedFiles) {
-    const matched = uploadable.find((item) => (item.id && item.id === uploadItem.id) || item.file.name === uploadItem.name);
-    if (!matched) continue;
+  for (const [index, uploadItem] of presignedFiles.entries()) {
+    const matched = files[index];
 
     await uploadFileByPresignedUrl({
       file: matched.file,

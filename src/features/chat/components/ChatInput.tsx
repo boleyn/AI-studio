@@ -438,6 +438,7 @@ const ChatInput = ({
               : item
           )
         );
+        return matched ? undefined : "上传失败，请重试";
       } catch (error) {
         const message = error instanceof Error ? error.message : "上传失败，请重试";
         setFiles((prev) =>
@@ -451,6 +452,7 @@ const ChatInput = ({
               : item
           )
         );
+        return message;
       }
     },
     [onUploadFiles]
@@ -476,8 +478,8 @@ const ChatInput = ({
   );
 
   const onPickFiles = useCallback(
-    async (picked: FileList | File[] | null) => {
-      if (!picked || picked.length === 0) return;
+    async (picked: FileList | File[] | null, fromLibrary = false) => {
+      if (!picked || picked.length === 0) return [];
       const pickedFiles = Array.isArray(picked) ? picked : Array.from(picked);
       const next = pickedFiles.map((file) => ({
         id: createId(),
@@ -485,7 +487,12 @@ const ChatInput = ({
         uploadState: "uploading" as const,
       }));
       setFiles((prev) => [...prev, ...next]);
-      await Promise.allSettled(next.map((fileItem) => uploadSingleFile(fileItem)));
+      const errors = await Promise.all(next.map(uploadSingleFile));
+      if (fromLibrary && errors.some(Boolean)) {
+        const failedIds = new Set(next.filter((_, index) => errors[index]).map(item => item.id));
+        setFiles(previous => previous.filter(item => !failedIds.has(item.id)));
+      }
+      return errors;
     },
     [uploadSingleFile]
   );
@@ -896,7 +903,7 @@ const ChatInput = ({
                 <MenuItem onClick={() => setLibraryOpen(true)}>从资料空间添加</MenuItem>
               </MenuList></Portal>
             </Menu>
-            {libraryOpen && <LibraryAttachmentPicker onClose={() => setLibraryOpen(false)} onAdd={onPickFiles}/>}
+            {libraryOpen && <LibraryAttachmentPicker onClose={() => setLibraryOpen(false)} onAdd={picked => onPickFiles(picked, true)}/>}
             {workspaceLayout ? (
               <>
                 <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
