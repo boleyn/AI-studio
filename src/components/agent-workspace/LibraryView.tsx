@@ -229,9 +229,9 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
         <Flex align="center" gap={2}>{!sidebar && <IconButton aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={() => setSidebar(true)}/>}{folder && <Button variant="ghost" size="xs" onClick={() => {const parent=files?.find(item => item.id===folder.folderId);setFolder(parent);}}>返回</Button>}<Heading fontSize="24px" lineHeight="36px" fontWeight="500">{folder?.name || section}</Heading></Flex>
-        <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label="搜索文件、项目或会话" placeholder="搜索" maxW="240px"
+        {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label="搜索文件、项目或会话" placeholder="搜索" maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
-          {createMenu(false)}</Flex>
+          {createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && ["推荐","收藏","你的条目","与你共享"].map(name =>
@@ -251,7 +251,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? <Text>{section === "回收站" ? "回收站为空" : files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
-        grid && section !== "回收站" ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
+        grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} p={4} borderWidth="1px" borderRadius="14px">
             <Checkbox aria-label={"选择"+file.name} isChecked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/><LibraryItemIcon item={file}/><Text as="button" display="block" my={2} overflowWrap="anywhere" onClick={() => openItem(file)}>{file.name}</Text>
             {actions(file)}
