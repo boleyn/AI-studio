@@ -80,6 +80,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (referenceDraft?.file || referenceDraft?.type || referenceDraft?.name) setConfirmDiscard(true);
     else setReferenceDraft(undefined);
   }
+  const [dropActive,setDropActive] = useState(false);
   const referenceInput = useRef<HTMLInputElement>(null);
   async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference) {
     if (!selected.length) return;
@@ -381,7 +382,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuDivider my={2}/>
-      <MenuItem icon={<Bookmark size={16}/>} isDisabled={imageSection} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
+      <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
       {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
       <MenuDivider my={2}/>
       <MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
@@ -422,7 +423,24 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onBack={() => navigateList(section, tab, folder?.id)}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
-    section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>
+    section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
+      outline={dropActive ? "2px dashed #777" : undefined} outlineOffset="-4px"
+      onDragOver={event=>{
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        const allowed = section === "全部" && !creating;
+        event.dataTransfer.dropEffect = allowed ? "copy" : "none";
+        setDropActive(allowed);
+      }}
+      onDragLeave={event=>{
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropActive(false);
+      }}
+      onDrop={event=>{
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDropActive(false);
+        if (section === "全部" && !creating) void uploadFiles(Array.from(event.dataTransfer.files));
+      }}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
