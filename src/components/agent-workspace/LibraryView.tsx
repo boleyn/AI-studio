@@ -400,6 +400,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     } catch { toast({status:"error",title:"复制失败，请重试"}); }
   }
   const [copyMenuId,setCopyMenuId] = useState<string>();
+  function toggleSpaceCopy(spaceId:string, menu:Element | null, open:boolean) {
+    setCopyMenuId(open ? spaceId : undefined);
+    requestAnimationFrame(()=>menu?.querySelector<HTMLElement>(open ? "[data-copy-link]" : "[data-copy-trigger]")?.focus());
+  }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
     <MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{copyMenuId === file.id ? <>
@@ -447,14 +451,23 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     }}/>
     {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
-        <MenuList>{copyMenuId === space.id ? <>
-          <MenuItem onClick={()=>copySpace(space,"链接")}>资料空间链接</MenuItem>
+        <MenuList onKeyDownCapture={event=>{
+          if (copyMenuId !== space.id || !["Escape","ArrowLeft"].includes(event.key)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          toggleSpaceCopy(space.id,event.currentTarget,false);
+        }}>{copyMenuId === space.id ? <>
+          <MenuItem data-copy-link="" onClick={()=>copySpace(space,"链接")}>资料空间链接</MenuItem>
           <MenuItem onClick={()=>copySpace(space,"ID")}>资料空间 ID</MenuItem>
         </> : <>
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
           <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
-          <MenuItem closeOnSelect={false} onClick={()=>setCopyMenuId(space.id)}
-            onKeyDown={event=>{if (event.key === "ArrowRight") {event.preventDefault();setCopyMenuId(space.id);}}}>复制<ChevronRight size={14}/></MenuItem>
+          <MenuItem data-copy-trigger="" aria-haspopup="menu" closeOnSelect={false}
+            onClick={event=>toggleSpaceCopy(space.id,event.currentTarget.closest('[role="menu"]'),true)}
+            onKeyDown={event=>{if (event.key === "ArrowRight") {
+              event.preventDefault();
+              toggleSpaceCopy(space.id,event.currentTarget.closest('[role="menu"]'),true);
+            }}}>复制<ChevronRight size={14}/></MenuItem>
           <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
           <MenuItem isDisabled={batchBusy} onClick={()=>startSpaceChat(space)}>新聊天</MenuItem>
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
