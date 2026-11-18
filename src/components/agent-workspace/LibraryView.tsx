@@ -245,10 +245,20 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       {!isContainer(file) && <MenuItem onClick={() => {setBatchMove(false);setMove(file);setDestination(file.folderId || "");}}>移至文件夹</MenuItem>}
       <MenuItem color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Menu>;
+  async function startCreativeChat(kind: "站点" | "图像") {
+    if (creating) return;
+    setCreating(true);
+    try { await onChat([], kind === "图像" ? "创建图像 " : "使用 Sites 创建新站点 "); }
+    catch { toast({status:"error", title:"无法开始" + kind + "对话，请重试"}); }
+    finally { setCreating(false); }
+  }
   const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
             <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
               <MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
+              <MenuItem isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
+              <MenuItem onClick={() => startCreativeChat("站点")}>站台</MenuItem>
+              <MenuItem onClick={() => startCreativeChat("图像")}>图像</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
               <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
           </Menu>;
@@ -272,12 +282,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         {section !== "回收站" && <Flex align="center" gap={3}><Input ref={search} size="sm" borderRadius="full" type="search" aria-label={sitesSection ? "搜索站点" : "搜索文件、项目或会话"} placeholder={sitesSection ? "搜索站点" : "搜索"} maxW="240px"
           value={query} onChange={event => setQuery(event.target.value)} />
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
-            onClick={async () => {
-              setCreating(true);
-              try { await onChat([], "创建图像 "); }
-              catch { toast({status:"error",title:"无法开始图像对话，请重试"}); }
-              finally { setCreating(false); }
-            }}>创建图像</Button> : createMenu(false)}</Flex>}
+            onClick={() => startCreativeChat("图像")}>创建图像</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>
