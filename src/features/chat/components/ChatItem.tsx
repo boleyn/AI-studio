@@ -7,8 +7,7 @@ import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
 import { LibraryReadError, readLibraryAttachment } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toStableChatFileViewUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
 import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
@@ -263,14 +262,14 @@ const ChatItem = ({
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
       <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
         <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md">{preview?.name}</ModalHeader>
-          <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.5em"},"& ul, & ol":{paddingInlineStart:"1.5em"},"& p":{whiteSpace:"pre-wrap",marginBlock:".65em"}}}>
+          <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} minW={0}>
             {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
-              <>{showLibrarySource && <Text mb={3} fontSize="xs" color="gray.600">正在显示资料空间中的版本</Text>}<ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown></>}
+              <>{showLibrarySource && <Text mb={3} fontSize="xs" color="gray.600">正在显示资料空间中的版本</Text>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
           </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
