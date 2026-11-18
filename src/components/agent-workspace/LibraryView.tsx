@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, Select, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
-import type { LibraryFile } from "@/types/library";
+import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
 import { LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
@@ -43,12 +43,15 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [showTemplates,setShowTemplates] = useState(true);
   const [creating,setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  async function uploadFiles(selected:File[], openCreated = false) {
+  const [referenceDraft,setReferenceDraft] = useState<{file?:File; type?:ImageReference["type"]; name:string}>();
+  const referenceInput = useRef<HTMLInputElement>(null);
+  async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference) {
     if (!selected.length) return;
     setCreating(true);
     try {
       for (const file of selected) {
         const params = new URLSearchParams({name:file.name});
+        if (reference) { params.set("referenceType",reference.type); params.set("referenceName",reference.name); }
         if (folder) params.set("folderId",folder.id);
         const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
         if (!response.ok) {
@@ -57,6 +60,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         }
         const item:LibraryFile = await response.json();
         setFiles(previous => [item,...previous || []]);
+        if (reference) setReferenceDraft(undefined);
         if (openCreated) openItem(item);
       }
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
@@ -275,6 +279,15 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
       </Box>
+      {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
+        <Heading as="h2" fontSize="md" mb={2}>参考照片</Heading>
+        <Flex gap={2} overflowX="auto"><Button onClick={() => setReferenceDraft({name:""})}>添加引用</Button>
+          {files?.filter(item => item.reference && !item.deleted).map(item =>
+            <Button key={item.id} variant="ghost" onClick={() => openItem(item)}>
+              <Box as="img" src={libraryAttachmentUrl(item)} alt="" boxSize="32px" objectFit="cover" mr={2} borderRadius="md"/>
+              {item.reference?.name || item.reference?.type}
+            </Button>)}
+        </Flex></Box>}
       {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
         <Text fontSize="sm" color="gray.600">恢复最近删除的项目。这些项目将在 30 天后被永久删除。</Text>
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
@@ -324,6 +337,20 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       </Flex>}
     </Box>
   </Box>}
+    {referenceDraft && <Modal isOpen isCentered onClose={() => {if (!creating) setReferenceDraft(undefined);}}>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>上传参考图</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
+        <ModalBody><Text mb={4}>今后生成图像时可以将这张照片用作参考。请仅保存你拥有或有权限使用的照片。</Text>
+          <input ref={referenceInput} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.avif,.gif" onChange={event => setReferenceDraft({...referenceDraft,file:event.target.files?.[0]})}/>
+          <Button w="full" onClick={() => referenceInput.current?.click()}>{referenceDraft.file?.name || "上传图像"}</Button>
+          <Flex role="group" aria-label="参考类型" mt={4} gap={1}>{referenceTypes.map(type =>
+            <Button key={type} size="sm" variant={referenceDraft.type === type ? "solid" : "ghost"} aria-pressed={referenceDraft.type === type}
+              onClick={() => setReferenceDraft({...referenceDraft,type})}>{type}</Button>)}</Flex>
+          {referenceDraft.type && referenceDraft.type !== "我" && <Input mt={3} aria-label="名字" placeholder="名字" maxLength={120} value={referenceDraft.name}
+            onChange={event => setReferenceDraft({...referenceDraft,name:event.target.value})}/>}
+        </ModalBody><ModalFooter gap={2}><Button isDisabled={creating} onClick={() => setReferenceDraft(undefined)}>取消</Button>
+          <Button isLoading={creating} isDisabled={!referenceDraft.file || !referenceDraft.type} onClick={() => {
+            if (referenceDraft.file && referenceDraft.type) void uploadFiles([referenceDraft.file], false, {type:referenceDraft.type,name:referenceDraft.name});
+          }}>保存</Button></ModalFooter></ModalContent></Modal>}
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onSlides={() => { setGalleryOpen(false); void createSlides(); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}

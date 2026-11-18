@@ -1,6 +1,9 @@
+export const referenceTypes = ["我", "宠物", "朋友", "空间", "其他"] as const;
+export type ImageReference = { type: typeof referenceTypes[number]; name: string };
 export interface LibraryFile {
   id: string;
   shareId?: string;
+  reference?: ImageReference;
   directUpload?: boolean;
   folderId?: string | null;
   favorite?: boolean;
