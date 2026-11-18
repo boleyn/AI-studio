@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { BookOpen, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
@@ -18,18 +18,24 @@ export const templates = [
   { name:"Learning plan", body:"Learning objective\n\nTopics to explore\nResources\nPractice activities\n\nProgress review", icon:BookOpen, color:"#14b95d" },
   { name:"Event Plan", body:"Event overview\n\nDate and venue\nGuests\nAgenda\n\nPreparation checklist", icon:Calendar, color:"#d26e69" },
 ];
-export default function LibraryTemplates({ onPick, onClose }: {onPick:(name:string, body:string)=>void; onClose:()=>void}) {
+export default function LibraryTemplates({ onPick, onClose, onStrategy }: {onStrategy:()=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
   return <Box as="section" mb="40px" role="group">
     <Flex align="center" justify="space-between"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
       <IconButton opacity={{base:1,md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} aria-label="关闭“在资料空间中共同创建”" size="xs" variant="ghost" icon={<X size={14}/>} onClick={onClose}/></Flex>
     <Text color="gray.500" fontSize="sm" mt="2px" lineHeight="20px" mb="12px">选择一个模板，与 ChatGPT 和你的团队开始协作</Text>
     <Box display="grid" gridAutoFlow="column" gridAutoColumns="max(144px, calc(23.0769% - 18.4615px))" gap="16px" overflowX="auto" sx={{scrollbarWidth:"none"}}>{templates.map(({name,body,icon:Icon,color},i) =>
-      <Button key={name} aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(name,body)}>
+      <Fragment key={name}>
+      {i === 3 && <Button aria-label="Product Strategy" variant="unstyled" h="auto" minW={0} pb="8px" onClick={onStrategy}>
+        <Flex aspectRatio="16/9" bg="#113b82" borderRadius="12px" direction="column" align="start" justify="center" pl="25%" textAlign="left">
+          <Text fontWeight="400" color="#43caea">2027</Text><Text fontSize="lg" fontWeight="400" lineHeight="1.05" color="white">Product<br/>Strategy</Text>
+        </Flex><Text mt="10px" lineHeight="20px" fontSize="sm">Product Strategy</Text><Text fontSize="xs" fontWeight="400" color="gray.500">幻灯片</Text>
+      </Button>}
+      <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" p={4} textAlign="left" minH="135px"><Icon size={15} color={color}/>
             <Text mt={3} fontSize="7px" lineHeight="1.35" whiteSpace="pre-line">{body}</Text></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">{i === 0 ? "从这里开始" : "Page"}</Text>
-      </Button>)}</Box>
+      </Button></Fragment>)}</Box>
   </Box>;
 }
 

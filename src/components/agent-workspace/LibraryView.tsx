@@ -58,13 +58,13 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
   }
-  async function createSlides() {
+  async function createSlides(template: "blank" | "product-strategy" = "blank") {
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/library-templates/blank.pptx");
+      const response = await fetch(`/library-templates/${template}.pptx`);
       if (!response.ok) throw new Error();
-      await uploadFiles([new File([await response.blob()], "无标题演示文稿.pptx", {
+      await uploadFiles([new File([await response.blob()], template === "blank" ? "无标题演示文稿.pptx" : "Product Strategy.pptx", {
         type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"
       })], true);
     } catch {
@@ -201,7 +201,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
   const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label="创建" borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : "创建 ﹀"}</MenuButton>
             <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
-              <MenuItem onClick={createSlides}>幻灯片</MenuItem>
+              <MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
               {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
               <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem></MenuList>
           </Menu>;
@@ -240,7 +240,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>
       </Box>
       <Box>{showTemplates && !folder && section === "全部" && tab === "推荐" && !query && !types.length &&
-        <LibraryTemplates onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
+        <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? <Text>{files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text> :
