@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
-import { ChevronDown, MessageSquare, X } from "lucide-react";
+import { CircleAlert, ChevronDown, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -54,6 +54,13 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
     }).catch(()=>{if (!controller.signal.aborted) setError(true);});
     return () => controller.abort();
   },[item,markdown,plain,attempt]);
+  const previewFailure = <Flex direction="column" align="center" textAlign="center" px={4} py={8} gap={3}>
+    <CircleAlert size={22} color="#777" aria-hidden/>
+    <Box role="alert"><Text fontWeight="600">无法加载预览</Text>
+      <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">未能读取“{item.name}”。</Text>
+    </Box>
+    <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setError(false);setAttempt(n=>n+1);}}>重新加载</Button>
+  </Flex>;
   return <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // The PPTX viewer handles its own Escape on document after React bubbling.
@@ -80,11 +87,11 @@ export default function LibraryFileViewer({item,download,share,askAboutFile,clos
     <Box ref={viewport} flex="1" minH={0} overflow="auto">
       {markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}
         sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.7em"},"& h2":{fontSize:"1.3em"},"& p":{marginBottom:3,whiteSpace:"pre-wrap"},"& ul, & ol":{paddingInlineStart:6},"& pre":{overflowX:"auto"}}}>
-        {error ? <Button size="sm" onClick={()=>setAttempt(n=>n+1)}>读取失败，重试</Button> : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
+        {error ? previewFailure : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
           markdown ? <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{body}</ReactMarkdown> :
           <Text as="pre" whiteSpace="pre-wrap">{body}</Text>}
       </Box> : image ? <Flex minH="full" minW="full" w="max-content" align="center" justify="center">
-        {error ? <Button onClick={()=>{setError(false);setAttempt(n=>n+1);}}>读取失败，重试</Button> :
+        {error ? previewFailure :
           <Box as="img" key={attempt} src={libraryAttachmentUrl(item)} alt={item.name} maxW="none"
             width={dimensions.width ? dimensions.width*(scale ?? fit)+"px" : undefined}
             onLoad={(event:React.SyntheticEvent<HTMLImageElement>)=>setDimensions({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight})}
