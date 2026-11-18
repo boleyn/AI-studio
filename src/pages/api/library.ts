@@ -53,17 +53,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { "artifact.files.0": { $exists: true } },
     { "content.type": "attachment" }, { "message.content.type": "attachment" },
   ] }).project({ token: 1, chatId: 1, time: 1, "additional_kwargs.workspaceArtifactPaths": 1,
-    "additional_kwargs.workspaceArtifactVersion": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1,
+    "additional_kwargs.workspaceArtifactVersion": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1,
     "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
     "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
   for await (const msg of messages) {
     const chat = chats.get(JSON.stringify([msg.token, msg.chatId]));
     if (!chat) continue;
-    const add = (kind: LibraryFile["kind"], path: unknown, label?: unknown, version?: string) => {
+    const add = (kind: LibraryFile["kind"], path: unknown, label?: unknown, version?: string, size?: unknown) => {
       if (typeof path !== "string" || !path) return;
       const key = JSON.stringify([msg.token, msg.chatId, kind, path, version]);
       const id = createHash("sha256").update(key).digest("hex");
-      const row: LibraryFile = { id, kind, path, version, token: msg.token, project: names.get(msg.token) || "",
+      const row: LibraryFile = { id, kind, path, version, size:typeof size === "number" ? size : rows.get(key)?.size, token: msg.token, project: names.get(msg.token) || "",
         chatId: msg.chatId, conversation: chat.deleteTime ? "" : chat.customTitle || chat.title || "未命名会话",
         name: typeof label === "string" && label ? label : path.split("/").pop() || path,
         time: new Date(msg.time || 0).toISOString() };
@@ -73,11 +73,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (Array.isArray(meta?.workspaceArtifactPaths)) {
       for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion);
     }
-    const attachment = (path: unknown, name: unknown) => {
-      if (typeof path === "string" && /^\/?chat_uploads\//.test(path)) add("上传", path, name);
+    const attachment = (path: unknown, name: unknown, size?:unknown) => {
+      if (typeof path === "string" && /^\/?chat_uploads\//.test(path)) add("上传", path, name, undefined, size);
     };
     if (Array.isArray(msg.artifact?.files)) {
-      for (const file of msg.artifact.files) attachment(file?.storagePath, file?.name);
+      for (const file of msg.artifact.files) attachment(file?.storagePath, file?.name, file?.size);
     }
     const blocks = msg.message?.content ?? msg.content;
     if (Array.isArray(blocks)) {
