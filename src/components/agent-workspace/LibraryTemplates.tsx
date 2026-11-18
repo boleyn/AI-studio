@@ -33,7 +33,17 @@ export default function LibraryTemplates({ onPick, onClose }: {onPick:(name:stri
   </Box>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef }: {
+const workbookTemplates = [
+  {name: "Analytics Dashboard", columns: ["Metric", "Period", "Actual", "Target", "Variance"], formula: "C2-D2"},
+  {name: "Financial Budget", columns: ["Category", "Month", "Budget", "Actual", "Remaining"], formula: "C2-D2"},
+  {name: "Operating Calendar", columns: ["Date", "Activity", "Owner", "Status"]},
+  {name: "Project Tracker", columns: ["Task", "Owner", "Due date", "Status"]},
+  {name: "Sales Pipeline", columns: ["Opportunity", "Stage", "Value", "Probability", "Weighted value"], formula: "C2*D2"},
+  {name: "Three-Statement Forecast", columns: ["Period", "Revenue", "Expenses", "Net income"], formula: "B2-C2"},
+];
+
+export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
+  onWorkbook: (file: File) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
   onPick: (name: string, body: string) => void;
@@ -45,13 +55,16 @@ export function TemplateGallery({ onClose, onPick, triggerRef }: {
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
 
+  const workbooks = workbookTemplates.filter(template =>
+    template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  );
   return <Modal finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
       <ModalHeader>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
       <Flex px={6} pb={4} gap={2} align="center">
-        {["为你推荐", "页面"].map(label =>
+        {["为你推荐", "页面", "电子表格"].map(label =>
           <Button key={label} size="sm" borderRadius="full" aria-pressed={category === label}
             variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}>{label}</Button>
         )}
@@ -63,7 +76,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef }: {
       </Flex>
       <ModalBody>
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
-          {pages.map(({name, body, icon: Icon, color}) =>
+          {category !== "电子表格" && pages.map(({name, body, icon: Icon, color}) =>
             <Box key={name} position="relative" role="group">
             <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
               textAlign="left" onClick={() => onPick(name, body)}>
@@ -81,8 +94,31 @@ export function TemplateGallery({ onClose, onPick, triggerRef }: {
             </Menu>
             </Box>
           )}
+          {category !== "页面" && workbooks.map(template =>
+            <Button key={template.name} aria-label={`Use ${template.name}`} variant="unstyled" height="auto"
+              textAlign="left" whiteSpace="normal" onClick={async () => {
+                const XLSX = await import("xlsx");
+                const sheet = XLSX.utils.aoa_to_sheet([template.columns]);
+                if (template.formula) {
+                  XLSX.utils.sheet_add_aoa(sheet, [[{t:"n", f:template.formula}]], {
+                    origin: {r:1, c:template.columns.length - 1}
+                  });
+                }
+                sheet["!cols"] = template.columns.map(() => ({wch:20}));
+                const book = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(book, sheet, template.name);
+                onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
+                  {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+              }}>
+              <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+                <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
+                <Flex bg="white">{template.columns.map(column =>
+                  <Text key={column} flex={1} p={1} fontSize="8px" border="1px solid #ddd">{column}</Text>)}</Flex>
+              </Box>
+              <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
+            </Button>)}
         </SimpleGrid>
-        {!pages.length && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
+        {(category === "电子表格" || !pages.length) && (category === "页面" || !workbooks.length) && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
       </ModalBody>
     </ModalContent>
   </Modal>;

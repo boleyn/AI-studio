@@ -39,7 +39,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
   const [showTemplates,setShowTemplates] = useState(true);
   const [creating,setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  async function uploadFiles(selected:File[]) {
+  async function uploadFiles(selected:File[], openCreated = false) {
     if (!selected.length) return;
     setCreating(true);
     try {
@@ -53,6 +53,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
         }
         const item:LibraryFile = await response.json();
         setFiles(previous => [item,...previous || []]);
+        if (openCreated) openItem(item);
       }
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
     finally { setCreating(false); }
@@ -264,7 +265,7 @@ export default function LibraryView({ onOpen, onBack, onChat }: { onChat:(files:
       </Flex>}
     </Box>
   </Box>}
-    {galleryOpen && <TemplateGallery triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
+    {galleryOpen && <TemplateGallery onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog token={sharing.token} path={sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
