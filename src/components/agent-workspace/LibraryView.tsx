@@ -10,6 +10,7 @@ import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
+import { formatRelativeTime } from "./relativeTime";
 import LibrarySites from "./LibrarySites";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
@@ -186,12 +187,19 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     return () => controller.abort();
   }, [attempt]);
   const destinations = files?.filter(item => isContainer(item) && !item.deleted) || [];
+  function rowTime(file: LibraryFile) {
+    if (section === "回收站") return file.deletedAt || "";
+    return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
+  }
+  function sortValue(file: LibraryFile) {
+    return sort.column === "name" ? file.name : rowTime(file);
+  }
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || (file.kind === "页面" ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
     (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : tab !== "你的条目" || !file.shareId) && (!types.length || types.includes(file.kind === "页面" ? "页面" : fileType(file.path))) &&
-    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * (section === "回收站" && sort.column === "time" ? a.deletedAt || "" : a[sort.column]).localeCompare(section === "回收站" && sort.column === "time" ? b.deletedAt || "" : b[sort.column], "zh-CN", { numeric: true }));
+    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
   const allChecked = Boolean(visible?.length && visible.length === picked.length);
@@ -342,7 +350,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><button type="button" onClick={() => openItem(file)}>{file.name}</button></Flex></td>
             <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
-            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : file.time ? new Date(file.time).toLocaleDateString("zh-CN") : "—"}</td><td>{actions(file)}</td>
+            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file)) || "—"}</time>}</td><td>{actions(file)}</td>
           </Box>)}</tbody>
         </Box>}
       {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="sticky" bottom={3} zIndex={3} mx="auto" mt={4}
