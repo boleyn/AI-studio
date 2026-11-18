@@ -14,7 +14,9 @@ const byExtension = new Map(Object.entries({
   bmp: "image/bmp",
 }));
 
-export function inferAttachmentMimeType(path: string): string {
+export function inferAttachmentMimeType(path: string, fallbackPath?: string): string {
   const extension = /\.([^.\\/]+)$/.exec(path)?.[1].toLowerCase();
-  return (extension && byExtension.get(extension)) || "application/octet-stream";
+  const type = extension && byExtension.get(extension);
+  if (type) return type;
+  return fallbackPath ? inferAttachmentMimeType(fallbackPath) : "application/octet-stream";
 }

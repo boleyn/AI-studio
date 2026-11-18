@@ -308,7 +308,8 @@ const ChatItem = ({
                     ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || "";
-                  const isMarkdown = /\.(md|markdown)$/i.test(file.name || "");
+                  const isMarkdown = /\.(md|markdown)$/i.test(file.name || "") ||
+                    /^text\/markdown(?:;|$)/i.test(file.type || "");
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}

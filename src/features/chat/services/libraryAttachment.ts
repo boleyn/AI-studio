@@ -31,7 +31,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   const blob = await response.blob();
   if (item.sharedPage) return fromLibrary(new File([blob],item.path,{type:"text/markdown"}),item.id);
   const type = !blob.type || blob.type.split(";")[0].trim() === "application/octet-stream"
-    ? inferAttachmentMimeType(item.name)
+    ? inferAttachmentMimeType(item.name, item.path)
     : blob.type;
   return fromLibrary(new File([blob],item.name,{type}),item.id);
 }
