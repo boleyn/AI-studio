@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(201).json(item);
   }
   if (typeof req.query.id !== "string" || !/^[0-9a-f]{24}$/.test(req.query.id)) return res.status(400).end();
-  const filter = { owner, _id:new ObjectId(req.query.id) };
+  const filter = { owner, purging:{$ne:true}, _id:new ObjectId(req.query.id) };
   if (req.method === "GET") {
     const page = await pages.findOne(filter,{projection:{body:1,name:1}});
     return page ? res.json(page) : res.status(404).end();

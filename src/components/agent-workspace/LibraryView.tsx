@@ -114,6 +114,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const search = useRef<HTMLInputElement>(null);
   const [detail, setDetail] = useState<LibraryFile>();
   const [sharing,setSharing] = useState<LibraryFile>();
+  const [purge,setPurge] = useState<LibraryFile>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -196,7 +197,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end">
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <MenuList>{file.deleted ? <MenuItem onClick={() => update(file,{deleted:false})}>恢复</MenuItem> : <>
+    <MenuList>{file.deleted ? <><MenuItem onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem color="red.600" onClick={() => setPurge(file)}>永久删除</MenuItem></> : <>
       {!file.shareId && !isContainer(file) && <MenuItem onClick={()=>setSharing(file)}>分享</MenuItem>}
       <MenuItem onClick={() => { setTitle(file.name); setRename(file); }}>重命名</MenuItem>
       {isNative(file) ? <MenuItem onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem as="a" href={downloadUrl(file)}>下载</MenuItem> :
@@ -304,6 +305,23 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         {destinations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></ModalBody>
       <ModalFooter gap={2}><Button onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving} onClick={async () => {if (!move) return; const targets=batchMove ? picked : [move]; for(const item of targets) await update(item,{folderId:destination || null});setBatchMove(false);}}>移动</Button></ModalFooter>
     </ModalContent></Modal>
+    <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>永久删除项目？</ModalHeader>
+        <ModalBody>“{purge?.name}”将被永久删除，此操作无法撤销。</ModalBody>
+        <ModalFooter gap={2}><Button isDisabled={saving} onClick={() => setPurge(undefined)}>取消</Button>
+          <Button colorScheme="red" isLoading={saving} onClick={async () => {
+            if (!purge || saving) return;
+            setSaving(true);
+            try {
+              const response = await fetch("/api/library?id=" + encodeURIComponent(purge.id), {method:"DELETE", headers:withAuthHeaders({})});
+              if (!response.ok) throw new Error(response.status === 409 ? "请先移出或删除文件夹中的条目" : "删除失败，请重试");
+              setFiles(items => items?.filter(item => item.id !== purge.id));
+              setSelected(ids => ids.filter(id => id !== purge.id));
+              setPurge(undefined);
+            } catch (error) { toast({status:"error", title:error instanceof Error ? error.message : "删除失败，请重试"}); }
+            finally { setSaving(false); }
+          }}>永久删除</Button></ModalFooter>
+      </ModalContent></Modal>
     <Modal isOpen={Boolean(rename)} onClose={() => setRename(undefined)} isCentered><ModalOverlay/><ModalContent>
       <ModalHeader>重命名</ModalHeader><ModalCloseButton/><form onSubmit={event => {event.preventDefault(); if(rename && title.trim()) void update(rename,{name:title.trim()});}}>
         <ModalBody><Input aria-label="名称" autoFocus value={title} maxLength={255} onChange={event => setTitle(event.target.value)}/></ModalBody>

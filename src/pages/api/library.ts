@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { listReceivedArtifactShares } from "@server/shares/artifactShareStorage";
+import { deleteStorageObjects } from "@server/storage/s3";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -9,13 +10,31 @@ import { getProjectAccessState, listProjectOverviewItems } from "@server/project
 import type { LibraryFile } from "@/types/library";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!["GET", "PATCH", "POST"].includes(req.method || "")) return res.setHeader("Allow", "GET, PATCH, POST").status(405).end();
+  if (!["GET", "PATCH", "POST", "DELETE"].includes(req.method || "")) return res.setHeader("Allow", "GET, PATCH, POST, DELETE").status(405).end();
   const auth = await requireAuth(req, res);
   if (!auth) return;
   res.setHeader("Cache-Control", "private, no-store");
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  if (req.method === "DELETE") {
+    const id = req.query.id;
+    if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
+    if (id.length === 64) {
+      const result = await settings.updateOne({_id:owner + "/" + id, owner, deleted:true}, {$set:{purged:true}});
+      return res.status(result.matchedCount ? 204 : 404).end();
+    }
+    const pages = db.collection("library_pages");
+    const filter = {_id:new ObjectId(id), owner, deleted:true};
+    if (await pages.findOne({owner,folderId:id}) || await settings.findOne({owner,folderId:id,purged:{$ne:true}}))
+      return res.status(409).json({error:"请先移出或删除文件夹中的条目"});
+    const item = await pages.findOneAndUpdate(filter, {$set:{purging:true}}, {returnDocument:"after"});
+    if (!item) return res.status(404).end();
+    if (item.storageKey) await deleteStorageObjects({keys:[item.storageKey]});
+    await pages.deleteOne({...filter,purging:true});
+    await settings.deleteOne({owner,_id:owner + "/" + id});
+    return res.status(204).end();
+  }
   if (req.method === "POST") {
     const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
     if (!operation.success) return res.status(400).end();
@@ -93,7 +112,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     rows.set(id,{id,shareId:id,kind:"上传",name:share.filename,path:share.filename,time:"",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
-  res.json([...rows.values()].map(file => {
+  res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
     const entry = preferences.get(owner + "/" + file.id);
     return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time)));
