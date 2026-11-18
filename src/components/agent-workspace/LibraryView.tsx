@@ -21,6 +21,7 @@ import LibraryPageEditor from "./LibraryPageEditor";
 import LibraryTemplates, { TemplateGallery, type SlideTemplateName } from "./LibraryTemplates";
 import LibraryGlobalSearch from "./LibraryGlobalSearch";
 import type { ProjectWithConversations } from "../AgentWorkspace";
+import type { FileChatSizing } from "./FileChatDivider";
 import LibrarySidebar from "./LibrarySidebar";
 
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
@@ -50,7 +51,7 @@ function fileType(file: LibraryFile) {
   return "其他";
 }
 
-export default function LibraryView({ fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
@@ -404,7 +405,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
         !file.deleted && file.kind === "生成" && file.token === detail.token &&
         file.chatId === detail.chatId && file.path === detail.path
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
-      fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
+      fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onBack={() => navigateList(section, tab, folder?.id)}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}>

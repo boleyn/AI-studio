@@ -60,6 +60,7 @@ import {
 } from "lucide-react";
 import { AppDialog } from "./ui";
 import { createConversation } from "@features/chat/services/conversations";
+import FileChatDivider from "./agent-workspace/FileChatDivider";
 import LibraryView from "./agent-workspace/LibraryView";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
 import ProjectWorkspaceSelect from "./agent-workspace/ProjectWorkspaceSelect";
@@ -192,8 +193,6 @@ export default function AgentWorkspace({
     ? query.view : "chat";
   const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
   const [fileChatWidth, setFileChatWidth] = useState(38);
-  const chatPaneRef = useRef<HTMLDivElement>(null);
-  const clampChatWidth = (width: number) => Math.min(65, Math.max(25, width));
   const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
     fileChat.chatId === visibleChatId ? fileChat : undefined;
   const fileChatOpen = currentFileChat?.minimized === false;
@@ -876,7 +875,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
+      {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
         let token = activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
@@ -929,7 +928,6 @@ export default function AgentWorkspace({
         />
       )}
       <Flex
-        ref={chatPaneRef}
         flex={fileChatOpen ? {base:"1",md:`0 0 ${fileChatWidth}%`} : "1"}
         minW={0}
         minH={0}
@@ -937,26 +935,7 @@ export default function AgentWorkspace({
         display={activeNav === "chat" || fileChatOpen ? "flex" : "none"}
         {...(fileChatOpen ? {role:"region", "aria-label":"聊天", inset:{base:0,md:"auto"},zIndex:4,bg:"white",borderLeftWidth:"1px"} : {})}
       >
-        {fileChatOpen && <Box role="separator" aria-label="调整聊天宽度" aria-orientation="vertical"
-          aria-valuemin={25} aria-valuemax={65} aria-valuenow={fileChatWidth} aria-valuetext={fileChatWidth + "%"}
-          tabIndex={0} display={{base:"none",md:"block"}} position="absolute" insetY={0} left="-4px" w="8px"
-          zIndex={5} cursor="col-resize" style={{touchAction:"none"}} _focusVisible={{outline:"2px solid currentColor"}}
-          onPointerDown={event => {
-            if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerMove={event => {
-            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-            const bounds = chatPaneRef.current?.parentElement?.getBoundingClientRect();
-            if (bounds?.width) setFileChatWidth(clampChatWidth(Math.round(100 * (bounds.right - event.clientX) / bounds.width)));
-          }}
-          onKeyDown={event => {
-            const widths: Record<string, number> = {ArrowLeft:fileChatWidth + 1, ArrowRight:fileChatWidth - 1, Home:25, End:65};
-            if (Object.prototype.hasOwnProperty.call(widths, event.key)) {
-              event.preventDefault();
-              setFileChatWidth(clampChatWidth(widths[event.key]));
-            }
-          }}
-        />}
+        {fileChatOpen && <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth}/>}
         {/* 次级侧边栏（1:1 对齐 ChatGPT 左侧栏） */}
           {sidebarOpen && !fileChatOpen ? (
         <Flex

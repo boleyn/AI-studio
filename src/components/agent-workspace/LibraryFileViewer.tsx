@@ -9,7 +9,9 @@ import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 import LibraryItemIcon from "./LibraryItemIcon";
 
-interface Props {
+import FileChatDivider, { type FileChatSizing } from "./FileChatDivider";
+
+interface Props extends FileChatSizing {
   item: LibraryFile;
   versions: LibraryFile[];
   openVersion: (file: LibraryFile) => void;
@@ -37,7 +39,7 @@ export default function LibraryFileViewer(props: Props) {
   return <FilePreview key={props.item.id} {...props} panel={panel} setPanel={setPanel}/>;
 }
 
-function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
+function FilePreview({item,versions,openVersion,download,share,fileChatWidth,setFileChatWidth,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
   panel?: ViewerPanel;
   setPanel: (panel?: ViewerPanel) => void;
 }) {
@@ -174,7 +176,8 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
       onClick={resumeFileChat || (()=>setDraftMinimized(false))} aria-label="展开聊天窗口">聊天</Button>}
     </Flex>
     {!fileChatOpen && !resumeFileChat && !draftMinimized && <Flex as="aside" aria-label="新聊天" direction="column"
-      w={{base:"100%",lg:"38%"}} flexShrink={0} minW={0} bg="white" borderInlineStartWidth={{base:0,lg:"1px"}} borderTopWidth={{base:"1px",lg:0}}>
+      position="relative" w={{base:"100%",lg:fileChatWidth+"%"}} flexShrink={0} minW={0} bg="white" borderInlineStartWidth={{base:0,lg:"1px"}} borderTopWidth={{base:"1px",lg:0}}>
+      <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} breakpoint="lg"/>
       <Flex align="center" justify="space-between" px={4} minH="44px">
         <Heading as="h2" fontSize="sm">新聊天</Heading>
         <IconButton size="sm" variant="ghost" aria-label="最小化聊天窗口" icon={<Minus size={16}/>} onClick={()=>setDraftMinimized(true)}/>
