@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { Tabs, TabList, Tab, Box, Flex, Grid, Text } from "@chakra-ui/react";
 
@@ -63,8 +64,11 @@ export default function ImageCreationTemplates({onPick,onUpload}:{onPick:(prompt
     }}/>
     <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs></Flex>
     <Grid templateColumns={{base:"repeat(2,minmax(0,1fr))",md:"repeat(4,minmax(0,1fr))"}} gap="8px">
-      <Flex as="button" type="button" align="center" justify="center" direction="column" gap={2} aspectRatio="4 / 5"
-        bg="gray.100" borderRadius="24px" onClick={()=>photoInput.current?.click()}><span aria-hidden>＋</span>上传照片</Flex>
+      <Flex as="button" type="button" align="center" justify="center" position="relative" aspectRatio="4 / 5"
+        bg="rgba(0,0,0,.05)" color="#5d5d5d" borderRadius="24px" onClick={()=>photoInput.current?.click()}>
+        <Plus size={20} strokeWidth={1.5} aria-hidden/>
+        <Text as="span" position="absolute" insetInline={0} bottom={0} p="12px" textAlign="start" fontSize="14px" lineHeight="20px" fontWeight="400">上传照片</Text>
+      </Flex>
       {cards.map(({label,path,prompt})=>
       <Box as="button" type="button" key={path} position="relative" overflow="hidden" borderRadius="16px" aspectRatio="4 / 5" textAlign="left" onClick={()=>onPick(prompt)}>
         <Box as="img" alt="" loading="lazy" w="100%" h="100%" objectFit="cover"
