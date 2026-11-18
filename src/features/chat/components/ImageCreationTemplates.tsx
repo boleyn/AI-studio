@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Tabs, TabList, Tab, Box, Button, Flex, Grid, Text } from "@chakra-ui/react";
 
 const templates = [
@@ -49,13 +49,19 @@ const popular = [
   ["奇幻报纸","fantasy-newspaper-sheet"],["胶片条","film-strip-sheet"],["超写实壁纸","hyper-real-sheet"],
 ];
 
-export default function ImageCreationTemplates({onPick,onUpload}:{onPick:(prompt:string)=>void;onUpload:()=>void}) {
+export default function ImageCreationTemplates({onPick,onUpload}:{onPick:(prompt:string)=>void;onUpload:(photos:File[])=>void}) {
+  const photoInput = useRef<HTMLInputElement>(null);
   const [tab,setTab] = useState(0);
   const cards = tab === 0 ? templates.map(([label,slug,hash,prompt])=>({
     label,prompt,path:`promptworks/2026-09-${slug==="thumbnail"?"08":"04"}/professional-${slug}-${hash}`
   })) : popular.map(([label,path])=>({label,path,prompt:"以「"+label+"」为主题创作图像。"}));
   return <Box as="section" aria-label="创建图像" mt={3} maxH="32vh" overflowY="auto">
-    <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs><Button size="sm" variant="ghost" onClick={onUpload}>上传照片</Button></Flex>
+    <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label="上传参考照片" onChange={event=>{
+      const photos = Array.from(event.currentTarget.files || []);
+      event.currentTarget.value = "";
+      if (photos.length) onUpload(photos);
+    }}/>
+    <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs><Button size="sm" variant="ghost" onClick={()=>photoInput.current?.click()}>上传照片</Button></Flex>
     <Grid templateColumns="repeat(auto-fill,minmax(104px,1fr))" gap={2}>{cards.map(({label,path,prompt})=>
       <Box as="button" type="button" key={path} textAlign="left" onClick={()=>onPick(prompt)}>
         <Box as="img" alt="" loading="lazy" borderRadius="10px" w="100%" aspectRatio="1" objectFit="cover"

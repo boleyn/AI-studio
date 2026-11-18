@@ -1203,7 +1203,7 @@ const ChatInput = ({
           </Flex>
         </Flex>
       </Flex>
-      {imageMode && <ImageCreationTemplates onUpload={()=>fileInputRef.current?.click()} onPick={prompt=>{
+      {imageMode && <ImageCreationTemplates onUpload={photos=>void onPickFiles(photos)} onPick={prompt=>{
         setText(previous=>previous.trim() ? previous.trimEnd()+"\n\n"+prompt : prompt);
         requestAnimationFrame(()=>textAreaRef.current?.focus());
       }}/>}
