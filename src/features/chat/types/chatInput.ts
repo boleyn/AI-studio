@@ -81,7 +81,7 @@ export interface WorkspaceComposerDeviceOption {
 }
 
 export interface WorkspaceComposerConfig {
-  libraryDraft?: { chatId:string; files:File[]; text?:string };
+  libraryDraft?: { chatId:string; files:File[]; text?:string; imageMode?:boolean };
   onLibraryDraftConsumed?: () => void;
   deviceAccessKind?: "remote-vm" | "connector";
   deviceAccessLabel?: string;

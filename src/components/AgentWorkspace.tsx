@@ -136,7 +136,7 @@ export default function AgentWorkspace({
   const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
-  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[];text?:string}>();
+  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[];text?:string;imageMode?:boolean}>();
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -875,7 +875,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId) => {
+      {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode) => {
         let token = activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
@@ -890,7 +890,7 @@ export default function AgentWorkspace({
         }
         const chat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? {id:fileChat.chatId} : await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
-        setLibraryDraft({chatId:chat.id,files,text});
+        setLibraryDraft({chatId:chat.id,files,text,imageMode});
         if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
         else setFileChat(undefined);
         await setActiveNav(itemId ? "library" : "chat", chat.id);

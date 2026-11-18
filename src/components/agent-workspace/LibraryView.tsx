@@ -53,7 +53,7 @@ function fileType(file: LibraryFile) {
   return "其他";
 }
 
-export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
@@ -469,7 +469,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   async function startCreativeChat(kind: "站点" | "图像") {
     if (creating) return;
     setCreating(true);
-    try { await onChat([], kind === "图像" ? "创建图像 " : "使用 Sites 创建新站点 "); }
+    try { await onChat([], kind === "图像" ? undefined : "使用 Sites 创建新站点 ",undefined,kind === "图像"); }
     catch { toast({status:"error", title:"无法开始" + kind + "对话，请重试"}); }
     finally { setCreating(false); }
   }

@@ -103,11 +103,14 @@ const ChatInput = ({
   const chatInputTheme = theme?.workspace?.chatInput || {};
   const skillTheme = chatInputTheme?.skillMention || {};
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [imageModeKey,setImageModeKey] = useState<string>();
+  const imageMode = Boolean(draftStorageKey && imageModeKey === draftStorageKey);
   const [text, setText] = useState("");
   const [loadedDraftKey, setLoadedDraftKey] = useState<string>();
   useEffect(() => {
     if (!draftStorageKey) return;
     try {
+      setImageModeKey(sessionStorage.getItem(draftStorageKey+":image-mode") ? draftStorageKey : undefined);
       setText(sessionStorage.getItem(draftStorageKey) ?? "");
     } catch {
       // Storage can be unavailable in restricted browser sessions.
@@ -506,6 +509,11 @@ const ChatInput = ({
     if (!draft || consumedLibraryDrafts.current.has(draft) ||
       loadedDraftKey !== draftStorageKey || draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
     consumedLibraryDrafts.current.add(draft);
+    if (draft.imageMode) {
+      setImageModeKey(draftStorageKey);
+      try { sessionStorage.setItem(draftStorageKey+":image-mode","1"); } catch {}
+      requestAnimationFrame(() => textAreaRef.current?.focus());
+    }
     const incomingText = draft.text;
     if (incomingText) {
       setText(previous => previous ? previous.trimEnd() + "\n\n" + incomingText : incomingText);
@@ -537,7 +545,7 @@ const ChatInput = ({
       .filter((item): item is UploadedFileArtifact => Boolean(item));
 
     const payload: ChatInputSubmitPayload = {
-      text: text.trim(),
+      text: imageMode ? "创建图像：" + text.trim() : text.trim(),
       files: selectedFiles,
       uploadedFiles,
       selectedSkill: selectedSkillList[0] || undefined,
@@ -550,6 +558,8 @@ const ChatInput = ({
     setIsSubmitting(true);
     try {
       await onSend(payload, { onAccepted: () => {
+        setImageModeKey(undefined);
+        try { sessionStorage.removeItem(draftStorageKey+":image-mode"); } catch {}
         setText("");
         setFiles([]);
         setSelectedFilePaths([]);
@@ -561,7 +571,7 @@ const ChatInput = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [canSend, files, onSend, toast, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
+  }, [canSend, imageMode, draftStorageKey, files, onSend, toast, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
 
   return (
     <Box px={4} py={3}>
@@ -669,6 +679,12 @@ const ChatInput = ({
 
         <Flex align="center" px={2}>
           <Box position="relative" w="100%">
+            {imageMode && <Flex align="center" gap={1} w="fit-content" mx={2} mt={2} pl={2} bg="gray.100" borderRadius="full">
+              <Text fontSize="sm">创建图像</Text><CloseButton size="sm" aria-label="退出创建图像" onClick={()=>{
+                setImageModeKey(undefined);
+                try { sessionStorage.removeItem(draftStorageKey+":image-mode"); } catch {}
+                textAreaRef.current?.focus();
+              }}/></Flex>}
             {selectedSkillList.length > 0 || selectedFilePaths.length > 0 ? (
               <Flex px={2} pt={2}>
                 <Flex align="center" gap={1.5} wrap="wrap">
