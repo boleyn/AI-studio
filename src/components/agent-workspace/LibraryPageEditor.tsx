@@ -1,15 +1,17 @@
 import { Box, Button, Flex, Input, Text, Textarea } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import { fromLibrary } from "@features/chat/services/libraryFileOrigin";
 import type { LibraryFile } from "@/types/library";
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onChat?:(file:File)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();
   const [failed,setFailed] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [busy,setBusy] = useState(false);
+  const [openingChat,setOpeningChat] = useState(false);
   const [status,setStatus] = useState("");
   const url = "/api/library/pages?id=" + encodeURIComponent(page.id) + (shareId ? "&share=" + encodeURIComponent(shareId) : "");
   useEffect(() => {
@@ -40,9 +42,20 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     } catch { setStatus("保存失败，请重试"); }
     finally { setBusy(false); }
   }
+  async function discussPage() {
+    if (!content || !onChat || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const title = content.name.trim() || "无标题页";
+      const snapshot = new File(["# " + title + "\n\n" + content.body],title + ".md",{type:"text/markdown"});
+      await onChat(fromLibrary(snapshot,shareId || page.id));
+    } catch { setStatus("无法打开聊天，请重试"); }
+    finally { setOpeningChat(false); }
+  }
   return <Box flex="1" minW={0} p={6} overflowY="auto"><Flex align="center" justify="space-between">
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
-    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text><Button size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
+    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>在聊天中引用</Button>}
+      <Button size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
     </Flex>{failed ? <Button onClick={() => setAttempt(attempt+1)}>加载失败，重试</Button> :
     content && <Box maxW="760px" mx="auto" mt="8vh">
       {conflict && <Box as="section" aria-label="最新版本" borderWidth="1px" borderRadius="12px" p={4} mb={5}>
