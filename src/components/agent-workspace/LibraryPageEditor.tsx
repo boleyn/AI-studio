@@ -4,7 +4,9 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { fromLibrary } from "@features/chat/services/libraryFileOrigin";
 import type { LibraryFile } from "@/types/library";
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,subpages}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;subpages?:ReactNode;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export type PageDraft = {name:string;body:string;revision:number};
+
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();
@@ -22,15 +24,27 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     fetch(url,{headers:withAuthHeaders(),signal:abort.signal}).then(async response => {
       if (!response.ok) throw new Error();
       const data = await response.json();
-      if (!abort.signal.aborted) {setContent({name:data.name,body:data.body});setRevision(data.revision || 0);setConflict(undefined);}
+      if (abort.signal.aborted) return;
+      const draft = drafts?.get(url);
+      const currentRevision = data.revision || 0;
+      setContent(draft || {name:data.name,body:data.body});
+      setRevision(draft?.revision ?? currentRevision);
+      const changed = draft && currentRevision !== draft.revision;
+      setConflict(changed ? data : undefined);
+      setStatus(changed ? "页面已有新版本，你的草稿已保留" : draft ? "尚未保存" : "");
     }).catch(() => { if(!abort.signal.aborted) setFailed(true); });
     return () => abort.abort();
-  },[url,attempt]);
+  },[url,attempt,drafts]);
+  function edit(next:{name:string;body:string}) {
+    setContent(next);
+    drafts?.set(url,{...next,revision});
+    setStatus("尚未保存");
+  }
   async function save() {
     if (!content || busy || conflict) return;
     setBusy(true);
     try {
-      const response = await fetch(url,{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({...content,expectedRevision:revision})});
+      const response = await fetch(url,{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({name:content.name,body:content.body,expectedRevision:revision})});
       if (response.status === 409) {
         setConflict(await response.json());
         setStatus("页面已有新版本，你的草稿已保留");
@@ -40,6 +54,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       const {time,revision:nextRevision} = await response.json();
       setRevision(nextRevision);
       onSaved(content.name.trim(),time);
+      drafts?.delete(url);
       setStatus("已保存");
     } catch { setStatus("保存失败，请重试"); }
     finally { setBusy(false); }
@@ -66,12 +81,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Button size="sm" onClick={()=>{setRevision(conflict.revision || 0);setConflict(undefined);setStatus("请核对草稿后保存");}}>已对照，继续编辑草稿</Button>
       </Box>}
       <Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
-        onChange={event => {setContent({...content,name:event.target.value});setStatus("尚未保存");}}/>
+        onChange={event => {edit({...content,name:event.target.value});}}/>
       <Textarea onSelect={event=>{
         const {selectionStart,selectionEnd} = event.currentTarget;
         setSelection({start:selectionStart,end:selectionEnd});
       }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
-        onChange={event => {setContent({...content,body:event.target.value});setStatus("尚未保存");}}/>
+        onChange={event => {edit({...content,body:event.target.value});}}/>
       {subpages}
     </Box>}</Box>;
 }
