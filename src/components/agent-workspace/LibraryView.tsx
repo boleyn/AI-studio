@@ -38,12 +38,15 @@ function formatFolderSize(bytes: number) {
 }
 const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
-function fileType(path: string) {
+function fileType(file: LibraryFile) {
+  if (file.kind === "页面" || file.sharedPage) return "页面";
+  if (file.siteId) return "站点";
+  const path = file.path || file.name;
   if (isArtifactImage(path)) return "图像";
   if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return "电子表格";
   if (/\.(pptx?|odp)$/i.test(path)) return "演示文稿";
   if (/\.pdf$/i.test(path)) return "PDF 文件";
-  if (/\.(docx?|txt|md|rtf|odt)$/i.test(path)) return "文档";
+  if (/\.(docx?|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
   return "其他";
 }
 
@@ -270,10 +273,10 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
   }
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
-    (section === "全部" || section === "回收站" || (file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path)) === (section === "幻灯片" ? "演示文稿" : section)) &&
+    (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
     (!sources.length || (file.kind === "上传" && !file.sharedPage && sources.includes("已上传")) || (file.kind === "生成" && sources.includes("生成的文件"))) &&
-    (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(file.kind === "页面" || file.sharedPage ? "页面" : fileType(file.path))) &&
+    (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
@@ -356,7 +359,7 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
       <MenuItem onClick={()=>copyPage(file,true)}>复制为 Markdown</MenuItem></> : file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
-      {(file.kind === "页面" || fileType(file.path) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
+      {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
       <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <MenuItem closeOnSelect={false} icon={<Copy size={16}/>} onClick={()=>setCopyMenuId(file.id)}>复制<ChevronRight size={14}/></MenuItem>}
