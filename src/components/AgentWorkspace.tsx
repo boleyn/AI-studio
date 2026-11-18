@@ -868,8 +868,18 @@ export default function AgentWorkspace({
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
       {activeNav === "library" && <LibraryView projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text) => {
-        const token = activeProject?.token || projects[0]?.token;
-        if (!token) throw new Error("当前没有可用工作空间");
+        let token = activeProject?.token || projects[0]?.token;
+        if (!token) {
+          const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
+          token = existing[0]?.token;
+          if (!token) {
+            const created = await apiJson<{token:string}>("/projects", {
+              method:"POST", body:JSON.stringify({name:"个人工作区", files:{}, dependencies:{}})
+            });
+            token = created.token;
+          }
+          await fetchProjects();
+        }
         const chat = await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text});
