@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, Text, IconButton, Menu, MenuButton, 
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -439,13 +439,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           </Box>)}</tbody>
         </Box>}
       {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="sticky" bottom={3} zIndex={3} mx="auto" mt={4}
-        w="fit-content" maxW="100%" wrap="wrap" align="center" gap={1} p={2} border="1px solid #ddd" borderRadius="18px" bg="white" shadow="md">
-        <Text fontSize="sm" px={2}>已选择 {picked.length} 个</Text>
-        <Button size="sm" variant="ghost" isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
-        <Button size="sm" variant="ghost" isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
-        <Button size="sm" variant="ghost" isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
-        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
-        <IconButton size="sm" variant="ghost" aria-label="清除选择" icon={<span>×</span>} onClick={()=>setSelected([])}/>
+        w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
+        sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
+        <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
+        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
+        <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
+        <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
+        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
+        <IconButton size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
     </Box>
   </Box>}
