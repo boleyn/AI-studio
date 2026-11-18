@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
@@ -8,6 +8,7 @@ import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { addLibraryAttachments } from "../services/libraryAttachment";
 
 export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
+  const searchRef = useRef<HTMLInputElement>(null);
   const [driveAvailable,setDriveAvailable] = useState(false);
   const [showDrive,setShowDrive] = useState(false);
   useEffect(()=>{
@@ -54,7 +55,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     } catch (err) {setError(err instanceof Error ? err.message : "添加失败");}
     finally {setBusy(false);}
   }
-  return <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
+  return <Modal isOpen initialFocusRef={searchRef} onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
     <ModalOverlay bg="blackAlpha.400"/><ModalContent mx={3} maxW="540px" borderRadius="20px" overflow="hidden">
     <ModalHeader px={5} pt={5} pb={3} fontSize="18px" fontWeight="600">从资料空间添加</ModalHeader>
     <ModalCloseButton aria-label="关闭" isDisabled={busy} borderRadius="full" top={4} right={4}/>
@@ -64,7 +65,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       if (errors[0]) throw new Error(errors[0]);
       onClose();
     }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
-      <Search size={16} color="#777"/><Input variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
+      <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
     </Flex><ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
       {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
       {error && <Flex role="alert" mx={2} my={2} p={3} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
