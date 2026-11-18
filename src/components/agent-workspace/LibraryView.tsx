@@ -352,8 +352,22 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap">{section !== "回收站" && tabs.map(name =>
-          <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}</Flex>
+        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : "资料库分区"}>
+          {section !== "回收站" && tabs.map((name,index) =>
+            <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
+              size="sm" h="36px" px="18px" borderRadius="full" variant={tab === name ? "solid" : "ghost"}
+              onKeyDown={event => {
+                const destinations: Record<string,number> = {Home:0,End:tabs.length-1,
+                  ArrowLeft:(index+tabs.length-1)%tabs.length,ArrowRight:(index+1)%tabs.length};
+                const destination = destinations[event.key];
+                if (destination === undefined) return;
+                event.preventDefault();
+                const next = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[destination];
+                next?.focus();
+                next?.click();
+              }}
+              onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}
+        </Flex>
         {!imageSection && <>{!sitesSection && <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label="打开筛选器" icon={<ListFilter size={17}/>} size="sm" variant={types.length ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
