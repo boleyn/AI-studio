@@ -286,7 +286,21 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string) {
     setBatchBusy(true);
     try {
-      const attachments = await Promise.all(items.map(item => readLibraryAttachment(item)));
+      const results = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
+      const attachments: File[] = [];
+      const unavailable: string[] = [];
+      results.forEach((result,index) => {
+        if (result.status === "fulfilled") attachments.push(result.value);
+        else unavailable.push(items[index].name);
+      });
+      if (unavailable.length) {
+        toast({status:"error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : "无法下载所选资料",
+          description:<Box><Text>以下资料读取失败，请重试。</Text>
+            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map((name,index)=>
+              <li key={index}>{name}</li>)}</Box></Box>});
+        return;
+      }
+      if (!attachments.length) return;
       if (action === "chat") {await onChat(attachments,question,itemId); return;}
       let blob:Blob = attachments[0];
       let name = attachments[0].name;
