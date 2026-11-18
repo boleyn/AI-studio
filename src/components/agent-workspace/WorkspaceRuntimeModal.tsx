@@ -352,7 +352,7 @@ export default function WorkspaceRuntimeModal({
         error?: string;
       };
       if (!res.ok || !data.grant) {
-        throw new Error(data.error || "未获得本机目录授权");
+        throw new Error(data.error === "grant_workdir_invalid" ? "请输入这台电脑上已存在的目录的完整路径" : data.error || "无法使用该工作目录");
       }
       setDraft((prev) => ({
         ...prev,
@@ -364,14 +364,14 @@ export default function WorkspaceRuntimeModal({
       }));
       setFolderEditor(null);
       toast({
-        title: `已授权目录：${data.grant.workdir}`,
+        title: `当前工作目录：${data.grant.workdir}`,
         status: "success",
         duration: 2500,
       });
       await loadDevicesAndGrants();
     } catch (err) {
       toast({
-        title: "目录授权未完成",
+        title: "工作目录设置失败",
         description: err instanceof Error ? err.message : String(err),
         status: "error",
         duration: 3000,
@@ -546,7 +546,7 @@ export default function WorkspaceRuntimeModal({
                         </FormControl>
                         <HStack justify="end" mt={2}>
                           <Button size="xs" variant="ghost" onClick={() => setFolderEditor(null)}>取消</Button>
-                          <Button size="xs" type="submit" isDisabled={!dev.online} isLoading={requestingGrantId === dev.deviceId}>请求授权</Button>
+                          <Button size="xs" type="submit" isDisabled={!dev.online} isLoading={requestingGrantId === dev.deviceId}>使用此目录</Button>
                         </HStack>
                         </Box>}
                       </Box>

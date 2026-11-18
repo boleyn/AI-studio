@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// ControlHandler requires an explicit local confirmation callback for new approval.
-// The callback returns a locally chosen directory; a cloud-provided directory is ignored.
+// A persistent account approval covers directory changes. Legacy session-only
+// bindings still require local confirmation for new grants.
 func (m *Manager) ControlHandler(confirm func(context.Context, Grant) (string, error)) func(context.Context, string, Grant, int64) (Grant, error) {
 	prompts := make(chan struct{}, 1)
 	return func(ctx context.Context, kind string, value Grant, leaseExpiresAt int64) (Grant, error) {
@@ -44,10 +44,11 @@ func (m *Manager) ControlHandler(confirm func(context.Context, Grant) (string, e
 			if ok && existing.SamePermission(expected) && !existing.Revoked && !m.Expired(existing) {
 				return existing, nil
 			}
-			// 替换授权由平台携带旧目录，必须让本机用户重新选择。
-			changingDirectory := value.Display != nil && value.Display.InitialWorkdir != ""
-			if access.Workdir != "" && !changingDirectory {
+			if access.Workdir != "" {
 				value.Workdir = access.Workdir
+				if value.Display != nil && value.Display.InitialWorkdir != "" {
+					value.Workdir = value.Display.InitialWorkdir
+				}
 				if err := m.approve(ctx, value, &generation); err != nil {
 					return Grant{}, err
 				}

@@ -145,7 +145,7 @@ func TestRevokedConversationRejectsNewGrantAfterRestart(t *testing.T) {
 	}
 }
 
-func TestChangeDirectoryPromptsWithAccountAccess(t *testing.T) {
+func TestChangeDirectoryReusesAccountAccess(t *testing.T) {
 	ctx := context.Background()
 	ledger, err := journal.Open(filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -162,25 +162,27 @@ func TestChangeDirectoryPromptsWithAccountAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompts := 0
-	control := manager.ControlHandler(func(_ context.Context, value Grant) (string, error) {
+	control := manager.ControlHandler(func(_ context.Context, _ Grant) (string, error) {
 		prompts++
-		if value.Display == nil || value.Display.InitialWorkdir != initial {
-			t.Fatal("prompt did not receive the current directory")
-		}
-		return chosen, nil
+		return "", nil
 	})
 	value := Grant{Owner: owner, ID: "initial", Version: 1, AppID: "app", ChatID: "chat", SourceTarget: "source"}
 	if result, err := control(ctx, "grant_request", value, 0); err != nil || result.Workdir != initial || prompts != 0 {
 		t.Fatalf("ordinary grant should use account directory without prompting: %v", err)
 	}
 	value.ID = "replacement"
-	value.Display = &DisplayNames{InitialWorkdir: initial}
+	value.Display = &DisplayNames{InitialWorkdir: chosen}
 	for i := 0; i < 2; i++ {
 		if result, err := control(ctx, "grant_request", value, 0); err != nil || result.Workdir != chosen {
-			t.Fatalf("replacement did not retain the locally selected directory: %v", err)
+			t.Fatalf("replacement did not retain the requested directory: %v", err)
 		}
 	}
-	if prompts != 1 || manager.AccountAccess().Workdir != initial {
-		t.Fatal("replacement should prompt once and preserve the account default")
+	value.ID = "missing"
+	value.Display.InitialWorkdir = filepath.Join(chosen, "missing")
+	if _, err := control(ctx, "grant_request", value, 0); err == nil {
+		t.Fatal("missing directory accepted")
+	}
+	if prompts != 0 || manager.AccountAccess().Workdir != initial {
+		t.Fatal("replacement should reuse account access and preserve the account default")
 	}
 }

@@ -106,7 +106,7 @@ func confirmAccountAccess(ctx context.Context, origin, name, team string) (grant
 	if err != nil {
 		return grant.AccountAccess{}, err
 	}
-	directory, err := dialog(ctx, "accountApprove", "用户："+name+"\n团队："+team+"\n平台："+origin+"\n\n该用户可在新会话执行本机命令，无需逐次确认。", home)
+	directory, err := dialog(ctx, "accountApprove", "用户："+name+"\n团队："+team+"\n平台："+origin+"\n\n授权持续有效，直至暂停或移除。该账号可执行本机命令并远程切换工作目录。", home)
 	return grant.AccountAccess{Name: name, Team: team, Workdir: directory}, err
 }
 
