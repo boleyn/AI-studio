@@ -6,6 +6,7 @@ import { githubLight } from "@codesandbox/sandpack-themes";
 
 import type { SandpackFiles } from "../../../components/StudioShell";
 import { getProject } from "@server/projects/projectStorage";
+import { recordSiteVisit } from "@server/shares/siteVisits";
 import { getShareLink } from "@server/shares/shareStorage";
 import { buildSandpackCustomSetup } from "@shared/sandpack/registry";
 
@@ -214,6 +215,10 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   if (!project) {
     return { notFound: true };
   }
+
+  await recordSiteVisit(share, context.req.cookies.auth_token).catch(() => {
+    console.warn("Could not record site preview visit");
+  });
 
   return {
     props: {

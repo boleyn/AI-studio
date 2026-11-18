@@ -3,6 +3,8 @@ import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
 import { listProjectOverviewItems } from "@server/projects/projectStorage";
 
+import { countRecentSiteVisitors, listVisitedSites } from "@server/shares/siteVisits";
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const auth = await requireAuth(req, res);
   if (!auth) return;
@@ -21,5 +23,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { $group: { _id: "$projectToken", id: { $first: "$shareId" }, time: { $first: "$createdAt" } } },
     { $sort: { time: -1 } },
   ]).toArray();
-  return res.json(links.map(link => ({ id: link.id, name: names.get(link._id) })));
+  const [counts, received] = await Promise.all([
+    countRecentSiteVisitors(links.map(link => link._id)),
+    listVisitedSites(owner),
+  ]);
+  return res.json([...links.map(link => ({
+    id: link.id, name: names.get(link._id), visitors: counts.get(link._id) || 0, shared: false,
+  })), ...received]);
 }
