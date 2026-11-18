@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const redirect = process.env.GOOGLE_DRIVE_REDIRECT_URI;
   const key = Buffer.from(process.env.LIBRARY_CONNECTOR_KEY || "", "base64");
   const configured = Boolean(clientId && secret && redirect && key.length === 32);
-  const connections = (await getMongoDb()).collection<{ _id: string; token: string }>("library_drive_connections");
+  const connections = (await getMongoDb()).collection<{ _id: string; token: string; canRename?: boolean }>("library_drive_connections");
   if (req.method === "GET" && req.query.status === "1") {
     return res.json({ configured, connected: Boolean(await connections.findOne({ _id: owner }, { projection: { _id: 1 } })) });
   }
@@ -29,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const state = randomBytes(32).toString("hex");
     res.setHeader("Set-Cookie", cookie(owner + "." + state, 600));
     const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: "code",
-      scope: "https://www.googleapis.com/auth/drive.readonly", access_type: "offline", prompt: "consent", state });
+      scope: req.body?.allowRename === true ? "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata" : "https://www.googleapis.com/auth/drive.readonly", access_type: "offline", prompt: "consent", state });
     return res.json({ url: "https://accounts.google.com/o/oauth2/v2/auth?" + params });
   }
   if (req.method !== "GET") return res.setHeader("Allow", "GET, POST").status(405).end();
@@ -50,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     cipher.setAAD(Buffer.from(owner));
     const ciphertext = Buffer.concat([cipher.update(data.refresh_token, "utf8"), cipher.final()]);
     const token = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64");
-    await connections.updateOne({ _id: owner }, { $set: { token } }, { upsert: true });
+    await connections.updateOne({ _id: owner }, { $set: { token, canRename: String(data.scope || "").split(" ").includes("https://www.googleapis.com/auth/drive.metadata") } }, { upsert: true });
     return res.redirect(303, returnTo + "connected");
   } catch {
     return res.redirect(303, returnTo + "error");

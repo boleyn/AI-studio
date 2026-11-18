@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { Folder, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -23,6 +23,30 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
   const [error,setError] = useState("");
   const [attaching,setAttaching] = useState("");
   const [attachmentError,setAttachmentError] = useState("");
+  const [rename,setRename] = useState<DriveFile>();
+  const [name,setName] = useState("");
+  const [renaming,setRenaming] = useState(false);
+  const [authorize,setAuthorize] = useState(false);
+  const [renameError,setRenameError] = useState("");
+  async function saveName() {
+    if (!rename || renaming) return;
+    setRenaming(true);
+    setRenameError("");
+    try {
+      const response = await fetch(authorize ? "/api/library/connectors/google" : "/api/library/connectors/drive-files?file="+encodeURIComponent(rename.id), {
+        method:authorize ? "POST" : "PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),
+        body:JSON.stringify(authorize ? {allowRename:true} : {name:name.trim()}),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAuthorize(Boolean(data.authorize));
+        throw new Error(data.error || "重命名失败");
+      }
+      if (authorize) window.location.assign(data.url);
+      else {setRename(undefined);setAttempt(value=>value+1);}
+    } catch (reason) {setRenameError(reason instanceof Error ? reason.message : "重命名失败");}
+    finally {setRenaming(false);}
+  }
   async function attach(file: DriveFile) {
     setAttaching(file.id);
     setAttachmentError("");
@@ -76,11 +100,18 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
         <td>{file.mimeType!=="application/vnd.google-apps.folder" && <Button size="xs" variant="ghost" isLoading={attaching===file.id} isDisabled={Boolean(attaching)} onClick={()=>attach(file)}>添加到聊天</Button>}
           {file.mimeType!=="application/vnd.google-apps.folder" && <Menu placement="bottom-end">
             <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-            <MenuList><MenuItem as="a" download href={"/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id,download:"1"})}>下载</MenuItem></MenuList>
+            <MenuList><MenuItem onClick={()=>{setRename(file);setName(file.name);setAuthorize(false);setRenameError("");}}>重命名</MenuItem><MenuItem as="a" download href={"/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id,download:"1"})}>下载</MenuItem></MenuList>
           </Menu>}</td>
       </tr>)}</tbody></Box></Box>{!result.files.length && <Text>{query ? "没有符合条件的文件" : folder!=="root" ? "此文件夹为空" : "暂无文件"}</Text>}
       <Flex gap={2} mt={3}>{pages.length>1 && <Button onClick={()=>setPages(pages.slice(0,-1))}>上一页</Button>}
         {result.nextPageToken && <Button onClick={()=>setPages([...pages,result.nextPageToken!])}>下一页</Button>}</Flex></>}
+    {rename && <Modal isOpen isCentered onClose={()=>{if (!renaming) setRename(undefined);}}><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
+      <ModalHeader>重命名文件</ModalHeader><form onSubmit={event=>{event.preventDefault();if (name.trim() && name.trim()!==rename.name) void saveName();}}>
+        <ModalBody><Text as="label" htmlFor="drive-filename">文件名</Text><Input id="drive-filename" autoFocus maxLength={255} value={name} onFocus={event=>event.target.select()} onChange={event=>setName(event.target.value)}/>
+        {renameError && <Text role="alert" mt={2}>{renameError}</Text>}</ModalBody>
+        <ModalFooter gap={2}><Button onClick={()=>setRename(undefined)} isDisabled={renaming}>取消</Button>
+          <Button type="submit" isDisabled={!name.trim() || name.trim()===rename.name} isLoading={renaming}>{authorize ? "前往授权" : "重命名"}</Button></ModalFooter>
+      </form></ModalContent></Modal>}
     {attachmentError && <Text role="alert">{attachmentError}</Text>}
   </Box>;
 }
