@@ -23,14 +23,24 @@ interface Props {
   openSource: () => void;
   toggleFavorite: () => void;
 }
-export default function LibraryFileViewer({item,versions,openVersion,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite}:Props) {
-  const [panel,setPanel] = useState<"info" | "history">();
+type ViewerPanel = "info" | "history";
+
+export default function LibraryFileViewer(props: Props) {
+  const [panel,setPanel] = useState<ViewerPanel>();
+  return <FilePreview key={props.item.id} {...props} panel={panel} setPanel={setPanel}/>;
+}
+
+function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
+  panel?: ViewerPanel;
+  setPanel: (panel?: ViewerPanel) => void;
+}) {
   const [question,setQuestion] = useState("");
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [body,setBody] = useState<string>();
   const [error,setError] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const historySelection = useRef<HTMLButtonElement>(null);
   const name = item.path || item.name;
   const markdown = /\.(md|markdown)$/i.test(name);
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
@@ -49,7 +59,10 @@ export default function LibraryFileViewer({item,versions,openVersion,download,sh
     observer.observe(element);
     return () => observer.disconnect();
   },[dimensions]);
-  useEffect(() => {closeButton.current?.focus();},[]);
+  useEffect(() => {
+    const target = historySelection.current || closeButton.current;
+    target?.focus();
+  },[]);
   useEffect(() => {
     if (!markdown && !plain) return;
     const controller = new AbortController();
@@ -121,7 +134,7 @@ export default function LibraryFileViewer({item,versions,openVersion,download,sh
         <IconButton size="sm" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
       </Flex>
       {panel === "history" ? <Flex direction="column" mt={4} gap={1}>
-        {versions.map(version => <Button key={version.id} variant={version.id === item.id ? "solid" : "ghost"}
+        {versions.map(version => <Button key={version.id} ref={version.id === item.id ? historySelection : undefined} variant={version.id === item.id ? "solid" : "ghost"}
           justifyContent="space-between" size="sm" aria-current={version.id === item.id ? "true" : undefined}
           onClick={()=>{if (version.id !== item.id) openVersion(version);}}>
           {version.shareId ? "共享版本" : version.time ? new Date(version.time).toLocaleString("zh-CN") : version.name}
