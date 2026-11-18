@@ -19,14 +19,14 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
   const needle = query.trim().toLocaleLowerCase();
   const matches = (name: string) => name.toLocaleLowerCase().includes(needle);
   const chats = projects.flatMap(project => project.conversations.map(chat => ({
-    id: chat.id, label: chat.title, open: () => onChat(project.token, chat.id)
+    id: chat.id, time:chat.updatedAt, label: chat.title, open: () => onChat(project.token, chat.id)
   }))).filter(chat => matches(chat.label));
   const items = files.filter(file => !file.deleted && matches(file.name)).map(file => ({
-    id: file.id, label: file.name, open: () => onFile(file)
+    id: file.id, time:file.openedAt, label: file.name, open: () => onFile(file)
   }));
   const groups = [
-    {title: needle ? "资料空间" : "最近打开", rows: needle ? items : items.slice(0, 5)},
-    {title: needle ? "聊天" : "最近聊天", rows: needle ? chats : chats.slice(0, 5)},
+    {title: needle ? "资料空间" : "最近打开", rows: needle ? items : items.filter(item => item.time).sort((a,b) => (b.time || "").localeCompare(a.time || "")).slice(0, 5)},
+    {title: needle ? "聊天" : "最近聊天", rows: needle ? chats : chats.sort((a,b) => (b.time || "").localeCompare(a.time || "")).slice(0, 5)},
     {title: "项目", rows: needle ? projects.filter(project => matches(project.name)).map(project => ({
       id: project.token, label: project.name, open: () => onProject(project.token)
     })) : []}

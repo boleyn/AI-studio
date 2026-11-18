@@ -13,5 +13,6 @@ export interface LibraryFile {
   path: string;
   name: string;
   version?: string;
+  openedAt?: string;
   time: string;
 }

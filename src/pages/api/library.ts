@@ -9,15 +9,20 @@ import { getProjectAccessState, listProjectOverviewItems } from "@server/project
 import type { LibraryFile } from "@/types/library";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!["GET", "PATCH"].includes(req.method || "")) return res.setHeader("Allow", "GET, PATCH").status(405).end();
+  if (!["GET", "PATCH", "POST"].includes(req.method || "")) return res.setHeader("Allow", "GET, PATCH, POST").status(405).end();
   const auth = await requireAuth(req, res);
   if (!auth) return;
   res.setHeader("Cache-Control", "private, no-store");
-  const projects = await listProjectOverviewItems(String(auth.user._id));
-  const names = new Map(projects.map(project => [project.token, project.name]));
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; openedAt?: string; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean }>("library_file_settings");
+  if (req.method === "POST") {
+    const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
+    if (!operation.success) return res.status(400).end();
+    await settings.updateOne({_id: owner + "/" + operation.data.openedId, owner},
+      {$max: {openedAt: new Date().toISOString()}}, {upsert: true});
+    return res.status(204).end();
+  }
   if (req.method === "PATCH") {
     const result = z.object({
       id: z.string().regex(/^[a-f0-9]{64}$/),
@@ -29,6 +34,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await settings.updateOne({ _id: owner + "/" + id, owner }, { $set: changes }, { upsert: true });
     return res.status(204).end();
   }
+  const projects = await listProjectOverviewItems(owner);
+  const names = new Map(projects.map(project => [project.token, project.name]));
   const scope = { token: { $in: [...names.keys()] } };
   const conversations = await db.collection("conversations").find({ ...scope, deleteTime: null })
     .project({ token: 1, chatId: 1, customTitle: 1, title: 1 }).toArray();
@@ -88,6 +95,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].map(file => {
     const entry = preferences.get(owner + "/" + file.id);
-    return entry ? { ...file, folderId:entry.folderId, name: entry.name || file.name, favorite: entry.favorite, deleted: entry.deleted } : file;
+    return entry ? { ...file, openedAt:entry.openedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time)));
 }

@@ -96,6 +96,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     finally {setCreating(false);}
   }
   function openItem(file:LibraryFile) {
+    const openedAt = new Date().toISOString();
+    setFiles(current => current?.map(item => item.id === file.id ? {...item, openedAt} : item));
+    void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
+      body:JSON.stringify({openedId:file.id})}).catch(() => undefined);
     setDetail(undefined);
     setEditor(undefined);
     if (isContainer(file)) {
