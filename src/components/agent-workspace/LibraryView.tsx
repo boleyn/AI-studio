@@ -1,3 +1,4 @@
+import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
@@ -126,9 +127,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [galleryOpen, setGalleryOpen] = useState(false);
   const galleryTrigger = useRef<HTMLButtonElement | null>(null);
 
+  const [appearance,setAppearance] = useState({icon:"",color:"默认"});
   const [invitees,setInvitees] = useState("");
   const [inviteOpen,setInviteOpen] = useState(false);
   function openSpaceDialog() {
+    setAppearance({icon:"",color:"默认"});
     setInvitees("");
     setInviteOpen(false);
     setTitle("");
@@ -142,7 +145,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,...(kind === "资料空间" ? {invitees:invitees.split(/[,，;；\s]+/).filter(Boolean)} : {}),folderId:kind === "资料空间" ? null : parentId})});
+      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,...(kind === "资料空间" ? {appearance,invitees:invitees.split(/[,，;；\s]+/).filter(Boolean)} : {}),folderId:kind === "资料空间" ? null : parentId})});
       if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error);
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
@@ -742,7 +745,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <ModalOverlay/><ModalContent mx={3} maxW="512px" minH="238px" borderRadius="24px">
         <ModalHeader as="h2" fontSize="20px">创建资料空间</ModalHeader><ModalCloseButton aria-label="关闭对话框" isDisabled={creating}/>
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
-          <ModalBody><Flex align="center" gap={4}><Layers size={26}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
+          <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
             <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
             {inviteOpen && <Box mt={2}><Input aria-label="受邀账号" placeholder="输入账号，多个账号用逗号分隔" value={invitees} onChange={event=>setInvitees(event.target.value)}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
           </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={()=>setNewKind(undefined)}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>

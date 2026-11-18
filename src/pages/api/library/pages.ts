@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!source) return res.status(404).end();
       input = {name:source.name.slice(0,252)+" 副本",body:source.body,folderId:source.folderId,kind:"页面"};
     }
-    const parsed = fields.extend({kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
+    const parsed = fields.extend({appearance:z.object({icon:z.string().max(20),color:z.string().max(10)}).optional(),kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
     if (!parsed.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:parsed.data.kind === "页面" ? ["文件夹","资料空间","页面",null] : ["文件夹","资料空间"]},deleted:{$ne:true},purging:{$ne:true}})) return res.status(400).end();
@@ -43,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { insertedId } = await pages.insertOne({ owner, ...parsed.data, time,
       ...(members.length ? {members,sharedBy:auth.user.displayName || auth.user.username} : {}) });
     const id = insertedId.toHexString();
-    const item: LibraryFile = { id, kind:parsed.data.kind, folderId:parsed.data.folderId, token:"", project:"", chatId:"", conversation:"", path:id, name:parsed.data.name, time };
+    const item: LibraryFile = { id, appearance:parsed.data.appearance, kind:parsed.data.kind, folderId:parsed.data.folderId, token:"", project:"", chatId:"", conversation:"", path:id, name:parsed.data.name, time };
     return res.status(201).json(item);
   }
   if (typeof req.query.id !== "string" || !/^[0-9a-f]{24}$/.test(req.query.id)) return res.status(400).end();

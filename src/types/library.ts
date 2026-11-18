@@ -1,6 +1,8 @@
 export const referenceTypes = ["我", "宠物", "朋友", "空间", "其他"] as const;
 export type ImageReference = { type: typeof referenceTypes[number]; name: string };
+export type SpaceAppearance = {icon:string;color:string};
 export interface LibraryFile {
+  appearance?: SpaceAppearance;
   id: string;
   siteId?: string;
   shareId?: string;

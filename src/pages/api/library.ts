@@ -93,19 +93,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const block of blocks) if (block?.type === "attachment" && !block.library_item_id) attachment(block.source_storage_path || block.storage_path, block.name);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1,appearance:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",path:page.originalName || id,token:"",project:"",chatId:"",conversation:"",
       ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:auth.user.displayName || auth.user.username} : {}),
-      permission:"所有者",reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
+      permission:"所有者",appearance:page.appearance,reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
   const spaces = db.collection("library_pages").find({kind:"资料空间","members.userId":owner,deleted:{$ne:true},purging:{$ne:true}},
-    {projection:{name:1,time:1,sharedBy:1}});
+    {projection:{name:1,time:1,sharedBy:1,appearance:1}});
   for await (const space of spaces) {
     const shareId = space._id.toHexString();
     const id = createHash("sha256").update(JSON.stringify(["shared-space",shareId])).digest("hex");
-    rows.set(id,{id,shareId,kind:"资料空间",name:space.name,path:"",token:"",project:space.sharedBy || "",chatId:"",conversation:"",
+    rows.set(id,{id,shareId,kind:"资料空间",appearance:space.appearance,name:space.name,path:"",token:"",project:space.sharedBy || "",chatId:"",conversation:"",
       time:space.time || "",permission:"可查看"});
   }
   const received = await listReceivedArtifactShares(owner);

@@ -1,9 +1,10 @@
+import { SpaceIcon } from "./SpaceIconPicker";
 import { Box } from "@chakra-ui/react";
 import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation, Sheet } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-type IconItem = Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage">>;
+type IconItem = Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
 
 function appearance(item: IconItem) {
   if (item.kind === "站点") return { Icon: PanelsTopLeft };
@@ -26,6 +27,6 @@ export default function LibraryItemIcon({item, compact=false}:{item:IconItem; co
   return <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
     flexShrink={0} boxSize={compact ? "16px" : "32px"} border={compact ? "none" : "1px solid rgba(0,0,0,.1)"}
     borderRadius="8px" bg={compact ? "transparent" : "#fcfcfc"} color={compact ? "currentColor" : color || "#0d0d0d"}>
-    <Icon size={compact ? 14 : 20} strokeWidth={1.75}/>
+    {item.kind === "资料空间" ? <SpaceIcon appearance={item.appearance} size={compact ? 14 : 20}/> : <Icon size={compact ? 14 : 20} strokeWidth={1.75}/>}
   </Box>;
 }
