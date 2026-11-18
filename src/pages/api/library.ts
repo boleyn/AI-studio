@@ -97,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : await getProjectAccessState(share.projectToken,share.ownerId) === "ok";
     if (!available) continue;
     const id = share._id;
-    rows.set(id,{id,shareId:id,kind:"上传",name:share.filename,path:share.filename,time:"",token:"",chatId:"",project:share.ownerName,conversation:""});
+    rows.set(id,{id,shareId:id,kind:"上传",name:share.filename,path:share.filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getMongoDb } from "@server/db/mongo";
 import { deleteStorageObjects, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
 
-export type ArtifactShareMember = { userId: string; username: string };
+export type ArtifactShareMember = { userId: string; username: string; invitedAt?: string };
 
 type ArtifactShare = {
   _id: string;
@@ -59,7 +59,7 @@ export async function updateArtifactShareMember(id: string, ownerId: string, mem
   if (remove) {
     return shares.findOneAndUpdate(filter, { $pull: { members: { userId: member.userId } } }, { returnDocument: "after" });
   }
-  await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: member } });
+  await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
   return shares.findOne(filter);
 }
 
@@ -78,6 +78,6 @@ export async function deleteProjectArtifactShares(projectToken: string) {
 }
 
 export async function listReceivedArtifactShares(userId:string) {
-  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId">>(
-    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1}).toArray();
+  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId"|"members">>(
+    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1,members:{$elemMatch:{userId}}}).toArray();
 }

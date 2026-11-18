@@ -1,6 +1,7 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
 import { HardDrive, Bell, Plus, Layers, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
+import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { type ReactNode, useState, useEffect } from "react";
@@ -35,17 +36,25 @@ export default function LibrarySidebar({ createMenu, onNewSpace, section, files,
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
+  const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
+  const [activityOpen,setActivityOpen] = useState(false);
   return <Flex as="aside" w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>
     <Flex align="center" px="8px" gap="4px" mb={3}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1">资料空间</Heading>
-      <Popover placement="bottom-start" gutter={5} isLazy>
+      <Popover isOpen={activityOpen} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} placement="bottom-start" gutter={5} isLazy>
         <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="动态" icon={<Bell size={15}/>} /></PopoverTrigger>
         <Portal><PopoverContent aria-label="动态" width="min(384px, calc(100vw - 24px))" height="320px" borderRadius="12px" boxShadow="lg">
           <Text px={4} py={3} fontWeight="600">动态</Text>
-          <Flex flex="1" direction="column" align="center" justify="center" px={8} pb={8} textAlign="center" gap={2}>
+          {invitations.length ? <Box as="ul" overflowY="auto" listStyleType="none" px={2} pb={2}>
+            {invitations.map(file=><Box as="li" key={file.id}><Button variant="ghost" w="full" h="auto" py={2} justifyContent="start" gap={2} onClick={()=>{
+              setActivityOpen(false); onFile(file);
+            }}><LibraryItemIcon item={file}/><Box minW={0} textAlign="left">
+              <Text fontSize="sm" isTruncated>{file.name}</Text><Text fontSize="xs" fontWeight="normal" color="gray.600">{file.project} 与你共享{file.time ? " · "+formatRelativeTime(file.time) : ""}</Text>
+            </Box></Button></Box>)}
+          </Box> : <Flex flex="1" direction="column" align="center" justify="center" px={8} pb={8} textAlign="center" gap={2}>
             <Bell size={22} aria-hidden="true" />
             <Heading as="h2" size="sm">暂无通知</Heading>
             <Text fontSize="sm" color="gray.600">有人提及你、在你的页面上发表评论，或回复你参与的对话时，你会收到通知。</Text>
-          </Flex>
+          </Flex>}
         </PopoverContent></Portal>
       </Popover>
       <IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="搜索" icon={<Search size={15}/>} onClick={onSearch}/>
