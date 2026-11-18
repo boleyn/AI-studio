@@ -203,7 +203,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     setQuery("");
   };
   const requestedTypes = [router.query.libraryType].flat();
-  const types = fileTypes.filter(type => requestedTypes.includes(type));
+  const types = slidesSection ? [] : fileTypes.filter(type => requestedTypes.includes(type));
   const sources = fileSources.filter(source => [router.query.librarySource].flat().includes(source));
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
@@ -421,9 +421,9 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         </Flex>}
         {!imageSection && <>{!sitesSection && !pagesSection && <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" variant={filterCount ? "solid" : "ghost"} />
-          <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
+          <MenuList>{!slidesSection && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
-          </MenuOptionGroup>
+          </MenuOptionGroup>}
           <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
             {fileSources.map(source => <MenuItemOption key={source} value={source}>{source}</MenuItemOption>)}
           </MenuOptionGroup></MenuList>
@@ -458,7 +458,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">文件夹为空</Heading>
             <Text fontSize="sm" color="gray.600">与你共享的文件和页面将显示在这里</Text>
-          </Flex> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
+          </Flex> : slidesSection ? <Text role="status" textAlign="center" py={16} color="gray.500">未找到任何项目</Text> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
         grid || imageSection ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px">
             <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>{imageSection ? <Box as="button" w="full" onClick={() => openItem(file)} aria-label={"打开 " + file.name}>
