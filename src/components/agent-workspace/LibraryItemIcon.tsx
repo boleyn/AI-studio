@@ -3,7 +3,9 @@ import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, Prese
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-function appearance(item: LibraryFile) {
+type IconItem = Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage">>;
+
+function appearance(item: IconItem) {
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };
@@ -18,7 +20,7 @@ function appearance(item: LibraryFile) {
   return { Icon: File };
 }
 
-export default function LibraryItemIcon({item, compact=false}:{item:LibraryFile; compact?:boolean}) {
+export default function LibraryItemIcon({item, compact=false}:{item:IconItem; compact?:boolean}) {
   const {Icon,color} = appearance(item);
   return <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
     flexShrink={0} boxSize={compact ? "16px" : "32px"} border={compact ? "none" : "1px solid rgba(0,0,0,.1)"}

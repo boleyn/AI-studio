@@ -1,4 +1,5 @@
 import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
+import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
 import { Download } from "lucide-react";
@@ -316,7 +317,7 @@ const ChatItem = ({
                           p={2}
                           w="100%"
                         >
-                          <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />
+                          {file.libraryItemId ? <LibraryItemIcon item={{name:file.name || ""}}/> : <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />}
                           <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                             {file.name || fileUrl || `文件 ${index + 1}`}
                           </Text>

@@ -33,6 +33,8 @@ import {
   Square,
   Settings2,
 } from "lucide-react";
+import { libraryOrigin } from "../services/libraryFileOrigin";
+import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { AgentSkillsIcon } from "@components/common/Icon";
 import { createId } from "@shared/chat/messages";
@@ -641,7 +643,7 @@ const ChatInput = ({
                     />
                   ) : (
                     <Flex align="center" gap={2} h="100%" pr={2}>
-                      <Box as="img" h="24px" src={`/icons/chat/${item.icon}.svg`} w="24px" />
+                      {libraryOrigin(item.file) ? <LibraryItemIcon item={{name:item.file.name}}/> : <Box as="img" h="24px" src={`/icons/chat/${item.icon}.svg`} w="24px" />}
                       <Box minW={0}>
                         <Text className="textEllipsis" fontSize="xs" noOfLines={1}>
                           {item.file.name}

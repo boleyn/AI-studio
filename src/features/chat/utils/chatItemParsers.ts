@@ -5,6 +5,7 @@ import {
 } from "@shared/chat/planInteraction";
 
 export interface MessageFile {
+  libraryItemId?: string;
   id?: string;
   name?: string;
   size?: number;
@@ -415,7 +416,7 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const blocks = message.message?.content ?? message.content;
   const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
     if (!block || block.type !== "attachment" || typeof block.name !== "string") return [];
-    return [{name:block.name,type:block.mime_type,storagePath:block.source_storage_path || block.storage_path,
+    return [{...(typeof block.library_item_id === "string" ? {libraryItemId:block.library_item_id} : {}), name:block.name,type:block.mime_type,storagePath:block.source_storage_path || block.storage_path,
       downloadUrl:block.download_url,previewUrl:block.preview_url}];
   }) : [];
   if (!Array.isArray(files) || !files.length) return attachments;
@@ -432,6 +433,7 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
     const [block] = remaining.splice(index, 1);
     return {
       ...file,
+      ...(block.libraryItemId && !file.libraryItemId ? {libraryItemId:block.libraryItemId} : {}),
       storagePath: path?.startsWith("chat_uploads/") ? path : block.storagePath || file.storagePath,
       previewUrl: file.previewUrl || block.previewUrl,
       downloadUrl: file.downloadUrl || block.downloadUrl,
