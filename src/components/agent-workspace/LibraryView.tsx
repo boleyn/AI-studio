@@ -520,6 +520,13 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}</button>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" aria-selected={selected.includes(file.id)}
+            onClick={event => {
+              const target = event.target;
+              if (file.deleted || !(target instanceof Element) || !event.currentTarget.contains(target)) return;
+              if (target.closest("button, a, input, td:first-child, td:last-child")) return;
+              openItem(file);
+            }}
+            cursor={file.deleted ? undefined : "pointer"}
             sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
