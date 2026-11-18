@@ -338,16 +338,19 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     catch { toast({status:"error", title:"无法开始" + kind + "对话，请重试"}); }
     finally { setCreating(false); }
   }
-  const createMenu = (rail:boolean) => <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : folder ? "新建 ﹀" : "创建 ﹀"}</MenuButton>
-            <MenuList><MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>
+  const createMenu = (rail:boolean) => {
+    const folderMenu = Boolean(folder && !rail);
+    return <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : folder ? "新建 ﹀" : "创建 ﹀"}</MenuButton>
+            <MenuList>{!folderMenu && <MenuItem onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
               <MenuItem onClick={() => createPage("无标题页","")}>页面</MenuItem>
-              <MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
+              {!folderMenu && <><MenuItem onClick={() => createSlides()}>幻灯片</MenuItem>
               <MenuItem isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
               <MenuItem onClick={() => startCreativeChat("站点")}>站台</MenuItem>
-              <MenuItem onClick={() => startCreativeChat("图像")}>图像</MenuItem>
-              {(["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
-              <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem><MenuItem onClick={()=>setConnectors(true)}>连接插件</MenuItem></MenuList>
+              <MenuItem onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
+              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
+              <MenuItem onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
           </Menu>;
+  };
   return <Flex flex="1" minW={0} minH={0}>
     <input ref={fileInput} type="file" multiple hidden aria-label="上传文件" onChange={event => {
       const selected = Array.from(event.target.files || []);
