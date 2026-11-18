@@ -14,6 +14,7 @@ export type UserDoc = {
   primaryModel?: string;
   customModels?: UserModelConfig[];
   provider?: "password" | "feishu";
+  feishuEmail?: string;
   feishuOpenId?: string;
   feishuUnionId?: string;
   createdAt: Date;
@@ -32,6 +33,14 @@ export const findUserByUsername = async (username: string) => {
   return users.findOne({ username });
 };
 
+export const findSpaceInviteRecipient = async (account: string) => {
+  if (account.startsWith("账号:")) return findUserByUsername(account.slice(3));
+  if (!account.includes("@")) return findUserByUsername(account);
+  const users = await getUsersCollection();
+  const matches = await users.find({provider:"feishu",feishuEmail:account.trim().toLowerCase()}).limit(2).toArray();
+  return matches.length === 1 ? matches[0] : null;
+};
+
 export const findUserById = async (id: string) => {
   const users = await getUsersCollection();
   return users.findOne({ _id: new ObjectId(id) });
@@ -44,6 +53,7 @@ export const createUser = async (input: {
   contact?: string;
   avatar?: string;
   provider?: "password" | "feishu";
+  feishuEmail?: string;
   feishuOpenId?: string;
   feishuUnionId?: string;
 }) => {
@@ -56,6 +66,7 @@ export const createUser = async (input: {
     contact: input.contact,
     avatar: input.avatar,
     provider: input.provider ?? "password",
+    feishuEmail: input.feishuEmail,
     feishuOpenId: input.feishuOpenId,
     feishuUnionId: input.feishuUnionId,
     createdAt: now,
@@ -81,6 +92,7 @@ export const updateUserProfile = async (
     avatar?: string;
     primaryModel?: string;
     customModels?: UserModelConfig[];
+    feishuEmail?: string;
     feishuOpenId?: string;
     feishuUnionId?: string;
   }
@@ -102,6 +114,7 @@ export const updateUserProfile = async (
   if (Array.isArray(patch.customModels)) {
     setDoc.customModels = patch.customModels;
   }
+  if (typeof patch.feishuEmail === "string") setDoc.feishuEmail = patch.feishuEmail;
   if (typeof patch.feishuOpenId === "string") {
     setDoc.feishuOpenId = patch.feishuOpenId;
   }

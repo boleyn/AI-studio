@@ -2,7 +2,7 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
-import { findUserByUsername } from "@server/auth/userStore";
+import { findSpaceInviteRecipient } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 import type { LibraryFile } from "@/types/library";
 
@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const names = z.array(z.string().trim().min(1).max(100)).max(50).safeParse(input.invitees);
       if (parsed.data.kind !== "资料空间" || !names.success) return res.status(400).end();
       for (const name of new Set(names.data)) {
-        const member = await findUserByUsername(name);
+        const member = await findSpaceInviteRecipient(name);
         if (!member || String(member._id) === owner) return res.status(400).json({error:"请检查受邀账号：" + name});
         if (!members.some(item => item.userId === String(member._id))) members.push({username:member.username,userId:String(member._id)});
       }

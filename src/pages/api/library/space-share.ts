@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
-import { findUserByUsername } from "@server/auth/userStore";
+import { findSpaceInviteRecipient, findUserByUsername } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 
 export default async function handler(req:NextApiRequest,res:NextApiResponse) {
@@ -21,7 +21,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     if (!owner) return res.status(403).end();
     const name = req.body?.username;
     if (typeof name !== "string" || !name.trim() || name.length > 100) return res.status(400).end();
-    const user = await findUserByUsername(name.trim());
+    const user = req.body.remove === true ? await findUserByUsername(name.trim()) : await findSpaceInviteRecipient(name.trim());
     if (!user || String(user._id) === userId) return res.status(400).json({error:"请选择有效的成员账号"});
     const member = {username:user.username,userId:String(user._id)};
     const updateFilter = {...filter,owner:userId};

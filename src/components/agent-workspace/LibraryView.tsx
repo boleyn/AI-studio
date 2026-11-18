@@ -747,7 +747,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
           <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
             <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
-            {inviteOpen && <Box mt={2}><Input aria-label="受邀账号" placeholder="输入账号，多个账号用逗号分隔" value={invitees} onChange={event=>setInvitees(event.target.value)}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
+            {inviteOpen && <Box mt={2}><Input aria-label="受邀账号" title="邮箱形式的本地用户名可写为「账号:用户名」" placeholder="输入飞书邮箱或账号，用逗号分隔" value={invitees} onChange={event=>setInvitees(event.target.value)}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
           </ModalBody><ModalFooter gap={2}><Button h="36px" borderRadius="full" isDisabled={creating} onClick={()=>setNewKind(undefined)}>取消</Button><Button h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
         </form></ModalContent></Modal>
     <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
