@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Tabs, TabList, Tab, Box, Button, Flex, Grid, Text } from "@chakra-ui/react";
+import { Tabs, TabList, Tab, Box, Flex, Grid, Text } from "@chakra-ui/react";
 
 const templates = [
   ["海报","poster","cf2b8f454736ef49959494dc07b81107bc3c4278e82756104b74abaadcbbc89b","设计一张海报，请先和我确认主题、必备文字、展示场景和版式。"],
@@ -55,18 +55,21 @@ export default function ImageCreationTemplates({onPick,onUpload}:{onPick:(prompt
   const cards = tab === 0 ? templates.map(([label,slug,hash,prompt])=>({
     label,prompt,path:`promptworks/2026-09-${slug==="thumbnail"?"08":"04"}/professional-${slug}-${hash}`
   })) : popular.map(([label,path])=>({label,path,prompt:"以「"+label+"」为主题创作图像。"}));
-  return <Box as="section" aria-label="创建图像" mt={3} maxH="32vh" overflowY="auto">
+  return <Box as="section" aria-label="创建图像" mt={3} maxW="768px" mx="auto" maxH="32vh" overflowY="auto">
     <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label="上传参考照片" onChange={event=>{
       const photos = Array.from(event.currentTarget.files || []);
       event.currentTarget.value = "";
       if (photos.length) onUpload(photos);
     }}/>
-    <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs><Button size="sm" variant="ghost" onClick={()=>photoInput.current?.click()}>上传照片</Button></Flex>
-    <Grid templateColumns="repeat(auto-fill,minmax(104px,1fr))" gap={2}>{cards.map(({label,path,prompt})=>
-      <Box as="button" type="button" key={path} textAlign="left" onClick={()=>onPick(prompt)}>
-        <Box as="img" alt="" loading="lazy" borderRadius="10px" w="100%" aspectRatio="1" objectFit="cover"
+    <Flex align="center" justify="space-between" mb={2}><Tabs index={tab} onChange={setTab} size="sm" variant="soft-rounded"><TabList aria-label="图像灵感"><Tab>模板</Tab><Tab>热门</Tab></TabList></Tabs></Flex>
+    <Grid templateColumns={{base:"repeat(2,minmax(0,1fr))",md:"repeat(4,minmax(0,1fr))"}} gap="8px">
+      <Flex as="button" type="button" align="center" justify="center" direction="column" gap={2} aspectRatio="4 / 5"
+        bg="gray.100" borderRadius="24px" onClick={()=>photoInput.current?.click()}><span aria-hidden>＋</span>上传照片</Flex>
+      {cards.map(({label,path,prompt})=>
+      <Box as="button" type="button" key={path} position="relative" overflow="hidden" borderRadius="16px" aspectRatio="4 / 5" textAlign="left" onClick={()=>onPick(prompt)}>
+        <Box as="img" alt="" loading="lazy" w="100%" h="100%" objectFit="cover"
           src={`https://persistent.oaistatic.com/images-app/${path}.webp`}/>
-        <Text mt={1} fontSize="sm">{label}</Text>
+        <Text position="absolute" insetInline={0} bottom={0} px={3} pb={2} pt={5} bgGradient="linear(to-t, blackAlpha.700, transparent)" color="white" fontSize="sm" fontWeight="600">{label}</Text>
       </Box>)}</Grid>
   </Box>;
 }
