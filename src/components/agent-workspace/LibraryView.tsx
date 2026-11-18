@@ -104,8 +104,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
     if (isContainer(file)) {
       setSelected([]);
       setQuery("");
-      setTypes([]);
-      navigateList("全部", "推荐", file.id);
+      navigateList("全部", "推荐", file.id, undefined, true);
     } else {
       navigateList(section, tab, folder?.id, file.id);
     }
@@ -119,9 +118,10 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
   const editor = opened?.kind === "页面" ? opened : undefined;
   const detail = opened?.kind !== "页面" ? opened : undefined;
-  function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string) {
-    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId) return;
+  function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
+    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !(clearTypes && router.query.libraryType)) return;
     const query = {...router.query};
+    if (clearTypes) delete query.libraryType;
     if (folderId) query.libraryFolder = folderId;
     else delete query.libraryFolder;
     if (itemId) query.libraryItem = itemId;
@@ -142,12 +142,20 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
     setSelected([]);
-    navigateList(next, "推荐");
+    navigateList(next, "推荐", undefined, undefined, true);
     setQuery("");
-    setTypes([]);
   };
-  const [types, setTypes] = useState<string[]>([]);
-  const [grid, setGrid] = useState(false);
+  const requestedTypes = [router.query.libraryType].flat();
+  const types = fileTypes.filter(type => requestedTypes.includes(type));
+  const grid = router.query.libraryLayout === "grid";
+  function updateListOptions(nextTypes: string[], nextGrid: boolean) {
+    const query = {...router.query};
+    if (nextTypes.length) query.libraryType = nextTypes;
+    else delete query.libraryType;
+    if (nextGrid) query.libraryLayout = "grid";
+    else delete query.libraryLayout;
+    void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
+  }
   const [sort, setSort] = useState<{column: "name" | "time"; ascending: boolean}>({ column: "time", ascending: false });
   function sortBy(column: "name" | "time") {
     setSort(previous => ({ column, ascending: previous.column === column ? !previous.ascending : column === "name" }));
@@ -257,12 +265,12 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           <Button key={name} size="sm" h="36px" px="18px" borderRadius="full" aria-pressed={tab === name} variant={tab === name ? "solid" : "ghost"} onClick={() => {setSelected([]);navigateList(section, name, folder?.id);}}>{name}</Button>)}</Flex>
         <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label="打开筛选器" icon={<ListFilter size={17}/>} size="sm" variant={types.length ? "solid" : "ghost"} />
-          <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => setTypes(Array.isArray(value) ? value : [value])}>
+          <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup></MenuList>
         </Menu>
-        <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => setGrid(true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
-        <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => setGrid(false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
+        <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
+        <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
       </Flex>
       </Box>
       {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>

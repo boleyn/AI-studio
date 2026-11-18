@@ -198,6 +198,8 @@ export default function AgentWorkspace({
       delete nextQuery.libraryFolder;
       delete nextQuery.librarySection;
       delete nextQuery.libraryTab;
+      delete nextQuery.libraryType;
+      delete nextQuery.libraryLayout;
     }
     if (view === "chat") delete nextQuery.view;
     else nextQuery.view = view;
