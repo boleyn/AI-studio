@@ -105,19 +105,27 @@ const ChatItem = ({
   const {token,activeConversationId} = useChatPanelViewContext();
   const [preview,setPreview] = React.useState<{name:string;url:string}>();
   const [previewText,setPreviewText] = React.useState<string>();
-  const [previewError,setPreviewError] = React.useState(false);
+  const [previewError,setPreviewError] = React.useState("");
   React.useEffect(() => {
     if (!preview) return;
     const controller = new AbortController();
     setPreviewText(undefined);
-    setPreviewError(false);
-    const url = new URL(preview.url,window.location.href);
-    fetch(url,{signal:controller.signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined})
-      .then(async response => {
-        if (!response.ok) throw new Error();
-        const value = await response.text();
-        if (!controller.signal.aborted) setPreviewText(value);
-      }).catch(() => {if (!controller.signal.aborted) setPreviewError(true);});
+    setPreviewError("");
+    void (async () => {
+      const url = new URL(preview.url,window.location.href);
+      const response = await fetch(url, { signal: controller.signal, headers: url.origin === window.location.origin ? withAuthHeaders() : undefined });
+      if (!response.ok) {
+        if (!controller.signal.aborted) setPreviewError(
+          response.status === 403 ? "当前账号没有读取该附件的权限。" :
+          response.status === 401 ? "请重新登录后打开附件。" :
+          response.status === 404 ? "暂时找不到这份附件，请检查原文件是否仍可打开。" :
+          "暂时无法读取附件，请稍后重试。"
+        );
+        return;
+      }
+      const value = await response.text();
+      if (!controller.signal.aborted) setPreviewText(value);
+    })().catch(() => {if (!controller.signal.aborted) setPreviewError("连接失败，请检查网络后重试。");});
     return () => controller.abort();
   },[preview]);
   const [activityOpen, setActivityOpen] = React.useState<boolean>();
@@ -233,7 +241,11 @@ const ChatItem = ({
       <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
         <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md">{preview?.name}</ModalHeader>
           <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.5em"},"& ul, & ol":{paddingInlineStart:"1.5em"},"& p":{whiteSpace:"pre-wrap",marginBlock:".65em"}}}>
-            {previewError ? <Button size="sm" onClick={()=>preview && setPreview({...preview})}>读取失败，重试</Button> :
+            {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
+              <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
+                <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
+              <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>
+            </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
               <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown>}
           </ModalBody></ModalContent></Modal>
