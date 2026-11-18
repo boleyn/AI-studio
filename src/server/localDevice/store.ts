@@ -8,6 +8,7 @@ export type DeviceRecord = {
   teamId: string;
   memberId: string;
   name: string;
+  remark?: string;
   platform: DevicePlatform;
   publicKey: string;
   fingerprint: string;
@@ -101,6 +102,12 @@ export async function renameDevice(deviceId: string, userId: string, name: strin
     { $set: { name } },
   );
   return res.matchedCount > 0;
+}
+
+export async function setDeviceRemark(deviceId: string, userId: string, remark: string) {
+  const { devices } = await getCollections();
+  const result = await devices.updateOne({ deviceId, teamId: userId, memberId: userId, revoked: false }, { $set: { remark } });
+  return result.matchedCount > 0;
 }
 
 export async function revokeDevice(deviceId: string, userId: string): Promise<boolean> {

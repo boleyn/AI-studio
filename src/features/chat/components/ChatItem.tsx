@@ -98,7 +98,8 @@ const ChatItem = ({
   hideInteractiveCards?: boolean;
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
-  const [activityExpanded, setActivityExpanded] = React.useState(false);
+  const [activityOpen, setActivityOpen] = React.useState<boolean>();
+  const activityExpanded = activityOpen ?? Boolean(isStreaming);
   const { copyData } = useCopyData();
   const {
     content,
@@ -170,7 +171,7 @@ const ChatItem = ({
   ).length;
   const hasActivity = Boolean(planProgress) || timelineItems.some((item) =>
     item.type !== "answer" &&
-    (!isWorkspaceChat || (item.type !== "reasoning" && item.type !== "compact") || Boolean(isStreaming)) &&
+    (!isWorkspaceChat || item.type !== "compact") &&
     (item.type !== "tool" || !PLAN_MODE_TOOL_NAMES.has((item.toolName || "").trim().toLowerCase())),
   );
 
@@ -300,7 +301,7 @@ const ChatItem = ({
               <Button
                 alignSelf="flex-start"
                 aria-expanded={activityExpanded}
-                onClick={() => setActivityExpanded((expanded) => !expanded)}
+                onClick={() => setActivityOpen(!activityExpanded)}
                 leftIcon={isStreaming && isWorkspaceChat ? <Spinner size="xs" aria-hidden="true" /> : undefined}
                 rightIcon={<Icon as={ChevronDownIcon} boxSize="14px" transform={activityExpanded ? "rotate(180deg)" : undefined} transition="transform 0.18s ease" />}
                 size="xs"
@@ -386,12 +387,17 @@ const ChatItem = ({
                     }
 
                     if (item.type === "reasoning") {
-                      if (isWorkspaceChat) return null;
                       const reasoningKey = item.id || `${messageId}-timeline-reasoning-${index}`;
                       const isExpanded = Boolean(expandedTimelineReasoningKeys[reasoningKey]);
                       const reasoningPhaseText = getReasoningPhaseText(index);
                       const isReasoningRunning =
                         Boolean(reasoningPhaseText) && !hasRunningTool && !hasAnswerText && !timelineHasAnswer;
+                      if (isWorkspaceChat) return (
+                        <Box key={reasoningKey} borderLeft="2px solid" borderColor="gray.200" pl={3} py={1}>
+                          <Text fontSize="xs" fontWeight="600" color="gray.600" mb={1}>思考摘要</Text>
+                          <Markdown source={item.text || reasoningPhaseText || ""} />
+                        </Box>
+                      );
                       return (
                         <Box key={reasoningKey} bg="green.50" border="1px solid" borderColor="green.200" borderRadius="10px" p={2}>
                           <Flex align="center" gap={2}>

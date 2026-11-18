@@ -74,6 +74,7 @@ export interface ChatInputModelGroup {
 }
 
 export interface WorkspaceComposerDeviceOption {
+  platform?: string;
   deviceId: string;
   name: string;
   online: boolean;
@@ -86,6 +87,9 @@ export interface WorkspaceComposerConfig {
   cloudHostStatus?: CloudHostStatus;
   devices?: WorkspaceComposerDeviceOption[];
   onSelectCloudHost?: () => void;
+  platformPanel?: import("react").ReactNode;
+  closePlatformPanel?: () => void;
+  onOpenHostMenu?: () => void;
   onSelectDeviceHost?: (device: WorkspaceComposerDeviceOption) => void;
   onOpenRuntime?: () => void;
   projectToken?: string;

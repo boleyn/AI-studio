@@ -1,13 +1,13 @@
+import { deviceDisplayName } from "@/shared/localDevice/displayName";
 import { useEffect, useId, useState } from "react";
 import {
-  Badge,
   Box,
   Button,
-  Code,
   FormControl,
   FormLabel,
   HStack,
   IconButton,
+  Menu, MenuButton, MenuList, MenuItem,
   Input,
   InputGroup,
   InputRightElement,
@@ -16,20 +16,22 @@ import {
   useToast,
   VStack,
 } from "@chakra-ui/react";
-import { AppDialog, AppSectionCard } from "../ui";
+import { AppDialog } from "../ui";
 import {
-  CheckCircle2,
   Copy,
   Eye,
   EyeOff,
-  HardDrive,
   RefreshCw,
   Cloud,
   Sparkles,
   Wifi,
   WifiOff,
   Laptop,
-  FolderCheck,
+  Pencil,
+  Plus,
+  MoreHorizontal,
+  Check,
+  Folder,
   Link2,
   Download,
 } from "lucide-react";
@@ -51,6 +53,7 @@ export type ProjectRuntimeConfig = {
 };
 
 type PairedDeviceItem = {
+  remark?: string;
   deviceId: string;
   name: string;
   platform: string;
@@ -118,6 +121,7 @@ const generateConnectorToken = () => {
 };
 
 type WorkspaceRuntimeModalProps = {
+  embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
   projectName: string;
@@ -129,9 +133,9 @@ type WorkspaceRuntimeModalProps = {
 };
 
 export default function WorkspaceRuntimeModal({
+  embedded,
   isOpen,
   onClose,
-  projectName,
   projectToken,
   config,
   cloudHostStatus = "ready",
@@ -151,12 +155,32 @@ export default function WorkspaceRuntimeModal({
   const [devices, setDevices] = useState<PairedDeviceItem[]>([]);
   const [grants, setGrants] = useState<DeviceGrantItem[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
+  const [folderEditor, setFolderEditor] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [remark, setRemark] = useState("");
+  const [savingRemark, setSavingRemark] = useState(false);
+  const saveRemark = async (device: PairedDeviceItem) => {
+    setSavingRemark(true);
+    try {
+      const response = await fetch("/api/core/localDevice/manage", {
+        method: "POST", headers: withAuthHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ action: "remark", deviceId: device.deviceId, remark: remark.trim() }),
+      });
+      if (!response.ok) throw new Error();
+      setEditing(null);
+      await loadDevicesAndGrants(true);
+    } catch { toast({ title: "备注保存失败，请重试", status: "error" }); }
+    finally { setSavingRemark(false); }
+  };
+  const [pairMessage, setPairMessage] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [listError, setListError] = useState("");
   const [pairingLocal, setPairingLocal] = useState(false);
   const [requestingGrantId, setRequestingGrantId] = useState<string | null>(null);
   const [showLegacyHttp, setShowLegacyHttp] = useState(false);
 
-  const loadDevicesAndGrants = async () => {
-    setLoadingDevices(true);
+  const loadDevicesAndGrants = async (background = false) => {
+    if (!background) setLoadingDevices(true);
     try {
       const [devRes, grantRes] = await Promise.all([
         fetch("/api/core/localDevice/manage", {
@@ -170,7 +194,9 @@ export default function WorkspaceRuntimeModal({
             })
           : Promise.resolve(null),
       ]);
-      if (devRes.ok) {
+      if (!devRes.ok) throw new Error();
+      setListError("");
+      {
         const data = (await devRes.json()) as { devices?: PairedDeviceItem[] };
         setDevices(Array.isArray(data.devices) ? data.devices : []);
       }
@@ -179,7 +205,7 @@ export default function WorkspaceRuntimeModal({
         setGrants(Array.isArray(data.grants) ? data.grants : []);
       }
     } catch {
-      // ignore
+      setListError("设备列表加载失败，请刷新重试。");
     } finally {
       setLoadingDevices(false);
     }
@@ -188,6 +214,10 @@ export default function WorkspaceRuntimeModal({
   useEffect(() => {
     if (isOpen) {
       setDraft(config);
+      setFolderEditor(null);
+      setEditing(null);
+      setPairMessage("");
+      setInviteLink("");
       setShowToken(false);
       setShowLegacyHttp(Boolean(!config.deviceId && config.connectorTested));
       void loadDevicesAndGrants();
@@ -205,9 +235,51 @@ export default function WorkspaceRuntimeModal({
     }
   }, [config, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = window.setInterval(() => { void loadDevicesAndGrants(true); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, draft.sandboxKind, projectToken]);
+
+  const createInvite = async () => {
+    const response = await fetch("/api/core/localDevice/invite", {
+      method: "POST", headers: withAuthHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ action: "create" }),
+    });
+    if (!response.ok) throw new Error("无法创建邀请，请重试。");
+    return (await response.json()).code as string;
+  };
+
+  const inviteOtherDevice = async () => {
+    try {
+      const code = await createInvite();
+      setInviteLink(window.location.origin + "/account/devices#connect=" + code);
+      setPairMessage("在另一台电脑打开伯仁连接器，选择「添加授权」并粘贴链接。链接 10 分钟内有效。");
+    } catch { setPairMessage("无法创建邀请，请重试。"); }
+  };
+
   const handlePairLocalBridge = async () => {
     setPairingLocal(true);
     try {
+      setInviteLink("");
+      setPairMessage("正在联系伯仁连接器…");
+      const status = await fetch("http://127.0.0.1:13005/status").then(r => r.ok ? r.json() : null).catch(() => null);
+      if (status?.inviteDecision) {
+        if (devices.some(device => device.deviceId === status.deviceId || status.deviceIds?.includes(device.deviceId))) {
+          setPairMessage("此电脑已在设备列表中。");
+          return;
+        }
+        const code = await createInvite();
+        setPairMessage("请在本机的伯仁连接器窗口确认账号授权。");
+        const result = await fetch("http://127.0.0.1:13005/invite", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, waitForDecision: true }),
+        });
+        if (!result.ok) throw new Error(result.status === 403 ? "本机授权未完成。可以再次连接。" : "连接器未能完成邀请，请重试。");
+        setPairMessage("连接器已接受请求，正在刷新设备列表。");
+        await loadDevicesAndGrants();
+        return;
+      }
       const bridgeRes = await fetch("http://127.0.0.1:13005/pair", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -254,12 +326,9 @@ export default function WorkspaceRuntimeModal({
       toast({ title: "已绑定本机电脑", status: "success", duration: 2500 });
       await loadDevicesAndGrants();
     } catch (err) {
-      toast({
-        title: "连接本机电脑失败",
-        description: err instanceof Error ? err.message : String(err),
-        status: "error",
-        duration: 3500,
-      });
+      setPairMessage(err instanceof TypeError
+        ? "无法联系连接器。请确认它已启动，并在连接设置中核对平台地址 " + window.location.origin
+        : err instanceof Error ? err.message : "连接失败，请重试。");
     } finally {
       setPairingLocal(false);
     }
@@ -288,10 +357,12 @@ export default function WorkspaceRuntimeModal({
       setDraft((prev) => ({
         ...prev,
         deviceId: device.deviceId,
-        deviceName: device.name,
+        sandboxKind: "connector",
+        deviceName: deviceDisplayName(device),
         grantId: data.grant!.grantId,
         workdir: data.grant!.workdir,
       }));
+      setFolderEditor(null);
       toast({
         title: `已授权目录：${data.grant.workdir}`,
         status: "success",
@@ -376,272 +447,113 @@ export default function WorkspaceRuntimeModal({
     onClose();
   };
 
-  return (
-    <AppDialog
-      isOpen={isOpen}
-      onClose={onClose}
-      size="lg"
-      title={
-        <HStack spacing={2}>
-          <Text>执行主机与连接管理</Text>
-          <Badge bg="surface.hover" color="ink.secondary" fontWeight="500" fontSize="11px" px={2} py={0.5}>
-            {projectName}
-          </Badge>
-        </HStack>
-      }
-      subtitle="选择默认云电脑，或连接你的本地电脑（Mac / Windows），支持随时切换。"
-      footer={
-        <Box as="form" method="post" onSubmit={handleSubmit} display="flex" gap={2}>
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="submit" variant="primary" size="sm">
-            保存并应用
-          </Button>
+  const footer = (
+        <Box display="flex" w="full" alignItems="center" justifyContent="space-between">
+          <Menu placement="top-start">
+            <MenuButton as={Button} size="sm" variant="ghost" leftIcon={<Plus size={15} />}>添加电脑</MenuButton>
+            <MenuList fontSize="sm">
+              <MenuItem icon={<Link2 size={15} />} onClick={() => void handlePairLocalBridge()} isDisabled={pairingLocal}>连接此电脑</MenuItem>
+              <MenuItem icon={<Laptop size={15} />} onClick={() => void inviteOtherDevice()}>邀请其他电脑</MenuItem>
+              <MenuItem as="a" href="/downloads/AIStudio-Connector-macOS.dmg" download="伯仁连接器-macOS.dmg" icon={<Download size={15} />}>下载 Mac 连接器</MenuItem>
+              <MenuItem icon={<RefreshCw size={15} />} onClick={() => void loadDevicesAndGrants()}>刷新设备</MenuItem>
+              <MenuItem onClick={() => { setShowLegacyHttp(v => !v); setDraft(prev => ({ ...prev, sandboxKind: "connector" })); }}>高级连接</MenuItem>
+            </MenuList>
+          </Menu>
+          <Box as="form" method="post" onSubmit={handleSubmit}>
+            <Button type="submit" variant="primary" size="sm" isDisabled={draft.sandboxKind === "connector" && !(draft.deviceId && draft.grantId && devices.some(device => device.deviceId === draft.deviceId && device.online)) && !(showLegacyHttp && draft.connectorTested)}>完成</Button>
+          </Box>
         </Box>
-      }
-    >
-      <VStack align="stretch" spacing={4}>
-        {/* 双模式选择卡片 */}
-        <HStack spacing={3} align="stretch">
-          <Box
-            as="button"
-            type="button"
-            flex="1"
-            textAlign="left"
-            p={3.5}
-            borderRadius="12px"
-            border="1.5px solid"
-            borderColor={draft.sandboxKind === "remote-vm" ? "ink.primary" : "stroke.subtle"}
-            bg={draft.sandboxKind === "remote-vm" ? "surface.sidebar" : "white"}
-            transition="all 0.15s"
-            _hover={{ borderColor: draft.sandboxKind === "remote-vm" ? "ink.primary" : "rgba(0,0,0,0.22)" }}
-            onClick={() => setDraft((prev) => ({ ...prev, sandboxKind: "remote-vm" }))}
-          >
-            <HStack justify="space-between" mb={1.5}>
-              <HStack spacing={2}>
-                <Cloud size={16} color={draft.sandboxKind === "remote-vm" ? "#0d0d0d" : "#5d5d5d"} />
-                <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                  云电脑
-                </Text>
-              </HStack>
-              {draft.sandboxKind === "remote-vm" && <CheckCircle2 size={15} color="#0d0d0d" />}
-            </HStack>
-            <Text fontSize="12px" color="ink.secondary" lineHeight="1.45">
-              每账号专属云电脑（/home/user），各项目按文件夹隔离，CLI、依赖与 Skills 跨项目复用。
-            </Text>
-          </Box>
-
-          <Box
-            as="button"
-            type="button"
-            flex="1"
-            textAlign="left"
-            p={3.5}
-            borderRadius="12px"
-            border="1.5px solid"
-            borderColor={draft.sandboxKind === "connector" ? "ink.primary" : "stroke.subtle"}
-            bg={draft.sandboxKind === "connector" ? "surface.sidebar" : "white"}
-            transition="all 0.15s"
-            _hover={{ borderColor: draft.sandboxKind === "connector" ? "ink.primary" : "rgba(0,0,0,0.22)" }}
-            onClick={() => setDraft((prev) => ({ ...prev, sandboxKind: "connector" }))}
-          >
-            <HStack justify="space-between" mb={1.5}>
-              <HStack spacing={2}>
-                <HardDrive size={16} color={draft.sandboxKind === "connector" ? "#0d0d0d" : "#5d5d5d"} />
-                <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                  本地电脑
-                </Text>
-              </HStack>
-              {draft.sandboxKind === "connector" && <CheckCircle2 size={15} color="#0d0d0d" />}
-            </HStack>
-            <Text fontSize="12px" color="ink.secondary" lineHeight="1.45">
-              挂载你的本地电脑目录，伯仁直接在本机读写代码与运行命令。
-            </Text>
-          </Box>
-        </HStack>
-
-        {draft.sandboxKind === "remote-vm" ? (
-          (() => {
-            const cloudMeta = getCloudHostStatusMeta(cloudHostStatus);
-            return (
-              <AppSectionCard>
-                <HStack justify="space-between" mb={1.5}>
-                  <Text fontSize="13px" fontWeight="600" color="ink.primary">
-                    专属云电脑
-                  </Text>
-                  <Badge
-                    colorScheme={cloudMeta.badgeScheme}
-                    variant="subtle"
-                    fontSize="11px"
-                    px={2}
-                  >
-                    {cloudHostStatus === "ready" ? `${cloudMeta.label} · 持久卷` : cloudMeta.label}
-                  </Badge>
-                </HStack>
-                <Text fontSize="12px" color="ink.secondary">
-                  项目目录：<Code fontSize="11px">/home/user/projects/{projectName || projectToken || "default"}</Code>
-                </Text>
-                <Text fontSize="12px" color="ink.muted" mt={1}>
-                  登录即分配云电脑，运行期间直接读写持久化目录；退出登录或超时空闲后自动归档休眠。
-                </Text>
-              </AppSectionCard>
-            );
-          })()
-        ) : (
-          <AppSectionCard>
-            <VStack align="stretch" spacing={3}>
-              <HStack justify="space-between" flexWrap="wrap" gap={2}>
-                <HStack spacing={2}>
-                  <Laptop size={15} color="#0d0d0d" />
-                  <Text fontSize="13px" fontWeight="600" color="ink.primary">
-                    已连接的桌面设备（Mac / Windows）
-                  </Text>
-                </HStack>
-                <HStack spacing={2}>
-                  <Button
-                    as="a"
-                    href="/downloads/AIStudio-Connector-macOS.dmg"
-                    download="AIStudio-Connector-macOS.dmg"
-                    size="xs"
-                    variant="outline"
-                    leftIcon={<Download size={12} />}
-                  >
-                    下载 Mac 版 (.dmg)
-                  </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="primary"
-                    leftIcon={<Link2 size={12} />}
-                    isLoading={pairingLocal}
-                    onClick={() => void handlePairLocalBridge()}
-                  >
-                    连接此电脑
-                  </Button>
-                </HStack>
-              </HStack>
-
-              {loadingDevices ? (
-                <Text fontSize="12px" color="ink.muted">
-                  正在查询在线设备…
-                </Text>
+  );
+  const body = (
+      <VStack align="stretch" spacing={2}>
+        <Button variant="ghost" h="auto" justifyContent="start" px={3} py={3} borderRadius="10px"
+          bg={draft.sandboxKind === "remote-vm" ? "blue.50" : "transparent"}
+          aria-pressed={draft.sandboxKind === "remote-vm"}
+          onClick={() => { setDraft(prev => ({ ...prev, sandboxKind: "remote-vm" })); setFolderEditor(null); }}>
+          <Box p={2} borderRadius="10px" bg="blue.50" color="blue.600"><Cloud size={20} /></Box>
+          <Box textAlign="left" ml={3}><Text fontSize="sm">云电脑</Text><Text fontSize="xs" color="ink.muted" fontWeight="normal">{getCloudHostStatusMeta(cloudHostStatus).label}</Text></Box>
+          {draft.sandboxKind === "remote-vm" && <Box ml="auto"><Check size={16} /></Box>}
+        </Button>
+        <Box borderTop="1px solid" borderColor="stroke.light" pt={2}>
+            <VStack align="stretch" spacing={2}>
+              {pairMessage && <Text role="status" color="ink.secondary" fontSize="sm">{pairMessage}</Text>}
+              {inviteLink && <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(inviteLink)
+                .then(() => toast({ title: "邀请链接已复制", status: "success" }))
+                .catch(() => setPairMessage("无法访问剪贴板，请允许此页面复制链接。"))}>复制邀请链接</Button>}
+              {inviteLink && ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname) && (
+                <Text color="ink.secondary" fontSize="sm">当前是回环地址。连接其他电脑时，请从两台电脑都能访问的平台地址打开工作台并创建邀请。</Text>
+              )}
+              {listError ? <Text role="alert" fontSize="sm">{listError}</Text> : loadingDevices ? (
+                <Text fontSize="sm" color="ink.muted">正在刷新设备…</Text>
               ) : devices.length === 0 ? (
-                <Box p={3} borderRadius="10px" bg="white" border="1px solid" borderColor="stroke.light">
-                  <Text fontSize="12.5px" fontWeight="500" color="ink.primary" mb={1}>
-                    尚未绑定电脑，按以下 3 步快速连接：
-                  </Text>
-                  <Text fontSize="12px" color="ink.secondary" lineHeight="1.6">
-                    1. 点击右上角「下载 Mac 版 (.dmg)」安装并启动「伯仁连接器」；
-                    <br />
-                    2. 保持连接器在菜单栏运行，点击「连接此电脑」完成设备配对；
-                    <br />
-                    3. 配对后点击「选择工作目录」，在本机弹窗确认授权即可使用。
-                  </Text>
-                </Box>
+                <Text fontSize="sm" color="ink.secondary">还没有连接电脑。</Text>
               ) : (
                 <VStack align="stretch" spacing={2}>
                   {devices.map((dev) => {
                     const existingGrant = grants.find((g) => g.deviceId === dev.deviceId && !g.revoked);
-                    const isSelected = draft.deviceId === dev.deviceId && Boolean(draft.grantId);
+                    const isSelected = draft.sandboxKind === "connector" && draft.deviceId === dev.deviceId && Boolean(draft.grantId);
+                    const name = deviceDisplayName(dev);
                     return (
-                      <Box
-                        as="form"
-                        method="post"
-                        key={dev.deviceId}
-                        aria-label={`${dev.name} 工作目录授权`}
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void handleRequestDeviceGrant(dev, requestedWorkdirs[dev.deviceId] ?? existingGrant?.workdir ?? "");
-                        }}
-                        p={2.5}
-                        borderRadius="10px"
-                        bg="white"
-                        border="1px solid"
-                        borderColor={isSelected ? "ink.primary" : "stroke.subtle"}
-                      >
-                        <HStack justify="space-between" gap={2}>
-                          <HStack spacing={2} minW={0}>
-                            <Box
-                              w="7px"
-                              h="7px"
-                              borderRadius="full"
-                              bg={dev.online ? "#16a34a" : "#9ca3af"}
-                              flexShrink={0}
-                            />
-                            <Box minW={0}>
-                              <Text fontSize="13px" fontWeight="500" color="ink.primary" noOfLines={1}>
-                                {dev.name}
-                              </Text>
-                              <Text fontSize="11px" color="ink.muted" noOfLines={1}>
-                                {dev.platform} · {dev.online ? "在线" : "离线"}
-                                {existingGrant?.workdir ? ` · ${existingGrant.workdir}` : ""}
-                              </Text>
+                      <Box key={dev.deviceId}>
+                        <HStack spacing={1} pr={1} borderRadius="10px" bg={dev.online ? "green.50" : "gray.50"}>
+                          <Button flex={1} minW={0} h="auto" px={3} py={3} variant="ghost" justifyContent="start"
+                            isDisabled={!dev.online || Boolean(requestingGrantId)} aria-pressed={isSelected} title={dev.name}
+                            onClick={() => {
+                              if (!existingGrant) { void handleRequestDeviceGrant(dev, ""); return; }
+                              setDraft(prev => ({ ...prev, sandboxKind: "connector", deviceId: dev.deviceId,
+                                deviceName: name, grantId: existingGrant.grantId, workdir: existingGrant.workdir }));
+                              setFolderEditor(null);
+                            }}>
+                            <Box bg="transparent" color={dev.online ? "green.700" : "gray.500"} borderRadius="10px" p={2}><Laptop size={20} /></Box>
+                            <Box ml={3} minW={0} textAlign="left">
+                              <Text fontSize="sm" noOfLines={1}>{name}</Text>
+                              <HStack spacing={1.5} mt={1} fontSize="xs" color="ink.secondary" fontWeight="normal">
+                                <Text>{dev.online ? "在线" : "离线"}</Text>
+                                {existingGrant?.workdir && <Text noOfLines={1} title={existingGrant.workdir}>· {existingGrant.workdir.split(/[/\\]/).filter(Boolean).pop() || existingGrant.workdir}</Text>}
+                              </HStack>
                             </Box>
-                          </HStack>
-
-                          <HStack spacing={1.5} flexShrink={0}>
-                            {existingGrant && !isSelected && (
-                              <Button
-                                type="button"
-                                size="xs"
-                                variant="ghost"
-                                onClick={() =>
-                                  setDraft((prev) => ({
-                                    ...prev,
-                                    deviceId: dev.deviceId,
-                                    deviceName: dev.name,
-                                    grantId: existingGrant.grantId,
-                                    workdir: existingGrant.workdir,
-                                  }))
-                                }
-                              >
-                                使用此授权
-                              </Button>
-                            )}
-                            <Button
-                              type="submit"
-                              size="xs"
-                              variant={isSelected ? "primary" : "outline"}
-                              leftIcon={isSelected ? <FolderCheck size={12} /> : undefined}
-                              isDisabled={!dev.online}
-                              isLoading={requestingGrantId === dev.deviceId}
-                            >
-                              {isSelected ? "已授权目录" : "选择工作目录"}
-                            </Button>
-                          </HStack>
+                            {isSelected && <Box ml="auto" pl={2} color="green.700"><Check size={16} /></Box>}
+                          </Button>
+                          <Menu placement="bottom-end">
+                            <MenuButton as={IconButton} aria-label={`${name}的操作`} size="sm" variant="ghost" icon={<MoreHorizontal size={16} />} />
+                            <MenuList fontSize="sm">
+                              <MenuItem icon={<Pencil size={14} />} onClick={() => { setFolderEditor(null); setEditing(dev.deviceId); setRemark(dev.remark || ""); }}>修改备注</MenuItem>
+                              <MenuItem icon={<Folder size={14} />} isDisabled={!dev.online} onClick={() => { setEditing(null); setFolderEditor(dev.deviceId); }}>选择工作目录</MenuItem>
+                            </MenuList>
+                          </Menu>
                         </HStack>
+                        {editing === dev.deviceId && <HStack mt={2}>
+                          <Input size="sm" aria-label="电脑备注" placeholder="例如：办公 Mac" maxLength={32} autoFocus
+                            value={remark} onChange={e => setRemark(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                              e.preventDefault(); void saveRemark(dev);
+                            } }} />
+                          <Button type="button" size="sm" isLoading={savingRemark} onClick={() => void saveRemark(dev)}>保存备注</Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>取消</Button>
+                        </HStack>}
+                        {folderEditor === dev.deviceId && <Box as="form" method="post" px={3} pb={2} onSubmit={event => {
+                          event.preventDefault(); void handleRequestDeviceGrant(dev, requestedWorkdirs[dev.deviceId] ?? existingGrant?.workdir ?? "");
+                        }}>
                         <FormControl mt={3} isRequired>
-                          <FormLabel htmlFor={`${workdirInputId}-${dev.deviceId}`} fontSize="sm">初始工作目录</FormLabel>
-                          <Text id={`${workdirInputId}-${dev.deviceId}-hint`} fontSize="sm" color="ink.muted" mb={2}>
-                            输入本机目录的完整路径；仍需在本机弹窗确认，可以重新选择目录。
-                          </Text>
+                          <FormLabel htmlFor={`${workdirInputId}-${dev.deviceId}`} fontSize="sm">工作目录</FormLabel>
                           <Input id={`${workdirInputId}-${dev.deviceId}`} name="initialWorkdir" required maxLength={4096}
-                            aria-describedby={`${workdirInputId}-${dev.deviceId}-hint`}
+                            placeholder="输入目录的完整路径"
                             autoCorrect="off" autoCapitalize="none" spellCheck={false}
                             value={requestedWorkdirs[dev.deviceId] ?? existingGrant?.workdir ?? ""}
                             onChange={(event) => setRequestedWorkdirs(prev => ({ ...prev, [dev.deviceId]: event.target.value }))}
                             sx={{ "&:user-invalid": { borderColor: "red.500" } }}
                           />
                         </FormControl>
+                        <HStack justify="end" mt={2}>
+                          <Button size="xs" variant="ghost" onClick={() => setFolderEditor(null)}>取消</Button>
+                          <Button size="xs" type="submit" isDisabled={!dev.online} isLoading={requestingGrantId === dev.deviceId}>请求授权</Button>
+                        </HStack>
+                        </Box>}
                       </Box>
                     );
                   })}
                 </VStack>
               )}
-
-              <Box pt={1}>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  color="ink.muted"
-                  px={0}
-                  onClick={() => setShowLegacyHttp((v) => !v)}
-                >
-                  {showLegacyHttp ? "收起命令行 HTTP 直连配置" : "高级：使用命令行 HTTP 连接器 (bun run connector)"}
-                </Button>
-              </Box>
 
               {showLegacyHttp && (
                 <VStack align="stretch" spacing={3} pt={2} borderTop="1px solid" borderColor="stroke.light">
@@ -774,9 +686,15 @@ export default function WorkspaceRuntimeModal({
                 </VStack>
               )}
             </VStack>
-          </AppSectionCard>
-        )}
+          </Box>
       </VStack>
-    </AppDialog>
   );
+  if (embedded) return (
+    <Box>
+      <Text fontWeight="600" fontSize="sm" px={2} pb={2}>我的设备</Text>
+      {body}
+      <Box borderTop="1px solid" borderColor="stroke.light" mt={2} pt={2}>{footer}</Box>
+    </Box>
+  );
+  return <AppDialog isOpen={isOpen} onClose={onClose} size="md" title="选择电脑" footer={footer}>{body}</AppDialog>;
 }

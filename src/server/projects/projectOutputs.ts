@@ -14,8 +14,13 @@ export function filterProjectOutputs(files: Files, starterFiles: Files = {}): Fi
 
 export async function getProjectOutputs(project: { files: Files; template: string }): Promise<Files> {
   const template = project.template === "vite-vue" ? "vue" : project.template;
-  const defaults = isCommonProjectTemplate(template)
-    ? await loadProjectTemplateDefaults(template)
-    : { files: {} };
-  return filterProjectOutputs(project.files, defaults.files);
+  if (!isCommonProjectTemplate(template)) return filterProjectOutputs(project.files);
+  try {
+    const defaults = await loadProjectTemplateDefaults(template);
+    return filterProjectOutputs(project.files, defaults.files);
+  } catch (error) {
+    // Missing starter metadata must not block access to an existing project's files.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return filterProjectOutputs(project.files);
+  }
 }

@@ -150,7 +150,7 @@ const ChatMessageTimeline = ({
                 },
               }}
             >
-              <Box maxW={maxWidth} minW={0} w={isUser || isAssistant ? "fit-content" : "full"}>
+              <Box maxW={maxWidth} minW={0} w="full">
                 <ChatMessageBlock
                   canRegenerate={row.canRegenerate}
                   isLatestRun={isLastRow}

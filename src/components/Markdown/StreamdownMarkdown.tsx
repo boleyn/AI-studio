@@ -145,6 +145,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
         isAnimating={showAnimation}
         mode={showAnimation ? "streaming" : "static"}
         lineNumbers={false}
+        tableMaxHeight={0}
         controls={{
           code: { copy: true, download: false },
           table: { copy: true, download: true, fullscreen: false },

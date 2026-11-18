@@ -50,6 +50,9 @@ func TestAccountAccessPausesOnlySelectedUserAndSurvivesRestore(t *testing.T) {
 		return operation.Request{GrantID: value.ID, GrantVersion: value.Version}
 	}
 	firstRequest := approve(first, value)
+	crossProject := value
+	crossProject.ID, crossProject.AppID, crossProject.ChatID, crossProject.SourceTarget = "another-grant", "another-project", "another-chat", "project:another-project"
+	approve(newManager(alice), crossProject)
 	value.Owner, value.ID = bob, "second-grant"
 	secondRequest := approve(second, value)
 	running, _, stop, err := first.Prepare(ctx, firstRequest)

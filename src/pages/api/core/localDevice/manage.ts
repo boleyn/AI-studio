@@ -7,10 +7,12 @@ import { getEmbeddedDeviceGateway } from "@/server/localDevice/socket";
 import {
   listUserDevices,
   renameDevice,
+  setDeviceRemark,
   revokeDevice,
 } from "@/server/localDevice/store";
 
 const ManageActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("remark"), deviceId: z.string().uuid(), remark: z.string().trim().max(32) }).strict(),
   z.object({ action: z.literal("list") }).strict(),
   z
     .object({
@@ -58,6 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       devices: devices.map((d) => ({
         deviceId: d.deviceId,
         name: d.name,
+        remark: d.remark,
         platform: d.platform,
         fingerprint: d.fingerprint,
         online: onlineMap.get(d.deviceId) ?? false,
@@ -97,6 +100,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       devices: devices.map((d) => ({
         deviceId: d.deviceId,
         name: d.name,
+        remark: d.remark,
         platform: d.platform,
         fingerprint: d.fingerprint,
         online: onlineMap.get(d.deviceId) ?? false,
@@ -104,6 +108,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })),
     });
     return;
+  }
+
+  if (body.action === "remark") {
+    const saved = await setDeviceRemark(body.deviceId, userId, body.remark);
+    return res.status(saved ? 200 : 404).json({ success: saved });
   }
 
   if (body.action === "rename") {

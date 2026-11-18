@@ -178,6 +178,26 @@ const ToolTimelineCard = ({
   const truncatedResponse = truncateDetailText(item.response);
   const responseTruncated = isDetailTruncated(item.response);
 
+  if (normalizedToolName === "search_tools") {
+    const matches = parseJsonObject(responseRaw).matches;
+    const names = Array.isArray(matches) ? matches.flatMap(match =>
+      match && typeof match.name === "string" ? [match.name] : []) : [];
+    return (
+      <Box py={1}>
+        <Button size="xs" variant="ghost" aria-expanded={isExpanded} onClick={onToggle}
+          leftIcon={isRunning ? <Spinner size="xs" /> : undefined}
+          rightIcon={<Icon as={ChevronDownIcon} boxSize="14px" transform={isExpanded ? "rotate(180deg)" : undefined} />}>
+          {isRunning ? "正在查找工具" : isError ? "工具查找失败" : "查找工具"}
+        </Button>
+        {isExpanded && <Box ml={2} pl={3} borderLeft="2px solid" borderColor="gray.200" color="gray.600" fontSize="sm">
+          {typeof toolParams.query === "string" && <Text>{toolParams.query}</Text>}
+          <Text>{names.length ? names.join("、") : isRunning ? "正在匹配…" : "暂无匹配结果"}</Text>
+          {responseRaw && <Button size="xs" variant="link" onClick={() => onOpenToolDetailModal("工具查找详情", responseRaw)}>原始结果</Button>}
+        </Box>}
+      </Box>
+    );
+  }
+
   if (isTodoTool) {
     const todos = getTodoItems(item.params, item.response);
     const completedCount = todos.filter((todo) => todo.status === "completed").length;
@@ -378,7 +398,7 @@ const ToolTimelineCard = ({
           <Box mt={2}>
             {files.length > 0 ? (
               <Text color="myGray.500" mb={1} sx={RESULT_TEXT_SX}>
-                Found {files.length} {files.length === 1 ? "file" : "files"}
+                找到 {files.length} 个文件
               </Text>
             ) : null}
             {files.length > 0 ? (
@@ -421,7 +441,7 @@ const ToolTimelineCard = ({
             ) : isRunning ? (
               <Text color="myGray.500" fontSize="12px">搜索中...</Text>
             ) : (
-              <Text color="myGray.400" fontSize="12px">No files found</Text>
+              <Text color="myGray.400" fontSize="12px">没有找到文件</Text>
             )}
           </Box>
         </Collapse>
@@ -462,7 +482,7 @@ const ToolTimelineCard = ({
         borderRadius="8px"
         cursor="pointer"
         _hover={{ bg: "#f4f4f5" }}
-        onClick={onToggle}
+        onClick={(event) => { if (!(event.target as Element).closest("button")) onToggle(); }}
       >
         {isRunning ? (
           <Spinner color="#2563eb" size="xs" speed="0.7s" thickness="2px" />

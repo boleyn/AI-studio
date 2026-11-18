@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   CloseButton,
+  Popover, PopoverAnchor, PopoverContent, Portal,
   Flex,
   HStack,
   IconButton,
@@ -26,6 +27,7 @@ import {
   Layers,
   Plus,
   Square,
+  Settings2,
 } from "lucide-react";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { AgentSkillsIcon } from "@components/common/Icon";
@@ -34,7 +36,6 @@ import { useTranslation } from "next-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MyTooltip from "@/components/ui/MyTooltip";
 
-import { getCloudHostStatusMeta } from "@shared/sandbox/cloudHostStatus";
 import {
   getReasoningEffortLabel,
   type ChatInputFile,
@@ -897,122 +898,54 @@ const ChatInput = ({
               <>
                 <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
                 {workspaceComposer?.onOpenRuntime && (
-                  <Menu placement="top-start" isLazy>
-                    <MenuButton
-                      as={Button}
-                      size="xs"
-                      h="30px"
-                      px={2.5}
-                      borderRadius="full"
-                      fontSize="12.5px"
-                      fontWeight="500"
-                      bg={workspaceComposer.runtimeKind === "connector" ? "#ecfdf5" : "#eef4ff"}
-                      color={workspaceComposer.runtimeKind === "connector" ? "#059669" : "#2563eb"}
-                      _hover={{
-                        bg: workspaceComposer.runtimeKind === "connector" ? "#d1fae5" : "#e0ecff",
-                      }}
-                      leftIcon={
-                        workspaceComposer.runtimeKind === "connector" ? (
-                          <Laptop size={14} />
-                        ) : (
-                          <Cloud size={14} />
-                        )
-                      }
-                      rightIcon={<ChevronRight size={13} />}
-                      flexShrink={0}
-                    >
-                      {workspaceComposer.runtimeLabel || "云电脑"}
-                    </MenuButton>
-                    <MenuList
-                      minW="236px"
-                      p={1.5}
-                      borderRadius="14px"
-                      border="1px solid rgba(0, 0, 0, 0.06)"
-                      boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
-                    >
-                      <MenuItem
-                        borderRadius="9px"
-                        px={2.5}
-                        py={2}
-                        _hover={{ bg: "#f4f4f5" }}
-                        onClick={() => workspaceComposer.onSelectCloudHost?.()}
-                      >
-                        {(() => {
-                          const cloudMeta = getCloudHostStatusMeta(workspaceComposer.cloudHostStatus);
-                          return (
-                            <HStack justify="space-between" w="full" spacing={3}>
-                              <HStack spacing={2} minW={0}>
-                                <Cloud size={15} color="#18181b" />
-                                <Box
-                                  w="6px"
-                                  h="6px"
-                                  borderRadius="full"
-                                  bg={cloudMeta.dotColor}
-                                  flexShrink={0}
-                                />
-                                <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
-                                  云电脑（默认）
-                                </Text>
-                                <Text fontSize="11px" color="#71717a" flexShrink={0}>
-                                  {cloudMeta.label}
-                                </Text>
-                              </HStack>
-                              {workspaceComposer.runtimeKind !== "connector" && (
-                                <Check size={15} color="#18181b" />
-                              )}
-                            </HStack>
-                          );
-                        })()}
-                      </MenuItem>
-
-                      {(workspaceComposer.devices || []).map((device) => {
-                        const isSelected =
-                          workspaceComposer.runtimeKind === "connector" &&
-                          workspaceComposer.runtimeDeviceId === device.deviceId;
-                        return (
-                          <MenuItem
-                            key={device.deviceId}
-                            borderRadius="9px"
-                            px={2.5}
-                            py={2}
-                            _hover={{ bg: "#f4f4f5" }}
-                            onClick={() => workspaceComposer.onSelectDeviceHost?.(device)}
-                          >
-                            <HStack justify="space-between" w="full" spacing={3}>
-                              <HStack spacing={2} minW={0}>
-                                <Laptop size={15} color="#18181b" />
-                                <Box
-                                  w="6px"
-                                  h="6px"
-                                  borderRadius="full"
-                                  bg={device.online ? "#3b82f6" : "#a1a1aa"}
-                                  flexShrink={0}
-                                />
-                                <Text fontSize="13.5px" color="#18181b" fontWeight="400" noOfLines={1}>
-                                  {device.name}
-                                </Text>
-                              </HStack>
-                              {isSelected && <Check size={15} color="#18181b" />}
-                            </HStack>
+                  <Popover isOpen={Boolean(workspaceComposer.platformPanel)} placement="top-start" gutter={8}
+                    onClose={workspaceComposer.closePlatformPanel} returnFocusOnClose={false}>
+                    <PopoverAnchor><Box>
+                      <Menu onOpen={workspaceComposer.onOpenHostMenu} placement="top-start" gutter={8} isLazy>
+                        <MenuButton as={Button} size="xs" h="30px" px={2.5} maxW="150px" variant="ghost"
+                          borderRadius="full" fontSize="12.5px" fontWeight="500" color="#374151"
+                          _hover={{ bg: "#f4f4f5" }} aria-label={`执行位置：${workspaceComposer.runtimeLabel || "云电脑"}`}
+                          title={workspaceComposer.runtimeLabel || "云电脑"}
+                          leftIcon={workspaceComposer.runtimeKind === "connector" ? <Laptop size={14} /> : <Cloud size={14} />}
+                          rightIcon={<ChevronRight size={13} color="#9ca3af" />}>
+                          <Text as="span" isTruncated>{workspaceComposer.runtimeLabel || "云电脑"}</Text>
+                        </MenuButton>
+                        <Portal><MenuList w="min(344px, calc(100vw - 24px))" minW={0} maxH="65dvh" overflowY="auto"
+                          p={2} borderRadius="14px" border="1px solid #dfe5ef" boxShadow="0 10px 36px rgba(33,48,78,.13)">
+                          <Text px={3} py={2} fontSize="sm" fontWeight="600">执行位置</Text>
+                          <MenuItem px={3} py={3} gap={3} borderRadius="10px"
+                            bg={workspaceComposer.runtimeKind !== "connector" ? "blue.50" : "white"}
+                            onClick={workspaceComposer.onSelectCloudHost}>
+                            <Box p={2} color="blue.600" bg="blue.50" borderRadius="9px"><Cloud size={19} /></Box>
+                            <Box flex={1}><Text fontSize="sm">云端执行</Text>
+                              <Text mt={1} fontSize="xs" color="gray.600">使用平台提供的运行环境</Text></Box>
+                            {workspaceComposer.runtimeKind !== "connector" && <Check size={16} color="#3975ef" />}
                           </MenuItem>
-                        );
-                      })}
-
-                      <MenuDivider my={1} />
-                      <MenuItem
-                        borderRadius="9px"
-                        px={2.5}
-                        py={2}
-                        fontSize="13px"
-                        color="#52525b"
-                        _hover={{ bg: "#f4f4f5" }}
-                        icon={<Plus size={14} />}
-                        onClick={workspaceComposer.onOpenRuntime}
-                      >
-                        连接或管理其他主机...
-                      </MenuItem>
-                    </MenuList>
-                  </Menu>
+                          <Text px={3} pt={4} pb={2} fontSize="xs" color="gray.600">我的电脑</Text>
+                          {!workspaceComposer.devices?.length && <Text px={3} py={2} fontSize="sm" color="gray.500">暂无已连接的电脑</Text>}
+                          {workspaceComposer.devices?.map(device => (
+                            <MenuItem key={device.deviceId} isDisabled={!device.online} px={3} py={2.5}
+                              gap={3} borderRadius="10px" bg={device.online ? "green.50" : "gray.50"}
+                              onClick={() => workspaceComposer.onSelectDeviceHost?.(device)}>
+                              <Box p={2} borderRadius="9px" color={device.online ? "green.700" : "gray.500"}><Laptop size={18} /></Box>
+                              <Box minW={0} flex={1}><Text noOfLines={1} fontSize="sm">{device.name}</Text>
+                                <Text mt={1} fontSize="xs" color="gray.600">
+                                  {({darwin:"macOS",windows:"Windows",linux:"Linux"} as Record<string,string>)[device.platform || ""] || "本地电脑"} · {device.online ? "在线" : "离线"}
+                                </Text></Box>
+                              {workspaceComposer.runtimeKind === "connector" && workspaceComposer.runtimeDeviceId === device.deviceId && <Check size={16} />}
+                            </MenuItem>
+                          ))}
+                          <MenuDivider my={2} />
+                          <MenuItem px={3} borderRadius="8px" fontSize="sm" icon={<Settings2 size={15} />} onClick={workspaceComposer.onOpenRuntime}>我的设备</MenuItem>
+                          <Text px={3} pt={2} pb={1} fontSize="xs" color="gray.500">每台电脑首次连接时授权</Text>
+                        </MenuList></Portal>
+                      </Menu>
+                    </Box></PopoverAnchor>
+                    <Portal><PopoverContent p={3} w="min(360px, calc(100vw - 24px))" maxH="65dvh" overflowY="auto"
+                      borderRadius="14px" borderColor="#dfe5ef" boxShadow="0 10px 36px rgba(33,48,78,.13)">
+                      {workspaceComposer.platformPanel}
+                    </PopoverContent></Portal>
+                  </Popover>
                 )}
 
                 {workspaceComposer?.projects && workspaceComposer.projects.length > 0 && (

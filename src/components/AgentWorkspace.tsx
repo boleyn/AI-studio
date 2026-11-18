@@ -1,3 +1,4 @@
+import { deviceDisplayName } from "@/shared/localDevice/displayName";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserAccountMenu } from "./UserAccountMenu";
@@ -172,6 +173,7 @@ export default function AgentWorkspace({
   // 项目级执行环境配置（按项目 token 持久化，切换项目自动恢复）
   const [runtimeByProject, setRuntimeByProject] = useState<Record<string, ProjectRuntimeConfig>>({});
   const runtimeModal = useDisclosure();
+  const [composerPanel, setComposerPanel] = useState(false);
   const [runtimeTargetProject, setRuntimeTargetProject] = useState<{ token: string; name: string } | null>(null);
 
   const activeRuntime = useMemo(
@@ -257,7 +259,7 @@ export default function AgentWorkspace({
   }, [initialProjectToken, toast]);
 
   const [pairedDevices, setPairedDevices] = useState<
-    Array<{ deviceId: string; name: string; online: boolean }>
+    Array<{ deviceId: string; name: string; platform?: string; online: boolean }>
   >([]);
   const [cloudHostStatus, setCloudHostStatus] = useState<
     "allocating" | "ready" | "sleeping" | "stopped"
@@ -279,14 +281,15 @@ export default function AgentWorkspace({
   const fetchPairedDevices = useCallback(async () => {
     try {
       const data = await apiJson<{
-        devices?: Array<{ deviceId?: string; name?: string; online?: boolean }>;
+        devices?: Array<{ deviceId?: string; name?: string; remark?: string; platform?: string; online?: boolean }>;
       }>("/core/localDevice/manage");
       const list = Array.isArray(data?.devices)
         ? data.devices
             .filter((d) => typeof d?.deviceId === "string" && d.deviceId.trim())
             .map((d) => ({
               deviceId: String(d.deviceId),
-              name: (typeof d.name === "string" && d.name.trim()) || "我的电脑",
+              name: deviceDisplayName(d),
+              platform: d.platform,
               online: Boolean(d.online),
             }))
         : [];
@@ -727,17 +730,24 @@ export default function AgentWorkspace({
                   runtimeKind: activeRuntime.sandboxKind,
                   runtimeLabel:
                     activeRuntime.sandboxKind === "connector"
-                      ? activeRuntime.deviceName || "本地电脑"
+                      ? pairedDevices.find(d => d.deviceId === activeRuntime.deviceId)?.name || deviceDisplayName({ name: activeRuntime.deviceName })
                       : "云电脑",
                   runtimeDeviceId: activeRuntime.deviceId,
                   cloudHostStatus,
                   devices: pairedDevices,
+                  onOpenHostMenu: () => void fetchPairedDevices(),
                   onSelectCloudHost: () => {
                     handleSaveRuntimeConfig(activeProject.token, {
                       ...activeRuntime,
                       sandboxKind: "remote-vm",
                     });
                   },
+                  platformPanel: composerPanel && <WorkspaceRuntimeModal embedded isOpen
+                    projectName={activeProject.name} projectToken={activeProject.token} config={activeRuntime}
+                    onClose={() => { setComposerPanel(false); void fetchPairedDevices(); }}
+                    onSave={next => handleSaveRuntimeConfig(activeProject.token, next)}
+                    onTestConnector={handleTestConnector} cloudHostStatus={cloudHostStatus} />,
+                  closePlatformPanel: () => { setComposerPanel(false); void fetchPairedDevices(); },
                   onSelectDeviceHost: (device) => {
                     void (async () => {
                       if (activeRuntime.deviceId === device.deviceId && activeRuntime.grantId) {
@@ -750,44 +760,26 @@ export default function AgentWorkspace({
                         return;
                       }
                       try {
-                        const res = await apiJson<{
-                          grants?: Array<{
-                            grantId?: string;
-                            deviceId?: string;
-                            workdir?: string;
-                            revoked?: boolean;
-                          }>;
-                        }>("/core/localDevice/grant", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ action: "list", appId: activeProject.token }),
+                        const { grant } = await apiJson<{ grant: { grantId: string; workdir: string } }>(
+                          "/core/localDevice/grant", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "request", appId: activeProject.token, deviceId: device.deviceId }),
+                          },
+                        );
+                        handleSaveRuntimeConfig(activeProject.token, {
+                          ...activeRuntime, sandboxKind: "connector", deviceId: device.deviceId,
+                          deviceName: device.name, grantId: grant.grantId, workdir: grant.workdir,
                         });
-                        const activeGrant = Array.isArray(res?.grants)
-                          ? res.grants.find(
-                              (g) => !g.revoked && g.grantId && g.deviceId === device.deviceId,
-                            )
-                          : undefined;
-                        if (activeGrant?.grantId) {
-                          handleSaveRuntimeConfig(activeProject.token, {
-                            ...activeRuntime,
-                            sandboxKind: "connector",
-                            deviceId: device.deviceId,
-                            deviceName: device.name,
-                            grantId: activeGrant.grantId,
-                            workdir: activeGrant.workdir || activeRuntime.workdir,
-                          });
-                          return;
-                        }
+                        return;
                       } catch {
-                        // fall through to modal
+                        toast({ title: "无法使用这台电脑，请检查连接器中的账号授权", status: "warning" });
                       }
-                      setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                      runtimeModal.onOpen();
+                      setComposerPanel(true);
                     })();
                   },
                   onOpenRuntime: () => {
-                    setRuntimeTargetProject({ token: activeProject.token, name: activeProject.name });
-                    runtimeModal.onOpen();
+                    setComposerPanel(true);
                   },
                   projectToken: activeProject.token,
                   projectName: activeProject.name,
@@ -1401,7 +1393,7 @@ export default function AgentWorkspace({
       {runtimeTargetProject && (
         <WorkspaceRuntimeModal
           isOpen={runtimeModal.isOpen}
-          onClose={runtimeModal.onClose}
+          onClose={() => { runtimeModal.onClose(); void fetchPairedDevices(); }}
           projectName={runtimeTargetProject.name}
           projectToken={runtimeTargetProject.token}
           config={

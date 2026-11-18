@@ -113,9 +113,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const grantId = randomUUID();
   const chatId = body.chatId || `project_${project.token}`;
+  const sourceTarget = `project:${project.token}`;
   try {
+    const grants = await listGrantsForScope({ userId, appId: project.token, deviceId: device.deviceId });
+    const existing = grants.find(g =>
+      g.chatId === chatId && g.sourceTarget === sourceTarget && g.locallyApproved &&
+      g.capabilities.includes("exec") && (!g.expiresAt || g.expiresAt > Date.now()) &&
+      (!body.initialWorkdir || g.workdir === body.initialWorkdir)
+    );
+    if (existing) {
+      const grant = await gateway.controlGrant({
+        action: "grant_renew",
+        leaseExpiresAt: Math.min(Date.now() + 50_000, existing.expiresAt || Infinity),
+        grant: {
+          teamId: existing.teamId, memberId: existing.memberId, deviceId: existing.deviceId,
+          appId: existing.appId, chatId, sourceTarget, grantId: existing.grantId,
+          version: existing.version, expiresAt: existing.expiresAt, workdir: existing.workdir,
+          revoked: false,
+        },
+      });
+      res.status(200).json({ grant, delivered: true });
+      return;
+    }
+
     const approved = await gateway.controlGrant({
       action: "grant_request",
       grant: {
@@ -124,8 +145,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         deviceId: device.deviceId,
         appId: project.token,
         chatId,
-        sourceTarget: `project:${project.token}`,
-        grantId,
+        sourceTarget,
+        grantId: randomUUID(),
         version: 1,
         expiresAt: 0,
         workdir: body.initialWorkdir || "",
