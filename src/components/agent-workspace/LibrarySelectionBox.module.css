@@ -6,7 +6,7 @@
   inset-inline-end: 12px;
 }
 
-.control, .cardControl {
+.control, .cardControl, .indicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -22,10 +22,12 @@
 }
 
 .control[aria-checked="true"], .control[aria-checked="mixed"],
-.cardControl[aria-checked="true"] { background: white; }
+.cardControl[aria-checked="true"], .indicator[data-checked="true"] { background: white; }
 .control:focus-visible, .cardControl:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 @media (hover: hover) and (min-width: 768px) {
   tr:not(:hover):not(:focus-within) .control[aria-checked="false"] { opacity: 0; }
   table:has(.control[aria-checked="true"]) tr .control { opacity: 1; }
 }
+
+.indicator { flex-shrink: 0; }

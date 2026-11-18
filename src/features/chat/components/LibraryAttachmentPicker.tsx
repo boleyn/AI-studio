@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
-import { CircleAlert, Check, Search } from "lucide-react";
+import { CircleAlert, Search } from "lucide-react";
+import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { addLibraryAttachments } from "../services/libraryAttachment";
@@ -79,12 +80,12 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
+          <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated>{item.name}</Text>
             <Text color="#707070" fontSize="xs" isTruncated>{item.project || item.kind}</Text>
             {fileErrors.has(item.id) && <Text role="alert" color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box>
-          <Flex boxSize="16px" flexShrink={0} align="center" justify="center" borderRadius="4px" border="1px solid" borderColor={checked?"#222":"#ccc"} bg={checked?"#222":"white"}>
-            {checked && <Check size={12} color="white" aria-hidden/>}</Flex>
+
         </Flex>;
       })}
     </ModalBody><ModalFooter px={5} py={3} mt={2} borderTop="1px solid #eee" gap={2}><Button size="sm" variant="ghost" borderRadius="full" isDisabled={busy} onClick={onClose}>取消</Button>
