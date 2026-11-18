@@ -25,7 +25,7 @@ import type { FileChatSizing } from "./FileChatDivider";
 import LibrarySidebar from "./LibrarySidebar";
 
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
-const isNative = (file:LibraryFile) => file.kind === "页面" || isContainer(file);
+const isNative = (file:LibraryFile) => !file.shareId && (file.kind === "页面" || isContainer(file));
 function renameSuffix(file?: LibraryFile) {
   if (!file || file.siteId || isNative(file)) return "";
   const dot = file.name.lastIndexOf(".");
@@ -153,6 +153,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   function openItem(file:LibraryFile) {
     recordOpen(file);
+    if (file.kind === "资料空间" && file.shareId) {
+      void router.push("/share/space/"+file.shareId);
+      return;
+    }
     if (file.siteId) {
       void router.push("/share/preview/"+encodeURIComponent(file.siteId));
       return;
@@ -197,6 +201,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   function itemLink(file: LibraryFile) {
     if (file.deleted) return <span>{file.name}</span>;
+    if (file.kind === "资料空间" && file.shareId) return <Link href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
     if (file.siteId) return <Link href={"/share/preview/"+encodeURIComponent(file.siteId)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
@@ -257,7 +262,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       .catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, [attempt]);
-  const destinations = files?.filter(item => isContainer(item) && !item.deleted) || [];
+  const destinations = files?.filter(item => isContainer(item) && !item.shareId && !item.deleted) || [];
   function folderPath(id?:string) {
     const path: LibraryFile[] = [];
     let current = destinations.find(item => item.id === id);

@@ -73,7 +73,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
       <Flex mt={5} align="center" justify="space-between"><Button size="sm" variant="ghost" color="gray.500" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
         <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
       {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={section === item.name ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" w="full" justifyContent="start"
-        leftIcon={<Layers size={15}/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{spaceActions(item)}</Flex>)}
+        leftIcon={<Layers size={15}/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{!item.shareId && spaceActions(item)}</Flex>)}
     </Box>
     <Button variant="ghost" justifyContent="start" size="sm" leftIcon={<Trash2 size={16}/>} onClick={() => onSection("回收站")}>回收站</Button>
   </Flex>;

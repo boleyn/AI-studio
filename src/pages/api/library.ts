@@ -100,6 +100,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:auth.user.displayName || auth.user.username} : {}),
       permission:"所有者",reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
+  const spaces = db.collection("library_pages").find({kind:"资料空间","members.userId":owner,deleted:{$ne:true},purging:{$ne:true}},
+    {projection:{name:1,time:1,sharedBy:1}});
+  for await (const space of spaces) {
+    const shareId = space._id.toHexString();
+    const id = createHash("sha256").update(JSON.stringify(["shared-space",shareId])).digest("hex");
+    rows.set(id,{id,shareId,kind:"资料空间",name:space.name,path:"",token:"",project:space.sharedBy || "",chatId:"",conversation:"",
+      time:space.time || "",permission:"可查看"});
+  }
   const received = await listReceivedArtifactShares(owner);
   const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
   const sharedPages = new Map((sharedPageIds.length ? await db.collection("library_pages").find(

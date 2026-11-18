@@ -10,7 +10,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   res.setHeader("Cache-Control","private, no-store");
   const id = req.query.id;
   if (typeof id !== "string" || !/^[a-f0-9]{24}$/.test(id)) return res.status(404).end();
-  const pages = (await getMongoDb()).collection<{owner:string;name:string;kind?:string|null;body?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
+  const pages = (await getMongoDb()).collection<{owner:string;name:string;kind?:string|null;sharedBy?:string;body?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
   const userId = String(auth.user._id);
   const active = {deleted:{$ne:true},purging:{$ne:true}};
   const filter = {...active,_id:new ObjectId(id),kind:"资料空间"};
@@ -26,7 +26,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     const member = {username:user.username,userId:String(user._id)};
     const updateFilter = {...filter,owner:userId};
     if (req.body.remove === true) await pages.updateOne(updateFilter,{$pull:{members:member}});
-    else await pages.updateOne(updateFilter,{$addToSet:{members:member}});
+    else await pages.updateOne(updateFilter,{$addToSet:{members:member},$set:{sharedBy:auth.user.displayName || auth.user.username}});
     const updated = await pages.findOne(updateFilter,{projection:{members:1}});
     return res.json({members:updated?.members || []});
   }
