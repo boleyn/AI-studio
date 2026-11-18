@@ -418,10 +418,22 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
       downloadUrl:block.download_url,previewUrl:block.preview_url}];
   }) : [];
   if (!Array.isArray(files) || !files.length) return attachments;
-  return files.filter((file):file is MessageFile => Boolean(file && typeof file === "object")).map(file => {
-    const block = attachments.find(item => item.name === file.name);
-    return block?.storagePath?.startsWith("chat_uploads/") ? {...file,storagePath:block.storagePath} : file;
+  const remaining = [...attachments];
+  const merged = files.filter((file):file is MessageFile => Boolean(file && typeof file === "object")).map(file => {
+    const path = file.storagePath?.replace(/^\/+/, "");
+    const index = path?.startsWith("chat_uploads/")
+      ? remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path)
+      : remaining.findIndex(item => item.name === file.name);
+    if (index < 0) return file;
+    const [block] = remaining.splice(index, 1);
+    return {
+      ...file,
+      storagePath: path?.startsWith("chat_uploads/") ? path : block.storagePath || file.storagePath,
+      previewUrl: file.previewUrl || block.previewUrl,
+      downloadUrl: file.downloadUrl || block.downloadUrl,
+    };
   });
+  return [...merged, ...remaining.filter(item => !merged.some(file => file.name === item.name && !item.storagePath?.replace(/^\/+/, "").startsWith("chat_uploads/")))];
 };
 
 export const isImageFile = (file: MessageFile) => {
