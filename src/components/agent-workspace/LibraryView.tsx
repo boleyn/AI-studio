@@ -481,14 +481,18 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             "@container (min-width:80rem)":{columnCount:6}
           }}>
             {visible.map(file => <Box key={key(file)} position="relative" mb={4} sx={{breakInside:"avoid",
-              "& [role=checkbox]":{background:"white"},
-              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions, &:not(:hover):not(:focus-within) [role=checkbox][aria-checked=false]":{opacity:0}}
+              "& [role=checkbox]":{background:"white",insetBlockStart:"auto",insetBlockEnd:"19px",insetInlineEnd:"19px",
+                width:"20px",height:"20px",borderRadius:"4px",boxShadow:"0 1px 4px #0003"},
+              "& [role=checkbox][aria-checked=true]":{background:"#171717",color:"white",borderColor:"transparent"},
+              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions:not(:has([aria-expanded=true])), &:not(:hover):not(:focus-within) [role=checkbox][aria-checked=false]":{opacity:0}}
             }}>
               <Box as="button" display="block" w="full" overflow="hidden" borderRadius="16px" borderWidth="1px"
                 onClick={() => openItem(file)} aria-label={file.name}>
                 <Box as="img" src={libraryAttachmentUrl(file)} alt="" loading="lazy" w="full" h="auto"/>
               </Box>
-              <Box className="image-actions" position="absolute" top={2} left={2} bg="white" borderRadius="full">{actions(file)}</Box>
+              <Box className="image-actions" position="absolute" top="13px" insetInlineEnd="13px"
+                sx={{"& > button":{width:"36px",height:"36px",borderRadius:"full",color:"white",background:"rgba(0,0,0,.28)",backdropFilter:"blur(8px)"},
+                  "& > button:hover, & > button[aria-expanded=true]":{background:"rgba(0,0,0,.42)"}}}>{actions(file)}</Box>
               <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Box>)}
           </Box>
