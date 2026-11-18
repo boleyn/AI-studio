@@ -5,7 +5,7 @@ import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputR
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
+import { ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -62,6 +62,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const [creating,setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [referenceDraft,setReferenceDraft] = useState<{file?:File; type?:ImageReference["type"]; name:string}>();
+  const referenceFile = referenceDraft?.file;
+  const [referencePreview,setReferencePreview] = useState("");
+  useEffect(() => {
+    if (!referenceFile) {setReferencePreview(""); return;}
+    const url = URL.createObjectURL(referenceFile);
+    setReferencePreview(url);
+    return () => URL.revokeObjectURL(url);
+  },[referenceFile]);
   const [confirmDiscard,setConfirmDiscard] = useState(false);
   function closeReference() {
     if (creating) return;
@@ -404,7 +412,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : "资料库分区"}>
+        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" px="18px" borderRadius="full" variant={tab === name ? "solid" : "ghost"}
@@ -440,7 +448,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       </Box>
       {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
         <Heading as="h2" fontSize="md" mb={2}>参考照片</Heading>
-        <Flex gap={2} overflowX="auto"><Button onClick={() => setReferenceDraft({name:""})}>添加引用</Button>
+        <Flex gap={2} overflowX="auto"><Button aria-label="添加引用" size="sm" h="36px" px={4} borderRadius="full" variant="outline" leftIcon={<Plus size={16}/>} onClick={() => setReferenceDraft({name:""})}>添加</Button>
           {files?.filter(item => item.reference && !item.deleted).map(item =>
             <Button key={item.id} variant="ghost" onClick={() => openItem(item)}>
               <Box as="img" src={libraryAttachmentUrl(item)} alt="" boxSize="32px" objectFit="cover" mr={2} borderRadius="md"/>
@@ -515,12 +523,14 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>上传参考图</ModalHeader><ModalCloseButton aria-label="关闭对话框"/>
         <ModalBody><Text mb={4}>今后生成图像时可以将这张照片用作参考。请仅保存你拥有或有权限使用的照片。</Text>
           <input ref={referenceInput} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.avif,.gif" onChange={event => setReferenceDraft({...referenceDraft,file:event.target.files?.[0]})}/>
-          <Button w="full" onClick={() => referenceInput.current?.click()}>{referenceDraft.file?.name || "上传图像"}</Button>
-          <Flex role="group" aria-label="参考类型" mt={4} gap={1}>{referenceTypes.map(type =>
-            <Button key={type} size="sm" variant={referenceDraft.type === type ? "solid" : "ghost"} aria-pressed={referenceDraft.type === type}
+          <Flex justify="center"><IconButton aria-label="上传图像" boxSize="120px" p={0} borderRadius="full" overflow="hidden"
+            icon={referencePreview ? <Box as="img" src={referencePreview} alt="" boxSize="full" objectFit="cover"/> : <ArrowUp size={20}/>}
+            onClick={() => referenceInput.current?.click()}/></Flex>
+          <Flex role="group" aria-label="参考类型" mt={4} gap={1} justify="center" wrap="wrap">{referenceTypes.map(type =>
+            <Button key={type} size="sm" borderRadius="full" variant={referenceDraft.type === type ? "solid" : "ghost"} aria-pressed={referenceDraft.type === type}
               onClick={() => setReferenceDraft({...referenceDraft,type})}>{type}</Button>)}</Flex>
-          {referenceDraft.type && referenceDraft.type !== "我" && <Input mt={3} aria-label="名字" placeholder="名字" maxLength={120} value={referenceDraft.name}
-            onChange={event => setReferenceDraft({...referenceDraft,name:event.target.value})}/>}
+          {referenceDraft.type && referenceDraft.type !== "我" && <Box mt={3}><FormLabel htmlFor="reference-name">名字</FormLabel><Input autoFocus id="reference-name" maxLength={120} value={referenceDraft.name}
+            onChange={event => setReferenceDraft({...referenceDraft,name:event.target.value})}/></Box>}
         </ModalBody><ModalFooter gap={2}><Button isDisabled={creating} onClick={closeReference}>取消</Button>
           <Button isLoading={creating} isDisabled={!referenceDraft.file || !referenceDraft.type} onClick={() => {
             if (referenceDraft.file && referenceDraft.type) void uploadFiles([referenceDraft.file], false, {type:referenceDraft.type,name:referenceDraft.name});
