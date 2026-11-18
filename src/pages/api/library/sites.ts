@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
-import { listLibrarySites } from "@server/library/sites";
+import { getMongoDb } from "@server/db/mongo";
+import { listLibrarySites, siteLibraryId } from "@server/library/sites";
 import { listProjectOverviewItems } from "@server/projects/projectStorage";
 
 import { countRecentSiteVisitors } from "@server/shares/siteVisits";
@@ -18,6 +19,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const projects = await listProjectOverviewItems(owner);
   const names = new Map(projects.map(project => [project.token, project.name]));
   const sites = await listLibrarySites(owner,names);
-  const counts = await countRecentSiteVisitors(sites.filter(site=>!site.shared).map(site=>site.token));
-  return res.json(sites.map(site=>({id:site.id,name:site.name,shared:site.shared,...(site.shared ? {} : {visitors:counts.get(site.token) || 0})})));
+  const settings = (await getMongoDb()).collection<{_id:string;owner:string;name?:string;deleted?:boolean;purged?:boolean}>("library_file_settings");
+  const key = (token:string) => owner + "/" + siteLibraryId(token);
+  const entries = await settings.find({owner,_id:{$in:sites.map(site=>key(site.token))}}).toArray();
+  const preferences = new Map(entries.map(entry=>[entry._id,entry]));
+  const visible = sites.flatMap(site=>{
+    const entry = preferences.get(key(site.token));
+    if (entry?.deleted || entry?.purged) return [];
+    return [{...site,name:entry?.name || site.name}];
+  });
+  const counts = await countRecentSiteVisitors(visible.filter(site=>!site.shared).map(site=>site.token));
+  return res.json(visible.map(site=>({id:site.id,name:site.name,shared:site.shared,...(site.shared ? {} : {visitors:counts.get(site.token) || 0})})));
 }

@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto";
 import { getMongoDb } from "@server/db/mongo";
+
+export function siteLibraryId(projectToken:string) {
+  return createHash("sha256").update(JSON.stringify(["site",projectToken])).digest("hex");
+}
 
 export async function listLibrarySites(owner:string, names:Map<string,string>) {
   const links = await (await getMongoDb()).collection("share_links").aggregate([

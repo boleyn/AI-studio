@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { listReceivedArtifactShares } from "@server/shares/artifactShareStorage";
-import { listLibrarySites } from "@server/library/sites";
+import { listLibrarySites, siteLibraryId } from "@server/library/sites";
 import { purgeLibraryItem } from "@server/library/trash";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
@@ -114,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   for (const site of await listLibrarySites(owner,names)) {
-    const id = createHash("sha256").update(JSON.stringify(["site",site.token])).digest("hex");
+    const id = siteLibraryId(site.token);
     rows.set(id,{id,siteId:site.id,kind:"站点",name:site.name,path:"",token:"",project:"",chatId:"",conversation:"",
       ...(site.shared ? {shareId:site.id} : {}),time:site.time ? new Date(site.time).toISOString() : ""});
   }
