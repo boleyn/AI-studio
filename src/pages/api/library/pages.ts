@@ -26,19 +26,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (typeof req.query.id !== "string" || !/^[0-9a-f]{24}$/.test(req.query.id)) return res.status(400).end();
   const filter = { owner, purging:{$ne:true}, _id:new ObjectId(req.query.id) };
   if (req.method === "GET") {
-    const page = await pages.findOne(filter,{projection:{body:1,name:1}});
+    const page = await pages.findOne(filter,{projection:{body:1,name:1,revision:1}});
     return page ? res.json(page) : res.status(404).end();
   }
   if (req.method === "PATCH") {
-    const patch = fields.partial().extend({folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(),favorite:z.boolean().optional(),deleted:z.boolean().optional()}).strict().safeParse(req.body);
+    const patch = fields.partial().extend({expectedRevision:z.number().int().nonnegative().optional(),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional(),favorite:z.boolean().optional(),deleted:z.boolean().optional()}).strict().safeParse(req.body);
     if (!patch.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (patch.data.folderId) {
       if (!await pages.findOne({ ...filter,kind:{$nin:["文件夹","资料空间"]} })) return res.status(400).end();
       if (!await pages.findOne({owner,_id:new ObjectId(patch.data.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
     }
-    const result = await pages.updateOne(filter,{$set:{...patch.data,time,...(patch.data.deleted === undefined ? {} : {deletedAt:patch.data.deleted ? time : null})}});
-    return result.matchedCount ? res.json({time}) : res.status(404).end();
+    const {expectedRevision,...changes} = patch.data;
+    const versionFilter = expectedRevision === undefined ? {} :
+      expectedRevision === 0 ? {$or:[{revision:0},{revision:{$exists:false}}]} : {revision:expectedRevision};
+    const editsContent = changes.name !== undefined || changes.body !== undefined;
+    const saved = await pages.findOneAndUpdate({...filter,...versionFilter},{
+      $set:{...changes,time,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? time : null})},
+      ...(editsContent ? {$inc:{revision:1}} : {}),
+    },{returnDocument:"after",projection:{revision:1}});
+    if (saved) return res.json({time,revision:saved.revision || 0});
+    if (expectedRevision !== undefined) {
+      const latest = await pages.findOne(filter,{projection:{name:1,body:1,revision:1}});
+      if (latest) return res.status(409).json(latest);
+    }
+    return res.status(404).end();
   }
   return res.setHeader("Allow","GET, POST, PATCH").status(405).end();
 }
