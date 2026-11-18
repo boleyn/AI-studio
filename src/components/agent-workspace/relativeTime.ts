@@ -1,8 +1,8 @@
-export function formatRelativeTime(isoString?: string): string {
+export function formatRelativeTime(isoString?: string, now = Date.now()): string {
   if (!isoString) return "";
   const time = new Date(isoString).getTime();
   if (Number.isNaN(time)) return "";
-  const diffSec = Math.max(0, Math.floor((Date.now() - time) / 1000));
+  const diffSec = Math.max(0, Math.floor((now - time) / 1000));
   if (diffSec < 60) return "刚刚";
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin} 分钟前`;

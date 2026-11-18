@@ -238,6 +238,21 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const sources = fileSources.filter(source => [router.query.librarySource].flat().includes(source));
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
+  const [listTime, setListTime] = useState(Date.now);
+  const showRelativeTimes = !grid && !opened && !imageSection && section !== "回收站";
+  useEffect(() => {
+    if (!showRelativeTimes) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") setListTime(Date.now());
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [showRelativeTimes]);
   function updateListOptions(nextTypes: string[], nextGrid: boolean, nextSources = sources) {
     const query = {...router.query};
     if (nextTypes.length) query.libraryType = nextTypes;
@@ -654,9 +669,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
-            {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time) || "—"}</time></td>
+            {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
-            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file)) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
+            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving}
