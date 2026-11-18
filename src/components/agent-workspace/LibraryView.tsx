@@ -454,14 +454,17 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
     return <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>{rail ? "＋  创建" : folder ? "新建 ﹀" : "创建 ﹀"}</MenuButton>
-            <MenuList sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",paddingBlock:0},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{!folderMenu && <MenuItem icon={<LayoutGrid size={18} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
-              <MenuItem icon={<FileText size={18} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>
-              {!folderMenu && <><MenuItem icon={<Presentation size={18} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>
-              <MenuItem icon={<Sheet size={18} aria-hidden/>} isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
-              <MenuItem icon={<PanelsTopLeft size={18} aria-hidden/>} onClick={() => startCreativeChat("站点")}>站台</MenuItem>
-              <MenuItem icon={<ImageIcon size={18} aria-hidden/>} onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
-              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={18} aria-hidden/> : <Layers size={18} aria-hidden/>} key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
-              <MenuItem icon={<Upload size={18} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={18} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
+            <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
+              {!folderMenu && <MenuDivider my="8px"/>}
+              <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>
+              {!folderMenu && <><MenuItem icon={<Presentation size={20} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>
+              <MenuItem icon={<Sheet size={20} aria-hidden/>} isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>
+              <MenuItem icon={<PanelsTopLeft size={20} aria-hidden/>} onClick={() => startCreativeChat("站点")}>站台</MenuItem>
+              <MenuItem icon={<ImageIcon size={20} aria-hidden/>} onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
+              {!folderMenu && <MenuDivider my="8px"/>}
+              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={20} aria-hidden/> : <Layers size={20} aria-hidden/>} key={kind} onClick={() => {setTitle("");setNewKind(kind);}}>{kind}</MenuItem>)}
+              {!folderMenu && <MenuDivider my="8px"/>}
+              <MenuItem icon={<Upload size={20} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={20} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</MenuList>
           </Menu>;
   };
   return <Flex flex="1" minW={0} minH={0}>
