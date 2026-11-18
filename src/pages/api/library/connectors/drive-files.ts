@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createDecipheriv } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
+import { sendDriveAttachment } from "@server/library/driveAttachment";
 import { getMongoDb } from "@server/db/mongo";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -26,6 +27,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })});
     const data = await tokenResponse.json();
     if (!tokenResponse.ok || typeof data.access_token !== "string") return res.status(502).json({error:"Google Drive 授权不可用，请重新连接"});
+    if (req.query.file !== undefined) {
+      if (typeof req.query.file !== "string" || !/^[\w-]{1,256}$/.test(req.query.file)) return res.status(400).end();
+      return await sendDriveAttachment(req.query.file,data.access_token,res);
+    }
     const params = new URLSearchParams({q:"trashed = false and '" + folder + "' in parents", pageSize:"100", orderBy:"folder,name_natural",
       supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"nextPageToken,files(id,name,mimeType,webViewLink)"});
     if (typeof req.query.page === "string") params.set("pageToken",req.query.page);
