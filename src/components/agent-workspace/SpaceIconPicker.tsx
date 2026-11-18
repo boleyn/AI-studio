@@ -13,16 +13,27 @@ export function SpaceIcon({appearance,size=20}:{appearance?:SpaceAppearance;size
 
 export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;onChange:(value:SpaceAppearance)=>void}) {
   const [query,setQuery] = useState("");
+  const [focused,setFocused] = useState("");
   const search = useRef<HTMLInputElement>(null);
   const options = Object.entries(icons).filter(([name])=>name.includes(query.trim()));
-  return <Popover placement="bottom-start" initialFocusRef={search} onOpen={()=>setQuery("")}>
+  const tabStop = options.some(([name])=>name===focused) ? focused : options[0]?.[0];
+  return <Popover placement="bottom-start" initialFocusRef={search} onOpen={()=>{setQuery("");setFocused(value.icon);}}>
     <PopoverTrigger><IconButton aria-label="更换图标" variant="ghost" icon={<SpaceIcon appearance={value} size={26}/>}/></PopoverTrigger>
       <PopoverContent w="min(320px,85vw)"><PopoverBody>
         <Input ref={search} type="search" size="sm" aria-label="搜索图标" placeholder="搜索图标" value={query} onChange={e=>setQuery(e.target.value)}/>
         <Flex role="group" aria-label="图标颜色" gap={1} my={2}>{Object.entries(colors).map(([name,color])=>
           <Button key={name} aria-label={"使用"+name} aria-pressed={value.color===name} variant="ghost" size="xs" onClick={()=>onChange({...value,color:name})}><Box boxSize="14px" bg={color} borderRadius="full" outline={value.color===name?"1px solid":undefined} outlineOffset="2px"/></Button>)}</Flex>
         <Text role="status" fontSize="xs">{options.length} 个图标</Text>
-        <Box display="grid" gridTemplateColumns="repeat(8,1fr)" mt={1}>{options.map(([name,Icon])=><IconButton key={name} size="sm" variant="ghost" aria-label={name} aria-pressed={value.icon===name} bg={value.icon===name ? "#efefef" : undefined} title={name} icon={<Icon size={18} color={colors[value.color as keyof typeof colors]}/>} onClick={()=>onChange({...value,icon:name})}/>)}</Box>
+        <Box role="group" aria-label="图标" display="grid" gridTemplateColumns="repeat(8,1fr)" mt={1} onKeyDown={event=>{
+          const offsets:Record<string,number> = {ArrowLeft:-1,ArrowRight:1,ArrowUp:-8,ArrowDown:8};
+          const offset = offsets[event.key];
+          if (!offset) return;
+          const buttons = Array.from(event.currentTarget.querySelectorAll("button"));
+          const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          if (index < 0) return;
+          event.preventDefault();
+          buttons[Math.max(0,Math.min(buttons.length-1,index+offset))].focus();
+        }}>{options.map(([name,Icon])=><IconButton key={name} tabIndex={tabStop===name ? 0 : -1} onFocus={()=>setFocused(name)} size="sm" variant="ghost" aria-label={name} aria-pressed={value.icon===name} bg={value.icon===name ? "#efefef" : undefined} title={name} icon={<Icon size={18} color={colors[value.color as keyof typeof colors]}/>} onClick={()=>onChange({...value,icon:name})}/>)}</Box>
       </PopoverBody></PopoverContent>
   </Popover>;
 }
