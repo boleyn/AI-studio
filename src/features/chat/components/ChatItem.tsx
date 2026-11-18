@@ -108,8 +108,12 @@ const ChatItem = ({
   const [previewError,setPreviewError] = React.useState("");
   React.useEffect(() => {
     if (!preview) return;
-    const controller = new AbortController();
     setPreviewText(undefined);
+    if (!preview.url) {
+      setPreviewError("这条历史消息缺少附件地址，请从资料空间重新添加文件。");
+      return;
+    }
+    const controller = new AbortController();
     setPreviewError("");
     void (async () => {
       const url = new URL(preview.url,window.location.href);
@@ -244,7 +248,7 @@ const ChatItem = ({
             {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
-              <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>
+              {preview?.url && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setPreview({...preview})}>重新加载</Button>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
               <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown>}
@@ -285,7 +289,7 @@ const ChatItem = ({
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
-                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || "";
+                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || "";
                   const isMarkdown = /\.(md|markdown)$/i.test(file.name || "");
                   return (
                     <Box
@@ -304,11 +308,10 @@ const ChatItem = ({
                         <Flex
                           alignItems="center"
                           as="button" type="button" aria-label={`打开 ${file.name || "附件"}`}
-                          cursor={fileUrl ? "pointer" : "default"}
+                          cursor={fileUrl || isMarkdown ? "pointer" : "default"}
                           onClick={() => {
-                            if (!fileUrl) return;
                             if (isMarkdown) setPreview({name:file.name || "Markdown",url:fileUrl});
-                            else window.open(fileUrl,"_blank","noopener,noreferrer");
+                            else if (fileUrl) window.open(fileUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
                           w="100%"

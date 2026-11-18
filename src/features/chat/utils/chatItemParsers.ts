@@ -10,6 +10,7 @@ export interface MessageFile {
   size?: number;
   type?: string;
   storagePath?: string;
+  publicUrl?: string;
   previewUrl?: string;
   downloadUrl?: string;
   parse?: {
