@@ -98,7 +98,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
     else close();
   }}>
     <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
-      <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
+      <Menu><MenuButton as={Button} size="sm" variant="ghost" minW={0} maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
         <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
         <MenuList>
           <MenuItem icon={<Library size={16}/>} onClick={openLibrary}>资料空间</MenuItem>
@@ -114,7 +114,13 @@ function FilePreview({item,versions,openVersion,download,share,fileChatOpen,resu
           <MenuItem onClick={()=>setScale(undefined)}>适应窗口</MenuItem>
           {[50,75,100,125,150,200].map(percent=><MenuItem key={percent} onClick={()=>setScale(percent/100)}>{percent}%</MenuItem>)}
         </MenuList>
-      </Menu>}{download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}<IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
+      </Menu>}
+      <Flex role="group" aria-label="文件操作" align="center" gap={1} flexShrink={0}>
+        {download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}
+      </Flex>
+      <Flex role="group" aria-label="查看器控件" align="center" flexShrink={0}>
+        <IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
+      </Flex>
     </Flex>
     <Flex flex="1" minH={0} position="relative">
     <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
