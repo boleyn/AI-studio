@@ -8,6 +8,13 @@ import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { addLibraryAttachments } from "../services/libraryAttachment";
 
+function sourceLabel(item:LibraryFile) {
+  if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
+  if (item.conversation) return "来自会话「" + item.conversation + "」";
+  if (item.directUpload) return "上传到资料空间";
+  return item.kind === "生成" ? "会话生成的文件" : item.kind;
+}
+
 export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const searchRef = useRef<HTMLInputElement>(null);
   const [driveAvailable,setDriveAvailable] = useState(false);
@@ -38,7 +45,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     }).catch(() => {if (!controller.signal.aborted) setError("无法加载资料空间");});
     return () => controller.abort();
   },[attempt]);
-  const visible = items?.filter(item => [item.name,item.project,item.conversation].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const visible = items?.filter(item => [item.name,item.project,sourceLabel(item)].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   async function add() {
     if (busy || !items) return;
     setBusy(true);
@@ -76,13 +83,13 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       {visible?.length===0 && <Text color="gray.500" p={3}>没有符合条件的文件或页面</Text>}
       {visible?.map(item=>{
         const checked=selected.includes(item.id);
-        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-checked={checked} disabled={busy}
+        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={"library-source-"+item.id} aria-checked={checked} disabled={busy}
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
           <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated>{item.name}</Text>
-            <Text color="#707070" fontSize="xs" isTruncated>{item.project || item.kind}</Text>
+            <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={sourceLabel(item)}>{sourceLabel(item)}</Text>
             {fileErrors.has(item.id) && <Text role="alert" color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box>
 
