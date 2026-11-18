@@ -394,6 +394,11 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
               }}
               onClick={() => {setSelected([]);navigateList(section, name);}}>{name}</Button>)}
         </Flex>
+        {!imageSection && !sitesSection && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
+          {[...types,...sources].map(filter => <Button key={filter} size="sm" borderRadius="full" variant="outline"
+            aria-label={`移除${filter}筛选条件`} rightIcon={<X size={14}/>}
+            onClick={()=>updateListOptions(types.filter(type=>type!==filter),grid,sources.filter(source=>source!==filter))}>{filter}</Button>)}
+        </Flex>}
         {!imageSection && <>{!sitesSection && <Menu closeOnSelect={false}>
           <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" variant={filterCount ? "solid" : "ghost"} />
           <MenuList><MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
