@@ -51,7 +51,8 @@ function TemplateActions({label, onUse}: {label:string; onUse:()=>void}) {
 </Menu>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
+export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload }: {
+  onUpload: () => void;
   onWorkbook: (file: File) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
@@ -97,6 +98,13 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook }: {
           value={query} onChange={event => setQuery(event.target.value)} />}
         <IconButton size="sm" variant="ghost" aria-label="搜索" aria-expanded={searching} icon={<Search size={18} />}
           onClick={() => { setSearching(!searching); setQuery(""); }} />
+        <Menu>
+          <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
+          <MenuList>
+            <MenuItem onClick={() => onPick("无标题页", "")}>Page</MenuItem>
+            <MenuItem onClick={onUpload}>上传文件</MenuItem>
+          </MenuList>
+        </Menu>
       </Flex>
       <ModalBody>
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
