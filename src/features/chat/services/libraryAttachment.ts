@@ -1,3 +1,4 @@
+import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
@@ -23,15 +24,15 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   if (!response.ok) throw new Error("读取失败：" + item.name);
   if (item.kind === "页面") {
     const page = await response.json();
-    return new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"});
+    return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"}),item.id);
   }
   const blob = await response.blob();
-  if (item.sharedPage) return new File([blob],item.path,{type:"text/markdown"});
+  if (item.sharedPage) return fromLibrary(new File([blob],item.path,{type:"text/markdown"}),item.id);
   const extension = item.name.split(".").pop()?.toLowerCase() ?? "";
   const type = !blob.type || blob.type === "application/octet-stream"
     ? imageTypes[extension] ?? blob.type
     : blob.type;
-  return new File([blob],item.name,{type});
+  return fromLibrary(new File([blob],item.name,{type}),item.id);
 }
 
 export async function addLibraryAttachments(

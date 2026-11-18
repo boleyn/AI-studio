@@ -53,9 +53,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { "artifact.files.0": { $exists: true } },
     { "content.type": "attachment" }, { "message.content.type": "attachment" },
   ] }).project({ token: 1, chatId: 1, time: 1, "additional_kwargs.workspaceArtifactPaths": 1,
-    "additional_kwargs.workspaceArtifactVersion": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1,
-    "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
-    "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
+    "additional_kwargs.workspaceArtifactVersion": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1, "artifact.files.libraryItemId":1,
+    "content.library_item_id":1, "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
+    "message.content.library_item_id":1, "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
   for await (const msg of messages) {
     const chat = chats.get(JSON.stringify([msg.token, msg.chatId]));
     if (!chat) continue;
@@ -77,11 +77,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (typeof path === "string" && /^\/?chat_uploads\//.test(path)) add("上传", path, name, undefined, size);
     };
     if (Array.isArray(msg.artifact?.files)) {
-      for (const file of msg.artifact.files) attachment(file?.storagePath, file?.name, file?.size);
+      for (const file of msg.artifact.files) if (!file?.libraryItemId) attachment(file?.storagePath, file?.name, file?.size);
     }
     const blocks = msg.message?.content ?? msg.content;
     if (Array.isArray(blocks)) {
-      for (const block of blocks) if (block?.type === "attachment") attachment(block.source_storage_path || block.storage_path, block.name);
+      for (const block of blocks) if (block?.type === "attachment" && !block.library_item_id) attachment(block.source_storage_path || block.storage_path, block.name);
     }
   }
   const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,reference:1}});

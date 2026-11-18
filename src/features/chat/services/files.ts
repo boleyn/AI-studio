@@ -1,3 +1,4 @@
+import { libraryOrigin } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import type { ChatInputFile } from "../types/chatInput";
@@ -58,6 +59,7 @@ const requestPresignedUploads = async ({
         type: item.file.type || "application/octet-stream",
         size: item.file.size,
         lastModified: item.file.lastModified,
+        libraryItemId: libraryOrigin(item.file),
         storagePath: data.key,
         publicUrl: "",
         upload: {
@@ -145,7 +147,8 @@ const finalizeUploadedFiles = async ({
     throw new Error(typeof data.error === "string" ? data.error : "上传确认失败");
   }
 
-  return Array.isArray(data.files) ? data.files : [];
+  const origins = new Map(files.map(file => [file.storagePath,file.libraryItemId]));
+  return (data.files ?? []).map(file => ({...file,libraryItemId:file.storagePath ? origins.get(file.storagePath) : undefined}));
 };
 
 export const uploadChatFiles = async ({
