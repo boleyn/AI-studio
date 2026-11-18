@@ -445,8 +445,8 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
           onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
       </Flex>}
-      <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || (pagesSection && tab === "全部")) && !query && !filterCount &&
-        <LibraryTemplates onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
+      <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
+        <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onStrategy={() => createSlides("product-strategy")} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Button onClick={() => setAttempt(attempt + 1)}>加载失败，点击重试</Button> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
