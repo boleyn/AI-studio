@@ -84,6 +84,6 @@ export async function deleteProjectArtifactShares(projectToken: string) {
 }
 
 export async function listReceivedArtifactShares(userId:string) {
-  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId"|"members">>(
-    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1,members:{$elemMatch:{userId}}}).toArray();
+  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId"|"livePage"|"members">>(
+    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1,livePage:1,members:{$elemMatch:{userId}}}).toArray();
 }

@@ -91,13 +91,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       reference:page.reference,size:page.size,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
   const received = await listReceivedArtifactShares(owner);
+  const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
+  const sharedPages = new Map((sharedPageIds.length ? await db.collection("library_pages").find(
+    {_id:{$in:sharedPageIds},deleted:{$ne:true},purging:{$ne:true}},
+    {projection:{owner:1,name:1}}
+  ).toArray() : []).map(page => [page._id.toHexString(), page]));
   for (const share of received) {
-    const available = share.libraryItemId
-      ? await db.collection("library_pages").findOne({_id:new ObjectId(share.libraryItemId),owner:share.ownerId,deleted:{$ne:true}},{projection:{_id:1}})
-      : await getProjectAccessState(share.projectToken,share.ownerId) === "ok";
-    if (!available) continue;
+    const page = share.libraryItemId ? sharedPages.get(share.libraryItemId) : undefined;
+    if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
     const id = share._id;
-    rows.set(id,{id,shareId:id,kind:"上传",name:share.filename,path:share.filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    const filename = share.livePage && page ? page.name + ".md" : share.filename;
+    rows.set(id,{id,shareId:id,kind:"上传",name:filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
