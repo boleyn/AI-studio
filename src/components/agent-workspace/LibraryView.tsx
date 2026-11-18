@@ -341,7 +341,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" _hover={{bg:"surface.hover"}}>
             <td><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
               <Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><button type="button" onClick={() => openItem(file)}>{file.name}</button></Flex></td>
-            <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
+            <td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : file.time ? new Date(file.time).toLocaleDateString("zh-CN") : "—"}</td><td>{actions(file)}</td>
           </Box>)}</tbody>
         </Box>}

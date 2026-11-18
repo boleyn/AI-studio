@@ -49,7 +49,7 @@ export default function LibraryFileViewer({item,download,share,close,openSource,
       <Menu><MenuButton as={Button} size="sm" variant="ghost" maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={item.name+" 的文件操作"}>
         <Text isTruncated>{item.name}</Text></MenuButton>
         <MenuList><MenuItem onClick={toggleFavorite}>{item.favorite?"从收藏夹移除":"添加到收藏夹"}</MenuItem>
-          {item.chatId && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
+          {item.chatId && item.conversation && <MenuItem onClick={openSource}>打开来源会话</MenuItem>}</MenuList>
       </Menu><Box flex="1"/>{download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}<IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
     </Flex>
     <Box flex="1" minH={0} overflow="auto">

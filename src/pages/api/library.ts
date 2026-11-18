@@ -44,8 +44,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const projects = await listProjectOverviewItems(owner);
   const names = new Map(projects.map(project => [project.token, project.name]));
   const scope = { token: { $in: [...names.keys()] } };
-  const conversations = await db.collection("conversations").find({ ...scope, deleteTime: null })
-    .project({ token: 1, chatId: 1, customTitle: 1, title: 1 }).toArray();
+  const conversations = await db.collection("conversations").find(scope)
+    .project({ token: 1, chatId: 1, customTitle: 1, title: 1, deleteTime: 1 }).toArray();
   const chats = new Map(conversations.map(chat => [JSON.stringify([chat.token, chat.chatId]), chat]));
   const rows = new Map<string, LibraryFile>();
   const messages = db.collection("conversation_items").find({ ...scope, $or: [
@@ -64,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const key = JSON.stringify([msg.token, msg.chatId, kind, path, version]);
       const id = createHash("sha256").update(key).digest("hex");
       const row: LibraryFile = { id, kind, path, version, token: msg.token, project: names.get(msg.token) || "",
-        chatId: msg.chatId, conversation: chat.customTitle || chat.title || "未命名会话",
+        chatId: msg.chatId, conversation: chat.deleteTime ? "" : chat.customTitle || chat.title || "未命名会话",
         name: typeof label === "string" && label ? label : path.split("/").pop() || path,
         time: new Date(msg.time || 0).toISOString() };
       if ((rows.get(key)?.time || "") <= row.time) rows.set(key, row);
