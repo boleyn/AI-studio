@@ -1204,7 +1204,7 @@ const ChatInput = ({
         </Flex>
       </Flex>
       {imageMode && <ImageCreationTemplates onUpload={photos=>void onPickFiles(photos)} onPick={prompt=>{
-        setText(previous=>previous.trim() ? previous.trimEnd()+"\n\n"+prompt : prompt);
+        setText(previous=>previous.trim() ? prompt+"\n\n"+previous : prompt);
         requestAnimationFrame(()=>textAreaRef.current?.focus());
       }}/>}
     </Box>
