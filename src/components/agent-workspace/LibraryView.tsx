@@ -126,16 +126,19 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [move,setMove] = useState<LibraryFile>();
   const [newDestinationName, setNewDestinationName] = useState<string>();
   const [destination,setDestination] = useState("");
-  async function createPage(name:string, body:string, kind:"页面"|"文件夹"|"资料空间"="页面",duplicateId?:string) {
+  async function createPage(name:string, body:string, kind:"页面"|"文件夹"|"资料空间"="页面",duplicateId?:string,parentId=folder?.id) {
     if (creating) return;
     setCreating(true);
     try {
-      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,folderId:kind === "资料空间" ? null : folder?.id})});
+      const response = await fetch("/api/library/pages",{method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body,kind,duplicateId,folderId:kind === "资料空间" ? null : parentId})});
       if (!response.ok) throw new Error();
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
       setNewKind(undefined);
-      openItem(page);
+      if (parentId && page.kind === "页面") {
+        recordOpen(page);
+        navigateList("全部","推荐",parentId,page.id,true);
+      } else openItem(page);
     } catch { toast({status:"error",title:"无法创建"+kind+"，请重试"}); }
     finally {setCreating(false);}
   }
@@ -413,7 +416,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar spaceActions={space=><Menu placement="bottom-end">
+        <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
+        <MenuList>
+          <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
+          <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
+          <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
+          <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem>
+        </MenuList>
+      </Menu>} createMenu={createMenu(true)} onNewSpace={() => {setTitle("");setNewKind("资料空间");}} section={folder?.name || section} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
