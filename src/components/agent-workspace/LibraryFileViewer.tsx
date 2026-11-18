@@ -106,7 +106,7 @@ export default function LibraryFileViewer({item,download,share,fileChatOpen,resu
     </Box>
     {resumeFileChat && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
       onClick={resumeFileChat} aria-label="展开聊天窗口">聊天</Button>}
-    {image && !fileChatOpen && !resumeFileChat && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
+    {!fileChatOpen && !resumeFileChat && <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" p={3}
       onSubmit={async event=>{
         event.preventDefault();
         if (openingChat) return;
