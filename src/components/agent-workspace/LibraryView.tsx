@@ -191,6 +191,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
   const suffix = renameSuffix(rename);
   const newName = title.trim() + suffix;
   const canRename = Boolean(title.trim() && rename && newName !== rename.name);
+  const moveFocus = useRef<HTMLButtonElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
@@ -327,7 +328,7 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       <MenuDivider my={2}/>
       <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
-      {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMove(file);setDestination(file.folderId || "");}}>移至文件夹</MenuItem>}
+      {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMove(file);setDestination(file.folderId || "");}}>{folder ? "移动" : "移至文件夹"}</MenuItem>}
       <MenuDivider my={2}/>
       <MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Menu>;
@@ -510,15 +511,15 @@ export default function LibraryView({ projects, onProject, onOpen, onBack, onCha
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter gap={2}><Button borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
           <Button borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
-    <Modal isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton top={4} right={4} boxSize={6} aria-label="关闭对话框"/>
+    <Modal initialFocusRef={moveFocus} isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton top={4} right={4} boxSize={6} aria-label="关闭对话框"/>
       <ModalBody p={0} mt={3}><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
-        {destination ? <Button size="sm" h={6} variant="link" onClick={()=>setDestination("")}>资料库</Button> : <Text lineHeight="24px">资料库</Text>}
-        {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/><Button size="sm" variant="ghost" isDisabled={item.id===destination} onClick={()=>setDestination(item.id)}>{item.name}</Button></Flex>)}
+        {destination ? <Button ref={moveFocus} size="sm" h={6} variant="link" onClick={()=>setDestination("")}>资料库</Button> : <Text lineHeight="24px">资料库</Text>}
+        {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/>{item.id===destination ? <Text aria-current="location">{item.name}</Text> : <Button size="sm" variant="link" onClick={()=>setDestination(item.id)}>{item.name}</Button>}</Flex>)}
       </Flex><Box as="ul" listStyleType="none" mt={2} mb={0} maxH="36vh" overflowY="auto">
-        {childFolders.map(item=><Box as="li" key={item.id}><Button w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<Folder size={18}/>} onClick={()=>setDestination(item.id)}>{item.name}</Button></Box>)}
+        {childFolders.map((item,index)=><Box as="li" key={item.id}><Button ref={!destination && index===0 ? moveFocus : undefined} w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<Folder size={18}/>} onClick={()=>setDestination(item.id)}>{item.name}</Button></Box>)}
         {!childFolders.length && <Box as="li" py={5} textAlign="center" color="gray.500">此文件夹为空</Box>}
       </Box></ModalBody>
-      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
+      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button ref={!destination && !childFolders.length ? moveFocus : undefined} isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(move) && newDestinationName !== undefined} onClose={()=>{if (!saving) setNewDestinationName(undefined);}} isCentered>
       <ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
