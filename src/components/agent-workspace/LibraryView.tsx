@@ -512,14 +512,14 @@ export default function LibraryView({ fileChatOpen, resumeFileChat, projects, on
         </Box> : <Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
-          "& th:first-of-type, & td:first-of-type":{padding:0},
-          "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"24px"},
+          "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
+          "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"8px"},
           "& td button, & td a":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child button":{opacity:0}}
         }}>
-          <colgroup><col style={{width:"24px"}}/><col style={{width:"calc(62% - 24px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
-          <thead><tr><th scope="col"><LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
-                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
+          <colgroup><col style={{width:"32px"}}/><col style={{width:"calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
+          <thead><tr><th scope="col"><LibrarySelectionBox label={allChecked ? "清除选择" : "全选"} checked={allChecked}
+                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(allChecked ? [] : visible.map(item=>item.id))}/></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}</button>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
