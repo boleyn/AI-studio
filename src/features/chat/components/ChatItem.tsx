@@ -4,6 +4,8 @@ import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
+import type { LibraryFile } from "@/types/library";
+import { readLibraryAttachment } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -104,26 +106,44 @@ const ChatItem = ({
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
   const {token,activeConversationId} = useChatPanelViewContext();
-  const [preview,setPreview] = React.useState<{name:string;url:string}>();
+  const [preview,setPreview] = React.useState<{name:string;url:string;libraryItemId?:string}>();
   const [previewText,setPreviewText] = React.useState<string>();
+  const [showLibrarySource,setShowLibrarySource] = React.useState(false);
   const [previewError,setPreviewError] = React.useState("");
   React.useEffect(() => {
     if (!preview) return;
     setPreviewText(undefined);
-    if (!preview.url) {
+    setShowLibrarySource(false);
+    if (!preview.url && !preview.libraryItemId) {
       setPreviewError("这条历史消息缺少附件地址，请从资料空间重新添加文件。");
       return;
     }
     const controller = new AbortController();
     setPreviewError("");
     void (async () => {
-      const url = new URL(preview.url,window.location.href);
-      const response = await fetch(url, { signal: controller.signal, headers: url.origin === window.location.origin ? withAuthHeaders() : undefined });
-      if (!response.ok) {
+      const signal = controller.signal;
+      const url = preview.url ? new URL(preview.url,window.location.href) : undefined;
+      const response = url ? await fetch(url, {signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined}) : undefined;
+      if (preview.libraryItemId && (!response || response.status === 404 || response.status === 410)) {
+        const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
+        if (library.ok) {
+          const items: LibraryFile[] = await library.json();
+          const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
+          if (item) {
+            const value = await (await readLibraryAttachment(item,signal)).text();
+            if (!signal.aborted) {
+              setPreviewText(value);
+              setShowLibrarySource(true);
+            }
+            return;
+          }
+        }
+      }
+      if (!response?.ok) {
         if (!controller.signal.aborted) setPreviewError(
-          response.status === 403 ? "当前账号没有读取该附件的权限。" :
-          response.status === 401 ? "请重新登录后打开附件。" :
-          response.status === 404 ? "暂时找不到这份附件，请检查原文件是否仍可打开。" :
+          response?.status === 403 ? "当前账号没有读取该附件的权限。" :
+          response?.status === 401 ? "请重新登录后打开附件。" :
+          !response || response.status === 404 ? "暂时找不到这份附件，请检查原文件是否仍可打开。" :
           "暂时无法读取附件，请稍后重试。"
         );
         return;
@@ -249,10 +269,10 @@ const ChatItem = ({
             {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
-              {preview?.url && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setPreview({...preview})}>重新加载</Button>}
+              {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
-              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown>}
+              <>{showLibrarySource && <Text mb={3} fontSize="xs" color="gray.600">正在显示资料空间中的版本</Text>}<ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown></>}
           </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
@@ -311,7 +331,7 @@ const ChatItem = ({
                           as="button" type="button" aria-label={`打开 ${file.name || "附件"}`}
                           cursor={fileUrl || isMarkdown ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown) setPreview({name:file.name || "Markdown",url:fileUrl});
+                            if (isMarkdown) setPreview({name:file.name || "Markdown",url:fileUrl,libraryItemId:file.libraryItemId});
                             else if (fileUrl) window.open(fileUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
