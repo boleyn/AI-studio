@@ -1,0 +1,30 @@
+.control {
+  position: absolute;
+  inset-inline-start: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 15%);
+  border-radius: 2px;
+  background: white;
+  color: #0d0d0d;
+  cursor: pointer;
+}
+
+.control:hover { background: #f5f5f5; }
+.control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+@media (hover: hover) and (min-width: 768px) {
+  tr:not(:hover):not(:focus-within) .control[aria-checked="false"] { opacity: 0; }
+  table:has(.control[aria-checked="true"]) tr .control { opacity: 1; }
+}
+
+@media (max-width: 767px) {
+  .control { inset-inline-start: 0; }
+  th:has(> .control), td:has(> .control) { padding-inline-start: 26px !important; }
+}

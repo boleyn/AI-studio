@@ -24,7 +24,8 @@ import {
   ArrowUp,
   ChevronRight,
   Cloud,
-  Folder,
+  CircleAlert,
+  RotateCcw,
   Laptop,
   Layers,
   Plus,
@@ -48,6 +49,7 @@ import {
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 import { normalizeAttachmentWorkspacePath, toFileTagLabel } from "../utils/chatPanelUtils";
 import ModelCascader from "./ModelCascader";
+import LibraryAttachmentPicker from "./LibraryAttachmentPicker";
 import SlashFilePicker from "./SlashFilePicker";
 import SkillMentionPicker from "./SkillMentionPicker";
 
@@ -96,6 +98,7 @@ const ChatInput = ({
   const theme = useTheme() as Record<string, any>;
   const chatInputTheme = theme?.workspace?.chatInput || {};
   const skillTheme = chatInputTheme?.skillMention || {};
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [text, setText] = useState("");
   const [loadedDraftKey, setLoadedDraftKey] = useState<string>();
   useEffect(() => {
@@ -486,6 +489,15 @@ const ChatInput = ({
     },
     [uploadSingleFile]
   );
+  const consumedLibraryDraft = useRef<string>();
+  useEffect(() => {
+    const draft = workspaceComposer?.libraryDraft;
+    if (!draft || consumedLibraryDraft.current === draft.chatId ||
+      draftStorageKey !== `aistudio:draft:${workspaceComposer?.projectToken}:${draft.chatId}`) return;
+    consumedLibraryDraft.current = draft.chatId;
+    void onPickFiles(draft.files);
+    workspaceComposer?.onLibraryDraftConsumed?.();
+  },[workspaceComposer,draftStorageKey,onPickFiles]);
   const getPastedFiles = useCallback((data: DataTransfer | null) => {
     if (!data) return [] as File[];
 
@@ -564,7 +576,16 @@ const ChatInput = ({
       >
         {previewFiles.length > 0 ? (
           <Flex gap="6px" mb={2} pt={2} px={3} userSelect="none" wrap="wrap">
-            {previewFiles.map((item) => (
+            {previewFiles.map((item) => item.uploadState === "error" ? (
+              <Flex key={item.id} align="center" gap={2} bg="#fffaf6" border="1px solid #eadbd0" borderRadius="12px"
+                px={2.5} py={2} maxW="100%" minW={0}>
+                <CircleAlert size={16} color="#975735" aria-hidden="true"/>
+                <Box minW={0} maxW="200px"><Text noOfLines={1} fontSize="xs" fontWeight="600">{item.file.name}</Text>
+                  <Text color="#785d4c" fontSize="11px" role="status">{item.uploadError || "上传未完成"}</Text></Box>
+                <Button size="xs" variant="ghost" color="#754a32" leftIcon={<RotateCcw size={12}/>} onClick={() => retryUploadFile(item)}>重试</Button>
+                <CloseButton size="sm" aria-label={`移除 ${item.file.name}`} onClick={() => setFiles(prev => prev.filter(file => file.id !== item.id))}/>
+              </Flex>
+            ) : (
               <Box
                 key={item.id}
                 aspectRatio={item.isImage ? 1 : 4}
@@ -594,26 +615,6 @@ const ChatInput = ({
                     top="-8px"
                     zIndex={10}
                   />
-                  {item.uploadState === "error" ? (
-                    <Text
-                      as="button"
-                      bg="rgba(255,255,255,0.95)"
-                      border="1px solid"
-                      borderColor="red.200"
-                      borderRadius="999px"
-                      color="red.500"
-                      fontSize="10px"
-                      left="6px"
-                      lineHeight="16px"
-                      onClick={() => retryUploadFile(item)}
-                      px="6px"
-                      position="absolute"
-                      top="6px"
-                      zIndex={12}
-                    >
-                      重试
-                    </Text>
-                  ) : null}
                   {item.isImage ? (
                     <Box
                       alt={item.file.name}
@@ -632,14 +633,12 @@ const ChatInput = ({
                           {item.file.name}
                         </Text>
                         <Text
-                          color={item.uploadState === "error" ? "red.500" : "gray.500"}
+                          color="gray.500"
                           fontSize="10px"
                           noOfLines={1}
                         >
                           {item.uploadState === "uploading"
                             ? "上传中..."
-                            : item.uploadState === "error"
-                            ? item.uploadError || "上传失败，可重试"
                             : "已上传"}
                         </Text>
                       </Box>
@@ -885,17 +884,15 @@ const ChatInput = ({
               type="file"
               multiple
             />
-            <IconButton
-              aria-label="添加文件"
-              icon={<Plus size={18} strokeWidth={1.8} />}
-              isDisabled={isSending || isSubmitting}
-              onClick={() => fileInputRef.current?.click()}
-              size="sm"
-              variant="ghost"
-              color="#374151"
-              _hover={{ bg: "#f4f4f5" }}
-              borderRadius="full"
-            />
+            <Menu placement="top-start" isLazy>
+              <MenuButton as={IconButton} aria-label="添加文件" icon={<Plus size={18} strokeWidth={1.8}/>}
+                isDisabled={isSending || isSubmitting} size="sm" variant="ghost" borderRadius="full"/>
+              <Portal><MenuList>
+                <MenuItem onClick={() => fileInputRef.current?.click()}>从本机上传</MenuItem>
+                <MenuItem onClick={() => setLibraryOpen(true)}>从资料空间添加</MenuItem>
+              </MenuList></Portal>
+            </Menu>
+            {libraryOpen && <LibraryAttachmentPicker onClose={() => setLibraryOpen(false)} onAdd={onPickFiles}/>}
             {workspaceLayout ? (
               <>
                 <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
@@ -942,55 +939,6 @@ const ChatInput = ({
                           onClick={workspaceComposer.onOpenDeviceManagement}>我的设备</MenuItem>
                       </MenuList>
                     </Portal>
-                  </Menu>
-                )}
-
-                {workspaceComposer?.projects && workspaceComposer.projects.length > 0 && (
-                  <Menu placement="top-start" isLazy>
-                    <MenuButton
-                      as={Button}
-                      size="xs"
-                      h="30px"
-                      px={2.5}
-                      borderRadius="full"
-                      variant="ghost"
-                      fontSize="12.5px"
-                      fontWeight="500"
-                      color="#374151"
-                      _hover={{ bg: "#f4f4f5" }}
-                      leftIcon={<Folder size={14} />}
-                      rightIcon={<ChevronRight size={13} color="#9ca3af" />}
-                      maxW="150px"
-                      flexShrink={0}
-                    >
-                      <Text as="span" isTruncated>
-                        {workspaceComposer.projectName || "项目"}
-                      </Text>
-                    </MenuButton>
-                    <MenuList minW="160px" maxH="240px" overflowY="auto">
-                      {workspaceComposer.projects.map((proj) => (
-                        <MenuItem
-                          key={proj.token}
-                          fontSize="13px"
-                          fontWeight={proj.token === workspaceComposer.projectToken ? "600" : "400"}
-                          onClick={() => workspaceComposer.onSelectProject?.(proj.token)}
-                        >
-                          {proj.name}
-                        </MenuItem>
-                      ))}
-                      {workspaceComposer.onCreateProject && (
-                        <>
-                          <MenuDivider />
-                          <MenuItem
-                            fontSize="13px"
-                            icon={<Plus size={14} />}
-                            onClick={workspaceComposer.onCreateProject}
-                          >
-                            新建项目
-                          </MenuItem>
-                        </>
-                      )}
-                    </MenuList>
                   </Menu>
                 )}
 
@@ -1163,10 +1111,6 @@ const ChatInput = ({
             {hasUploadingFiles ? (
               <Text color="myGray.500" fontSize="xs">
                 {t("chat:uploading_files", { defaultValue: "文件上传中..." })}
-              </Text>
-            ) : hasUploadErrors ? (
-              <Text color="red.500" fontSize="xs">
-                {t("chat:upload_failed", { defaultValue: "存在上传失败文件，请移除后重试" })}
               </Text>
             ) : null}
           </Flex>

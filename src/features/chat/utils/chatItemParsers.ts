@@ -410,10 +410,18 @@ const parseAgentResponseParts = (rawResponse: string) => {
 };
 
 export const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
-  if (!message.artifact || typeof message.artifact !== "object") return [];
-  const files = (message.artifact as { files?: unknown }).files;
-  if (!Array.isArray(files)) return [];
-  return files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
+  const files = (message.artifact as {files?:unknown} | null)?.files;
+  const blocks = message.message?.content ?? message.content;
+  const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
+    if (!block || block.type !== "attachment" || typeof block.name !== "string") return [];
+    return [{name:block.name,type:block.mime_type,storagePath:block.source_storage_path || block.storage_path,
+      downloadUrl:block.download_url,previewUrl:block.preview_url}];
+  }) : [];
+  if (!Array.isArray(files) || !files.length) return attachments;
+  return files.filter((file):file is MessageFile => Boolean(file && typeof file === "object")).map(file => {
+    const block = attachments.find(item => item.name === file.name);
+    return block?.storagePath?.startsWith("chat_uploads/") ? {...file,storagePath:block.storagePath} : file;
+  });
 };
 
 export const isImageFile = (file: MessageFile) => {

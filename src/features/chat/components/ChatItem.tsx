@@ -3,6 +3,10 @@ import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toStableChatFileViewUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
 import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
@@ -98,6 +102,24 @@ const ChatItem = ({
   hideInteractiveCards?: boolean;
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
+  const {token,activeConversationId} = useChatPanelViewContext();
+  const [preview,setPreview] = React.useState<{name:string;url:string}>();
+  const [previewText,setPreviewText] = React.useState<string>();
+  const [previewError,setPreviewError] = React.useState(false);
+  React.useEffect(() => {
+    if (!preview) return;
+    const controller = new AbortController();
+    setPreviewText(undefined);
+    setPreviewError(false);
+    const url = new URL(preview.url,window.location.href);
+    fetch(url,{signal:controller.signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined})
+      .then(async response => {
+        if (!response.ok) throw new Error();
+        const value = await response.text();
+        if (!controller.signal.aborted) setPreviewText(value);
+      }).catch(() => {if (!controller.signal.aborted) setPreviewError(true);});
+    return () => controller.abort();
+  },[preview]);
   const [activityOpen, setActivityOpen] = React.useState<boolean>();
   const activityExpanded = activityOpen ?? Boolean(isStreaming);
   const { copyData } = useCopyData();
@@ -208,6 +230,13 @@ const ChatItem = ({
 
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
+      <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
+        <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md">{preview?.name}</ModalHeader>
+          <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} sx={{"& h1, & h2, & h3":{fontWeight:600,marginBlock:"1em .5em"},"& h1":{fontSize:"1.5em"},"& ul, & ol":{paddingInlineStart:"1.5em"},"& p":{whiteSpace:"pre-wrap",marginBlock:".65em"}}}>
+            {previewError ? <Button size="sm" onClick={()=>preview && setPreview({...preview})}>读取失败，重试</Button> :
+              previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
+              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img:({alt})=><span>{alt}</span>}}>{previewText}</ReactMarkdown>}
+          </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
         border={!isWorkspaceChat && isAssistant ? "1px solid" : "none"}
@@ -240,7 +269,12 @@ const ChatItem = ({
                 {sortedFiles.map((file, index) => {
                   const image = isImageFile(file);
                   const icon = getFileIcon(file.name || "");
-                  const fileUrl = file.previewUrl || file.downloadUrl || "";
+                  const storagePath = file.storagePath?.replace(/^\/+/,"");
+                  const fileUrl = storagePath?.startsWith("chat_uploads/")
+                    ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
+                    : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
+                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || "";
+                  const isMarkdown = /\.(md|markdown)$/i.test(file.name || "");
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
@@ -257,10 +291,12 @@ const ChatItem = ({
                       ) : (
                         <Flex
                           alignItems="center"
+                          as="button" type="button" aria-label={`打开 ${file.name || "附件"}`}
                           cursor={fileUrl ? "pointer" : "default"}
                           onClick={() => {
                             if (!fileUrl) return;
-                            window.open(fileUrl);
+                            if (isMarkdown) setPreview({name:file.name || "Markdown",url:fileUrl});
+                            else window.open(fileUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
                           w="100%"

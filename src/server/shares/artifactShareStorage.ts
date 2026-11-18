@@ -6,6 +6,7 @@ export type ArtifactShareMember = { userId: string; username: string };
 
 type ArtifactShare = {
   _id: string;
+  libraryItemId?: string;
   projectToken: string;
   ownerId: string;
   ownerName: string;
@@ -17,13 +18,14 @@ const collection = async () => (await getMongoDb()).collection<ArtifactShare>("a
 const objectKey = (id: string) => `artifact-shares/${id}/snapshot`;
 
 export async function createArtifactShare(input: {
+  libraryItemId?: string;
   projectToken: string;
   ownerId: string;
   ownerName: string;
   path: string;
   bytes: Buffer;
 }) {
-  const id = createHash("sha256").update(JSON.stringify([input.projectToken, input.ownerId, input.path]))
+  const id = createHash("sha256").update(JSON.stringify([input.libraryItemId || input.projectToken, input.ownerId, input.path]))
     .update(input.bytes).digest("hex");
   const shares = await collection();
   const existing = await shares.findOne({ _id: id });
@@ -37,6 +39,7 @@ export async function createArtifactShare(input: {
   const share = {
     _id: id,
     projectToken: input.projectToken,
+    ...(input.libraryItemId ? {libraryItemId:input.libraryItemId} : {}),
     ownerId: input.ownerId,
     ownerName: input.ownerName,
     filename: input.path.split("/").pop() || "file",
@@ -72,4 +75,9 @@ export async function deleteProjectArtifactShares(projectToken: string) {
   const ids = records.map(({ _id }) => _id);
   await deleteStorageObjects({ keys: ids.map(objectKey), bucketType: "private" });
   await shares.deleteMany({ projectToken, _id: { $in: ids } });
+}
+
+export async function listReceivedArtifactShares(userId:string) {
+  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId">>(
+    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1}).toArray();
 }

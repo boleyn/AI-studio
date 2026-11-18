@@ -45,6 +45,7 @@ import {
   HardDrive,
   Home,
   LayoutGrid,
+  Library,
   Laptop,
   MessageSquare,
   MoreHorizontal,
@@ -58,6 +59,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { AppDialog } from "./ui";
+import { createConversation } from "@features/chat/services/conversations";
+import LibraryView from "./agent-workspace/LibraryView";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
 import ProjectWorkspaceSelect from "./agent-workspace/ProjectWorkspaceSelect";
 import DeviceManagementModal from "./agent-workspace/DeviceManagementModal";
@@ -131,6 +134,7 @@ export default function AgentWorkspace({
   const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
+  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[]}>();
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -182,7 +186,11 @@ export default function AgentWorkspace({
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects">("chat");
+  const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects" | "library">("chat");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("view") === "library") setActiveNav("library");
+  }, []);
+
   const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
   const selectScheduleConversation = useCallback((task: typeof scheduleConversation) => {
     setScheduleConversation(task);
@@ -717,6 +725,8 @@ export default function AgentWorkspace({
                 fileOptions={fileKeys}
                 height="100%"
                 workspaceComposer={{
+                  libraryDraft,
+                  onLibraryDraftConsumed: () => setLibraryDraft(undefined),
                   deviceAccessKind: activeDeviceAccess?.kind,
                   deviceAccessLabel: activeDeviceAccess?.kind === "connector"
                     ? pairedDevices.find(device => device.deviceId === activeDeviceAccess.deviceId)?.name || "本地电脑"
@@ -804,6 +814,10 @@ export default function AgentWorkspace({
               }}
             />
           </Tooltip>
+          <Tooltip label="资料空间" placement="right">
+            <IconButton aria-label="资料空间" icon={<Library size={17} />} size="sm" variant="ghost"
+              bg={activeNav === "library" ? "surface.active" : "transparent"} onClick={() => setActiveNav("library")} />
+          </Tooltip>
           <Tooltip label="项目" placement="right">
             <IconButton
               aria-label="项目列表"
@@ -838,6 +852,15 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
+      {activeNav === "library" && <LibraryView onChat={async files => {
+        const token = activeProject?.token || projects[0]?.token;
+        if (!token) throw new Error("当前没有可用工作空间");
+        const chat = await createConversation(token,[]);
+        if (!chat) throw new Error("创建对话失败");
+        setLibraryDraft({chatId:chat.id,files});
+        handleSelectConversation(token,chat.id);
+        setActiveNav("chat");
+      }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
           projects={projects}
@@ -1208,6 +1231,7 @@ export default function AgentWorkspace({
             borderTop="1px solid"
             borderColor="stroke.light"
           >
+            <Button variant="ghost" size="sm" leftIcon={<Library size={16} />} onClick={() => { closeMobileSidebar(); setActiveNav("library"); }}>资料空间</Button>
             <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings />
           </Box>
         </Flex>

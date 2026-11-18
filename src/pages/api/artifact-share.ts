@@ -1,3 +1,7 @@
+import { ObjectId } from "mongodb";
+import { getMongoDb } from "@server/db/mongo";
+import { getObjectFromStorage } from "@server/storage/s3";
+import { assertChatScopedStoragePath } from "./core/chat/files/shared";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { findUserByUsername } from "@server/auth/userStore";
@@ -22,12 +26,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const token = typeof body.token === "string" ? body.token : "";
       const path = typeof body.path === "string" ? body.path : "";
       const version = typeof body.version === "string" ? body.version : "";
-      if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
-      if (await getProjectAccessState(token, userId) !== "ok") return res.status(404).json({ error: "工作成果不存在" });
-      const source = await (version ? readProjectArtifactVersion(token, version, path) : readProjectFile(token, path))
-        .catch(() => null);
-      if (!source) return res.status(404).json({ error: "工作成果不存在" });
-      const share = await createArtifactShare({ projectToken: token, ownerId: userId, ownerName: auth.user.username, path, bytes: source.buffer });
+      let bytes:Buffer;
+      let filename = path;
+      const libraryItemId = typeof body.libraryItemId === "string" ? body.libraryItemId : undefined;
+      if (libraryItemId) {
+        if (!/^[a-f0-9]{24}$/.test(libraryItemId)) return res.status(400).end();
+        const native = await (await getMongoDb()).collection("library_pages").findOne({_id:new ObjectId(libraryItemId),owner:userId,deleted:{$ne:true}});
+        if (!native || (native.kind && !["上传","页面"].includes(native.kind))) return res.status(404).end();
+        filename = native.name;
+        if (native.kind === "上传") bytes = (await getObjectFromStorage({key:native.storageKey})).buffer;
+        else { bytes = Buffer.from("# " + native.name + "\n\n" + native.body); filename += ".md"; }
+      } else {
+        if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
+        if (await getProjectAccessState(token,userId) !== "ok") return res.status(404).end();
+        if (body.chatUpload === true) {
+          if (typeof body.chatId !== "string" || !body.chatId) return res.status(400).end();
+          const key = assertChatScopedStoragePath({storagePath:path,token,chatId:body.chatId});
+          bytes = (await getObjectFromStorage({key})).buffer;
+        } else {
+          const source = await (version ? readProjectArtifactVersion(token,version,path) : readProjectFile(token,path)).catch(()=>null);
+          if (!source) return res.status(404).json({error:"工作成果不存在"});
+          bytes = source.buffer;
+        }
+      }
+      const share = await createArtifactShare({projectToken:libraryItemId ? "" : token,libraryItemId,ownerId:userId,ownerName:auth.user.username,path:filename,bytes});
       if (!share) throw new Error("Share creation did not return a record");
       return res.status(201).json({ id: share._id, filename: share.filename, owner: share.ownerName, members: share.members });
     }
@@ -40,7 +62,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!share) return res.status(404).json({ error: "共享文件不可用" });
     const owner = share.ownerId === userId;
     if ((!owner && !share.members.some((member) => member.userId === userId))
-      || await getProjectAccessState(share.projectToken, share.ownerId) !== "ok") {
+      || (share.libraryItemId
+        ? !await (await getMongoDb()).collection("library_pages").findOne({_id:new ObjectId(share.libraryItemId),owner:share.ownerId,deleted:{$ne:true}},{projection:{_id:1}})
+        : await getProjectAccessState(share.projectToken, share.ownerId) !== "ok")) {
       return res.status(404).json({ error: "共享文件不可用" });
     }
 
