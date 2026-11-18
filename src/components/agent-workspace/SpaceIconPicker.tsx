@@ -7,7 +7,7 @@ const icons = {文件夹:Folder,美元:DollarSign,书:Book,毕业帽:GraduationC
 const colors = {默认:"currentColor",红色:"#d94949",橙色:"#d77421",黄色:"#b69012",绿色:"#299650",蓝色:"#3280d7",紫色:"#915cd2",粉色:"#cf5597"};
 
 export function SpaceIcon({appearance,size=20}:{appearance?:SpaceAppearance;size?:number}) {
-  const Icon = icons[appearance?.icon as keyof typeof icons] || Layers;
+  const Icon = appearance && Object.prototype.hasOwnProperty.call(icons,appearance.icon) ? icons[appearance.icon as keyof typeof icons] : Layers;
   return <Icon size={size} color={colors[appearance?.color as keyof typeof colors]} aria-hidden/>;
 }
 
