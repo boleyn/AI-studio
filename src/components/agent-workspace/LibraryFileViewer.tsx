@@ -160,6 +160,9 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
       <Box as="dl" mt={4} fontSize="sm" sx={{"& dt":{color:"gray.600",mt:3}}}>
         <dt>文件类型</dt><dd>{name.match(/\.([^.\/]+)$/)?.[1].toUpperCase() || item.kind}</dd>
         {item.time && <><dt>{item.shareId ? "共享时间" : "最近更新"}</dt><dd><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN")}</time></dd></>}
+        {item.chatId && item.conversation && <><dt>来源会话</dt><dd>
+          <Button size="sm" variant="link" whiteSpace="normal" textAlign="left" overflowWrap="anywhere" onClick={openSource}>{item.conversation}</Button>
+        </dd></>}
         {item.firstSeenAt && <><dt>首次出现在会话中</dt><dd><time dateTime={item.firstSeenAt}>{new Date(item.firstSeenAt).toLocaleString("zh-CN")}</time></dd></>}
         {item.createdAt && <><dt>创建时间</dt><dd><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("zh-CN")}</time>
           {item.createdBy && <Text fontSize="xs" color="gray.600">由 {item.createdBy}</Text>}</dd></>}
