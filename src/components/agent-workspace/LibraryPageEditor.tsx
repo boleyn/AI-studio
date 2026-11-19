@@ -143,7 +143,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
-      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
+      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
       {(suggestSubpage || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
@@ -177,7 +177,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       }} onSelect={event=>{
         const {selectionStart,selectionEnd} = event.currentTarget;
         setSelection({start:selectionStart,end:selectionEnd});
-      }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
+      }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" fontSize="15px" lineHeight="1.5" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
         onChange={event => {const {value,selectionStart,selectionEnd} = event.currentTarget; setSelection({start:selectionStart,end:selectionEnd}); edit({...content,body:value});}}/></>}
       {subpages}
     </Box>}</Box>;
