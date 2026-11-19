@@ -5,7 +5,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { id: string; name: string; shared: boolean; ownerName?: string; visitors?: number }
+interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; visitors?: number }
 
 export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
   const [sharing, setSharing] = useState<Site>();
@@ -30,9 +30,17 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
   const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
   const siteUrl = (site: Site) => "/share/preview/" + encodeURIComponent(site.id);
-  const siteLink = (site: Site) => <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
-    <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Text as="span">{site.name}</Text></Flex>
-  </Link>;
+  const siteLink = (site: Site) => {
+    const published = site.publishedAt ? new Date(site.publishedAt) : undefined;
+    return <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
+      <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Box>
+        <Text>{site.name}</Text>
+        {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize="xs" color="#5d5d5d">
+          {published.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})}
+        </Text>}
+      </Box></Flex>
+    </Link>;
+  };
   const shareButton = (site: Site) => !site.shared && <Button size="xs" variant="ghost" onClick={() => setSharing(site)}>共享</Button>;
   const dialog = sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
