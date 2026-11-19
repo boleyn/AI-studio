@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "@server/db/mongo";
 import { uploadObjectToStorage } from "@server/storage/s3";
@@ -6,8 +7,24 @@ import { uploadObjectToStorage } from "@server/storage/s3";
 export async function saveLinkedSkillFiles(owner: string, token: string, chatId: string, messageId: string,
   reply: string, files: Record<string, {code: string}>) {
   const linked = new Set<string>();
-  for (const match of reply.matchAll(/\]\(<?sandbox:(\/[^)>\n]+)>?\)/g)) {
-    let path = match[1];
+  const urls: string[] = [];
+  const references = new Set<string>();
+  const definitions = new Map<string,string>();
+  const nodes = [...fromMarkdown(reply).children].reverse();
+  while (nodes.length) {
+    const node = nodes.pop()!;
+    if (node.type === "link" || node.type === "image") urls.push(node.url);
+    if (node.type === "linkReference" || node.type === "imageReference") references.add(node.identifier);
+    if (node.type === "definition" && !definitions.has(node.identifier)) definitions.set(node.identifier,node.url);
+    if ("children" in node) for (let i = node.children.length - 1; i >= 0; i--) nodes.push(node.children[i]);
+  }
+  for (const id of references) {
+    const url = definitions.get(id);
+    if (url) urls.push(url);
+  }
+  for (const url of urls) {
+    if (!url.startsWith("sandbox:/")) continue;
+    let path = url.slice("sandbox:".length);
     try { path = decodeURIComponent(path); } catch { /* A filename may contain a literal percent sign. */ }
     const relative = path.replace(/^\/mnt\/data\//, "").replace(/^\/+/, "");
     const key = [path, "/" + relative, relative].find(candidate => Object.hasOwn(files, candidate));
