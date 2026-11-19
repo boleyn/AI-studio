@@ -72,6 +72,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
+            newChatEachRun:form.has("newChatEachRun"),
             ...(repeating && endsOnDate ? {endDate:form.get("endDate")} : {}),
             firstAt:start.toISO(), timezone:zone,
           }})});
@@ -99,6 +100,8 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           <label>时区<Select value={zone} onChange={event=>setZone(event.target.value)}>
             {[...new Set([Intl.DateTimeFormat().resolvedOptions().timeZone, "UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [])])].map(name=><option key={name} value={name}>{name}</option>)}
           </Select></label>
+          <Flex align="center" justify="space-between" mt={2}><label htmlFor="site-task-new-chat">每次运行时都开启新聊天</label>
+            <Switch id="site-task-new-chat" name="newChatEachRun"/></Flex>
         </details>
         {saveError && <Text role="alert">{saveError}</Text>}
         <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length}>保存任务</Button>

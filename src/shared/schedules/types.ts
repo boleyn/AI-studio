@@ -3,6 +3,7 @@ export type ScheduleSpec = {
   prompt: string;
   firstAt: string;
   endDate?: string;
+  newChatEachRun?: boolean;
   timezone: string;
   repeat: "once" | "daily" | "weekly";
 };

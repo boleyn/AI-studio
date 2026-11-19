@@ -21,9 +21,9 @@ import {
 async function reply(task: StoredSchedule) {
   if ((await getProjectAccessState(task.token, task.owner)) !== "ok")
     throw new Error("项目不可访问");
-  const chat = await getConversation(task.token, task.chatId);
-  if (!chat) throw new Error("来源会话已删除");
-  const history = chat.messages.slice(-16).flatMap((m) => {
+  const chat = task.newChatEachRun ? undefined : await getConversation(task.token, task.chatId);
+  if (!task.newChatEachRun && !chat) throw new Error("来源会话已删除");
+  const history = (chat?.messages ?? []).slice(-16).flatMap((m) => {
     if (m.role !== "assistant" && m.role !== "user") return [];
     const content =
       typeof m.content === "string"
@@ -64,16 +64,17 @@ async function reply(task: StoredSchedule) {
     throw new Error("项目不可访问");
   await appendConversationMessages(
     task.token,
-    task.chatId,
+    task.newChatEachRun ? task.runId ?? randomUUID() : task.chatId,
     [
+      ...(task.newChatEachRun ? [{role:"user" as const, id:randomUUID(), content:task.prompt}] : []),
       {
         role: "assistant",
         id: task.runId,
         content: `定时任务 · ${task.title}\n\n${text}`,
       },
     ],
-    undefined,
-    true,
+    task.newChatEachRun ? task.title : undefined,
+    !task.newChatEachRun,
   );
 }
 

@@ -10,6 +10,7 @@ export const specSchema = z
   .object({
     title: z.string().trim().min(1).max(100),
     prompt: z.string().trim().min(1).max(4000),
+    newChatEachRun: z.boolean().optional(),
     endDate: z.string().date().optional(),
     firstAt: z.string().datetime({ offset: true }),
     timezone: z.string().max(80).refine(IANAZone.isValidZone),
