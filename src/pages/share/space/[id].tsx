@@ -1,4 +1,5 @@
 import { Box, Button, Heading, Link, Stack, Text, useToast } from "@chakra-ui/react";
+import { recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import { downloadAuthenticatedFile } from "@features/chat/services/files";
 import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
@@ -35,6 +36,7 @@ export default function SharedSpace() {
         return;
       }
       setData(value);
+      if (typeof page === "string") recordLibraryOpen(`space-${id}-${page}`);
     }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message});});
     return ()=>controller.abort();
   },[id,page,router,attempt]);
