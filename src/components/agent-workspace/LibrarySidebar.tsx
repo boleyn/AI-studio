@@ -4,7 +4,7 @@ import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
 import AttachmentFilename from "@features/chat/components/AttachmentFilename";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
@@ -30,6 +30,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [expanded, setExpanded] = useState(false);
+  const focusNewRecent = useRef(false);
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
@@ -67,13 +68,18 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
     <Box overflowY="auto" mt="17px" flex="1">
       <Button variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.length > 0 && <Flex direction="column" gap="1px" mt="4px">
-      {recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
+      {recentItems.slice(0,expanded ? undefined : 5).map((file,index) => <Button key={file.id} ref={index === 5 ? node => {
+        if (node && focusNewRecent.current) {
+          focusNewRecent.current = false;
+          node.focus();
+        }
+      } : undefined} variant="ghost" size="sm" w="full"
         justifyContent="start" px="10px" iconSpacing="8px" h="36px" borderRadius="8px" fontWeight="normal" title={file.name} onClick={() => onFile(file)} leftIcon={<LibraryItemIcon item={file} compact/>}>
           {(file.kind === "上传" || file.kind === "生成") && !file.sharedPage
             ? <AttachmentFilename name={file.name} fontSize="inherit"/>
             : <Text isTruncated>{file.name}</Text>}
         </Button>)}
-      {recentItems.length > 5 && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "展开显示"}</Button>}
+      {recentItems.length > 5 && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" aria-expanded={expanded} onClick={event => { focusNewRecent.current = !expanded && event.detail === 0; setExpanded(!expanded); }}>{expanded ? "收起" : "展开显示"}</Button>}
       </Flex>}
       <Flex mt="17px" align="center" justify="space-between"><Button size="sm" variant="ghost" ml="4px" flex="1" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
         <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
