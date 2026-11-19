@@ -546,11 +546,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
     <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={file.kind === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <Portal><MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
+    <Portal><MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
-      {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
+      {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
-      <MenuItem icon={<Pencil size={16}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
+      <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <Box position="relative" onBlur={event=>{
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setCopyMenuId(undefined);
@@ -582,14 +582,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         </Box>}
       </Box>}
       {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
-        <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
+        <MenuItem icon={<Download size={20}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
       {!pagesSection && <>
         <MenuDivider my={2}/>
-        <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
-        {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMoveFailures([]);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
+        <MenuItem icon={<Bookmark size={20}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
+        {!isContainer(file) && <MenuItem icon={<FolderInput size={20}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMoveFailures([]);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
       </>}
       <MenuDivider my={2}/>
-      <MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
+      <MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
     </>}</MenuList></Portal></>}</Menu>;
   async function startCreativeChat(kind: "站点" | "图像") {
     if (creating) return;
