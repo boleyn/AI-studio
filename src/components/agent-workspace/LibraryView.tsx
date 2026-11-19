@@ -755,7 +755,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
-        </Box> : <Box as="table" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (section === "全部" ? tab : section)} sx={{
+        </Box> : <Box overflowX="auto"><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (section === "全部" ? tab : section)} sx={{
           tableLayout:"fixed", "& th button svg":{opacity:0}, "& th button:hover svg, & th button:focus-visible svg":{opacity:1}, "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
@@ -789,7 +789,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
                 onClick={()=>update(file,{pinned:!file.pinned})}/>}
               {actions(file)}</Flex></td>
           </Box>)}</tbody>
-        </Box>}
+        </Box></Box>}
       {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="sticky" bottom={3} zIndex={3} mx="auto" mt={4}
         w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
