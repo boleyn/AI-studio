@@ -1001,7 +1001,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "& th:nth-of-type(2)":{paddingInlineStart:allHome ? {base:"24px",xl:"8px"} : "8px"},
           "& td:nth-of-type(2)":{paddingInlineStart:allHome ? {base:"16px",xl:"24px"} : section === "全部" && !folder ? "16px" : "8px"},
           "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
-          "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
+          "@media (hover:hover) and (not (any-pointer:coarse))":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
