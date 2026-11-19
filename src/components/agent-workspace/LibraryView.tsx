@@ -380,7 +380,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string) {
     setBatchBusy(true);
     try {
-      const results = await readLibraryAttachments(items);
+      const results = await readLibraryAttachments(items, action);
       const attachments: File[] = [];
       const unavailable: {file:LibraryFile;message:string}[] = [];
       results.forEach((result,index) => {

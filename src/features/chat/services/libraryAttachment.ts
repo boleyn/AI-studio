@@ -3,7 +3,7 @@ import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
-import { buildDownloadUrl } from "./files";
+import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE } from "./files";
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
@@ -94,6 +94,7 @@ export function libraryReadMessage(reason: unknown) {
   if (status === 401) return "登录已过期，请重新登录。";
   if (status === 403) return "当前账号没有读取权限，请联系文件所有者。";
   if (status === 404 || status === 410) return "文件可能已删除或共享已结束，请重新选择。";
+  if (status === 413) return "文件超过单个聊天附件 10 MB 的上限。";
   if (status === 429) return "读取请求过于频繁，请稍后重试。";
   if (status === 503) return "文件服务暂时不可用，请稍后重试。";
   return "暂时无法读取，请稍后重试。";
@@ -116,11 +117,18 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   return fromLibrary(new File([blob],item.name,{type}),item.id);
 }
 
-export async function readLibraryAttachments(items: LibraryFile[]) {
+export async function readLibraryAttachments(items: LibraryFile[], purpose: "chat" | "download") {
   const reads: PromiseSettledResult<File>[] = [];
   for (let start = 0; start < items.length; start += 6) {
     const batch = items.slice(start, start + 6);
-    reads.push(...await Promise.allSettled(batch.map(item => readLibraryAttachment(item))));
+    reads.push(...await Promise.allSettled(batch.map(async item => {
+      if (purpose === "chat" && item.size !== undefined && item.size > MAX_UPLOAD_FILE_SIZE) {
+        throw new LibraryReadError(413,item.name);
+      }
+      const file = await readLibraryAttachment(item);
+      if (purpose === "chat" && file.size > MAX_UPLOAD_FILE_SIZE) throw new LibraryReadError(413,item.name);
+      return file;
+    })));
   }
   return reads;
 }
@@ -129,7 +137,7 @@ export async function addLibraryAttachments(
   items: LibraryFile[],
   upload: (files: File[]) => Promise<(string | undefined)[]>,
 ) {
-  const reads = await readLibraryAttachments(items);
+  const reads = await readLibraryAttachments(items, "chat");
   const ready: File[] = [];
   const errors = new Map<string, string>();
   reads.forEach((read, index) => {

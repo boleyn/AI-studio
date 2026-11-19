@@ -4,7 +4,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { ChatInputFile } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
 
-const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024;
+export const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024;
 
 interface PresignedUploadArtifact extends UploadedFileArtifact {
   storagePath: string;
