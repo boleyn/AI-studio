@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 const endpoint = "/api/library/connectors/google";
-export default function LibraryConnectors({ close, callbackError }: { close: () => void; callbackError: boolean }) {
+export default function LibraryConnectors({ close, callbackStatus }: { close: () => void; callbackStatus?: string }) {
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean }>();
-  const [error, setError] = useState(callbackError ? "连接失败，请重试" : "");
+  const [error, setError] = useState(callbackStatus === "error" ? "连接失败，请重试" : "");
   const [attempt, setAttempt] = useState(0);
   const [statusFailed, setStatusFailed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,7 +45,7 @@ export default function LibraryConnectors({ close, callbackError }: { close: () 
           <Button size="sm" aria-label={"连接 " + name} borderRadius="full" isDisabled={name !== "Google Drive" || !status?.configured}
             isLoading={name === "Google Drive" && busy} onClick={connect}>{name === "Google Drive" && status?.configured ? "连接" : "暂不可用"}</Button>}
         </Flex>)}
-      </Flex>{error && <Text role="alert" color="red.600">{error}</Text>}
+      </Flex>{callbackStatus === "cancelled" && !error && <Text role="status" fontSize="sm" color="gray.600">已取消 Google Drive 授权。</Text>}{error && <Text role="alert" color="red.600">{error}</Text>}
     </ModalBody><ModalFooter><Button borderRadius="full" onClick={close}>完成</Button></ModalFooter>
   </ModalContent></Modal>;
 }

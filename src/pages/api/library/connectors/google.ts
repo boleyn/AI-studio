@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Set-Cookie", cookie("", 0));
   if (!expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return res.status(400).end();
   const returnTo = "/?view=library&libraryConnectors=";
-  if (typeof req.query.code !== "string") return res.redirect(303, returnTo + "cancelled");
+  if (typeof req.query.code !== "string") return res.redirect(303, returnTo + (req.query.error === "access_denied" ? "cancelled" : "error"));
   try {
     const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", body: new URLSearchParams({
       client_id: clientId, client_secret: secret, code: req.query.code, grant_type: "authorization_code", redirect_uri: redirect,
