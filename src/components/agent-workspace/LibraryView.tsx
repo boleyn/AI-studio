@@ -692,9 +692,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           }}}>
           <Flex align="center" justify="space-between">复制<ChevronRight size={14}/></Flex>
         </MenuItem>
-        {copyMenuId === file.id && <Box role="menu" aria-label="复制" position="absolute" right="100%" top={0}
-          minW="164px" p="6px" bg="chakra-body-bg" borderWidth="1px" borderRadius="14px" shadow="md" zIndex={1}
-          sx={{"@media (max-width: 440px)":{position:"static",minWidth:0,marginInlineStart:"20px",border:0,boxShadow:"none",paddingBlock:0}}}
+        {copyMenuId === file.id && <Box role="menu" aria-label="复制" position="absolute" right="calc(100% + 15px)" top="-10px"
+          w="180px" p="10px" bg="chakra-body-bg" borderWidth="1px" borderRadius="14px" shadow="md" zIndex={1}
+          sx={{"@media (max-width: 440px)":{position:"static",width:"auto",minWidth:0,marginInlineStart:"20px",border:0,boxShadow:"none",paddingBlock:0}}}
           onKeyDown={event=>{
             event.stopPropagation();
             if (event.key === "Escape" || event.key === "ArrowLeft") {
