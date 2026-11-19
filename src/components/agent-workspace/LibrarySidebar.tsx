@@ -4,7 +4,7 @@ import type { LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { type ReactNode, useState, useEffect } from "react";
+import { type Ref, type ReactNode, useState, useEffect } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
@@ -21,9 +21,10 @@ type Props = {
   onSection: (section: string) => void;
   onFile: (file: LibraryFile) => void;
   onSearch: () => void;
+  toggleRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, onCollapse }: Props) {
+export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
   const [driveConnected,setDriveConnected] = useState(false);
   useEffect(()=>{
     const controller = new AbortController();
@@ -62,7 +63,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
         </PopoverContent></Portal>
       </Popover>
       <IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="搜索" icon={<Search size={15}/>} onClick={onSearch}/>
-      <IconButton className="collapse-library-sidebar" position="absolute" top="52px" right="-12px" zIndex={2} size="xs" borderRadius="full" boxShadow="sm" bg="white" opacity={0} pointerEvents="none" sx={{"@media (hover:none)":{opacity:1,pointerEvents:"auto"}}} aria-label="显示/隐藏侧边栏" icon={<PanelLeftClose size={15}/>} onClick={onCollapse}/>
+      <IconButton ref={toggleRef} className="collapse-library-sidebar" position="absolute" top="52px" right="-12px" zIndex={2} size="xs" borderRadius="full" boxShadow="sm" bg="white" opacity={0} pointerEvents="none" sx={{"@media (hover:none)":{opacity:1,pointerEvents:"auto"}}} aria-label="显示/隐藏侧边栏" icon={<PanelLeftClose size={15}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
