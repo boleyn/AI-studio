@@ -279,8 +279,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
           )}
         </Flex>
         <Box flex={1} />
-        {searching ? <Flex align="center">
-          <Input ref={searchInput} type="search" autoFocus aria-label="搜索" size="sm" w="min(200px, 30vw)" placeholder="搜索"
+        {searching ? <Flex align="center" gap="8px" px="12px" h="36px" w="min(232px, 40vw)" border="1px solid rgb(0 0 0 / 8%)" borderRadius="full">
+          <Search size={20} aria-hidden style={{flexShrink:0}} />
+          <Input ref={searchInput} type="search" autoFocus aria-label="搜索" variant="unstyled" flex="1" minW={0} h="20px" fontSize="14px" placeholder="搜索"
             value={query} onChange={event => setQuery(event.target.value)}
             onKeyDown={event => {
               if (event.key !== "Escape") return;
