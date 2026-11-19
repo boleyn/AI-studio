@@ -578,6 +578,12 @@ export async function readProjectArtifactVersion(token: string, version: string,
   return getObjectFromStorage({ key: getArtifactVersionKey(token, version, filePath), bucketType: "private" });
 }
 
+export async function listProjectFilesByPrefix(token: string, filePrefix: string) {
+  const prefix = toProjectStorageFileKey(token, filePrefix);
+  const objects = await listStorageObjectsByPrefix({prefix, bucketType:"private"});
+  return objects.map(({key}) => toProjectFilePathFromStorageKey(token, key));
+}
+
 export async function readProjectFile(
   token: string,
   filePath: string

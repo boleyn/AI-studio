@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { canViewRestrictedSite } from "@server/library/sites";
 import { getShareLink } from "@server/shares/shareStorage";
-import { getProjectAccessState, readProjectFile } from "@server/projects/projectStorage";
+import { getProjectAccessState, listProjectFilesByPrefix, readProjectFile } from "@server/projects/projectStorage";
 import { isMissingStorageObject } from "@server/storage/s3";
 
 const coverFormats = [
@@ -29,7 +29,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await getProjectAccessState(share.projectToken, share.ownerUserId) !== "ok" ||
       !await canViewRestrictedSite(share.ownerUserId, share.projectToken, String(auth.user._id))) return res.status(404).end();
 
+  let files: Set<string>;
+  try {
+    const matches = await Promise.all(["public/og-image.", "og-image."].map(prefix =>
+      listProjectFilesByPrefix(share.projectToken, prefix)));
+    files = new Set(matches.flat().map(path => path.replace(/^\/+/,"")));
+  } catch {
+    return res.status(503).end();
+  }
   for (const {path, contentType} of covers) {
+    if (!files.has(path)) continue;
     try {
       const {buffer} = await readProjectFile(share.projectToken, path);
       res.setHeader("Content-Type", contentType);
