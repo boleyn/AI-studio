@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
-import { BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
+import { FileText, Presentation, Upload, BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
 import LibraryMarkdown from "./LibraryMarkdown";
 
@@ -251,10 +251,11 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           onClick={() => { setSearching(!searching); setQuery(""); }} />
         <Menu>
           <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
-          <MenuList>
-            <MenuItem onClick={() => onPick("无标题页", "")}>Page</MenuItem>
-            <MenuItem onClick={() => onSlides()}>Slides</MenuItem>
-            <MenuItem onClick={onUpload}>上传文件</MenuItem>
+          <MenuList aria-label="Template" minW="180px" p="10px" borderWidth={0} borderRadius="16px"
+            sx={{"& [role=menuitem]": {height:"36px", padding:"6px 10px", borderRadius:"12px", fontSize:"14px"}}}>
+            <MenuItem icon={<FileText size={16} aria-hidden />} onClick={() => onPick("无标题页", "")}>Page</MenuItem>
+            <MenuItem icon={<Presentation size={16} aria-hidden />} onClick={() => onSlides()}>Slides</MenuItem>
+            <MenuItem icon={<Upload size={16} aria-hidden />} onClick={onUpload}>上传文件</MenuItem>
           </MenuList>
         </Menu>
       </Flex>
