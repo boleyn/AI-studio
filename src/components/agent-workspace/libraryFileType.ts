@@ -9,9 +9,9 @@ export function fileType(file: LibraryFile) {
   const path = libraryTypeName(file);
   if (isArtifactImage(path)) return "图像";
   if (/\.(xls[xm]?|csv|tsv|ods)$/i.test(path)) return "电子表格";
-  if (/\.(ppt[xm]?|odp)$/i.test(path)) return "演示文稿";
+  if (/\.(ppt[xm]?|pot[xm]|pps[xm]|odp)$/i.test(path)) return "演示文稿";
   if (/\.pdf$/i.test(path)) return "PDF 文件";
-  if (/\.(doc[xm]?|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
+  if (/\.(doc[xm]?|dot[xm]|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
   return "其他";
 }
 
