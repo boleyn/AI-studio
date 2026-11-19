@@ -8,6 +8,7 @@ export interface LibraryFile {
   siteSlug?: string;
   shareId?: string;
   editablePageId?: string;
+  pageExcerpt?: string;
   sharedPage?: boolean;
   sharedSpaceName?: string;
   fileOrigin?: "上传" | "生成";

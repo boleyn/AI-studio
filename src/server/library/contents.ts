@@ -86,11 +86,11 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
           !referencedPaths.has(file.path.replace(/^\/+/, ""))) add("上传", file.path, file.name, undefined, file.size);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{pageExcerpt:{$cond:[{$eq:[{$ifNull:["$kind","页面"]},"页面"]},{$substrCP:[{$ifNull:["$body",""]},0,360]},"$$REMOVE"]},sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     const source = page.sourceChat && chats.get(JSON.stringify([page.sourceChat.token,page.sourceChat.chatId]));
-    rows.set(id,{id,kind:page.kind || "页面",fileOrigin:page.sourceChat ? "生成" : undefined,folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",fromTemplate:page.fromTemplate,path:page.originalName || id,
+    rows.set(id,{id,pageExcerpt:page.pageExcerpt,kind:page.kind || "页面",fileOrigin:page.sourceChat ? "生成" : undefined,folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",fromTemplate:page.fromTemplate,path:page.originalName || id,
       token:source?.token || "",project:chatNames.get(source?.token) || "",chatId:source?.chatId || "",conversation:source && !source.deleteTime ? source.customTitle || source.title || "未命名会话" : "",
       ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:creatorName} : {}),
       permission:"所有者",appearance:page.appearance,reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});

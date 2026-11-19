@@ -1057,6 +1057,18 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             const documentCard = type === "文档" && /\.(doc[xm]?|dot[xm]|odt)$/i.test(path);
             const archiveCard = type === "其他" && /\.(zip|rar|7z|tar|gz)$/i.test(path);
             const {Icon, color} = libraryIconAppearance(file);
+            if (allHome && type === "页面") return <Box key={key(file)} position="relative" aspectRatio="4/5" minW={0}
+              borderWidth="1px" borderRadius="16px" p="12px" cursor="pointer" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
+              onClick={event=>clickItemSurface(event,file)}>
+              <Flex align="center" gap={2} pe="64px" h="24px"><Icon size={18} color={color} style={{flexShrink:0}}/>
+                <Box minW={0} isTruncated>{itemLink(file)}</Box></Flex>
+              <Box position="absolute" insetInline="12px" top="48px" bottom="44px" overflow="hidden" whiteSpace="pre-line" overflowWrap="anywhere" fontSize="sm">{file.pageExcerpt}</Box>
+              {actions(file)}
+              <IconButton size="xs" position="absolute" insetInlineEnd="42px" top="8px" variant="ghost"
+                aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked}
+                icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} onClick={()=>update(file,{pinned:!file.pinned})}/>
+              <LibrarySelectionBox disabled={selectionLocked} card label={"选择 "+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
+            </Box>;
             return allHome && (spreadsheet || documentCard || archiveCard) ? (
             <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={spreadsheet ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
