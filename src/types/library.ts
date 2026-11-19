@@ -10,6 +10,7 @@ export interface LibraryFile {
   editablePageId?: string;
   pageExcerpt?: string;
   sharedPage?: boolean;
+  sharedPageUpdatedAt?: string;
   sharedSpaceName?: string;
   fileOrigin?: "上传" | "生成";
   reference?: ImageReference;
@@ -52,7 +53,8 @@ export function libraryFileOrigin(file: LibraryFile) {
 }
 
 export function libraryActivityTime(file: LibraryFile) {
-  return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
+  const latestChange = file.sharedPageUpdatedAt && file.sharedPageUpdatedAt > file.time ? file.sharedPageUpdatedAt : file.time;
+  return file.openedAt && file.openedAt > latestChange ? file.openedAt : latestChange;
 }
 
 export function markdownFilename(title: string) {
