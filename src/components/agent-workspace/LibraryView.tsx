@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, SkipNavContent, SkipNavLink, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
+import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, Users, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
 import { redirectedToLogin } from "@features/chat/services/files";
@@ -1056,6 +1056,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Flex> : allHome && (tab === "收藏" || sharedItems) && !filterCount ?
           <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center" textAlign="center">
             <Box position="relative" mt="88px" w="full">
+              {sharedItems && <Flex aria-hidden="true" position="absolute" bottom="calc(100% + 12px)" left="50%"
+                transform="translateX(-50%)" boxSize="20px" color="#0d0d0d">
+                {tab === "全部" ? <><Folder size={20} strokeWidth={1.6}/>
+                  <Box position="absolute" right="-1px" bottom="0" bg="white"><Users size={11} strokeWidth={1.8}/></Box></>
+                  : <Search size={20} strokeWidth={1.6}/>}
+              </Flex>}
               <Heading as="h2" fontSize="18px" lineHeight="24px" fontWeight="500">{tab === "收藏" ? "暂无收藏" : tab === "全部" ? "文件夹为空" : "未找到任何项目"}</Heading>
               {sharedItems && tab === "全部" && <Text position="absolute" w="full" mt={2} fontSize="14px" color="#5d5d5d">与你共享的文件和页面将显示在这里</Text>}
             </Box>
