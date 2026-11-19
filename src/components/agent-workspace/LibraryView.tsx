@@ -1045,9 +1045,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         </Flex> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
-          <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
+          <Flex role="status" direction="column" align="center" justify="center" textAlign="center"
+            minH={allHome ? "max(420px, calc(100dvh - 145px))" : undefined} py={allHome ? 6 : 20} gap={2}>
+            {allHome && <Flex aria-hidden="true" boxSize="48px" mb={2} align="center" justify="center" borderRadius="12px" bg="#f3f3f3">
+              <Search size={24} strokeWidth={1.6}/>
+            </Flex>}
             <Heading as="h2" fontSize="18px" lineHeight="24px" fontWeight="500">未找到匹配结果</Heading>
-            <Text fontSize="sm" color="gray.600" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
+            <Text fontSize="sm" lineHeight="20px" color="#5d5d5d" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
           </Flex> : allHome && (tab === "收藏" || sharedItems) && !filterCount ?
           <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center" textAlign="center">
             <Box position="relative" mt="88px" w="full">
