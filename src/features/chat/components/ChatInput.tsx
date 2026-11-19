@@ -818,6 +818,7 @@ const ChatInput = ({
                   event.stopPropagation();
                 }}
                 onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                   if (showFilePicker) {
                     if (event.key === "ArrowDown") {
                       event.preventDefault();
@@ -884,8 +885,6 @@ const ChatInput = ({
                     }
                   }
                   if (event.key === "Enter" && !event.shiftKey) {
-                    const nativeEvent = event.nativeEvent as { isComposing?: boolean; keyCode?: number };
-                    if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
                     event.preventDefault();
                     handleSend();
                   }
