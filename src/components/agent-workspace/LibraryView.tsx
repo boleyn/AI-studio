@@ -44,7 +44,7 @@ function LibraryImageThumbnail({file,src}:{file:LibraryFile;src:string}) {
 }
 
 function renameSuffix(file?: LibraryFile) {
-  if (!file || file.siteId || file.sharedPage || isNative(file)) return "";
+  if (!file || file.siteId || file.sharedPage || file.kind === "页面" || isContainer(file)) return "";
   const dot = file.name.lastIndexOf(".");
   return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
 }
@@ -315,7 +315,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const [renameError, setRenameError] = useState("");
   const suffix = renameSuffix(rename);
   const newName = title.trim() + suffix;
-  const renamingPage = rename?.kind === "页面";
+  const renamingPage = rename?.kind === "页面" || Boolean(rename?.sharedPage);
+  const renameKind = renamingPage ? "页面" : rename && isContainer(rename) ? rename.kind : rename?.siteId ? "站点" : "文件";
   const canRename = Boolean(title.trim() && rename && (renamingPage || newName !== rename.name));
   const moveFocus = useRef<HTMLButtonElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
@@ -1381,12 +1382,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           }}>永久删除</Button></ModalFooter>
       </ModalContent></Modal>
     <Modal isOpen={Boolean(rename)} initialFocusRef={renameInput} onClose={() => {if (!saving) setRename(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW={renamingPage ? "420px" : "520px"} p="19px" borderRadius="24px">
-      <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
+      <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">重命名{renameKind}</ModalHeader>
       {renamingPage && <ModalCloseButton aria-label="关闭对话框" isDisabled={saving}/>}
       <form onSubmit={event => {event.preventDefault(); if (!rename || !canRename || saving) return;
         if (newName === rename.name) setRename(undefined);
         else void update(rename,{name:newName});}}>
-        <ModalBody p={0} mt={3}>{!renamingPage && <Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">文件名</Text>}
+        <ModalBody p={0} mt={3}>{!renamingPage && <Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">{renameKind}名</Text>}
           <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} h="34px" aria-label={renamingPage ? "页面标题" : undefined} isReadOnly={saving} aria-describedby={renameError ? "library-rename-error" : undefined} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
             onPaste={event => {
               const field = event.currentTarget;
