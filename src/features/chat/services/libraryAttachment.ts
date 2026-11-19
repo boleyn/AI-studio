@@ -7,7 +7,7 @@ import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE, redirectedToLogin } from "./fil
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
-export function expandLibrarySelection(selection: LibraryFile[], files: LibraryFile[], sharedSpaces?: Map<string, LibraryFile>) {
+export function expandLibrarySelection(selection: LibraryFile[], files: LibraryFile[], sharedSpaces?: Map<string, LibraryFile>, sites?: Map<string, LibraryFile>) {
     const containers = selection.filter(isContainer);
     for (const item of containers) {
       if (item.shareId) sharedSpaces?.set(item.id, item);
@@ -26,6 +26,7 @@ export function expandLibrarySelection(selection: LibraryFile[], files: LibraryF
       for (const file of children.get(folderId) || []) {
         if (isContainer(file) && file.shareId) sharedSpaces?.set(file.id, file);
         if (isContainer(file) || file.kind === "页面") folders.add(file.id);
+        if (file.siteId) sites?.set(file.id, file);
         if (!isContainer(file) && !file.siteId) attachments.set(file.id, file);
       }
     }

@@ -445,9 +445,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   async function startSelectionChat(selection: LibraryFile[]) {
     const shared = new Map<string, LibraryFile>();
-    const siteLinks = selection.flatMap(item => item.siteId
+    const sites = new Map(selection.filter(item => item.siteId).map(item => [item.id,item]));
+    let attachments = expandLibrarySelection(selection.filter(item => !item.siteId), files || [], shared, sites);
+    const siteLinks = Array.from(sites.values()).flatMap(item => item.siteId
       ? [item.name + " " + new URL(sitePreviewPath(item.siteId,item.siteSlug),window.location.origin).href] : []);
-    let attachments = expandLibrarySelection(selection.filter(item => !item.siteId), files || [], shared);
     if (shared.size) {
       setBatchBusy(true);
       try {
