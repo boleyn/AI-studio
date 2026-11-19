@@ -41,7 +41,11 @@ export default function LibraryCardGrid({ masonry, selecting, children }: { maso
       insetBlockStart: "auto", insetBlockEnd: "18px", insetInlineEnd: "18px", boxSize: "20px", background: "white",
     }, "& > * > [role=checkbox][aria-checked=true]": {
       background: "#171717", color: "white", borderColor: "transparent",
+    }, "& .chakra-menu__menu-button": {
+      position: "absolute", insetBlockStart: "4px", insetInlineEnd: "8px",
+      boxSize: "36px", minWidth: "36px", padding: 0, borderRadius: "full", color: "#707070",
     }, "@media (hover:hover) and (not (any-pointer:coarse))": {
+      "& > :not(:hover) .chakra-menu__menu-button:not(:focus-visible):not([aria-expanded=true])": {opacity: 0},
       "&[data-selecting=false] > :not(:hover):not(:focus-within) > [role=checkbox]": {opacity: 0},
     }} : undefined}
     alignItems={masonry ? "start" : undefined} alignContent="start" gap={masonry ? "16px" : 3}>{children}</Box>;
