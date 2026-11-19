@@ -58,13 +58,14 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
 
   useEffect(() => {
     const controller = new AbortController();
+    setResult(undefined);
     fetch(url, { headers: withAuthHeaders(), signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.blob();
       })
       .then(async (blob) => {
-        if (standalone && (/\.(md|markdown)$/i.test(name) || /^text\/markdown(?:;|$)/i.test(blob.type))) {
+        if (standalone && (/\.(md|markdown)$/i.test(name) || /^text\/(?:x-)?markdown(?:;|$)/i.test(blob.type))) {
           const markdown = await blob.text();
           if (!controller.signal.aborted) setResult({markdown});
           return;
