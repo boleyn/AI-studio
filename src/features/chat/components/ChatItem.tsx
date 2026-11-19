@@ -134,6 +134,9 @@ const ChatItem = ({
         try {
           const url = new URL(preview.url,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
+          if (!externalAttachment && url.pathname === "/api/code" && url.searchParams.get("action") === "view-url") {
+            url.searchParams.set("action", "view");
+          }
           const response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
           const needsLogin = redirectedToLogin(response);
           if (needsLogin || !response.ok) throw new LibraryReadError(needsLogin ? 401 : response.status, preview.name);
