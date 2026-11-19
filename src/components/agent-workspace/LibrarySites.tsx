@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import SiteSchedules from "./SiteSchedules";
 import SiteDomains from "./SiteDomains";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
@@ -25,8 +26,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const [sites, setSites] = useState<Site[]>();
   const settings = sites?.find(site=>!site.shared && site.id===router.query.librarySiteSettings);
   useEffect(()=>setTitle(settings?.name || ""),[settings?.id,settings?.name]);
-  function navigateSettings(id?:string) {
+  const scheduled = router.query.siteDetail === "scheduled";
+  function navigateSettings(id?:string, showSchedules = false) {
     const query = {...router.query};
+    if (showSchedules) query.siteDetail = "scheduled";
+    else delete query.siteDetail;
     if (id) query.librarySiteSettings = id;
     else delete query.librarySiteSettings;
     void router.push({pathname:router.pathname,query},undefined,{shallow:true,scroll:false});
@@ -135,9 +139,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Link href={siteUrl(settings)} fontSize="sm" color="gray.600" overflowWrap="anywhere">{siteUrl(settings)}</Link>
     </Box>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" borderBottomWidth="1px">
-      <Text aria-current="page" fontWeight="semibold">设置</Text>
+      <Button variant="link" aria-current={scheduled ? undefined : "page"} onClick={()=>navigateSettings(settings.id)}>设置</Button>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
+      <Button variant="link" aria-current={scheduled ? "page" : undefined} onClick={()=>navigateSettings(settings.id,true)}>已安排</Button>
     </Flex>
+    {scheduled ? <SiteSchedules key={settings.id} siteId={settings.id}/> : <>
     <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
       event.preventDefault();
@@ -192,7 +198,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     <Flex mt={3} gap={3} align="center" wrap="wrap">
       <Box flex="1"><Text>删除站点</Text><Text id="site-delete-description" fontSize="sm" color="gray.600">永久删除此站点</Text></Box>
       <Button size="sm" aria-describedby="site-delete-description" colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
-    </Flex>
+    </Flex></>}
     {dialog}
   </Box>;
   if (router.query.librarySiteSettings) return <Box py={6}>
