@@ -389,7 +389,10 @@ const ChatItem = ({
                       overflow="hidden"
                     >
                       {image && fileUrl && !imageFailed ? (
+                        <Link href={fileUrl} target="_blank" rel="noopener noreferrer" aria-label={`查看原图：${name}`}
+                          display="block" cursor="zoom-in" _focusVisible={{outline:"2px solid currentColor",outlineOffset:"-2px"}}>
                           <Box as="img" src={fileUrl} alt={name} onError={()=>setFailedImages(previous=>new Set(previous).add(fileUrl))} maxH="220px" objectFit="contain" w="100%" />
+                        </Link>
                       ) : (
                         <Flex
                           alignItems="center" gap={2}
