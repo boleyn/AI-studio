@@ -866,6 +866,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& tbody td:not(:first-child)":{position:"relative","&::after":{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInline:0,borderBottom:"1px solid rgb(0 0 0 / 5%)"}},
+          "& tbody tr:hover > td:not(:first-child)":{bg:"surface.hover"},
+          "& tbody tr[aria-selected=true] > td:not(:first-child)":{bg:"#f3f3f3"},
+          "& tbody td:nth-child(2)":{borderStartStartRadius:"12px",borderEndStartRadius:"12px"},
+          "& tbody td:last-child":{borderStartEndRadius:"12px",borderEndEndRadius:"12px"},
           "& tbody td:nth-child(2)::after":{insetInlineStart:"12px"},
           "& tbody td:last-child::after":{insetInlineEnd:allHome ? {base:"12px",xl:"4px"} : "12px"},
           "& tbody td:last-child button[aria-haspopup=menu]":{boxSize:"28px",minWidth:"28px"},
@@ -884,8 +888,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} aria-selected={selected.includes(file.id)}
             onClick={event => clickItemSurface(event,file)}
-            cursor={file.deleted ? undefined : "pointer"}
-            sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
+            cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
