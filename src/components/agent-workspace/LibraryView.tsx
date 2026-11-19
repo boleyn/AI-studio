@@ -6,7 +6,7 @@ import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, useToast } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, SkipNavContent, SkipNavLink, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
@@ -650,6 +650,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           </Menu>;
   };
   return <Flex flex="1" minW={0} minH={0}>
+    <SkipNavLink id="library-content" zIndex="skipLink">跳转到内容</SkipNavLink>
     <input ref={fileInput} type="file" multiple hidden aria-label="上传文件" onChange={event => {
       const selected = Array.from(event.target.files || []);
       event.target.value = "";
@@ -683,6 +684,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder ? undefined : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} toggleRef={sidebarToggle} onCollapse={toggleSidebar} /></Box>}
     {!sidebar && <IconButton ref={sidebarToggle} display={{base:"none",md:"inline-flex"}} flexShrink={0} alignSelf="flex-start" mt={2} ml={1} aria-expanded={false} aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={toggleSidebar}/>}
+    <SkipNavContent id="library-content" w={0} flexShrink={0}/>
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
         !file.deleted && file.kind === "生成" && file.token === detail.token &&
