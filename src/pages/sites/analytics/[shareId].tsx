@@ -63,19 +63,24 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
 function TrafficTrend({daily}: Pick<Props,"daily">) {
   const [showVisitors, setShowVisitors] = useState(true);
   const [showViews, setShowViews] = useState(true);
-  const maximum = Math.max(1,...daily.map(row=>Math.max(showViews ? row.views : 0, showVisitors ? row.visitors : 0)));
+  const peak = Math.max(1,...daily.map(row=>Math.max(showViews ? row.views : 0, showVisitors ? row.visitors : 0)));
+  const tickStep = Math.ceil(peak / 4);
+  const maximum = tickStep * 4;
+  const dateTickCount = Math.min(daily.length, 11);
+  const dateTicks = Array.from({length:dateTickCount}, (_, i) => Math.round(i * (daily.length - 1) / (dateTickCount - 1)));
+  const dateLabel = new Intl.DateTimeFormat("zh-CN", {month:"long", day:"numeric", timeZone:"UTC"});
   const x = (index:number) => 48 + index * 648 / (daily.length - 1);
   const y = (value:number) => 158 - value * 132 / maximum;
   const points = (metric:"visitors"|"views") => daily.map((row,index)=>x(index)+","+y(row[metric])).join(" ");
   return <Box as="figure" mb={6}>
     <svg viewBox="0 0 720 192" width="100%" role="img" aria-label="每日独立访客数和页面浏览量，详细数值见下表">
-      {[0,Math.ceil(maximum/2),maximum].filter((v,i,a)=>a.indexOf(v)===i).map(tick=><g key={tick}>
+      {[0,tickStep,2*tickStep,3*tickStep,maximum].map(tick=><g key={tick}>
         <line x1="48" x2="696" y1={y(tick)} y2={y(tick)} stroke="#ddd"/>
         <text x="40" y={y(tick)+4} textAnchor="end" fontSize="12" fill="#555">{tick}</text>
       </g>)}
       {showViews && <polyline points={points("views")} fill="none" stroke="#2563eb" strokeWidth="3"/>}
       {showVisitors && <polyline points={points("visitors")} fill="none" stroke="#08775b" strokeWidth="2" strokeDasharray="5 4"/>}
-      {[0,Math.floor(daily.length/2),daily.length-1].map(index=><text key={index} x={x(index)} y="182" textAnchor="middle" fontSize="12" fill="#555">{daily[index].day.slice(5)}</text>)}
+      {dateTicks.map(index=><text key={index} x={x(index)} y="182" textAnchor="middle" fontSize="12" fill="#555">{dateLabel.format(new Date(daily[index].day))}</text>)}
     </svg>
     <Flex as="figcaption" gap={4} justify="center" fontSize="sm">
       <Button variant="ghost" size="sm" aria-pressed={showVisitors} onClick={()=>setShowVisitors(value=>!value)}
