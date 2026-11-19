@@ -196,6 +196,10 @@ export default function AgentWorkspace({
   const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
     fileChat.chatId === visibleChatId ? fileChat : undefined;
   const fileChatOpen = currentFileChat?.minimized === false;
+  const [chatWasOpened, setChatWasOpened] = useState(false);
+  useEffect(() => {
+    if (router.isReady && (activeNav === "chat" || fileChatOpen)) setChatWasOpened(true);
+  }, [router.isReady, activeNav, fileChatOpen]);
   function setActiveNav(view: WorkspaceView, conversation?:string) {
     if (view === activeNav && !conversation) return;
     const nextQuery = {...router.query};
@@ -205,6 +209,7 @@ export default function AgentWorkspace({
       delete nextQuery.libraryFolder;
       delete nextQuery.librarySection;
       delete nextQuery.libraryTab;
+      delete nextQuery.librarySource;
       delete nextQuery.libraryType;
       delete nextQuery.libraryLayout;
     }
@@ -1275,7 +1280,7 @@ export default function AgentWorkspace({
         </Flex>
       ) : null}
 
-      {activeNav !== "schedules" && conversationPane}
+      {activeNav !== "schedules" && router.isReady && (chatWasOpened || activeNav === "chat" || fileChatOpen) && conversationPane}
       </Flex>
 
       {/* 新建项目弹窗 */}
