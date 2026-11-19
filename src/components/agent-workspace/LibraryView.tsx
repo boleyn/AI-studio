@@ -1366,9 +1366,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     </Modal>
     <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">新建{newKind}</ModalHeader><form onSubmit={event => {event.preventDefault(); if (title.trim() && newKind) void createPage(title.trim(),"",newKind);}}>
-        <ModalBody p={0} mt="12px"><FormLabel m={0} mb="8px" lineHeight="24px" htmlFor="library-container-name">{newKind}名称</FormLabel><Input h="36px" fontSize="14px" borderRadius="6px" id="library-container-name" autoFocus value={title} maxLength={255}
-          onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter p={0} mt="12px" gap="12px"><Button minW="66px" h="32px" borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
-          <Button minW="66px" h="32px" borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
+        <ModalBody p={0} mt="12px"><FormLabel m={0} mb="8px" lineHeight="24px" htmlFor="library-container-name">{newKind}名称</FormLabel><Input px="10px" h="36px" fontSize="14px" borderRadius="6px" id="library-container-name" autoFocus value={title} maxLength={255}
+          onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter p={0} mt="12px" gap="12px"><Button py="6px" fontWeight="400" minW="66px" h="32px" borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
+          <Button py="6px" fontWeight="400" minW="66px" h="32px" borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
     <Modal initialFocusRef={moveFocus} isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton isDisabled={batchBusy} top={4} right={4} boxSize={6} borderRadius="4px" aria-label="关闭对话框"/>
       <ModalBody p={0} mt={3}><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
