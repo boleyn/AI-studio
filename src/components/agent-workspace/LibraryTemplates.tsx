@@ -2,8 +2,12 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
+import LibraryMarkdown from "./LibraryMarkdown";
+
 function TemplatePreview({body}: {body: string}) {
-  return <>{body.split("\n\n").map((paragraph,index) => <Text key={index} mb="4px" whiteSpace="pre-line"
+  return <>{body.split("\n\n").map((paragraph,index) => paragraph.startsWith("|")
+    ? <LibraryMarkdown key={index}>{paragraph}</LibraryMarkdown>
+    : <Text key={index} mb="4px" whiteSpace="pre-line"
                 fontWeight={/^#{1,6} /.test(paragraph) ? "600" : "400"}>
                 {paragraph.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ").replace(/^- /gm, "• ")}
               </Text>)}</>;
@@ -12,7 +16,7 @@ function TemplatePreview({body}: {body: string}) {
 export const templates = [
   { name:"页面使用指南", pageTitle:"页面入门指南", body:"在页面中，你可以写作、创作，并与团队协作。把这个页面当作你的练习场，学习基础操作。\n\n## 开始使用\n\n- [ ] 添加标题、图片、检查清单或表格。\n- [ ] 选中一段文字，在聊天中引用。", icon:GraduationCap, color:"#008cff" },
   { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料箱\n\n### 如果时间允许\n\n- [ ] 检查辐射防护罩\n- [ ] 测试通信系统\n- [ ] 撰写状态报告", icon:ClipboardList, color:"#14b95d" },
-  { name:"项目跟踪表", body:"## 🔴 需要立即处理\n\n- 发布前通信系统测试\n\n## ⛰️ 里程碑\n\n下一阶段", icon:ChartNoAxesColumn, color:"#168cff" },
+  { name:"项目跟踪表", body:"## 🔴 需要立即处理\n\n- 发布前通信系统测试\n\n## ⛰️ 里程碑\n\n| 里程碑 | 状态 |\n| --- | --- |\n| ☐ 项目简介 | 已完成 |\n| ☐ 原型评审 | 处理中 |\n| ☐ 发布准备 | 即将开始 |", icon:ChartNoAxesColumn, color:"#168cff" },
   { name:"Trip planner", body:"Travelers: Maya and Sam\nPace: One main activity a day\n\n🧭 The plan\n\nPlan two nights near a mountain observatory.", icon:Plane, color:"#168cff" },
   { name:"Weekly planner", body:"🎯 Priorities\n\n- [ ] Confirm plans\n- [ ] Review progress\n\n📅 Schedule", icon:Calendar, color:"#d26e69" },
   { name:"Budget tracker", body:"Monthly budget\n\nIncome\n\nExpenses\n\nSavings goals", icon:Wallet, color:"#1a995e" },
