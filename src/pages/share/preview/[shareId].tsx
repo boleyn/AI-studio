@@ -286,4 +286,6 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   };
 };
 
-export default SharePreviewPage;
+export default function PublishedSite(props: SharePreviewPageProps) {
+  return <SharePreviewPage key={props.shareId} {...props}/>;
+}
