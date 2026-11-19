@@ -309,7 +309,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const suffix = renameSuffix(rename);
   const newName = title.trim() + suffix;
   const renamingPage = rename?.kind === "页面";
-  const canRename = Boolean(title.trim() && rename && newName !== rename.name);
+  const canRename = Boolean(title.trim() && rename && (renamingPage || newName !== rename.name));
   const moveFocus = useRef<HTMLButtonElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -1287,7 +1287,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     <Modal isOpen={Boolean(rename)} initialFocusRef={renameInput} onClose={() => {if (!saving) setRename(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW={renamingPage ? "420px" : "520px"} p="19px" borderRadius="24px">
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
       {renamingPage && <ModalCloseButton aria-label="关闭对话框" isDisabled={saving}/>}
-      <form onSubmit={event => {event.preventDefault(); if(rename && canRename && !saving) void update(rename,{name:newName});}}>
+      <form onSubmit={event => {event.preventDefault(); if (!rename || !canRename || saving) return;
+        if (newName === rename.name) setRename(undefined);
+        else void update(rename,{name:newName});}}>
         <ModalBody p={0} mt={3}>{!renamingPage && <Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">文件名</Text>}
           <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} h="34px" aria-label={renamingPage ? "页面标题" : undefined} isReadOnly={saving} aria-describedby={renameError ? "library-rename-error" : undefined} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
             onPaste={event => {
@@ -1299,10 +1301,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               setTitle(pasted.slice(0,-suffix.length).slice(0,field.maxLength));
               setRenameError("");
             }}
-            onFocus={event => event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => {setRenameError("");setTitle(event.target.value);}}/>
+            onFocus={event => renamingPage ? event.target.select() : event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => {setRenameError("");setTitle(event.target.value);}}/>
             {suffix && <Text color="gray.600">{suffix}</Text>}</Flex>
           {renameError && <Text role="alert" id="library-rename-error" mt={2} fontSize="sm" color="red.700">{renameError}</Text>}</ModalBody>
-        <ModalFooter p={0} mt={3} gap={3}><Button minW="66px" isDisabled={saving} h={8} px={4} borderRadius="full" variant="outline" onClick={() => setRename(undefined)}>取消</Button><Button minW="82px" h={8} px={4} borderRadius="full" bg="#171717" color="white" _hover={{bg:"#303030"}} type="submit" isLoading={saving} isDisabled={!canRename}>{renamingPage ? "保存" : "重命名"}</Button></ModalFooter>
+        <ModalFooter p={0} mt={3} gap={3}><Button minW="66px" isDisabled={saving} h={8} px={4} borderRadius="full" variant="outline" onClick={() => setRename(undefined)}>取消</Button><Button minW={renamingPage ? "66px" : "82px"} h={8} px={4} borderRadius="full" bg="#171717" color="white" _hover={{bg:"#303030"}} type="submit" isLoading={saving} isDisabled={!canRename}>{renamingPage ? "保存" : "重命名"}</Button></ModalFooter>
       </form></ModalContent></Modal>
   </Flex>;
 }
