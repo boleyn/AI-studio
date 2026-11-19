@@ -8,7 +8,7 @@ import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibraryS
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import { matchesLibraryType } from "@/components/agent-workspace/libraryFileType";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, expandLibrarySelection, includeSharedPages, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, includeSharedPages, isContainer, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -129,6 +129,20 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         return;
       }
       const errors = await addLibraryAttachments(files, onAdd);
+      const folders = selected.filter(isContainer);
+      if (folders.length) {
+        const parents = new Map(rootItems.current.map(item => [item.id, item.folderId]));
+        const used = new Set<string>();
+        for (const file of files) {
+          if (errors.has(file.id)) continue;
+          let parent = parents.get(file.id);
+          while (parent && !used.has(parent)) {
+            used.add(parent);
+            parent = parents.get(parent);
+          }
+        }
+        recordLibraryOpen(folders.filter(folder => used.has(folder.id)).map(folder => folder.id));
+      }
       setFileErrors(errors);
       if (errors.size) {
         setSelected(files.filter(item => errors.has(item.id)));
