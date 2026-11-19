@@ -120,19 +120,18 @@ const ChatItem = ({
     setPreviewError("");
     void (async () => {
       const signal = controller.signal;
-      let externalAttachment = false;
       let response: Response | undefined;
       if (preview.url) {
         try {
           const url = new URL(preview.url,window.location.href);
-          externalAttachment = url.origin !== window.location.origin;
+          const externalAttachment = url.origin !== window.location.origin;
           response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
         } catch (error) {
           if (signal.aborted || !preview.libraryItemId) throw error;
         }
       }
-      const expiredExternalLink = externalAttachment && (response?.status === 401 || response?.status === 403);
-      if (preview.libraryItemId && (!response || expiredExternalLink || response.status === 404 || response.status === 410 || response.status >= 500)) {
+      // The conversation copy and the library original have independent access checks.
+      if (preview.libraryItemId && !response?.ok) {
         const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
         if (!library.ok) throw new LibraryReadError(library.status,preview.name);
         const items: LibraryFile[] = await library.json();
