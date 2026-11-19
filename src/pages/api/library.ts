@@ -27,10 +27,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return status === 409 ? res.status(status).json({error:"请先恢复此条目并移出其中的资料，或先永久删除已在回收站中的子项。"}) : res.status(status).end();
   }
   if (req.method === "POST") {
-    const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
+    const itemId = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
+    const operation = z.union([z.object({openedId:itemId}),z.object({openedIds:z.array(itemId).min(1).max(100)})]).safeParse(req.body);
     if (!operation.success) return res.status(400).end();
-    await settings.updateOne({_id: owner + "/" + operation.data.openedId, owner},
-      {$max: {openedAt: new Date().toISOString()}}, {upsert: true});
+    const ids = "openedId" in operation.data ? [operation.data.openedId] : operation.data.openedIds;
+    const openedAt = new Date().toISOString();
+    await settings.bulkWrite([...new Set(ids)].map(id => ({updateOne:{
+      filter:{_id:owner + "/" + id,owner},update:{$max:{openedAt}},upsert:true,
+    }})),{ordered:false});
     return res.status(204).end();
   }
   if (req.method === "PATCH") {

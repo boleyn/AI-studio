@@ -397,7 +397,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
       if (action === "chat") {
         await onChat(attachments,question,itemId);
-        for (const file of items) recordLibraryOpen(file.id);
+        recordLibraryOpen(items.map(file => file.id));
         return;
       }
       if (!attachments.length) return;

@@ -27,9 +27,12 @@ export function expandLibrarySelection(selection: LibraryFile[], files: LibraryF
     return [...attachments.values()];
   }
 
-export function recordLibraryOpen(id: string) {
-  void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
-    body:JSON.stringify({openedId:id})}).catch(() => undefined);
+export function recordLibraryOpen(selection: string | string[]) {
+  const ids = typeof selection === "string" ? [selection] : [...new Set(selection)];
+  for (let start = 0; start < ids.length; start += 100) {
+    void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
+      body:JSON.stringify({openedIds:ids.slice(start,start+100)})}).catch(() => undefined);
+  }
 }
 
 export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile[]> {
@@ -132,13 +135,15 @@ export async function addLibraryAttachments(
   });
   if (ready.length) {
     const uploadErrors = await upload(ready);
+    const opened: string[] = [];
     let uploadedIndex = 0;
     reads.forEach((read, index) => {
       if (read.status !== "fulfilled") return;
       const reason = uploadErrors[uploadedIndex++];
       if (reason) errors.set(items[index].id, reason);
-      else recordLibraryOpen(items[index].id);
+      else opened.push(items[index].id);
     });
+    recordLibraryOpen(opened);
   }
   return errors;
 }
