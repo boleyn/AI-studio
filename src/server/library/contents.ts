@@ -9,6 +9,14 @@ import { canAccessArtifactSource } from "@server/chat/tokenAccess";
 import type { LibraryFile } from "@/types/library";
 import { listProjectOverviewItems } from "@server/projects/projectStorage";
 
+const pageExcerptProjection = {
+  $cond: [
+    {$eq: [{$ifNull: ["$kind", "页面"]}, "页面"]},
+    {$substrCP: [{$ifNull: ["$body", ""]}, 0, PAGE_EXCERPT_LENGTH]},
+    "$$REMOVE",
+  ],
+};
+
 export async function listLibraryContents(owner:string, creatorName?:string) {
   const db = await getMongoDb();
   const settings = db.collection<{ _id: string; owner: string; siteSlug?:string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
@@ -87,7 +95,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
           !referencedPaths.has(file.path.replace(/^\/+/, ""))) add("上传", file.path, file.name, undefined, file.size);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{pageExcerpt:{$cond:[{$eq:[{$ifNull:["$kind","页面"]},"页面"]},{$substrCP:[{$ifNull:["$body",""]},0,PAGE_EXCERPT_LENGTH]},"$$REMOVE"]},sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{pageExcerpt:pageExcerptProjection,sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     const source = page.sourceChat && chats.get(JSON.stringify([page.sourceChat.token,page.sourceChat.chatId]));
@@ -108,7 +116,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
   const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
   const sharedPages = new Map((sharedPageIds.length ? await db.collection("library_pages").find(
     {_id:{$in:sharedPageIds},deleted:{$ne:true},purging:{$ne:true}},
-    {projection:{owner:1,name:1,kind:1,fromTemplate:1,sourceChat:1,originalName:1}}
+    {projection:{pageExcerpt:pageExcerptProjection,owner:1,name:1,kind:1,fromTemplate:1,sourceChat:1,originalName:1}}
   ).toArray() : []).map(page => [page._id.toHexString(), page]));
   for (const share of received) {
     const page = share.libraryItemId ? sharedPages.get(share.libraryItemId) : undefined;
@@ -119,7 +127,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
     let fileOrigin = share.fileOrigin;
     if (page?.sourceChat || page?.fromTemplate) fileOrigin = "生成";
     else if (page?.kind === "上传") fileOrigin = "上传";
-    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:typePath,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    rows.set(id,{id,shareId:id,pageExcerpt:share.livePage ? page?.pageExcerpt : undefined,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:typePath,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   for (const site of await listLibrarySites(owner,names)) {
     const id = siteLibraryId(site.token);
