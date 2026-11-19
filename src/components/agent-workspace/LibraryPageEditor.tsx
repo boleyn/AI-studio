@@ -11,7 +11,7 @@ export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse)";
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
@@ -117,7 +117,18 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       </Box>}
       {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
-      <Textarea onSelect={event=>{
+      <Textarea onKeyDown={event => {
+        if (!onCreateSubpage || busy || conflict || event.key !== "Enter" || event.shiftKey || event.ctrlKey ||
+          event.metaKey || event.altKey || event.nativeEvent.isComposing || event.repeat) return;
+        const {value, selectionStart, selectionEnd} = event.currentTarget;
+        if (selectionStart !== selectionEnd) return;
+        const lineStart = value.slice(0, selectionStart).lastIndexOf("\n") + 1;
+        if (value.slice(lineStart, selectionStart) !== "/page" ||
+          (selectionStart < value.length && value[selectionStart] !== "\n")) return;
+        event.preventDefault();
+        edit({...content, body:value.slice(0, lineStart) + value.slice(selectionStart)});
+        onCreateSubpage();
+      }} onSelect={event=>{
         const {selectionStart,selectionEnd} = event.currentTarget;
         setSelection({start:selectionStart,end:selectionEnd});
       }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
