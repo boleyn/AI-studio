@@ -38,7 +38,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       {_id:owner+"/"+siteLibraryId(link.projectToken),owner},
       {$unset:{siteSlug:"",siteProjectToken:"",siteShareId:""}}
     );
-    await links.deleteMany({projectToken:link.projectToken, ownerUserId:owner, mode:"preview"});
+    const publications = {projectToken:link.projectToken, ownerUserId:owner, mode:"preview"};
+    const shareIds = await links.distinct("shareId", publications);
+    await db.collection("site_domains").deleteMany({shareId:{$in:shareIds}});
+    await links.deleteMany({...publications, shareId:{$in:shareIds}});
     return res.status(204).end();
   }
   if (req.method !== "GET") {
