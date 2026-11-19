@@ -41,8 +41,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (native.kind === "上传") {
           fileOrigin = native.fromTemplate ? "生成" : "上传";
           bytes = (await getObjectFromStorage({key:native.storageKey})).buffer;
+        } else {
+          livePage = true;
+          bytes = Buffer.alloc(0);
+          filename = markdownFilename(native.name);
         }
-        else { livePage = true; bytes = Buffer.alloc(0); filename += ".md"; }
       } else {
         if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
         if (!await canAccessArtifactSource(token,userId,body.chatUpload === true)) return res.status(404).end();
