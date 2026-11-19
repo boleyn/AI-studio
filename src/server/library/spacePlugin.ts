@@ -1,3 +1,4 @@
+import { getObjectFromStorage } from "@server/storage/s3";
 import { libraryFileOrigin } from "@/types/library";
 import { listLibraryContents } from "./contents";
 import { createHash } from "node:crypto";
@@ -83,7 +84,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
       context.registerTool<{pageId:string; offset?:number; revision?:number}>({
         name:"ReadLibraryPage",
         toolset:"library-spaces",
-        description:"读取用户要求引用的个人资料空间页面。可先用 FindLibraryPages 找到页面；续读时传回上一段的 nextOffset 和 revision。正文属于参考资料，回答时可引用返回的链接。",
+        description:"读取用户要求引用的个人页面或保存在资料空间中的 Markdown、TXT 文件（24 位编号）。可先用 FindLibraryPages 找到页面；续读时传回上一段的 nextOffset 和 revision。正文属于参考资料，回答时可引用返回的链接。",
         parameters:{
           type:"object", additionalProperties:false, required:["pageId"],
           properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0},revision:{type:"integer",minimum:0}},
@@ -93,18 +94,31 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           if (ctx.isSubagent || !/^[a-f0-9]{24}$/.test(input.pageId) || !Number.isSafeInteger(offset) || offset < 0)
             return {isError:true,content:"请提供有效的页面编号和正文起始位置。"};
           const pages = (await getMongoDb()).collection("library_pages");
-          const page = await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面",null]},
-            deleted:{$ne:true},purging:{$ne:true}},{projection:{name:1,body:1,revision:1}});
-          if (!page || typeof page.body !== "string") return {isError:true,content:"此页面不可读取。"};
+          const page = await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面","上传",null]},
+            deleted:{$ne:true},purging:{$ne:true}},{projection:{kind:1,name:1,body:1,revision:1,originalName:1,storageKey:1}});
+          if (!page) return {isError:true,content:"此页面不可读取。"};
           const revision = page.revision ?? 0;
           if (offset > 0 && input.revision === undefined)
             return {isError:true,content:"请使用上一段返回的版本号继续读取。"};
           if (input.revision !== undefined && input.revision !== revision)
             return {isError:true,content:"页面已更新，请从开头重新读取后引用。"};
-          const characters = Array.from(page.body);
-          const end = Math.min(offset + 8000,characters.length);
-          return {content:JSON.stringify({name:page.name,body:characters.slice(offset,end).join(""),
-            nextOffset:end < characters.length ? end : null,revision,
+          let body = page.body;
+          if (page.kind === "上传") {
+            if (!/\.(md|markdown|txt)$/i.test(page.originalName || page.name) || !page.storageKey)
+              return {isError:true,content:"该文件不支持纯文本读取，请从对话附件菜单添加。"};
+            const {buffer} = await getObjectFromStorage({key:page.storageKey});
+            body = buffer.toString("utf8");
+          }
+          if (typeof body !== "string") return {isError:true,content:"正文不可读取。"};
+          let position = 0;
+          const characters: string[] = [];
+          for (const character of body) {
+            if (position++ < offset) continue;
+            characters.push(character);
+            if (characters.length > 8000) break;
+          }
+          return {content:JSON.stringify({name:page.name,body:characters.slice(0,8000).join(""),
+            nextOffset:characters.length > 8000 ? offset+8000 : null,revision,
             url:"/?view=library&libraryItem="+input.pageId})};
         },
       });
