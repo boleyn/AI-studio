@@ -952,7 +952,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 next?.focus();
                 next?.click();
               }}
-              onClick={() => {setSelected([]);navigateList(section, name, undefined, undefined, allHome && name !== tab);}}>{allHome && searchTerm && name === "推荐" ? "所有结果" : name}</Button>)}
+              onClick={() => {
+                setSelected([]);
+                if (name === tab) return;
+                const target = listUrl(section,name,undefined,undefined,allHome);
+                if (query.trim()) target.query.librarySearch = query;
+                void router.push(target,undefined,{shallow:true,scroll:false});
+              }}>{allHome && searchTerm && name === "推荐" ? "所有结果" : name}</Button>)}
         </Flex>
         {!imageSection && !sitesSection && !pagesSection && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
           {[...types,...sources].map(filter => <Button key={filter} size="sm" borderRadius="full" variant="outline"
