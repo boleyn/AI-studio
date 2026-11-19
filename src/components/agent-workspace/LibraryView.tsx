@@ -864,7 +864,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <Flex as="button" type="button" w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
-          <tbody>{visible.map(file => <Box as="tr" key={key(file)} position="relative" _after={{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInlineStart:"44px",insetInlineEnd:allHome ? {base:"12px",xl:"4px"} : "12px",borderBottom:"1px solid rgb(0 0 0 / 5%)"}} aria-selected={selected.includes(file.id)}
+          <tbody>{visible.map(file => <Box as="tr" key={key(file)} position="relative" _after={{content:'""',position:"absolute",pointerEvents:"none",bottom:"-1px",insetInlineStart:"44px",insetInlineEnd:allHome ? {base:"12px",xl:"4px"} : "12px",borderBottom:"1px solid rgb(0 0 0 / 5%)"}} aria-selected={selected.includes(file.id)}
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}
             sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
