@@ -349,6 +349,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (folder && sort.column === "size") return String(file.size ?? 0);
     return sort.column === "name" ? file.name : rowTime(file);
   }
+  const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
@@ -356,7 +357,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!sources.length || (file.shareId ? (file.fileOrigin === "上传" && sources.includes("已上传")) || (file.fileOrigin === "生成" && sources.includes("生成的文件")) :
       (file.kind === "上传" && !file.fromTemplate && sources.includes("已上传")) || ((file.kind === "生成" || file.fromTemplate) && sources.includes("生成的文件")))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
-    [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
+    [file.name, file.path, file.project, file.conversation].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
