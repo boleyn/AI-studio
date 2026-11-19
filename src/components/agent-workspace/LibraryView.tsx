@@ -759,7 +759,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <button type="button" onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}</button>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
-          <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTopWidth="1px" aria-selected={selected.includes(file.id)}
+          <tbody>{visible.map(file => <Box as="tr" key={key(file)} borderTop="1px solid rgb(0 0 0 / 6%)" aria-selected={selected.includes(file.id)}
             onClick={event => {
               const target = event.target;
               if (file.deleted || !(target instanceof Element) || !event.currentTarget.contains(target)) return;
