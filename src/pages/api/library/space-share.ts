@@ -11,7 +11,8 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   res.setHeader("Cache-Control","private, no-store");
   const id = req.query.id;
   if (typeof id !== "string" || !/^[a-f0-9]{24}$/.test(id)) return res.status(404).end();
-  const pages = (await getMongoDb()).collection<{owner:string;name:string;kind?:string|null;sharedBy?:string;body?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
+  const db = await getMongoDb();
+  const pages = db.collection<{owner:string;name:string;kind?:string|null;sharedBy?:string;body?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
   const userId = String(auth.user._id);
   const active = {deleted:{$ne:true},purging:{$ne:true}};
   const filter = {...active,_id:new ObjectId(id),kind:"资料空间"};
@@ -83,5 +84,9 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
       if (child.kind !== "文件夹") included.push({id:childId,name:child.name,path});
     }
   }
-  return res.json({name:space.name,pages:included});
+  const key = (pageId:string) => userId + "/space-" + id + "-" + pageId;
+  const activity = await db.collection<{_id:string;owner:string;openedAt?:string}>("library_file_settings")
+    .find({owner:userId,_id:{$in:included.map(page=>key(page.id))}},{projection:{openedAt:1}}).toArray();
+  const opened = new Map(activity.map(entry => [entry._id,entry.openedAt]));
+  return res.json({name:space.name,pages:included.map(page=>({...page,openedAt:opened.get(key(page.id))}))});
 }
