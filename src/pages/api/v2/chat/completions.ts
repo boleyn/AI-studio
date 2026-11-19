@@ -1,3 +1,4 @@
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { z } from "zod";
 import { loadConversationGoal, saveConversationGoal, loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
 import { randomBytes } from "node:crypto";
@@ -398,7 +399,7 @@ const normalizeAttachmentRuntimePath = (rawPath: string, name: string): string =
   if (normalized.startsWith(".files/")) return `/${normalized}`;
   if (normalized.startsWith("/.files/")) return normalized;
   if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
-    return `/.files/${toSafeFileName(name || normalized)}`;
+    return chatAttachmentMirrorPath(normalized, toSafeFileName(name || normalized));
   }
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 };

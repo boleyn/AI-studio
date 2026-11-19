@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { createPutObjectPresignedUrl } from "@server/storage/s3";
@@ -55,9 +56,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
   const safeName = toSafeFileName(filename);
   const prefix = getChatUploadRoot(token, chatId);
-  const key = isImageFile(filename, contentType)
-    ? `${prefix}/images/${safeName}`
-    : `${prefix}/files/${safeName}`;
+  const directory = isImageFile(filename, contentType) ? "images" : "files";
+  const key = `${prefix}/${directory}/${randomUUID()}/${safeName}`;
 
   try {
     const result = await createPutObjectPresignedUrl({

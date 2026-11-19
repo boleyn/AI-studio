@@ -1,3 +1,4 @@
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Box,
@@ -575,7 +576,7 @@ const StudioShell = ({ initialToken = "", initialProject }: StudioShellProps) =>
     const nextPaths: string[] = [];
     for (const artifact of artifacts) {
       const fileName = (artifact.name || "file").replace(/[\\/]/g, "_");
-      const displayPath = `/.files/${fileName}`;
+      const displayPath = chatAttachmentMirrorPath(artifact.storagePath || "", fileName);
       nextPaths.push(displayPath);
       attachmentFiles[displayPath] = {
         // Sandpack stores text only. Keep a visible, non-persisted descriptor;

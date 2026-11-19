@@ -1,3 +1,4 @@
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
@@ -220,7 +221,7 @@ const toUserMessageContentBlocks = ({
     if (normalized.startsWith(".files/")) return `/${normalized}`;
     if (normalized.startsWith("/.files/")) return normalized;
     if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
-      return `/.files/${toSafeFileName(file.name || normalized)}`;
+      return chatAttachmentMirrorPath(normalized, toSafeFileName(file.name || normalized));
     }
     return normalized.startsWith("/") ? normalized : `/${normalized}`;
   };

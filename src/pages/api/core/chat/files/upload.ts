@@ -1,3 +1,4 @@
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import path from "node:path";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
@@ -40,10 +41,10 @@ const buildMirrorRawFilePath = ({
 }) => {
   const fromOriginalName = toSafeFileName(originalName || "");
   if (fromOriginalName && fromOriginalName !== "file") {
-    return `/.files/${fromOriginalName}`;
+    return chatAttachmentMirrorPath(storagePath, fromOriginalName);
   }
   const base = toSafeFileName(path.posix.basename(storagePath));
-  return `/.files/${base}`;
+  return chatAttachmentMirrorPath(storagePath, base);
 };
 
 const syncAttachmentRawToProject = async ({
