@@ -333,7 +333,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return () => document.removeEventListener("visibilitychange", reloadOnReturn);
   }, []);
   const [listTime, setListTime] = useState(Date.now);
-  const showRelativeTimes = !grid && !opened && !imageSection;
+  const showRelativeTimes = (!grid || personalSection) && !opened && !imageSection;
   useEffect(() => {
     if (!showRelativeTimes) return;
     const refresh = () => {
@@ -1011,6 +1011,24 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <Flex align="center" justify="end"><IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name}
                 aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked} icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}</Flex>
+            </Box>)}
+          </Box>
+        </Box> : personalSection ? <Box sx={{containerType:"inline-size"}}>
+          <Box display="grid" gap="12px" sx={{gridTemplateColumns:"1fr",
+            "@container (min-width:28rem)":{gridTemplateColumns:"repeat(2,minmax(0,1fr))"},
+            "@container (min-width:42rem)":{gridTemplateColumns:"repeat(3,minmax(0,1fr))"}}}>
+            {visible.map(file=><Box key={file.id} position="relative" p="12px" borderWidth="1px" borderRadius="16px" shadow="sm">
+              <Box as="button" aria-label={file.name} position="absolute" inset={0} borderRadius="inherit" onClick={()=>openItem(file)}/>
+              <Flex align="center" gap={2} pointerEvents="none"><LibraryItemIcon item={file} compact/>
+                <Text flex={1} isTruncated>{file.name}</Text>
+                <Flex position="relative" pointerEvents="auto" align="center">
+                  <IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
+                    icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked} onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}
+                </Flex>
+              </Flex>
+              <Flex mt={2} align="center" justify="space-between" fontSize="sm" color="#5d5d5d" pointerEvents="none">
+                <Text>个人</Text><time dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</time>
+              </Flex>
             </Box>)}
           </Box>
         </Box> : grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
