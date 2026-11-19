@@ -264,7 +264,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const search = useRef<HTMLInputElement>(null);
   const [sharing,setSharing] = useState<LibraryFile>();
-  const [purge,setPurge] = useState<LibraryFile[]>();
+  const [purge,setPurge] = useState<{scope:"all" | "selection"; items:LibraryFile[]}>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
   const [renameError, setRenameError] = useState("");
@@ -575,7 +575,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
     <MenuButton as={IconButton} variant="ghost" size="xs" isDisabled={selectionLocked} aria-label={file.kind === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <Portal><MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
+    <Portal><MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
@@ -818,7 +818,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
         <Text fontSize="sm" color="gray.600">恢复最近删除的项目。这些项目将在 30 天后被永久删除。</Text>
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
-          onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
+          onClick={() => setPurge({scope:"all",items:files?.filter(item => item.deleted) || []})}>清空回收站</Button>
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
@@ -933,7 +933,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
         {trashSection ? <>
           <Button size="sm" minW="78px" bg="white" color="black" leftIcon={<RotateCcw size={16}/>} isDisabled={selectionLocked} onClick={changeTrashSelection}>恢复</Button>
-          <Button size="sm" minW="106px" bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={selectionLocked} onClick={()=>setPurge(picked)}>永久删除</Button>
+          <Button size="sm" minW="106px" bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={selectionLocked} onClick={()=>setPurge({scope:"selection",items:picked})}>永久删除</Button>
         </> : <>
         <Button size="sm" minW={{md:"102px"}} bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         <Button size="sm" minW={{md:"78px"}} bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
@@ -1044,14 +1044,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </ModalContent>
     </Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
-      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "永久删除这些项目？" : "永久删除项目？"}</ModalHeader>
-        <ModalBody>{purge?.length === 1 ? "“" + purge[0].name + "”" : (purge?.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge?.scope === "all" ? "清空回收站？" : purge && purge.items.length > 1 ? "永久删除这些项目？" : "永久删除项目？"}</ModalHeader>
+        <ModalBody>{purge?.items.length === 1 ? "“" + purge.items[0].name + "”" : (purge?.items.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
         <ModalFooter gap={2}><Button isDisabled={saving} onClick={() => setPurge(undefined)}>取消</Button>
           <Button colorScheme="red" isLoading={saving} onClick={async () => {
             if (!purge || saving) return;
             setSaving(true);
             try {
-              const byId = new Map(purge.map(item => [item.id, item]));
+              const byId = new Map(purge.items.map(item => [item.id, item]));
               const depth = (item: LibraryFile) => {
                 const parents = new Set<string>();
                 let parentId = item.folderId;
@@ -1061,7 +1061,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
                 }
                 return parents.size;
               };
-              const pending = purge.map(item => ({item, depth:depth(item)}))
+              const pending = purge.items.map(item => ({item, depth:depth(item)}))
                 .sort((left,right) => right.depth - left.depth);
               for (const {item} of pending) {
                 const response = await fetch("/api/library?id=" + encodeURIComponent(item.id), {method:"DELETE", headers:withAuthHeaders({})});
@@ -1071,7 +1071,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
                 } else if (!response.ok) {
                   throw new Error(response.status === 409 ? "请先恢复此条目并移出其中的资料，或先永久删除已在回收站中的子项。" : "删除失败，请重试");
                 }
-                setPurge(items => items?.filter(entry => entry.id !== item.id));
+                setPurge(current => current && {...current,items:current.items.filter(entry => entry.id !== item.id)});
                 if (response.ok) setFiles(items => items?.filter(entry => entry.id !== item.id));
                 setSelected(ids => ids.filter(id => id !== item.id));
               }
