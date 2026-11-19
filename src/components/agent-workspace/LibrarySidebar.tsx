@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
-import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
+import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -42,7 +42,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
   const recentItems = [...items].sort((a,b)=>libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
   const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
   const [activityOpen,setActivityOpen] = useState(false);
-  return <Flex as="aside" position="relative" sx={{"&:hover .collapse-library-sidebar, &:focus-within .collapse-library-sidebar":{opacity:1,pointerEvents:"auto"}}} w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>
+  return <Flex as="aside" w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>
     <Flex align="center" px="8px" gap="4px" mb={3}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
       <Popover isOpen={activityOpen} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} placement="bottom-start" gutter={5} isLazy>
         <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="动态" icon={<Bell size={15}/>} /></PopoverTrigger>
@@ -62,7 +62,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
         </PopoverContent></Portal>
       </Popover>
       <IconButton size="sm" w="36px" h="36px" variant="ghost" aria-label="搜索" icon={<Search size={15}/>} onClick={onSearch}/>
-      <IconButton ref={toggleRef} className="collapse-library-sidebar" position="absolute" top="52px" right="-12px" zIndex={2} size="xs" borderRadius="full" boxShadow="sm" bg="white" opacity={0} pointerEvents="none" sx={{"@media (hover:none)":{opacity:1,pointerEvents:"auto"}}} aria-label="显示/隐藏侧边栏" icon={<PanelLeftClose size={15}/>} onClick={onCollapse}/>
+      <IconButton ref={toggleRef} size="sm" w="36px" h="36px" variant="ghost" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={15}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"

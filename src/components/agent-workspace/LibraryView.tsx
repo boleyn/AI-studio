@@ -649,7 +649,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         </MenuList>
       </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder ? undefined : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} toggleRef={sidebarToggle} onCollapse={toggleSidebar} /></Box>}
-    {!sidebar && <IconButton ref={sidebarToggle} display={{base:"none",md:"inline-flex"}} flexShrink={0} alignSelf="flex-start" mt={2} ml={1} aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={toggleSidebar}/>}
+    {!sidebar && <IconButton ref={sidebarToggle} display={{base:"none",md:"inline-flex"}} flexShrink={0} alignSelf="flex-start" mt={2} ml={1} aria-expanded={false} aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={toggleSidebar}/>}
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
         !file.deleted && file.kind === "生成" && file.token === detail.token &&
