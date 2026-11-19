@@ -87,6 +87,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       return;
     }
     let refreshAfterUpload = false;
+    let uploaded = 0;
+    const problems: {name:string; reason:string}[] = [];
     setCreating(true);
     try {
       for (const file of selected) {
@@ -99,16 +101,17 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
           if (!response.ok) {
             const failure = await response.json().catch(()=>null);
-            toast({status:"error",title:file.name + " 上传失败",description:failure?.error ||
+            problems.push({name:file.name,reason:failure?.error ||
               (response.status === 413 ? "文件超过上传大小限制。" : response.status === 401 ? "请重新登录后上传。" : "请稍后重试。")});
             continue;
           }
           item = await response.json();
         } catch {
           refreshAfterUpload = true;
-          toast({status:"warning",title:file.name + " 上传结果未确认",description:"本批上传结束后会刷新列表，请确认文件是否已出现。"});
+          problems.push({name:file.name,reason:"上传结果未确认，请在列表刷新后查看。"});
           continue;
         }
+        uploaded++;
         setFiles(previous => [item,...previous || []]);
         if (reference) setReferenceDraft(undefined);
         if (openCreated && parentId) {
@@ -119,6 +122,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     finally {
       setCreating(false);
       if (refreshAfterUpload) setAttempt(value=>value+1);
+      if (problems.length) {
+        toast({status:uploaded || refreshAfterUpload ? "warning" : "error", isClosable:true,
+          title:uploaded ? `已上传 ${uploaded} 个文件，另有 ${problems.length} 个需要查看` : refreshAfterUpload ? "请核对上传结果" : "上传失败",
+          description:<Box as="ul" pl={4} maxH="8rem" overflowY="auto">
+            {problems.map(({name,reason},index)=><li key={index}><strong>{name}</strong> · {reason}</li>)}
+          </Box>});
+      }
     }
   }
   async function createSlides(template?: SlideTemplateName, parentId=folder?.id) {
