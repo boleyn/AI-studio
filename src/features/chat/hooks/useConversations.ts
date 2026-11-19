@@ -1,4 +1,4 @@
-import type { NextRouter } from "next/router";
+import Router, { type NextRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createChatId } from "@shared/chat/ids";
 
@@ -86,6 +86,7 @@ export function useConversations(
       if (!token) return;
       if (activeConversationIdRef.current === id && !options?.refresh) return;
       if (loadingConversationIdRef.current === id) return;
+      const initialPath = Router.asPath;
       loadingConversationIdRef.current = id;
       setIsLoadingConversation(true);
       try {
@@ -104,7 +105,7 @@ export function useConversations(
             }
             return [conversation, ...prev];
           });
-          if (queryConversationId !== conversation.id) {
+          if (Router.asPath === initialPath && Router.query.conversation !== conversation.id) {
             router.replace(
               {
                 pathname: router.pathname,
@@ -122,7 +123,7 @@ export function useConversations(
         }
       }
     },
-    [queryConversationId, router, token]
+    [router, token]
   );
 
   const createNewConversation = useCallback(async (): Promise<Conversation | null> => {
