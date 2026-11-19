@@ -293,7 +293,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
         </Flex> : <IconButton ref={searchTrigger} size="sm" variant="ghost" aria-label="搜索" icon={<Search size={18} />}
           onClick={() => setSearching(true)} />}
         <Menu>
-          <MenuButton as={Button} size="sm" h="36px" px="16px" leftIcon={<Plus size={16} aria-hidden/>} borderRadius="full">Template</MenuButton>
+          <MenuButton as={Button} size="sm" h="36px" px="16px" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} _active={{bg:"#333"}} iconSpacing="4px" leftIcon={<Plus size={16} aria-hidden/>} borderRadius="full">Template</MenuButton>
           <MenuList aria-label="Template" minW="180px" p="10px" borderWidth={0} borderRadius="16px"
             sx={{"& [role=menuitem]": {height:"36px", padding:"6px 10px", borderRadius:"12px", fontSize:"14px"}}}>
             <MenuItem icon={<FileText size={16} aria-hidden />} onClick={() => onPick("无标题页", "")}>Page</MenuItem>
