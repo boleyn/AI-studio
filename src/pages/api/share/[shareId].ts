@@ -3,6 +3,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getProject } from "@server/projects/projectStorage";
 import { getShareLink } from "@server/shares/shareStorage";
 
+import { recordSiteRequest } from "@server/shares/siteVisits";
+
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET"]);
@@ -28,6 +30,9 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return;
   }
 
+  if (share.mode === "preview") {
+    await recordSiteRequest(share).catch(() => console.warn("Could not record site preview request"));
+  }
   res.setHeader("Cache-Control", "no-store");
   res.status(200).json({
     shareId: share.shareId,

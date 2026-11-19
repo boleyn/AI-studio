@@ -10,7 +10,18 @@ interface SiteVisit {
   visitedAt: Date;
 }
 
+export async function recordSiteRequest(share: ShareLinkData) {
+  const day = new Date().toISOString().slice(0,10);
+  const db = await getMongoDb();
+  await db.collection<{_id:string;projectToken:string;day:string;requests:number}>("site_daily_requests").updateOne(
+    {_id:JSON.stringify([share.projectToken,day])},
+    {$setOnInsert:{projectToken:share.projectToken,day},$inc:{requests:1}},
+    {upsert:true},
+  );
+}
+
 export async function recordSiteVisit(share: ShareLinkData, cookie?: string) {
+  await recordSiteRequest(share);
   if (!cookie) return;
   let viewer: string;
   try { viewer = verifyAuthToken(cookie).sub; } catch { return; }
