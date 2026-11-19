@@ -62,7 +62,10 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       if (errors.size) {
         setSelected(selected.filter(id => errors.has(id)));
         setQuery("");
-        setError("有 " + errors.size + " 项未添加，请查看文件旁的提示后重试。");
+        const added = picked.length - errors.size;
+        setError(added
+          ? `已添加 ${added} 项。剩余 ${errors.size} 项仍已勾选，可查看原因后重试。`
+          : `${errors.size} 项未能添加，请查看文件旁的提示后重试。`);
       } else {
         onClose();
       }
