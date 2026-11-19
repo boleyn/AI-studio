@@ -105,7 +105,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
             <Box mt="15px" fontSize="7px" lineHeight="1.35" aria-hidden="true">
               <TemplatePreview body={body} />
             </Box></Box>
-        </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">{pageTitle ? "从这里开始" : "Page"}</Text>
+        </Box><Text mt="10px" lineHeight="20px" fontWeight="400" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">{pageTitle ? "从这里开始" : "Page"}</Text>
       </Button>
       {collection === "全部" && i === pageTemplates.length - 1 && slideCard("Creative Campaign Brief")}
       </Fragment>)}</Box>
