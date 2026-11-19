@@ -349,6 +349,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const types = slidesSection ? [] : availableTypes.filter(type => requestedTypes.includes(type));
   const sources = slidesSection || allHome ? fileSources.filter(source => [router.query.librarySource].flat().includes(source)) : [];
   const filterCount = types.length + sources.length;
+  const filterLabel = filterCount ? `打开筛选器，${filterCount} 个筛选器已开启` : "打开筛选器";
   const showListFilters = !imageSection && !sitesSection && !pagesSection &&
     (!allHome || ownItems || !typeNavigation || filterCount > 0);
   const grid = router.query.libraryLayout === "grid";
@@ -974,15 +975,15 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         </Flex>
         {showListFilters && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
           {[...types,...sources].map(filter => <Button key={filter} size="sm" borderRadius="full" variant="outline"
-            aria-label={`移除${filter}筛选条件`} rightIcon={<X size={14}/>}
+            aria-label={`清除“${filter}”筛选条件`} rightIcon={<X size={14}/>}
             onClick={()=>updateListOptions(types.filter(type=>type!==filter),grid,sources.filter(source=>source!==filter))}>{filter}</Button>)}
         </Flex>}
         {!imageSection && <>{showListFilters && <Menu closeOnSelect={false} gutter={allHome ? 5 : undefined}>
-          <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} boxSize={allHome ? "36px" : undefined} size="sm" borderRadius="full" variant={filterCount ? "solid" : "ghost"} />
-          <MenuList aria-label="打开筛选器" w="240px" p="10px" borderRadius="16px" borderWidth={0}
+          <MenuButton as={IconButton} aria-label={filterLabel} icon={<ListFilter size={17}/>} boxSize={allHome ? "36px" : undefined} size="sm" borderRadius="full" variant={filterCount ? "solid" : "ghost"} />
+          <MenuList aria-label={filterLabel} w="240px" p="10px" borderRadius="16px" borderWidth={0}
             sx={{"& [role=menuitemcheckbox]":{height:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},
               "& [role=group] > p":{height:"28px",m:0,px:"10px",lineHeight:"28px",fontSize:"13px"},
-              "& .chakra-menu__icon-wrapper":{order:1,ms:"auto",me:0}}}>{!slidesSection && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
+              "& .chakra-menu__icon-wrapper":{order:1,ms:"auto",me:0}}}>{!slidesSection && !ownItems && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {availableTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup>}
           {(slidesSection || (allHome && (tab === "收藏" || ownItems || filterCount > 0 || searchTerm))) && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
