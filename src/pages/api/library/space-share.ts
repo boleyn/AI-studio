@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
 import { findSpaceInviteRecipient, findUserByUsername } from "@server/auth/userStore";
@@ -55,7 +56,14 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
       const ancestor = await pages.findOne({...accessible,_id:new ObjectId(parent)},{projection:{folderId:1}});
       parent = ancestor?.folderId;
     }
-    return res.json({name:page.name,body:page.body});
+    if (req.query.download === "1") {
+      const filename = encodeURIComponent(markdownFilename(page.name)).replace(/['()*]/g, char => "%" + char.charCodeAt(0).toString(16));
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + filename);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      return res.send("# " + page.name + "\n\n" + (page.body || ""));
+    }
+    return res.json({owner,name:page.name,body:page.body});
   }
   const included: {id:string;name:string}[] = [];
   const visited = new Set([id]);

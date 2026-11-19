@@ -22,7 +22,7 @@ export default function SharedSpace() {
       const value = await response.json();
       if (controller.signal.aborted) return;
       if (value.owner === true) {
-        await router.replace({pathname:"/",query:{view:"library",libraryFolder:id}});
+        await router.replace({pathname:"/",query:{view:"library",libraryFolder:id,...(typeof page === "string" ? {libraryItem:page} : {})}});
         return;
       }
       setData(value);
@@ -34,7 +34,10 @@ export default function SharedSpace() {
     {error ? <Text role="alert">{error}</Text> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id}>{item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
-        <LibraryMarkdown>{data.body || ""}</LibraryMarkdown>}
+        <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
+          {typeof id === "string" && typeof page === "string" && <Button as="a" size="sm" variant="outline" mt={6}
+            href={"/api/library/space-share?" + new URLSearchParams({id,page,contents:"1",download:"1"})}>下载 Markdown</Button>}
+        </>}
     </>}
   </Box>;
 }
