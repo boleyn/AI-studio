@@ -209,11 +209,11 @@ export const toStableChatFileViewUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
-export function resolveChatUploadUrl(file: Pick<UploadedFileArtifact, "storagePath" | "previewUrl" | "downloadUrl">, token: string, chatId: string) {
+export function resolveChatUploadUrl(file: Pick<UploadedFileArtifact, "storagePath" | "previewUrl" | "downloadUrl"> & Partial<Pick<UploadedFileArtifact, "publicUrl">>, token: string, chatId: string) {
   const path = file.storagePath?.replace(/^\/+/, "");
   if (!path) return "";
   // A copied attachment can still be scoped to the original conversation.
-  const savedUrl = [file.previewUrl, file.downloadUrl].find(url => {
+  const savedUrl = [file.previewUrl, file.downloadUrl, file.publicUrl].find(url => {
     if (!url?.startsWith("/api/core/chat/files/view?")) return false;
     const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
     return Boolean(params.get("token") && params.get("chatId")) &&
