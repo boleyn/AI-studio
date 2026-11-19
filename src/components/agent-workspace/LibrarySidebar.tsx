@@ -25,6 +25,8 @@ type Props = {
   onCollapse: () => void;
 };
 export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
+  const [width, setWidth] = useState<number>();
+  const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [driveConnected,setDriveConnected] = useState(false);
   useEffect(()=>{
     const controller = new AbortController();
@@ -42,7 +44,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
   const recentItems = [...items].sort((a,b)=>libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
   const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
   const [activityOpen,setActivityOpen] = useState(false);
-  return <Flex as="aside" w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" boxShadow="inset -1px 0 #eee" p="8px" minH={0}>
+  return <Flex as="aside" position="relative" w={width === undefined ? {md:"248px",xl:"288px"} : width + "px"} flexShrink={0} direction="column" bg="#fafafa" boxShadow="inset -1px 0 #eee" p="8px" minH={0}>
     <Flex align="center" pl="8px" pr="4px" gap="8px" mb={2}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
       <Popover isOpen={activityOpen} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} placement="bottom-start" gutter={5} isLazy>
         <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="动态" icon={<Bell size={20} strokeWidth={1.6}/>} /></PopoverTrigger>
@@ -83,5 +85,21 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
         aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{!item.shareId && spaceActions(item)}</Flex>)}
     </Box>
     <Button variant="ghost" justifyContent="start" size="sm" flexShrink={0} h="35px" mb="9px" px="8px" iconSpacing="6px" fontWeight="normal" borderRadius="8px" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={20} strokeWidth={1.6}/>} onClick={() => onSection("回收站")}>回收站</Button>
+    <Box role="separator" aria-label="调整资料空间侧栏宽度" aria-orientation="vertical" tabIndex={0}
+      aria-valuemin={220} aria-valuemax={420} aria-valuenow={width} position="absolute" right="-4px" insetY={0}
+      w="8px" zIndex={1} cursor="col-resize" style={{touchAction:"none"}} userSelect="none"
+      _hover={{bg:"blackAlpha.100"}} _focusVisible={{outline:"2px solid currentColor"}}
+      onPointerDown={event => { if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId); }}
+      onPointerMove={event => {
+        const handle = event.currentTarget;
+        if (handle.hasPointerCapture(event.pointerId) && handle.parentElement)
+          resize(event.clientX - handle.parentElement.getBoundingClientRect().left);
+      }}
+      onKeyDown={event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const current = event.currentTarget.parentElement?.getBoundingClientRect().width;
+        if (current) resize(current + (event.key === "ArrowLeft" ? -8 : 8));
+      }} />
   </Flex>;
 }
