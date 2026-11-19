@@ -133,12 +133,17 @@ const ChatItem = ({
           const url = new URL(preview.url,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
           response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
+          if (response.ok) {
+            const value = await response.text();
+            showContent(value, false);
+            return;
+          }
         } catch (error) {
           if (signal.aborted || !preview.libraryItemId) throw error;
         }
       }
       // The conversation copy and the library original have independent access checks.
-      if (preview.libraryItemId && !response?.ok) {
+      if (preview.libraryItemId) {
         const location = sharedSpacePageLocation(preview.libraryItemId);
         if (location) {
           const original = await fetch(location.api,{headers:withAuthHeaders(),signal});
@@ -156,9 +161,7 @@ const ChatItem = ({
           return;
         }
       }
-      if (!response?.ok) throw new LibraryReadError(response?.status ?? 404,preview.name);
-      const value = await response.text();
-      showContent(value, false);
+      throw new LibraryReadError(response?.ok ? 404 : response?.status ?? 404,preview.name);
     })().catch(error => {
       if (controller.signal.aborted) return;
       const status = error instanceof LibraryReadError ? error.status : undefined;
