@@ -138,7 +138,10 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       const published = new Date(site.publishedAt || "");
       const AudienceIcon = site.restricted ? LockKeyhole : Link2;
       return <Box as="article" key={site.id} position="relative" minW={0} overflow="hidden" borderRadius="16px" boxShadow="0 2px 12px rgba(0,0,0,.07)">
-        <Flex aspectRatio="3 / 2" align="center" justify="center" bg="gray.50" color="gray.400"><PanelsTopLeft size={32} aria-hidden/></Flex>
+        <Flex position="relative" aspectRatio="3 / 2" align="center" justify="center" bg="gray.50" color="gray.400"><PanelsTopLeft size={32} aria-hidden/>
+          <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(site.id)+"/cover"}
+            position="absolute" inset={0} w="full" h="full" objectFit="cover" onError={event=>{event.currentTarget.style.display="none";}}/>
+        </Flex>
         <Flex px={3} py={2} minH="64px" align="center" gap={2}>
           <Box flex="1" minW={0}>
             <Link display="block" isTruncated fontSize="sm" fontWeight="medium" href={siteUrl(site)}
