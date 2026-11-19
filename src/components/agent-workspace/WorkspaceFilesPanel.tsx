@@ -279,7 +279,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, so
               : undefined}
             localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
         ) : selected && showMarkdown ? (
-          <Box lineHeight="1.7"><LibraryMarkdown>{selected.code}</LibraryMarkdown></Box>
+          <Box lineHeight="1.7"><LibraryMarkdown showImages>{selected.code}</LibraryMarkdown></Box>
         ) : selected ? (
           <ExtendedFilePreview key={`${fileUrl}:${previewAttempt}`} url={fileUrl}
             name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview}
