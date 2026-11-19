@@ -424,11 +424,18 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const artifactFiles = files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
   const reservedPaths = new Set(artifactFiles.map(file => file.storagePath?.replace(/^\/+/, ""))
     .filter(path => path?.startsWith("chat_uploads/")));
+  const reservedOrigins = new Set(artifactFiles.map(file => file.libraryItemId).filter(Boolean));
   const merged = artifactFiles.map(file => {
     const path = file.storagePath?.replace(/^\/+/, "");
     const index = path?.startsWith("chat_uploads/")
       ? remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path)
-      : remaining.findIndex(item => item.name === file.name && !reservedPaths.has(item.storagePath?.replace(/^\/+/, "")));
+      : remaining.findIndex(item => {
+          if (reservedPaths.has(item.storagePath?.replace(/^\/+/, ""))) return false;
+          if (item.libraryItemId && (file.libraryItemId || reservedOrigins.has(item.libraryItemId))) {
+            return item.libraryItemId === file.libraryItemId;
+          }
+          return item.name === file.name;
+        });
     if (index < 0) return file;
     const [block] = remaining.splice(index, 1);
     const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type));
@@ -442,7 +449,7 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
       downloadUrl: file.downloadUrl || block.downloadUrl,
     };
   });
-  return [...merged, ...remaining.filter(item => !merged.some(file => file.name === item.name && !item.storagePath?.replace(/^\/+/, "").startsWith("chat_uploads/")))];
+  return [...merged, ...remaining.filter(item => !merged.some(file => file.name === item.name && (!item.libraryItemId || file.libraryItemId === item.libraryItemId) && !item.storagePath?.replace(/^\/+/, "").startsWith("chat_uploads/")))];
 };
 
 export const isImageFile = (file: MessageFile) => {
