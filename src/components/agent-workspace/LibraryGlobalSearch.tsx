@@ -7,14 +7,16 @@ import type { ProjectWithConversations } from "../AgentWorkspace";
 
 type Props = {
   projects: ProjectWithConversations[];
-  files: LibraryFile[];
+  files?: LibraryFile[];
+  error: string;
+  retry: () => void;
   onProject: (token: string) => void;
   onChat: (token: string, id: string) => void;
   onFile: (item: LibraryFile) => void;
   close: () => void;
 };
 
-export default function LibraryGlobalSearch({projects, files, onProject, onChat, onFile, close}: Props) {
+export default function LibraryGlobalSearch({projects, files, error, retry, onProject, onChat, onFile, close}: Props) {
   const [query, setQuery] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -24,7 +26,7 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
   const chats = projects.flatMap(project => project.conversations.map(chat => ({
     id: JSON.stringify([project.token,chat.id]), time:chat.updatedAt, label: chat.title, icon:<MessageSquare size={16} aria-hidden/>, open: () => onChat(project.token, chat.id)
   }))).filter(chat => matches(chat.label));
-  const items = files.filter(file => !file.deleted && (matchesExportedPageName(file, needle) ||
+  const items = (files ?? []).filter(file => !file.deleted && (matchesExportedPageName(file, needle) ||
     [file.name,file.path,file.conversation,file.project].some(matches))).map(file => ({
     id: file.id, time:file.openedAt, label: file.name, icon:<LibraryItemIcon item={file} compact/>, source: file.conversation || file.project, open: () => onFile(file)
   }));
@@ -69,8 +71,12 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
               {"source" in row && typeof row.source === "string" && row.source && <Text ml={2} minW={0} isTruncated fontSize="xs" color="gray.600" fontWeight="normal">{row.source}</Text>}
             </Button>)}
         </Box>)}
-        {groups.every(group => !group.rows.length) && <Text py={5} textAlign="center">没有找到结果</Text>}
+        {files && !error && groups.every(group => !group.rows.length) && <Text py={5} textAlign="center">没有找到结果</Text>}
       </ModalBody>
+      {error ? <Flex gap={3} align="center" px={4} py={3}>
+        <Text role="alert" flex="1" fontSize="sm">资料空间加载失败。{error}</Text>
+        <Button size="sm" variant="outline" borderRadius="full" onClick={retry}>重试</Button>
+      </Flex> : !files && <Text role="status" px={4} py={3} fontSize="sm" color="gray.600">正在加载资料空间…</Text>}
     </ModalContent>
   </Modal>;
 }

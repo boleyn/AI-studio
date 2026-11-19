@@ -1095,7 +1095,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         void router.replace({pathname:router.pathname,query},undefined,{shallow:true});
       }
     }}/>}
-    {globalSearch && <LibraryGlobalSearch projects={projects} files={files || []} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
+    {globalSearch && <LibraryGlobalSearch projects={projects} files={files} error={failed} retry={()=>setAttempt(value=>value+1)} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onEditWorkbook={async (file, name) => {
       await onChat([file], `帮我自定义一份 ${name} 的个人副本`);
       setGalleryOpen(false);
