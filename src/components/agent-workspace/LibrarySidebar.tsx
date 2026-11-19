@@ -66,7 +66,11 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
     {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Flex boxSize="20px" align="center" justify="center"><Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/></Flex>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
     </Flex>
     <Box overflowY="auto" mt="17px" flex="1">
-      <Button variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
+      <Flex align="center" justify="space-between"><Button size="sm" variant="ghost" ml="4px" flex="1" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
+        <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
+      {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={activeSpaceId === item.id ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" flex="1" h="36px" px="10px" iconSpacing="8px" fontWeight="normal" justifyContent="start"
+        aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{spaceActions(item)}</Flex>)}
+      <Button mt="17px" variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.length > 0 && <Flex direction="column" gap="1px" mt="4px">
       {recentItems.slice(0,expanded ? undefined : 5).map((file,index) => <Button key={file.id} ref={index === 5 ? node => {
         if (node && focusNewRecent.current) {
@@ -81,10 +85,6 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
         </Button>)}
       {recentItems.length > 5 && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" aria-expanded={expanded} onClick={event => { focusNewRecent.current = !expanded && event.detail === 0; setExpanded(!expanded); }}>{expanded ? "收起" : "展开显示"}</Button>}
       </Flex>}
-      <Flex mt="17px" align="center" justify="space-between"><Button size="sm" variant="ghost" ml="4px" flex="1" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
-        <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
-      {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={activeSpaceId === item.id ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" flex="1" h="36px" px="10px" iconSpacing="8px" fontWeight="normal" justifyContent="start"
-        aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{spaceActions(item)}</Flex>)}
     </Box>
     <Button variant="ghost" justifyContent="start" size="sm" flexShrink={0} h="35px" mb="9px" px="8px" iconSpacing="6px" fontWeight="normal" borderRadius="8px" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={20} strokeWidth={1.6}/>} onClick={() => onSection("回收站")}>回收站</Button>
     <Box role="separator" aria-label="调整资料空间侧栏宽度" aria-orientation="vertical" tabIndex={0}
