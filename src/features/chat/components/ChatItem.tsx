@@ -107,7 +107,7 @@ const ChatItem = ({
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
   const {token,activeConversationId} = useChatPanelViewContext();
-  const [preview,setPreview] = React.useState<{name:string;url:string;alternateUrl?:string;html:boolean;libraryItemId?:string}>();
+  const [preview,setPreview] = React.useState<{name:string;url:string;alternateUrls?:string[];html:boolean;libraryItemId?:string}>();
   const [failedImages,setFailedImages] = React.useState<Set<string>>(() => new Set());
   const [previewText,setPreviewText] = React.useState<string>();
   const [showLibrarySource,setShowLibrarySource] = React.useState(false);
@@ -134,7 +134,7 @@ const ChatItem = ({
         if (preview?.libraryItemId) recordLibraryOpen(preview.libraryItemId);
       }
       let copyError: unknown;
-      for (const address of new Set([preview.url,preview.alternateUrl])) {
+      for (const address of new Set([preview.url,...(preview.alternateUrls ?? [])])) {
         if (!address) continue;
         try {
           const url = new URL(address,window.location.href);
@@ -414,7 +414,7 @@ const ChatItem = ({
                           as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，${unavailable}`}
                           cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown || isHtml) openPreview({name,url:fileUrl,alternateUrl:[file.previewUrl,file.downloadUrl].find(url=>url !== fileUrl && url?.startsWith("/api/")),html:isHtml,libraryItemId:file.libraryItemId});
+                            if (isMarkdown || isHtml) openPreview({name,url:fileUrl,alternateUrls:[file.previewUrl,file.downloadUrl].filter((url): url is string => Boolean(url?.startsWith("/api/"))),html:isHtml,libraryItemId:file.libraryItemId});
                             else if (openUrl) window.open(openUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
