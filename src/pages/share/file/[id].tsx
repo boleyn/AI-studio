@@ -19,7 +19,7 @@ export default function SharedArtifactPage() {
   const [downloading,setDownloading] = useState(false);
   const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
-  const [result, setResult] = useState<{ id: string; filename?: string; previewName?: string; livePage?: boolean; editablePageId?: string; error?: string; needsLogin?: boolean }>();
+  const [result, setResult] = useState<{ id: string; received?: boolean; filename?: string; previewName?: string; livePage?: boolean; editablePageId?: string; error?: string; needsLogin?: boolean }>();
   const [loadAttempt,setLoadAttempt] = useState(0);
   const pageDrafts = useRef(new Map<string,PageDraft>());
   const [editing,setEditing] = useState(false);
@@ -45,7 +45,7 @@ export default function SharedArtifactPage() {
           throw new Error("共享文件信息不完整，请重新加载。");
         }
         if (controller.signal.aborted) return;
-        setResult({ id, filename: data.filename, previewName:data.previewName, livePage:data.livePage, editablePageId:data.editablePageId });
+        setResult({ id, received:data.viewerLibraryId === id, filename: data.filename, previewName:data.previewName, livePage:data.livePage, editablePageId:data.editablePageId });
         if (data.viewerLibraryId) recordLibraryOpen(data.viewerLibraryId);
       })
       .catch((reason) => {
@@ -54,7 +54,9 @@ export default function SharedArtifactPage() {
     return () => controller.abort();
   }, [id, endpoint, loadAttempt]);
 
-  const libraryLink = <IconButton as="a" href="/?view=library" aria-label="返回资料空间" title="返回资料空间"
+  const backLabel = current?.received ? "返回「与你共享」" : "返回资料空间";
+  const libraryLink = <IconButton as="a" href={current?.received ? "/?" + new URLSearchParams({view:"library",libraryTab:"与你共享"}) : "/?view=library"}
+    aria-label={backLabel} title={backLabel}
     icon={<ArrowLeft size={18}/>} size="sm" variant="ghost" borderRadius="full" flexShrink={0}/>;
 
   if (!current?.filename) {
