@@ -3,6 +3,7 @@ import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButto
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { CircleAlert, Search, X } from "lucide-react";
+import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
@@ -182,7 +183,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>toggleItem(item)}>
           <LibrarySelectionIndicator checked={checked}/>
-          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated title={item.name}>{item.name}</Text>
+          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><AttachmentFilename name={item.name} fontSize="sm"/>
             <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
             {fileErrors.has(item.id) && <Text id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box>
