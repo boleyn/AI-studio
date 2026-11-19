@@ -19,6 +19,7 @@ const formattingCommands = [
 export type PageDraft = {name:string;body:string;revision:number};
 
 export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+  const [reading,setReading] = useState(false);
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
@@ -141,6 +142,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
+      {!mobileReader && content && <Button size="sm" variant="ghost" onClick={()=>setReading(value=>!value)}>{reading ? "继续编辑" : "预览页面"}</Button>}
       {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
       {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}
       {onCloseViewer && <IconButton aria-label="关闭查看器" title="关闭查看器" variant="ghost" size="sm" borderRadius="full"
@@ -154,7 +156,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
-      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
+      {mobileReader || reading ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown interactivePages>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>{locationNav}
       {(suggestSubpage || suggestVisualize || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
@@ -180,7 +182,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
           return;
         }
         const visualization = /^\/visualize\s+(.+)$/i.exec(line)?.[1].trim();
-        const request = visualization ? "请根据附件页面创建一个可交互的 HTML 可视化文件，并提供可打开的成品。\n\n" + visualization : /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
+        const request = visualization && !shareId ? "为当前页面生成独立的交互式 HTML。请读取页面 " + page.id + " 的最新版本，用 EditLibraryPage 把 HTML 作为语言标记为 visualize 的 Markdown 围栏代码块追加到页面，保留原有正文。需求：\n" + visualization : visualization ? "请根据附件页面创建一个可交互的 HTML 可视化文件，并提供可打开的成品。\n\n" + visualization : /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
         if (request && onChat) {
           event.preventDefault();
           void discussPage(request, value.slice(0, lineStart) + value.slice(selectionStart));
