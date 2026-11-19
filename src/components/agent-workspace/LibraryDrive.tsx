@@ -108,7 +108,7 @@ export default function LibraryDrive({connect,onAttach,onBusyChange,onBackToLibr
         {!recent && sortHeader("size","大小")}<th scope="col" aria-label="文件操作"/></tr></thead>
       <tbody>{result.files.map(file=><tr key={file.id}>
         <td><Flex align="center" gap={3}>
-          <LibraryItemIcon item={{name:file.name,kind:file.mimeType === "application/vnd.google-apps.folder" ? "文件夹" : undefined}}/>
+          <LibraryItemIcon item={file}/>
           {file.mimeType==="application/vnd.google-apps.folder" ? <Button variant="link" fontSize="inherit" fontWeight="normal" color="inherit" textAlign="left" whiteSpace="normal" onClick={()=>{setPath([...path,file]);setPages([""]);setSearch("");setQuery("");}}>{file.name}</Button> :
           <Link href={file.webViewLink || "https://drive.google.com/open?id="+encodeURIComponent(file.id)} isExternal>{file.name}</Link>}</Flex></td>
         <td>{recent && file.viewedByMeTime && file.viewedByMeTime >= (file.modifiedTime || "") ? formatRelativeTime(file.viewedByMeTime)+"打开" : formatRelativeTime(file.modifiedTime) || "—"}</td>

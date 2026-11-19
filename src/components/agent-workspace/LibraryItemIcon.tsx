@@ -5,13 +5,19 @@ import { File, FileArchive, FileSpreadsheet, FileText, FileType, Folder, Image, 
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-type IconItem = Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
+type IconItem = {mimeType?: string} & Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
 
 function appearance(item: IconItem) {
   if (item.kind === "站点") return { Icon: PanelsTopLeft };
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };
+  switch (item.mimeType) {
+    case "application/vnd.google-apps.folder": return { Icon: Folder };
+    case "application/vnd.google-apps.document": return { Icon: FileType, color: "#168aff" };
+    case "application/vnd.google-apps.spreadsheet": return { Icon: FileSpreadsheet, color: "#18a851" };
+    case "application/vnd.google-apps.presentation": return { Icon: Presentation, color: "#d86a32" };
+  }
   const path = libraryTypeName(item);
   if (/\.(xls[xm]?|csv|tsv|ods)$/i.test(path)) return { Icon: FileSpreadsheet, color: "#18a851" };
   if (/\.(ppt[xm]?|pot[xm]|pps[xm]|odp)$/i.test(path)) return { Icon: Presentation, color: "#d86a32" };
