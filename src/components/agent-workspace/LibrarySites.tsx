@@ -155,10 +155,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       finally {setSaving(false);}
     }}>
       <Text as="label" htmlFor="library-site-name">名称</Text>
-      <Flex gap={2} my={2}><Input id="library-site-name" aria-label="站点标题" value={title} maxLength={255} isDisabled={saving} onChange={event=>setTitle(event.target.value)}/>
+      <Text id="library-site-name-hint" fontSize="sm" color="gray.600">你的站点名称</Text>
+      <Flex gap={2} my={2}><Input aria-describedby="library-site-name-hint" id="library-site-name" aria-label="站点标题" value={title} maxLength={255} isDisabled={saving} onChange={event=>setTitle(event.target.value)}/>
         <Button type="submit" isLoading={saving} isDisabled={!title.trim() || title.trim()===settings.name}>保存</Button></Flex>
     </Box>
-    <Text mt={4}>网址</Text><Flex align="center" gap={3}><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
+    <Text mt={4}>URL</Text><Text fontSize="sm" color="gray.600">网址</Text><Flex align="center" gap={3}><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
       <Button size="sm" aria-label="更改托管站点 URL" onClick={()=>{setSlugError("");setSlugDraft(settings.slug || "");}}>更改</Button></Flex>
     <Modal isOpen={slugDraft !== undefined} isCentered onClose={()=>{if (!saving) setSlugDraft(undefined);}}>
       <ModalOverlay/><ModalContent mx={4} borderRadius="16px"><ModalHeader>更改 URL</ModalHeader><ModalCloseButton aria-label="关闭对话框" isDisabled={saving}/>
@@ -188,7 +189,10 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     <Flex mt={2} gap={3} align="center" wrap="wrap"><Text>谁可以查看你的站点</Text><Text ml="auto">{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>
       <Button size="sm" aria-label="管理共享" onClick={()=>setSharing(settings)}>管理</Button></Flex>
     <Heading as="h3" size="sm" mt={6}>危险操作区</Heading>
-    <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
+    <Flex mt={3} gap={3} align="center" wrap="wrap">
+      <Box flex="1"><Text>删除站点</Text><Text id="site-delete-description" fontSize="sm" color="gray.600">永久删除此站点</Text></Box>
+      <Button size="sm" aria-describedby="site-delete-description" colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
+    </Flex>
     {dialog}
   </Box>;
   if (router.query.librarySiteSettings) return <Box py={6}>
