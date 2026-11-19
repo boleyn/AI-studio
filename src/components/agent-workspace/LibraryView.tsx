@@ -804,6 +804,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   }
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
+    const sharedCollectionMenu = sharedItems && !rail && !folder;
     const personalTrigger = personalSection && !rail;
     const homeTrigger = allHome && !rail && !personalTrigger;
     const pageItem = <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>;
@@ -826,9 +827,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               <MenuItem icon={<PanelsTopLeft size={20} aria-hidden/>} onClick={() => startCreativeChat("站点")}>站台</MenuItem>
               <MenuItem icon={<ImageIcon size={20} aria-hidden/>} onClick={() => startCreativeChat("图像")}>图像</MenuItem></>}
               {!folderMenu && <MenuDivider my="8px"/>}
-              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={20} aria-hidden/> : <Layers size={20} aria-hidden/>} key={kind} onClick={() => {if (kind === "资料空间") openSpaceDialog(); else {setTitle("");setNewKind(kind);}}}>{kind}</MenuItem>)}
+              {(folderMenu ? ["文件夹"] as const : ["文件夹","资料空间"] as const).map(kind => <MenuItem icon={kind === "文件夹" ? <Folder size={20} aria-hidden/> : <Layers size={20} aria-hidden/>} key={kind} isDisabled={sharedCollectionMenu && kind === "文件夹"} onClick={() => {if (kind === "资料空间") openSpaceDialog(); else {setTitle("");setNewKind(kind);}}}>{kind}</MenuItem>)}
               {!folderMenu && <MenuDivider my="8px"/>}
-              <MenuItem icon={<Upload size={20} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={20} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</>}</MenuList>
+              <MenuItem icon={<Upload size={20} aria-hidden/>} isDisabled={sharedCollectionMenu} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={20} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</>}</MenuList>
           </Menu>;
   };
   const librarySearchField = <InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={personalSection ? "none" : allHome ? "241px" : "240px"} sx={allHome || personalSection ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
