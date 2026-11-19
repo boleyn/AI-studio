@@ -19,7 +19,7 @@ import LibraryConnectors from "./LibraryConnectors";
 import LibrarySites from "./LibrarySites";
 import LibraryItemIcon from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
-import LibraryPageEditor, { type PageDraft } from "./LibraryPageEditor";
+import LibraryPageEditor, { mobilePageReaderQuery, type PageDraft } from "./LibraryPageEditor";
 import LibraryTemplates, { TemplateGallery, type SlideTemplateName } from "./LibraryTemplates";
 import LibraryGlobalSearch from "./LibraryGlobalSearch";
 import type { ProjectWithConversations } from "../AgentWorkspace";
@@ -613,7 +613,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             sx={{"& a":{py:2,minWidth:0,overflowWrap:"anywhere"}}}>
             <LibraryItemIcon item={item} compact/>{itemLink(item)}
           </Flex>)}
-        <Button size="sm" variant="ghost" leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
+        <Button size="sm" variant="ghost" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
     files && !failed && ((router.query.libraryItem && !opened) || (router.query.libraryFolder && !folder)) ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
