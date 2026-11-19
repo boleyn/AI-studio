@@ -3,8 +3,8 @@ import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButto
 import { BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
 export const templates = [
-  { name:"页面使用指南", pageTitle:"页面入门指南", body:"欢迎使用页面\n\n在这里写作、整理资料，并与团队协作。\n\n开始使用\n添加标题、清单和笔记。", icon:GraduationCap, color:"#008cff" },
-  { name:"待办事项清单", body:"今天\n\n首要任务\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n\n本周\n- [ ] 回顾进展", icon:ClipboardList, color:"#14b95d" },
+  { name:"页面使用指南", pageTitle:"页面入门指南", body:"在页面中，你可以写作、创作，并与团队协作。把这个页面当作你的练习场，学习基础操作。\n\n## 开始使用\n\n- [ ] 添加标题、图片、检查清单或表格。\n- [ ] 选中一段文字，在聊天中引用。", icon:GraduationCap, color:"#008cff" },
+  { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料剂量\n\n## 本周\n\n- [ ] 回顾进展", icon:ClipboardList, color:"#14b95d" },
   { name:"项目跟踪表", body:"🔴 需要立即处理\n\n• 发布前通信系统测试\n\n⛰️ 里程碑\n\n下一阶段", icon:ChartNoAxesColumn, color:"#168cff" },
   { name:"Trip planner", body:"Travelers: Maya and Sam\nPace: One main activity a day\n\n🧭 The plan\n\nPlan two nights near a mountain observatory.", icon:Plane, color:"#168cff" },
   { name:"Weekly planner", body:"🎯 Priorities\n\n- [ ] Confirm plans\n- [ ] Review progress\n\n📅 Schedule", icon:Calendar, color:"#d26e69" },
@@ -65,7 +65,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={15} color={color}/>
-            <Text mt={3} fontSize="7px" lineHeight="1.35" whiteSpace="pre-line">{body.replace(/^- \[ \] /gm, "☐ ")}</Text></Box>
+            <Text mt={3} fontSize="7px" lineHeight="1.35" whiteSpace="pre-line">{body.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ")}</Text></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">{pageTitle ? "从这里开始" : "Page"}</Text>
       </Button></Fragment>)}</Box>
   </Box>;
