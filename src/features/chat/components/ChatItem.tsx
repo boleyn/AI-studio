@@ -9,7 +9,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
-import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
+import { artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
 import StreamdownMarkdown from "@/components/Markdown/StreamdownMarkdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
@@ -50,7 +50,7 @@ function ReplyArtifact({ path, version, onOpen }: {
     >
       <Button size="sm" h="auto" py={2} px={2} variant="ghost" minW={0} justifyContent="flex-start"
         _hover={{ bg: "transparent" }}
-        leftIcon={<ArtifactFileIcon name={name} />}
+        leftIcon={<LibraryItemIcon item={{name}}/>}
         title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
         <Box minW={0} textAlign="left">
           <Text fontSize="13.5px" fontWeight="500" color="#18181b" isTruncated>{name}</Text>
