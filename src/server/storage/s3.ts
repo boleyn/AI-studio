@@ -193,12 +193,15 @@ export const getObjectFromStorage = async ({
 export const listStorageObjectsByPrefix = async ({
   prefix,
   bucketType = "private",
+  directory = true,
 }: {
   prefix: string;
   bucketType?: StorageBucketType;
+  directory?: boolean;
 }) => {
   const client = getS3Client();
-  const normalizedPrefix = normalizeStorageKey(prefix).replace(/\/+$/, "") + "/";
+  const key = normalizeStorageKey(prefix);
+  const normalizedPrefix = directory ? key.replace(/\/+$/, "") + "/" : key;
   const bucket = getBucketName(bucketType);
   const objects: { key: string; lastModified?: Date }[] = [];
   let continuationToken: string | undefined;

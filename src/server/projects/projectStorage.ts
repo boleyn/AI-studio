@@ -580,7 +580,7 @@ export async function readProjectArtifactVersion(token: string, version: string,
 
 export async function listProjectFilesByPrefix(token: string, filePrefix: string) {
   const prefix = toProjectStorageFileKey(token, filePrefix);
-  const objects = await listStorageObjectsByPrefix({prefix, bucketType:"private"});
+  const objects = await listStorageObjectsByPrefix({prefix, bucketType:"private", directory:false});
   return objects.map(({key}) => toProjectFilePathFromStorageKey(token, key));
 }
 
