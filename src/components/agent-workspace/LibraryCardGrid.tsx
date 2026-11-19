@@ -1,7 +1,7 @@
 import { Box } from "@chakra-ui/react";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
-export default function LibraryCardGrid({ masonry, children }: { masonry: boolean; children: ReactNode }) {
+export default function LibraryCardGrid({ masonry, selecting, children }: { masonry: boolean; selecting: boolean; children: ReactNode }) {
   const grid = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -36,9 +36,13 @@ export default function LibraryCardGrid({ masonry, children }: { masonry: boolea
     };
   }, [masonry, children]);
 
-  return <Box ref={grid} display="grid" gridTemplateColumns="repeat(auto-fill,minmax(min(180px,100%),1fr))"
+  return <Box ref={grid} data-selecting={selecting} display="grid" gridTemplateColumns="repeat(auto-fill,minmax(min(180px,100%),1fr))"
     sx={masonry ? {"& > * > [role=checkbox]": {
-      insetBlockStart: "auto", insetBlockEnd: "18px", insetInlineEnd: "18px", boxSize: "20px",
+      insetBlockStart: "auto", insetBlockEnd: "18px", insetInlineEnd: "18px", boxSize: "20px", background: "white",
+    }, "& > * > [role=checkbox][aria-checked=true]": {
+      background: "#171717", color: "white", borderColor: "transparent",
+    }, "@media (hover:hover) and (not (any-pointer:coarse))": {
+      "&[data-selecting=false] > :not(:hover):not(:focus-within) > [role=checkbox]": {opacity: 0},
     }} : undefined}
     alignItems={masonry ? "start" : undefined} alignContent="start" gap={masonry ? "16px" : 3}>{children}</Box>;
 }

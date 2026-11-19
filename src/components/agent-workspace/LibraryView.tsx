@@ -1049,7 +1049,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               </Flex>
             </Box>)}
           </Box>
-        </Box> : grid ? <LibraryCardGrid masonry={allHome}>
+        </Box> : grid ? <LibraryCardGrid masonry={allHome} selecting={picked.length > 0}>
           {visible.map(file => {
             const type = fileType(file);
             const spreadsheet = type === "电子表格";
