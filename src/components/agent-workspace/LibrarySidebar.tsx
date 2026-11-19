@@ -55,7 +55,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
           </Flex>}
         </PopoverContent></Portal>
       </Popover>
-      <IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="搜索" icon={<Search size={20} strokeWidth={1.6}/>} onClick={onSearch}/>
+      <IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="搜索" aria-haspopup="dialog" icon={<Search size={20} strokeWidth={1.6}/>} onClick={onSearch}/>
       <IconButton ref={toggleRef} size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={20} strokeWidth={1.6}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
