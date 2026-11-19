@@ -16,8 +16,11 @@ export default function FileChatDivider({fileChatWidth,setFileChatWidth,breakpoi
           }}
           onPointerMove={event => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-            const bounds = event.currentTarget.parentElement?.parentElement?.getBoundingClientRect();
-            if (bounds?.width) setFileChatWidth(clampChatWidth(Math.round(100 * (bounds.right - event.clientX) / bounds.width)));
+            const pane = event.currentTarget.parentElement;
+            const containerWidth = pane?.parentElement?.getBoundingClientRect().width;
+            if (!pane || !containerWidth) return;
+            const width = pane.getBoundingClientRect().right - event.clientX;
+            setFileChatWidth(clampChatWidth(Math.round(100 * width / containerWidth)));
           }}
           onKeyDown={event => {
             const widths: Record<string, number> = {ArrowLeft:fileChatWidth + 1, ArrowRight:fileChatWidth - 1, Home:25, End:65};
