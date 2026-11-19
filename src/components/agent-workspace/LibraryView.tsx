@@ -585,7 +585,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Button size="sm" variant="ghost" leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
-    section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
+    files && !failed && router.query.libraryItem && !opened ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
+      <CircleAlert size={22} color="#777" aria-hidden/>
+      <Box role="alert"><Heading as="h2" fontSize="md">无法打开此条目</Heading>
+        <Text mt={1} fontSize="sm" color="gray.600">条目可能已删除，或当前账号没有访问权限。</Text></Box>
+      <Button size="sm" variant="outline" borderRadius="full" onClick={()=>navigateList("全部","推荐",undefined,undefined,true)}>返回资料空间</Button>
+    </Flex> : section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
       outline={dropActive ? "2px dashed #777" : undefined} outlineOffset="-4px"
       onDragOver={event=>{
         if (!event.dataTransfer.types.includes("Files")) return;
