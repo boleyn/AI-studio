@@ -49,14 +49,14 @@ const Login = () => {
       try {
         const response = await fetch("/api/auth/me", { headers: withAuthHeaders() });
         if (!response.ok) {
-          clearAuthToken();
+          if (!cancelled && response.status === 401 && getAuthToken() === token) clearAuthToken();
           return;
         }
         if (!cancelled) {
           redirectWithReload(getLastRoute(lastRoute) || "/");
         }
       } catch {
-        clearAuthToken();
+        // A temporary connection failure does not invalidate the saved session.
       }
     };
 

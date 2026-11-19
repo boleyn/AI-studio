@@ -29,16 +29,18 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
+    const controller = new AbortController();
     const verify = async () => {
       try {
-        const response = await fetch("/api/auth/me", { headers: withAuthHeaders() });
+        const response = await fetch("/api/auth/me", { headers: withAuthHeaders(), signal: controller.signal });
+        if (controller.signal.aborted || getAuthToken() !== token) return;
         if (!response.ok) {
-          clearAuthToken();
+          if (response.status === 401) clearAuthToken();
           router.replace(`/login?lastRoute=${encodeURIComponent(router.asPath)}`);
           return;
         }
       } catch {
-        clearAuthToken();
+        if (controller.signal.aborted || getAuthToken() !== token) return;
         router.replace(`/login?lastRoute=${encodeURIComponent(router.asPath)}`);
         return;
       }
@@ -46,7 +48,8 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       setChecking(false);
     };
 
-    verify();
+    void verify();
+    return () => controller.abort();
   }, [router, isPublic]);
 
   if (checking && !isPublic) {
