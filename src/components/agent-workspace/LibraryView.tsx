@@ -946,7 +946,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {!sitesSection && failed && searchTerm && <Flex role="alert" align="center" justify="center" wrap="wrap" gap="12px" py="16px">
-          <Text title={failed} fontSize="16px">{visible?.length ? "搜索结果未能刷新，正在显示上次加载的结果" : "无法加载搜索结果"}</Text>
+          <Text fontSize="16px" textAlign="center">{visible?.length ? "连接失败，正在显示上次加载的搜索结果。" : failed}</Text>
           <Button h="24px" minW={0} px="8px" fontSize="14px" borderRadius="full" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} onClick={()=>setAttempt(value=>value+1)}>重试</Button>
         </Flex>}
       {sitesSection ? <Box role={siteDetails ? undefined : "tabpanel"} id="library-sites-panel" aria-labelledby={siteDetails ? undefined : "library-sites-tab-" + tabs.indexOf(tab)}>
