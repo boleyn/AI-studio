@@ -779,9 +779,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     const slidesItem = <MenuItem icon={<Presentation size={20} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>;
     return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={homeTrigger ? {base:0,md:"16px"} : rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : homeTrigger ? {base:"36px",md:"82px"} : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
         <Flex as="span" width="max-content" mx={rail ? 0 : "auto"} align="center" gap={rail ? "6px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
-        {rail && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-        </svg>}
+        {rail && <Plus size={20} strokeWidth={1.6} aria-hidden/>}
         {personalTrigger && <Plus size={16} aria-hidden/>}
         {homeTrigger && <Box as="span" display={{base:"inline-flex",md:"none"}}><Plus size={20} aria-hidden/></Box>}
         <Box as="span" display={homeTrigger ? {base:"none",md:"inline"} : undefined}>{folderMenu ? "新建" : "创建"}</Box>
