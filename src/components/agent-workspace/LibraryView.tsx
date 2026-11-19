@@ -91,6 +91,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       toast({status:"error",title:"无法上传到此位置",description:"请重新打开目标文件夹后上传。"});
       return;
     }
+    let refreshAfterUpload = false;
     setCreating(true);
     try {
       for (const file of selected) {
@@ -109,7 +110,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           }
           item = await response.json();
         } catch {
-          toast({status:"warning",title:file.name + " 上传结果未确认",description:"未收到完整响应，请刷新资料列表，确认文件是否已上传。"});
+          refreshAfterUpload = true;
+          toast({status:"warning",title:file.name + " 上传结果未确认",description:"本批上传结束后会刷新列表，请确认文件是否已出现。"});
           continue;
         }
         setFiles(previous => [item,...previous || []]);
@@ -120,7 +122,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         } else if (openCreated) openItem(item);
       }
     } catch { toast({status:"error",title:"上传中断，请重试"}); }
-    finally { setCreating(false); }
+    finally {
+      setCreating(false);
+      if (refreshAfterUpload) setAttempt(value=>value+1);
+    }
   }
   async function createSlides(template?: SlideTemplateName, parentId=folder?.id) {
     if (creating) return;
