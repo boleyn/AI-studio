@@ -13,7 +13,8 @@ export async function saveLinkedSkillFiles(owner: string, token: string, chatId:
     const key = [path, "/" + relative, relative].find(candidate => Object.hasOwn(files, candidate));
     if (key) linked.add(key);
   }
-  if (!linked.size) return;
+  const failed: string[] = [];
+  if (!linked.size) return failed;
   const items = (await getMongoDb()).collection("library_pages");
   for (const path of linked) {
     const name = path.split("/").pop();
@@ -24,9 +25,14 @@ export async function saveLinkedSkillFiles(owner: string, token: string, chatId:
     const code = files[path].code;
     const encoded = /^data:[^,]*;base64,([A-Za-z0-9+/=\s]+)$/.exec(code);
     const body = encoded ? Buffer.from(encoded[1],"base64") : Buffer.from(code);
-    await uploadObjectToStorage({key:storageKey,body,contentType:"application/octet-stream"});
-    const time = new Date().toISOString();
-    await items.updateOne({_id,owner},{$setOnInsert:{name,originalName:name,kind:"上传",sourceChat:{token,chatId},
-      storageKey,size:body.length,time,createdAt:time}},{upsert:true});
+    try {
+      await uploadObjectToStorage({key:storageKey,body,contentType:"application/octet-stream"});
+      const time = new Date().toISOString();
+      await items.updateOne({_id,owner},{$setOnInsert:{name,originalName:name,kind:"上传",sourceChat:{token,chatId},
+        storageKey,size:body.length,time,createdAt:time}},{upsert:true});
+    } catch {
+      failed.push(name);
+    }
   }
+  return failed;
 }

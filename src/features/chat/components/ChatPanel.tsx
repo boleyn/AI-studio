@@ -1871,7 +1871,11 @@ const ChatPanel = ({
                 tokenBudget?: unknown;
               };
               if (payload.phase === "library_save_failed") {
-                libraryToast({status:"warning", title:"部分文件未能保存到资料空间", description:"回复已保存在当前对话中。", isClosable:true});
+                const failed = (item as {failed?:unknown}).failed;
+                const names = Array.isArray(failed) ? failed.filter((name): name is string => typeof name === "string") : [];
+                libraryToast({status:"warning", title:names.length ? `${names.length} 个文件未能保存到资料空间` : "文件未能保存到资料空间",
+                  description:names.length ? names.slice(0,3).join("、") + (names.length > 3 ? " 等。" : "。") + "回复已保存。" : "回复已保存在当前对话中。",
+                  isClosable:true});
               }
               if (payload.phase === "mode_changed") setChatMode("default");
               if (payload.phase === "goal_status") {

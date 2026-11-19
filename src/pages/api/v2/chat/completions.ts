@@ -881,8 +881,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!isProjectToken && Object.keys(updatedFiles).length) {
         const reply = runResult.assistantMessage.message?.content;
         try {
-          await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantStored.uuid || createDataId(),
+          const failed = await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantStored.uuid || createDataId(),
             typeof reply === "string" ? reply : sdkContentToText(reply ?? []), toPublicSkillRuntimeFiles(updatedFiles));
+          if (failed.length) streamEvent(res, SdkStreamEventEnum.status, {phase:"library_save_failed", failed});
         } catch (error) {
           console.warn("[library] skill file save failed", error instanceof Error ? error.name : "unknown");
           streamEvent(res, SdkStreamEventEnum.status, {phase:"library_save_failed"});
