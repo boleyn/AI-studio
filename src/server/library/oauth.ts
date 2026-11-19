@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createCipheriv, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { serialize } from "cookie";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
@@ -14,6 +14,12 @@ const providers = {
     prefix: "DROPBOX", collection: "library_dropbox_connections",
     authorize: "https://www.dropbox.com/oauth2/authorize", token: "https://api.dropboxapi.com/oauth2/token",
     scope: "files.metadata.read files.content.read",
+  },
+  sharepoint: {
+    prefix: "SHAREPOINT", collection: "library_sharepoint_connections",
+    authorize: "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
+    token: "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
+    scope: "offline_access https://graph.microsoft.com/Files.Read.All",
   },
   box: {
     prefix: "BOX", collection: "library_box_connections",
@@ -36,6 +42,9 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
   const cookieName = "library_" + provider + "_state";
   const cookiePath = "/api/library/connectors/" + provider;
   const key = Buffer.from(process.env.LIBRARY_CONNECTOR_KEY || "", "base64");
+  // Derive the verifier from this authorization attempt without storing another cookie.
+  const sharePointVerifier = (state: string) => createHmac("sha256", key)
+    .update("sharepoint-pkce:" + owner + ":" + state).digest("base64url");
   const configured = Boolean(clientId && secret && redirect && key.length === 32);
   const connections = (await getMongoDb()).collection<{ _id: string; token: string; canRename?: boolean }>(collection);
   if (req.method === "GET" && req.query.status === "1") {
@@ -59,13 +68,17 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
     } else if (provider === "dropbox") {
       params.set("token_access_type", "offline");
     }
+    if (provider === "sharepoint") {
+      params.set("code_challenge_method", "S256");
+      params.set("code_challenge", createHash("sha256").update(sharePointVerifier(state)).digest("base64url"));
+    }
     return res.json({ url: authorize + "?" + params });
   }
   if (req.method !== "GET") return res.setHeader("Allow", "GET, POST").status(405).end();
   const expected = Buffer.from(req.cookies[cookieName] || "");
   const provided = Buffer.from(owner + "." + req.query.state);
   let returnTo = "/?view=library&libraryConnectors=" + (google ? "" : provider + "-");
-  if (!expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
+  if (typeof req.query.state !== "string" || !expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return res.redirect(303, returnTo + "invalid-session");
   }
   const siteId = typeof req.query.state === "string" && /^[a-f0-9]{64}\.([a-f0-9]{24})$/.exec(req.query.state)?.[1];
@@ -74,9 +87,11 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
   res.setHeader("Set-Cookie", cookie("", 0));
   if (typeof req.query.code !== "string") return res.redirect(303, returnTo + (req.query.error === "access_denied" ? "cancelled" : "error"));
   try {
-    const response = await fetch(tokenEndpoint, { method: "POST", body: new URLSearchParams({
+    const body = new URLSearchParams({
       client_id: clientId, client_secret: secret, code: req.query.code, grant_type: "authorization_code", redirect_uri: redirect,
-    }) });
+    });
+    if (provider === "sharepoint") body.set("code_verifier", sharePointVerifier(req.query.state));
+    const response = await fetch(tokenEndpoint, { method: "POST", body });
     const data = await response.json();
     if (!response.ok || typeof data.refresh_token !== "string") return res.redirect(303, returnTo + "error");
     const iv = randomBytes(12);
