@@ -493,7 +493,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   function clickItemSurface(event: React.MouseEvent, file: LibraryFile) {
     const target = event.target;
     if (!(target instanceof Element) || !event.currentTarget.contains(target) ||
-        target.closest("button, a, input, td:first-child, td:last-child")) return;
+        target.closest("button, a, input, td:first-of-type, td:last-child")) return;
     if (picked.length) checkItem(file.id);
     else if (!file.deleted) openItem(file);
   }
@@ -1163,51 +1163,51 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         </LibraryCardGrid> : <Box overflowX="auto" sx={allHome ? {containerType:"inline-size"} : undefined} ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW={allHome ? 0 : "680px"} data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
           tableLayout:"fixed",
           ...(searchResults && {
-            "& :is(col, th, td):nth-child(3)": {display:"none"},
-            "& col:nth-child(2)": {width:"auto !important"},
-            "& col:nth-child(4)": {width:"128px"},
+            "& :is(col, th, td):nth-of-type(3)": {display:"none"},
+            "& col:nth-of-type(2)": {width:"auto !important"},
+            "& col:nth-of-type(4)": {width:"128px"},
           }),
           ...(allHome && { "@media (min-width: 80em)": {
-            "& col:nth-child(2)": {width:"auto !important"},
-            "& col:nth-child(3)": {width:typeList ? "240px !important" : "256px !important"},
-            "& col:nth-child(4)": {width:"128px"},
-            "& col:nth-child(5)": {width:"96px !important"},
-            "& :is(th,td):nth-child(2), & :is(th,td):nth-child(3), & :is(th,td):nth-child(4)":{paddingInlineEnd:"16px"},
-            "& :is(th,td):nth-child(n+3)":{paddingInlineStart:0},
+            "& col:nth-of-type(2)": {width:"auto !important"},
+            "& col:nth-of-type(3)": {width:typeList ? "240px !important" : "256px !important"},
+            "& col:nth-of-type(4)": {width:"128px"},
+            "& col:nth-of-type(5)": {width:"96px !important"},
+            "& :is(th,td):nth-of-type(2), & :is(th,td):nth-of-type(3), & :is(th,td):nth-of-type(4)":{paddingInlineEnd:"16px"},
+            "& :is(th,td):nth-of-type(n+3)":{paddingInlineStart:0},
             "& :is(th,td):last-child":{paddingInlineEnd:0},
           }}),
           ...(allHome && {
             "@container (min-width: 680px) and (max-width: 959px)": {
-              "& col:nth-child(2)": {width:"auto !important"},
-              "& col:nth-child(3)": {width:"19% !important"},
-              "& col:nth-child(4)": {width:"112px"},
+              "& col:nth-of-type(2)": {width:"auto !important"},
+              "& col:nth-of-type(3)": {width:"19% !important"},
+              "& col:nth-of-type(4)": {width:"112px"},
               "& col:last-child": {width:hasPageActions ? "64px !important" : "32px !important"},
             },
             "@container (max-width: 679px)": {
-              "& :is(col, th, td):nth-child(3)": {display:"none"},
-              "& col:nth-child(2)": {width:"auto !important"},
-              "& col:nth-child(4)": {width:"112px"},
+              "& :is(col, th, td):nth-of-type(3)": {display:"none"},
+              "& col:nth-of-type(2)": {width:"auto !important"},
+              "& col:nth-of-type(4)": {width:"112px"},
               "& col:last-child": {width:hasPageActions ? "64px !important" : "32px !important"},
             },
             "@container (max-width: 511px)": {
-              "& :is(col, th, td):nth-child(4)": {display:"none"},
+              "& :is(col, th, td):nth-of-type(4)": {display:"none"},
             },
           }),
           "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
           "& td":{height:typeList ? "64px" : "50px",lineHeight:"20px",verticalAlign:"middle"},
-          ...(typeList && {"& :is(col,td):nth-child(4)":{display:"none"}}),
-          "& tbody td:not(:first-child)":{position:"relative","&::after":{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInline:0,borderBottom:"1px solid rgb(0 0 0 / 5%)"}},
+          ...(typeList && {"& :is(col,td):nth-of-type(4)":{display:"none"}}),
+          "& tbody td:not(:first-of-type)":{position:"relative","&::after":{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInline:0,borderBottom:"1px solid rgb(0 0 0 / 5%)"}},
           "& tbody tr:hover > td":{bg:"surface.hover"},
           "& tbody tr[aria-selected=true] > td":{bg:"#f3f3f3"},
-          "& tbody td:first-child":{borderStartStartRadius:"12px",borderEndStartRadius:"12px"},
+          "& tbody td:first-of-type":{borderStartStartRadius:"12px",borderEndStartRadius:"12px"},
           "& tbody td:last-child":{borderStartEndRadius:"12px",borderEndEndRadius:"12px"},
-          "& tbody td:nth-child(2)::after":{insetInlineStart:"12px"},
+          "& tbody td:nth-of-type(2)::after":{insetInlineStart:"12px"},
           "& tbody td:last-child::after":{insetInlineEnd:allHome ? {base:"12px",xl:"4px"} : "12px"},
           "& tbody td:last-child button[aria-haspopup=menu]":{boxSize:"28px",minWidth:"28px"},
-          "& td:nth-child(3), & td:nth-child(4)":{color:"#5d5d5d"},
+          "& td:nth-of-type(3), & td:nth-of-type(4)":{color:"#5d5d5d"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& :is(th,td):nth-of-type(2)":{paddingInlineStart:allHome ? {base:"16px",xl:"24px"} : section === "全部" && !folder ? "16px" : "8px"},
-          "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+          "& [data-item-name] > a, & [data-item-name] > span, & td:nth-of-type(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover) and (not (any-pointer:coarse))":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:typeList ? "24px" : "32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
