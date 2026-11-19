@@ -1,3 +1,4 @@
+import LibraryCardGrid from "./LibraryCardGrid";
 import useDriveConnected from "./useDriveConnected";
 import { formatFileSize, markdownFilename, matchesExportedPageName } from "@/types/library";
 import { libraryActivityTime, libraryFileOrigin } from "@/types/library";
@@ -1048,14 +1049,14 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               </Flex>
             </Box>)}
           </Box>
-        </Box> : grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={allHome ? "16px" : 3}>
+        </Box> : grid ? <LibraryCardGrid masonry={allHome}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
             bg={selected.includes(file.id) ? "#f3f3f3" : undefined} cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
             <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             <LibraryItemIcon item={file}/><Flex my={2} align="center" gap={1} minW={0} overflowWrap="anywhere">{itemLink(file)}{itemMarkers(file)}</Flex>
             {actions(file)}
           </Box>)}
-        </Box> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
+        </LibraryCardGrid> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
           tableLayout:"fixed",
           ...(allHome && { "@media (min-width: 80em)": {
             "& col:nth-child(2)": {width:"auto !important"},
