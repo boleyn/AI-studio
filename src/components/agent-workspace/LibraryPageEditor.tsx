@@ -142,7 +142,10 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
-      {!mobileReader && content && <Button size="sm" variant="ghost" onClick={()=>setReading(value=>!value)}>{reading ? "继续编辑" : "预览页面"}</Button>}
+      {!mobileReader && content && <Button size="sm" variant="ghost" isDisabled={busy} onClick={()=>{
+        if (!reading) setAttempt(value=>value+1);
+        setReading(value=>!value);
+      }}>{reading ? "继续编辑" : "预览页面"}</Button>}
       {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
       {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}
       {onCloseViewer && <IconButton aria-label="关闭查看器" title="关闭查看器" variant="ghost" size="sm" borderRadius="full"
@@ -153,7 +156,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     </Flex> :
     content && <Box maxW="760px" mx="auto" mt="8vh">
       {conflict && <Box as="section" aria-label="最新版本" borderWidth="1px" borderRadius="12px" p={4} mb={5}>
-        <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
+        <Text fontWeight="600">最新版本 · {conflict.name}</Text><Box maxH="50vh" overflowY="auto" my={2}><LibraryMarkdown interactivePages>{conflict.body}</LibraryMarkdown></Box>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
       {mobileReader || reading ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown interactivePages>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
