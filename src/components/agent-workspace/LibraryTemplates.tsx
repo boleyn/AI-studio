@@ -65,7 +65,12 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={15} color={color}/>
-            <Text mt={3} fontSize="7px" lineHeight="1.35" whiteSpace="pre-line">{body.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ")}</Text></Box>
+            <Box mt={3} fontSize="7px" lineHeight="1.35" aria-hidden="true">
+              {body.split("\n\n").map((paragraph,index) => <Text key={index} mb="4px" whiteSpace="pre-line"
+                fontWeight={/^#{1,6} /.test(paragraph) ? "600" : "400"}>
+                {paragraph.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ")}
+              </Text>)}
+            </Box></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">{pageTitle ? "从这里开始" : "Page"}</Text>
       </Button>
       {collection === "全部" && i === pageTemplates.length - 1 && slideCard("Creative Campaign Brief")}
