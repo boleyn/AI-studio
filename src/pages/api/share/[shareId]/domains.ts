@@ -24,8 +24,17 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     {$project:{_id:0,host:"$_id",challenge:1,verified:1}}, {$sort:{host:1}}
   ]).toArray());
   const input = req.body?.host;
-  const host = typeof input === "string" ? domainToASCII(input.trim().toLowerCase()) : "";
-  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) return res.status(400).json({error:"请输入完整域名，例如 www.example.com。"});
+  const rawHost = typeof input === "string" ? input.trim() : "";
+  if (!rawHost || /[\s/:?#@%\\]/u.test(rawHost)) {
+    return res.status(400).json({error:"只需输入域名，例如 www.example.com，请去掉协议、端口和路径。"});
+  }
+  const host = domainToASCII(rawHost).toLowerCase().replace(/\.$/, "");
+  const labels = host.split(".");
+  const validLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  if (host.length > 253 || labels.length < 2 || !labels.every(label=>validLabel.test(label)) ||
+      !/^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/.test(labels[labels.length-1])) {
+    return res.status(400).json({error:"请输入完整域名，例如 www.example.com。"});
+  }
   const matching = {...filter,host};
   if (req.method === "DELETE") {
     await domains.deleteMany(matching);
