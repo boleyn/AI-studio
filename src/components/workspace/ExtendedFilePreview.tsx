@@ -1,5 +1,6 @@
 import { LibraryReadError, libraryReadMessage } from "@features/chat/services/libraryAttachment";
 import { redirectedToLogin } from "@features/chat/services/files";
+import InteractiveHtmlPreview from "./InteractiveHtmlPreview";
 import LibraryMarkdown from "../agent-workspace/LibraryMarkdown";
 import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
@@ -51,7 +52,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   onStateChange?: FileViewerProps["onStateChange"];
 }) {
   const standalone = !viewerRef && !onStateChange;
-  const [result, setResult] = useState<{ file: File } | { markdown: string } | { error: string }>();
+  const [result, setResult] = useState<{ file: File } | { markdown: string } | { html: string } | { error: string }>();
 
   const handleViewerState = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
     onStateChange?.(state);
@@ -71,6 +72,11 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
         if (standalone && (/\.(md|markdown)$/i.test(name) || /^text\/(?:x-)?markdown(?:;|$)/i.test(blob.type))) {
           const markdown = await blob.text();
           if (!controller.signal.aborted) setResult({markdown});
+          return;
+        }
+        if (standalone && /\.html?$/i.test(name)) {
+          const html = await blob.text();
+          if (!controller.signal.aborted) setResult({html});
           return;
         }
         await validateOfficePackage(blob, name);
@@ -93,6 +99,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
     </Flex>;
   }
 
+  if ("html" in result) return <InteractiveHtmlPreview name={name} body={result.html}/>;
   if ("markdown" in result) return <Box h="full" overflowY="auto" px={4} py={6}><Box maxW="760px" mx="auto"><LibraryMarkdown>{result.markdown}</LibraryMarkdown></Box></Box>;
 
   return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={handleViewerState}

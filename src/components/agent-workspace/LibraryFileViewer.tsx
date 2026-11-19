@@ -1,3 +1,4 @@
+import InteractiveHtmlPreview from "../workspace/InteractiveHtmlPreview";
 import { libraryTypeName, markdownFilename } from "@/types/library";
 import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuDivider, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
 import { CircleAlert, ChevronDown, Download, Share2, Library, Minus, MessageSquare, X } from "lucide-react";
@@ -161,9 +162,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
     <Flex flex="1" minH={0} position="relative">
     <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
       {html ? error ? previewFailure : body === undefined ? <Spinner size="sm" aria-label="读取文件"/> :
-        <iframe title={item.name} sandbox="allow-scripts" referrerPolicy="no-referrer"
-          style={{display:"block", width:"100%", height:"100%", border:0}}
-          srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'">${body}`}/>
+        <InteractiveHtmlPreview name={item.name} body={body}/>
         : markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}>
         {error ? previewFailure : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
           markdown ? <LibraryMarkdown>{body}</LibraryMarkdown> :
