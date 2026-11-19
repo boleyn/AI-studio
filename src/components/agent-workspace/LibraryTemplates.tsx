@@ -1,3 +1,4 @@
+import { withAuthHeaders } from "@features/auth/client/authClient";
 import { workbookTemplates } from "@/types/libraryWorkbookTemplates";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
@@ -147,7 +148,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
   const [removed, setRemoved] = useState<string[] | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/library/templates", {signal:controller.signal})
+    fetch("/api/library/templates", {signal:controller.signal, headers:withAuthHeaders()})
       .then(async response => {
         if (!response.ok) throw new Error();
         const names: string[] = await response.json();
@@ -157,7 +158,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
   }, [loadAttempt]);
   async function uninstall(name: string) {
     try {
-      const response = await fetch("/api/library/templates", {method:"DELETE", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name})});
+      const response = await fetch("/api/library/templates", {method:"DELETE", headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name})});
       if (!response.ok) throw new Error();
       setRemoved(current => [...new Set([...(current ?? []), name])]);
       setBuildError("");
