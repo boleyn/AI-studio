@@ -6,6 +6,7 @@ import { CircleAlert, Search, X } from "lucide-react";
 import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
+import { matchesLibraryType } from "@/components/agent-workspace/libraryFileType";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { addLibraryAttachments, expandLibrarySelection, isContainer, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
 
@@ -81,7 +82,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
   ].filter(Boolean).join(" · ");
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
-  const visible = attachable?.filter(item => [item.name,item.path,item.project,locationLabel(item)].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm)));
+  const visible = attachable?.filter(item => !searchTerm || matchesLibraryType(item, searchTerm) || [item.name,item.path,item.project,locationLabel(item)].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)));
   if (fileErrors.size) {
     visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
   }

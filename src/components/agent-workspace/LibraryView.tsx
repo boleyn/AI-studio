@@ -1,5 +1,5 @@
 import { markdownFilename } from "@/types/library";
-import { libraryActivityTime, libraryTypeName } from "@/types/library";
+import { libraryActivityTime } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputR
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
-import { isArtifactImage } from "../workspace/ArtifactFileIcon";
+import { fileType, matchesLibraryType } from "./libraryFileType";
 
 import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadSharedSpacePages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
@@ -41,18 +41,7 @@ function formatFolderSize(bytes: number) {
 }
 const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
-function fileType(file: LibraryFile) {
-  if (isContainer(file)) return file.kind;
-  if (file.kind === "页面" || file.sharedPage) return "页面";
-  if (file.siteId) return "站点";
-  const path = libraryTypeName(file);
-  if (isArtifactImage(path)) return "图像";
-  if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return "电子表格";
-  if (/\.(pptx?|odp)$/i.test(path)) return "演示文稿";
-  if (/\.pdf$/i.test(path)) return "PDF 文件";
-  if (/\.(docx?|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
-  return "其他";
-}
+
 
 export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
@@ -359,7 +348,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
-    (!searchTerm || [file.name, file.path, file.project, file.conversation, fileType(file), fileType(file) === "演示文稿" ? "幻灯片" : ""].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
+    (!searchTerm || matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   useEffect(() => {
