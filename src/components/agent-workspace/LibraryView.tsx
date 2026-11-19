@@ -342,10 +342,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return "";
   }
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
-  const pageIds = new Set(files?.filter(item => item.kind === "页面").map(item => item.id));
+  const activeParentPages = new Set(files?.filter(item => item.kind === "页面" && !item.deleted).map(item => item.id));
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
-    (!pagesSection || folder || searchTerm || !file.folderId || !pageIds.has(file.folderId)) &&
+    (!pagesSection || folder || searchTerm || !file.folderId || !activeParentPages.has(file.folderId)) &&
     (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
