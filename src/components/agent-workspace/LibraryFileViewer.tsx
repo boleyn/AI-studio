@@ -111,8 +111,7 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
     </Box>
     <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setImageUrl(undefined);setBody(undefined);setError("");setAttempt(n=>n+1);}}>重新加载</Button>
   </Flex>;
-  return <Flex flex="1" minW={0} minH={0} direction={{base:"column",lg:"row"}}>
-    <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
+  return <Flex as="section" minH={0} aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // The PPTX viewer handles its own Escape on document after React bubbling.
     const inSlideshow = event.nativeEvent.composedPath().some(node =>
@@ -122,7 +121,7 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
     if (panel) setPanel(undefined);
     else close();
   }}>
-    <Flex as="header" align="center" px={4} h="52px" flexShrink={0} gap={2}>
+    <Flex as="header" align="center" ps={4} pe={2} h="52px" flexShrink={0} gap={2}>
       <Menu><MenuButton as={Button} size="sm" variant="ghost" minW={0} maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
         <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
         <MenuList>
@@ -148,6 +147,8 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         <IconButton ref={closeButton} variant="ghost" size="sm" boxSize="36px" borderRadius="full" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
       </Flex>
     </Flex>
+    <Flex flex="1" minH={0} direction={{base:"column",lg:"row"}}>
+    <Flex direction="column" flex="1" minW={0} minH={0}>
     <Flex flex="1" minH={0} position="relative">
     <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
       {markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}>
@@ -217,5 +218,6 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
       <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
       </Flex>
     </Flex>}
+    </Flex>
   </Flex>;
 }
