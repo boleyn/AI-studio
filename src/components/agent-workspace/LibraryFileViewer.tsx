@@ -4,7 +4,7 @@ import { CircleAlert, ChevronDown, Library, Minus, MessageSquare, X } from "luci
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import LibraryMarkdown from "./LibraryMarkdown";
 import type { LibraryFile } from "@/types/library";
-import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
+import { libraryAttachmentUrl, libraryReadMessage, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ExtendedFilePreview from "../workspace/ExtendedFilePreview";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -50,7 +50,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
   const [body,setBody] = useState<string>();
   const [previewSize,setPreviewSize] = useState<number>();
   const size = item.size ?? previewSize;
-  const [error,setError] = useState(false);
+  const [error,setError] = useState("");
   const closeButton = useRef<HTMLButtonElement>(null);
   const historySelection = useRef<HTMLButtonElement>(null);
   const name = libraryTypeName(item);
@@ -80,22 +80,22 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
     const controller = new AbortController();
     setBody(undefined);
     setPreviewSize(undefined);
-    setError(false);
+    setError("");
     readLibraryAttachment(item,controller.signal).then(async file=>{
       const text = await file.text();
       if (!controller.signal.aborted) {
         setBody(text);
         setPreviewSize(file.size);
       }
-    }).catch(()=>{if (!controller.signal.aborted) setError(true);});
+    }).catch(reason=>{if (!controller.signal.aborted) setError(libraryReadMessage(reason));});
     return () => controller.abort();
   },[item,markdown,plain,attempt]);
   const previewFailure = <Flex direction="column" align="center" textAlign="center" px={4} py={8} gap={3}>
     <CircleAlert size={22} color="#777" aria-hidden/>
     <Box role="alert"><Text fontWeight="600">无法加载预览</Text>
-      <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">未能读取“{item.name}”。</Text>
+      <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">{error}</Text>
     </Box>
-    <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setError(false);setAttempt(n=>n+1);}}>重新加载</Button>
+    <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setError("");setAttempt(n=>n+1);}}>重新加载</Button>
   </Flex>;
   return <Flex flex="1" minW={0} minH={0} direction={{base:"column",lg:"row"}}>
     <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
@@ -144,7 +144,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
           <Box as="img" key={attempt} src={libraryAttachmentUrl(item)} alt={item.name} maxW="none"
             width={dimensions.width ? dimensions.width*(scale ?? fit)+"px" : undefined}
             onLoad={(event:React.SyntheticEvent<HTMLImageElement>)=>setDimensions({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight})}
-            onError={()=>setError(true)}/>}
+            onError={()=>setError("图片暂时无法显示，请重新加载。")}/>}
       </Flex> : document ? <ExtendedFilePreview key={attempt} url={libraryAttachmentUrl(item)} name={name} onRetry={()=>setAttempt(n=>n+1)}/> :
         <Flex h="100%" align="center" justify="center" direction="column" gap={2} textAlign="center" px={4}>
           <LibraryItemIcon item={item}/><Text fontSize="xs" color="gray.500">无法预览</Text><Heading size="md">{item.name}</Heading>
