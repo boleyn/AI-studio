@@ -898,10 +898,13 @@ export default function AgentWorkspace({
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
       {activeNav === "library" && <LibraryView query={librarySearch} setQuery={setLibrarySearch} sidebar={librarySidebarOpen} onCollapseSidebar={()=>{setLibrarySidebarOpen(false);libraryNavButton.current?.focus();}} fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
         const existingChat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? fileChat : undefined;
-        let token = existingChat?.projectToken || projectToken || activeProject?.token || projects[0]?.token;
+        // Library chats already carry their files and should work without a paired device.
+        const cloudProject = (project: ProjectWithConversations) => project.workspace?.kind !== "connector";
+        let token = existingChat?.projectToken || projectToken ||
+          (activeProject && cloudProject(activeProject) ? activeProject.token : projects.find(cloudProject)?.token);
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
-          token = existing[0]?.token;
+          token = existing.find(cloudProject)?.token;
           if (!token) {
             const created = await apiJson<{token:string}>("/projects", {
               method:"POST", body:JSON.stringify({name:"个人工作区", files:{}, dependencies:{}})
