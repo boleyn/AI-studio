@@ -128,21 +128,19 @@ const ChatItem = ({
         setShowLibrarySource(fromLibrary);
         if (preview?.libraryItemId) recordLibraryOpen(preview.libraryItemId);
       }
-      let response: Response | undefined;
+      let copyError: unknown;
       if (preview.url) {
         try {
           const url = new URL(preview.url,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
-          response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
+          const response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
           const redirectedToLogin = response.redirected && new URL(response.url).pathname === "/login";
-          if (redirectedToLogin && !preview.libraryItemId) throw new LibraryReadError(401,preview.name);
-          if (response.ok && !redirectedToLogin) {
-            const value = await response.text();
-            showContent(value, false);
-            return;
-          }
+          if (redirectedToLogin || !response.ok) throw new LibraryReadError(redirectedToLogin ? 401 : response.status, preview.name);
+          showContent(await response.text(), false);
+          return;
         } catch (error) {
           if (signal.aborted || !preview.libraryItemId) throw error;
+          copyError = error;
         }
       }
       // The conversation copy and the library original have independent access checks.
@@ -162,7 +160,7 @@ const ChatItem = ({
           return;
         }
       }
-      throw new LibraryReadError(response?.ok ? 404 : response?.status ?? 404,preview.name);
+      throw copyError ?? new LibraryReadError(404, preview.name);
     })().catch(error => {
       if (controller.signal.aborted) return;
       const status = error instanceof LibraryReadError ? error.status : undefined;
