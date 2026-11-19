@@ -4,6 +4,7 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { NextApiResponse } from "next";
 
 const formats: Record<string, [string, string]> = {
+  "application/vnd.google-apps.drawing": ["image/png", ".png"],
   "application/vnd.google-apps.document": ["text/markdown", ".md"],
   "application/vnd.google-apps.spreadsheet": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"],
   "application/vnd.google-apps.presentation": ["application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx"],
