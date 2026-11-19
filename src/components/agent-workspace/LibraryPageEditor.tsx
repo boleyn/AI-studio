@@ -154,13 +154,13 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     </Button>
   </Flex>;
   return <Box flex="1" minW={0} p={6} overflowY="auto" onKeyDown={event => {
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+    if (!mobileReader && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
       event.preventDefault();
       if (!event.repeat) void save();
     }
   }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
-    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onMouseDown={event=>{if (readerQuote) event.preventDefault();}} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
+    <Flex align="center" wrap="wrap" minW={0} gap={3}><Text role="status" overflowWrap="anywhere" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onMouseDown={event=>{if (readerQuote) event.preventDefault();}} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
       {!mobileReader && content && <Button size="sm" variant="ghost" isDisabled={busy} onClick={()=>{
         if (!reading) setAttempt(value=>value+1);
         setSelection({start:0,end:0});
