@@ -1,4 +1,4 @@
-import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
+import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import React from "react";
 import { Download } from "lucide-react";
@@ -278,7 +278,11 @@ const ChatItem = ({
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
-              <>{showLibrarySource && <Text mb={3} fontSize="xs" color="gray.600">正在显示资料空间中的版本</Text>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
+              <>{showLibrarySource && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
+                <Text>正在显示资料空间中的版本</Text>
+                {preview?.libraryItemId && <Link href={"/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
+                  isExternal textDecoration="underline">在资料空间打开</Link>}
+              </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
           </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
