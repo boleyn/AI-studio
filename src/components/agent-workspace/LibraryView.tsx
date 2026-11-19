@@ -766,7 +766,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             {actions(file)}
           </Box>)}
         </Box> : <Box overflowX="auto"><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? tab : section)} sx={{
-          tableLayout:"fixed", "& th button svg":{opacity:0}, "& th button:hover svg, & th button:focus-visible svg":{opacity:1}, "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
+          tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"8px"},
@@ -792,7 +792,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
-            <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
+            <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{new Date(file.deletedAt).toLocaleDateString("zh-CN")}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving}
