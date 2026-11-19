@@ -64,8 +64,8 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
       {i === 3 && collection === "全部" && slideCard("Photography Portfolio")}
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
-          <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={15} color={color}/>
-            <Box mt={3} fontSize="7px" lineHeight="1.35" aria-hidden="true">
+          <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={23} color={color}/>
+            <Box mt="15px" fontSize="7px" lineHeight="1.35" aria-hidden="true">
               {body.split("\n\n").map((paragraph,index) => <Text key={index} mb="4px" whiteSpace="pre-line"
                 fontWeight={/^#{1,6} /.test(paragraph) ? "600" : "400"}>
                 {paragraph.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ").replace(/^- /gm, "• ")}
