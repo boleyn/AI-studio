@@ -221,6 +221,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const tabs = slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
+  const allHome = section === "全部" && !folder;
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
   const editor = opened?.kind === "页面" || opened?.editablePageId ? opened : undefined;
   const parentPage = editor && files?.find(item=>item.id===editor.folderId && item.kind==="页面" && !item.deleted);
@@ -576,7 +577,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
-    return <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} bg={rail ? "transparent" : "#111"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}
+    return <Menu><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "md" : "full"} h={!rail && allHome ? "36px" : undefined} minW={!rail && allHome ? "82px" : undefined} fontWeight={!rail && allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}
       leftIcon={rail ? <Plus size={16} aria-hidden/> : undefined} rightIcon={rail ? undefined : <ChevronDown size={14} aria-hidden/>}>
       {folderMenu ? "新建" : "创建"}</MenuButton>
             <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
@@ -672,7 +673,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
             {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center"><ChevronRight size={16}/>
               {item.id===folder.id ? item.name : <Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}>{item.name}</Button>}</Flex>)}</> : section}</Heading></Flex>
-        {section !== "回收站" && <Flex align="center" gap={3}><InputGroup size="sm" maxW="240px">
+        {section !== "回收站" && <Flex align="center" gap={allHome ? 2 : 3}><InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={allHome ? "241px" : "240px"} sx={allHome ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
             <InputLeftElement pointerEvents="none" color="gray.500"><Search size={16} aria-hidden/></InputLeftElement>
             <Input ref={search} borderRadius="full" type="search" aria-label={sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
               placeholder={sitesSection ? "搜索站点" : "搜索"} pr={8} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
@@ -684,11 +685,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
+        <Flex flex="1" gap={slidesSection || allHome ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
-              size="sm" h="36px" px={slidesSection ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
-              sx={slidesSection ? {border:"1px solid transparent",fontSize:"14px",fontWeight:500,
+              size="sm" h="36px" minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
+              sx={slidesSection || allHome ? {border:"1px solid transparent",fontSize:"14px",fontWeight:500,
                 color:tab === name ? "#0d0d0d" : "#5d5d5d",bg:tab === name ? "blackAlpha.50" : "transparent",
                 "&[aria-selected=true]":{bg:"rgba(0,0,0,.05)"}} : undefined}
               onKeyDown={event => {
