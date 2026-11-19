@@ -289,6 +289,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const sources = slidesSection ? fileSources.filter(source => [router.query.librarySource].flat().includes(source)) : [];
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
+  useEffect(() => {
+    const reloadOnReturn = () => {
+      if (document.visibilityState === "visible") setAttempt(value => value + 1);
+    };
+    document.addEventListener("visibilitychange", reloadOnReturn);
+    return () => document.removeEventListener("visibilitychange", reloadOnReturn);
+  }, []);
   const [listTime, setListTime] = useState(Date.now);
   const showRelativeTimes = !grid && !opened && !imageSection;
   useEffect(() => {
