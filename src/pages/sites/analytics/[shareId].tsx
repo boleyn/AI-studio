@@ -1,5 +1,6 @@
 import type { GetServerSideProps } from "next";
-import { Box, Flex, Heading, Link, Text } from "@chakra-ui/react";
+import { useState } from "react";
+import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
 import { getMongoDb } from "@server/db/mongo";
 import { getSiteSettings } from "@server/library/sites";
@@ -60,7 +61,9 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
 };
 
 function TrafficTrend({daily}: Pick<Props,"daily">) {
-  const maximum = Math.max(1,...daily.map(row=>Math.max(row.views,row.visitors)));
+  const [showVisitors, setShowVisitors] = useState(true);
+  const [showViews, setShowViews] = useState(true);
+  const maximum = Math.max(1,...daily.map(row=>Math.max(showViews ? row.views : 0, showVisitors ? row.visitors : 0)));
   const x = (index:number) => 48 + index * 648 / (daily.length - 1);
   const y = (value:number) => 158 - value * 132 / maximum;
   const points = (metric:"visitors"|"views") => daily.map((row,index)=>x(index)+","+y(row[metric])).join(" ");
@@ -70,12 +73,15 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
         <line x1="48" x2="696" y1={y(tick)} y2={y(tick)} stroke="#ddd"/>
         <text x="40" y={y(tick)+4} textAnchor="end" fontSize="12" fill="#555">{tick}</text>
       </g>)}
-      <polyline points={points("views")} fill="none" stroke="#2563eb" strokeWidth="3"/>
-      <polyline points={points("visitors")} fill="none" stroke="#08775b" strokeWidth="2" strokeDasharray="5 4"/>
+      {showViews && <polyline points={points("views")} fill="none" stroke="#2563eb" strokeWidth="3"/>}
+      {showVisitors && <polyline points={points("visitors")} fill="none" stroke="#08775b" strokeWidth="2" strokeDasharray="5 4"/>}
       {[0,Math.floor(daily.length/2),daily.length-1].map(index=><text key={index} x={x(index)} y="182" textAnchor="middle" fontSize="12" fill="#555">{daily[index].day.slice(5)}</text>)}
     </svg>
     <Flex as="figcaption" gap={4} justify="center" fontSize="sm">
-      <Text color="#2563eb">实线 · 页面浏览量</Text><Text color="#08775b">虚线 · 独立访客数</Text>
+      <Button variant="ghost" size="sm" aria-pressed={showVisitors} onClick={()=>setShowVisitors(value=>!value)}
+        color={showVisitors ? "#08775b" : "gray.500"}><Box aria-hidden w={4} borderTop="2px dashed currentColor" mr={2}/>独立访客数</Button>
+      <Button variant="ghost" size="sm" aria-pressed={showViews} onClick={()=>setShowViews(value=>!value)}
+        color={showViews ? "#2563eb" : "gray.500"}><Box aria-hidden w={4} borderTop="3px solid currentColor" mr={2}/>页面浏览量</Button>
     </Flex>
   </Box>;
 }
