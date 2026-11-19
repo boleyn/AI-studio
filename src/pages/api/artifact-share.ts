@@ -112,7 +112,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).send(buffer);
     }
 
-    return res.status(200).json({ filename, previewName, livePage:Boolean(share.livePage), owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
+    return res.status(200).json({ filename, previewName, viewerLibraryId:owner ? share.libraryItemId : id, livePage:Boolean(share.livePage), owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
   } catch (error) {
     if (isMissingStorageObject(error)) return res.status(404).json({error:"共享文件不存在"});
     if (isStorageUnavailable(error)) return res.status(503).json({error:"文件存储暂时不可用，请稍后重试"});
