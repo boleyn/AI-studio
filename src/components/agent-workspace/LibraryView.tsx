@@ -242,9 +242,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       void router.replace({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
     }
   }
-  const sections = ["全部", "你的条目", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
-  const legacyOwnItems = !router.query.librarySection && router.query.libraryTab === "你的条目";
-  const section = legacyOwnItems ? "你的条目" : [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
+  const sections = ["全部", "你的条目", "与你共享", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
+  const legacyCollection = !router.query.librarySection && ["你的条目", "与你共享"].includes(String(router.query.libraryTab)) ? String(router.query.libraryTab) : undefined;
+  const section = legacyCollection || [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
   const sitesSection = section === "站点";
   const siteDetails = sitesSection && Boolean(router.query.librarySiteSettings);
@@ -252,11 +252,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const pagesSection = section === "页面" || personalSection;
   const slidesSection = section === "幻灯片";
   const ownItems = section === "你的条目";
-  const typeNavigation = ownItems || section === "全部" && !collectionTabs.includes(String(router.query.libraryTab));
-  const tabs = ownItems ? ["全部", ...homeTypeTabs.slice(1), "收藏"] : typeNavigation ? homeTypeTabs : personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const sharedItems = section === "与你共享";
+  const typeNavigation = sharedItems || ownItems || section === "全部" && !collectionTabs.includes(String(router.query.libraryTab));
+  const tabs = sharedItems ? ["全部", ...homeTypeTabs.slice(1)] : ownItems ? ["全部", ...homeTypeTabs.slice(1), "收藏"] : typeNavigation ? homeTypeTabs : personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
-  const allHome = (section === "全部" || ownItems) && !folder;
+  const allHome = (section === "全部" || ownItems || sharedItems) && !folder;
   const typeList = allHome && typeNavigation && tab !== "推荐";
   const canDropFiles = !creating && (router.query.libraryFolder
     ? Boolean(folder && !folder.shareId)
@@ -340,8 +341,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
     setSelected([]);
-    const collection = next === "与你共享";
-    navigateList(collection ? "全部" : next, collection ? next : next === "你的条目" ? "全部" : "推荐", undefined, undefined, true);
+    navigateList(next, next === "与你共享" || next === "你的条目" ? "全部" : "推荐", undefined, undefined, true);
     setQuery("");
   };
   const requestedTypes = [router.query.libraryType].flat();
@@ -475,7 +475,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     (!personalSection || (!file.folderId && !file.shareId)) &&
     (!pagesSection || folder || searchTerm || !file.folderId || !activeParentPages.has(file.folderId)) &&
     (!ownItems || !file.shareId) &&
-    (ownItems || section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
+    (!sharedItems || Boolean(file.shareId)) &&
+    (sharedItems || ownItems || section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (!typeNavigation || ["推荐","全部","收藏"].includes(tab) || fileType(file) === (tab === "幻灯片" ? "演示文稿" : tab)) &&
@@ -1038,11 +1039,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">未找到匹配结果</Heading>
             <Text fontSize="sm" color="gray.600" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
-          </Flex> : allHome && (tab === "收藏" || tab === "与你共享") && !filterCount ?
+          </Flex> : allHome && (tab === "收藏" || sharedItems) && !filterCount ?
           <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center" textAlign="center">
             <Box position="relative" mt="88px" w="full">
               <Heading as="h2" fontSize="18px" lineHeight="24px" fontWeight="500">{tab === "收藏" ? "暂无收藏" : "文件夹为空"}</Heading>
-              {tab === "与你共享" && <Text position="absolute" w="full" mt={2} color="gray.600">与你共享的文件和页面将显示在这里</Text>}
+              {sharedItems && <Text position="absolute" w="full" mt={2} color="gray.600">与你共享的文件和页面将显示在这里</Text>}
             </Box>
           </Flex> : folder && !filterCount ? <Flex role="status" direction="column" align="center" textAlign="center" py={16} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">{folder.kind === "资料空间" ? "资料空间为空" : "文件夹为空"}</Heading>
