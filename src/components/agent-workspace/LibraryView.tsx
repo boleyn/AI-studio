@@ -1170,6 +1170,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <form onSubmit={event => {event.preventDefault(); if(rename && canRename && !saving) void update(rename,{name:newName});}}>
         <ModalBody p={0} mt={3}><Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">文件名</Text>
           <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} h="34px" isReadOnly={saving} aria-describedby={renameError ? "library-rename-error" : undefined} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
+            onPaste={event => {
+              const field = event.currentTarget;
+              const pasted = event.clipboardData.getData("text/plain").trim();
+              if (!suffix || field.selectionStart !== 0 || field.selectionEnd !== field.value.length ||
+                  !pasted.toLowerCase().endsWith(suffix.toLowerCase())) return;
+              event.preventDefault();
+              setTitle(pasted.slice(0,-suffix.length).slice(0,field.maxLength));
+              setRenameError("");
+            }}
             onFocus={event => event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => {setRenameError("");setTitle(event.target.value);}}/>
             {suffix && <Text color="gray.600">{suffix}</Text>}</Flex>
           {renameError && <Text role="alert" id="library-rename-error" mt={2} fontSize="sm" color="red.700">{renameError}</Text>}</ModalBody>
