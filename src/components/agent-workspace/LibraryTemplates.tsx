@@ -41,6 +41,7 @@ const slideTemplates = [
   "Market Trends Report",
   "Project Kickoff",
 ] as const;
+const imageTemplates = ["海报", "室内设计", "徽标", "插画", "职业形象照", "图标", "产品照", "周边商品", "信息图", "宣传单", "书籍封面", "应用效果图", "包装", "广告", "缩略图", "网站效果图"];
 export type SlideTemplateName = typeof slideTemplates[number];
 
 export default function LibraryTemplates({ collection, onPick, onClose, onSlides }: {collection:"页面"|"幻灯片"|"全部"; onSlides:(name:SlideTemplateName)=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
@@ -100,8 +101,9 @@ function TemplateActions({label, onUse}: {label:string; onUse:()=>void}) {
 </Menu>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload, onSlides }: {
-  onSlides: () => void;
+export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload, onSlides, onImage }: {
+  onSlides: (name?: SlideTemplateName) => void;
+  onImage: (name: string) => void;
   onUpload: () => void;
   onWorkbook: (file: File) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
@@ -120,6 +122,10 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   const workbooks = workbookTemplates.filter(template =>
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
+  const matches = (name: string) => name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  const slides = slideTemplates.filter(matches);
+  const images = imageTemplates.filter(matches);
+  const shows = (kind: string) => category === "为你推荐" || category === kind;
   async function createWorkbook(template: typeof workbookTemplates[number]) {
     if (building) return;
     setBuilding(template.name);
@@ -149,8 +155,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
       <ModalHeader>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
-      <Flex px={6} pb={4} gap={2} align="center">
-        {["为你推荐", "页面", "电子表格"].map(label =>
+      <Flex px={6} pb={4} gap={2} align="center" wrap="wrap">
+        {["为你推荐", "页面", "幻灯片", "电子表格", "图像"].map(label =>
           <Button key={label} size="sm" borderRadius="full" aria-pressed={category === label}
             variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}>{label}</Button>
         )}
@@ -163,7 +169,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
           <MenuList>
             <MenuItem onClick={() => onPick("无标题页", "")}>Page</MenuItem>
-            <MenuItem onClick={onSlides}>Slides</MenuItem>
+            <MenuItem onClick={() => onSlides()}>Slides</MenuItem>
             <MenuItem onClick={onUpload}>上传文件</MenuItem>
           </MenuList>
         </Menu>
@@ -171,7 +177,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
       <ModalBody>
         {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
-          {category !== "电子表格" && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
+          {shows("页面") && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
             <Box key={name} position="relative" role="group">
             <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
               textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
@@ -184,7 +190,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
             <TemplateActions label={`Actions for ${name}`} onUse={() => onPick(pageTitle ?? name, body)} />
             </Box>
           )}
-          {category !== "页面" && workbooks.map(template =>
+          {shows("电子表格") && workbooks.map(template =>
             <Box key={template.name} position="relative" role="group">
             <Button w="full" aria-label={`Use ${template.name}`} isLoading={building === template.name} isDisabled={Boolean(building)} variant="unstyled" height="auto"
               textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
@@ -197,8 +203,18 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
             </Button>
             <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
             </Box>)}
+          {shows("幻灯片") && slides.map(name =>
+            <Button key={name} aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
+              <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
+            </Button>)}
+          {shows("图像") && images.map(name =>
+            <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
+              <Flex bg="gray.50" borderRadius="12px" aspectRatio="16/10" align="center" justify="center">{name}</Flex>
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
+            </Button>)}
         </SimpleGrid>
-        {(category === "电子表格" || !pages.length) && (category === "页面" || !workbooks.length) && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
+        {!(shows("页面") && pages.length || shows("幻灯片") && slides.length || shows("电子表格") && workbooks.length || shows("图像") && images.length) && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
       </ModalBody>
     </ModalContent>
   </Modal>;
