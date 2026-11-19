@@ -8,7 +8,7 @@ import LibraryMarkdown from "./LibraryMarkdown";
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const [mobileReader] = useMediaQuery("(max-width: 767px) and (pointer: coarse)");
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
@@ -91,9 +91,10 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       event.preventDefault();
       if (!event.repeat) void save();
     }
-  }}><Flex align="center" justify="space-between">
+  }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
+      {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
       {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}</Flex>
     </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
       <Box flex={1}><Text fontWeight="medium">无法打开页面</Text><Text fontSize="sm">{loadError}</Text></Box>
