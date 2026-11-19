@@ -26,10 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const links = (await getMongoDb()).collection<SiteLink>("share_links");
   const shareId = typeof req.query.shareId === "string" ? req.query.shareId : "";
   const filter = { shareId, ownerUserId, mode: "preview" };
-  let link = await links.findOne(filter);
+  const link = await links.findOne(filter);
   if (!link || await getProjectAccessState(link.projectToken, ownerUserId) !== "ok") {
     return res.status(404).json({ error: "找不到站点" });
   }
+  const siteLinks = {ownerUserId, projectToken:link.projectToken, mode:"preview"};
   if (req.method === "PATCH" && typeof req.body?.restricted === "boolean") {
     const db = await getMongoDb();
     await db.collection<{_id:string; owner:string; restricted:boolean}>("library_file_settings").updateOne(
@@ -39,13 +40,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const name = req.body?.username;
     if (typeof name !== "string" || !name.trim() || name.length > 100) return res.status(400).json({ error: "请输入账号名称" });
     if (req.body.remove === true) {
-      await links.updateOne(filter, { $pull: { members: { username: name } } });
+      await links.updateMany(siteLinks, { $pull: { members: { username: name } } });
     } else {
       const member = await findUserByUsername(name.trim());
       if (!member || String(member._id) === ownerUserId) return res.status(400).json({ error: "请选择其他有效账号" });
       await links.updateOne(filter, { $addToSet: { members: { userId: String(member._id), username: member.username } } });
     }
-    link = await links.findOne(filter);
   }
-  return res.json({ id: shareId, owner: auth.user.username, restricted:link && await siteVisibility(ownerUserId,link.projectToken), members: link?.members || [] });
+  const members = await links.aggregate([
+    {$match:siteLinks}, {$unwind:"$members"},
+    {$group:{_id:"$members.userId",username:{$first:"$members.username"}}},
+    {$sort:{username:1}}, {$project:{_id:0,username:1}}
+  ]).toArray();
+  return res.json({ id: shareId, owner: auth.user.username, restricted:await siteVisibility(ownerUserId,link.projectToken), members });
 }

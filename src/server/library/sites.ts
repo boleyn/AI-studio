@@ -17,7 +17,8 @@ export async function listLibrarySites(owner:string, names:Map<string,string>) {
   const links = await db.collection("share_links").aggregate([
     { $match: { ownerUserId: owner, mode: "preview", projectToken: { $in: [...names.keys()] } } },
     { $sort: { createdAt: -1, _id: -1 } },
-    { $group: { _id: "$projectToken", id: { $first: "$shareId" }, memberCount: {$first:{$size:{$ifNull:["$members",[]]}}}, time: { $first: "$createdAt" } } },
+    { $group: { _id: "$projectToken", id: { $first: "$shareId" }, memberGroups: {$push:{$ifNull:["$members.userId",[]]}}, time: { $first: "$createdAt" } } },
+    { $set: {memberCount: {$size: {$reduce: {input:"$memberGroups",initialValue:[],in:{$setUnion:["$$value","$$this"]}}}}} },
     { $sort: { time: -1 } },
   ]).toArray();
   const received = await db.collection("share_links").aggregate([
