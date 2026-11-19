@@ -127,6 +127,7 @@ export function libraryReadMessage(reason: unknown) {
   if (status === 404 || status === 410) return "文件可能已删除或共享已结束，请重新选择。";
   if (status === 413) return "文件超过单个聊天附件 10 MB 的上限。";
   if (status === 429) return "读取请求过于频繁，请稍后重试。";
+  if (status === 422) return "页面内容无法读取，请重新打开页面后重试。";
   if (status === 503) return "文件服务暂时不可用，请稍后重试。";
   return "暂时无法读取，请稍后重试。";
 }
@@ -135,9 +136,13 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   const response = await fetch(libraryAttachmentUrl(item),{headers:withAuthHeaders(),signal});
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
-    const page = await response.json();
-    const name = page.name || item.name;
-    return fromLibrary(new File(["# " + name + "\n\n" + (page.body ?? "")],markdownFilename(name),{type:"text/markdown"}),item.id);
+    const page = await response.json().catch(error => {
+      if (error instanceof SyntaxError) throw new LibraryReadError(422, item.name);
+      throw error;
+    });
+    if (typeof page?.body !== "string") throw new LibraryReadError(422, item.name);
+    const name = typeof page.name === "string" && page.name.trim() ? page.name : item.name;
+    return fromLibrary(new File(["# " + name + "\n\n" + page.body],markdownFilename(name),{type:"text/markdown"}),item.id);
   }
   // Pages are converted to Markdown above. For raw files the response length is a lower bound only when unencoded.
   if (maxBytes !== undefined && !response.headers.has("Content-Encoding") &&
