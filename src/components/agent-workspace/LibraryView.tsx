@@ -310,7 +310,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
   }
   const [requestedSort, setSort] = useState<{column: "name" | "time" | "size"; ascending: boolean}>();
-  const sort = requestedSort && (folder || requestedSort.column !== "size") ? requestedSort : {column:"time",ascending:false};
+  const trashSection = section === "回收站";
+  const sort = !trashSection && requestedSort && (folder || requestedSort.column !== "size") ? requestedSort : {column:"time",ascending:false};
   function sortBy(column: "name" | "time" | "size") {
     setSort({ column, ascending: sort.column === column ? !sort.ascending : column === "name" });
   }
@@ -904,9 +905,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
-                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
+                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "source" ? (section === "回收站" ? "大小" : "来源") : <Flex as="button" type="button" w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
+              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody>{visible.map(file => <Box as="tr" key={key(file)} aria-selected={selected.includes(file.id)}
             onClick={event => clickItemSurface(event,file)}
