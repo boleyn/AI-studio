@@ -1053,6 +1053,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         </Box> : grid ? <LibraryCardGrid masonry={allHome} selecting={picked.length > 0}>
           {visible.map(file => {
             const type = fileType(file);
+            const imageCard = type === "图像";
             const widePreview = type === "电子表格" || type === "站点";
             const path = libraryTypeName(file);
             const documentCard = type === "文档" && /\.(doc[xm]?|dot[xm]|odt)$/i.test(path);
@@ -1074,8 +1075,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} onClick={()=>update(file,{pinned:!file.pinned})}/>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择 "+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Box>;
-            return allHome && (widePreview || documentCard || archiveCard) ? (
-            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={widePreview ? undefined : "4/5"}
+            return allHome && (imageCard || widePreview || documentCard || archiveCard) ? (
+            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={widePreview || imageCard ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
               cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
               <Flex align="center" gap="8px" ps="12px" pe="48px" h="44px" flexShrink={0} borderBottomWidth="1px">
@@ -1084,6 +1085,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               </Flex>
               <Flex position="relative" overflow="hidden" borderBottomRadius="inherit" flex={widePreview ? undefined : "1"}
                 aspectRatio={widePreview ? "16/9" : undefined} align="center" justify="center">
+                {imageCard ? <Box as="img" key={libraryAttachmentUrl(file)} src={libraryAttachmentUrl(file)} alt="" loading="lazy"
+                  display="block" w="full" h="auto" onError={event=>{event.currentTarget.hidden = true;}}
+                  sx={{"&[hidden]":{display:"none"},"&:not([hidden]) + svg":{display:"none"}}}/> : null}
                 <Icon color={color} size={56} aria-hidden/>
                 {file.siteId && <SiteCoverImage siteId={file.siteId}/>}
               </Flex>
