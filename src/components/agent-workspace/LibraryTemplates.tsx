@@ -68,7 +68,7 @@ const imageTemplates = [
 ];
 export type SlideTemplateName = typeof slideTemplates[number];
 
-export default function LibraryTemplates({ collection, onPick, onClose, onSlides }: {collection:"页面"|"幻灯片"|"全部"; onSlides:(name:SlideTemplateName)=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
+export default function LibraryTemplates({ collection, onPick, onClose, onSlides, onBrowse }: {onBrowse:()=>void; collection:"页面"|"幻灯片"|"全部"; onSlides:(name:SlideTemplateName)=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
   const strip = useRef<HTMLDivElement>(null);
   const [moreTemplates,setMoreTemplates] = useState(false);
   useEffect(()=>{
@@ -87,6 +87,24 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     <Text mt="10px" lineHeight="20px" fontSize="sm" fontWeight="400">{name}</Text>
     <Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">幻灯片</Text>
   </Button>;
+  if (collection === "全部") {
+    const checklist = templates.find(template => template.name === "待办事项清单")!;
+    return <Box as="section" aria-label="Get started" mb="40px">
+      <Flex align="center" gap="4px"><Heading as="h2" fontSize="14px" lineHeight="20px">Get started</Heading>
+        <IconButton aria-label="Dismiss Get started" icon={<X size={14}/>} variant="ghost" size="xs" boxSize="16px" minW={0} onClick={onClose}/></Flex>
+      <Flex mt="12px" gap="24px" overflowX="auto" align="start" sx={{"& > button":{flex:"0 0 min(250px, 78vw)",whiteSpace:"normal",textAlign:"left",height:"auto"}}}>
+        <Button variant="unstyled" aria-label={checklist.name} onClick={()=>onPick(checklist.name,checklist.body)}>
+          <Box bg="#f5f5f5" rounded="12px" h="180px" overflow="hidden" px="32px" pt="20px"><Box bg="white" p={4} fontSize="8px"><TemplatePreview body={checklist.body}/></Box></Box>
+          <Text mt={2} fontSize="sm">{checklist.name}</Text><Text fontSize="xs" color="gray.600">Page template</Text>
+        </Button>
+        <Button variant="unstyled" aria-label="Photography Portfolio" onClick={()=>onSlides("Photography Portfolio")}>
+          <Box as="img" src="/library-templates/photography-portfolio-cover.png" alt="" w="100%" h="180px" objectFit="cover" rounded="12px"/>
+          <Text mt={2} fontSize="sm">Photography Portfolio</Text><Text fontSize="xs" color="gray.600">Slides template</Text>
+        </Button>
+        <Button variant="unstyled" onClick={onBrowse}><Flex h="180px" rounded="12px" bg="#f5f5f5" align="center" justify="center"><BookOpen size={24}/></Flex><Text mt={2} fontSize="sm">Browse all templates</Text></Button>
+      </Flex>
+    </Box>;
+  }
   return <Box as="section" mb="40px" role="group" sx={{containerType:"inline-size"}}>
     <Flex align="center" gap="6px"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
       <IconButton opacity={{base:1,md:0}} sx={{"@media (any-pointer:coarse), (hover:none)":{opacity:1}}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} aria-label="关闭“在资料空间中共同创建”" size="xs" boxSize="20px" minW="20px" borderRadius={0} color="#8f8f8f" variant="ghost" icon={<X size={14}/>} onClick={onClose}/></Flex>
@@ -96,9 +114,9 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
       "@container (min-width: 48rem)": {gridAutoColumns:"max(9rem, calc((100% - 3rem) * 3 / 10))"},
       "@container (min-width: 64rem)": {gridAutoColumns:"max(9rem, calc((100% - 4rem) * 3 / 13))"},
       "@container (min-width: 80rem)": {gridAutoColumns:"max(9rem, calc((100% - 5rem) * 3 / 16))"},
-      scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color},i) =>
+      scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color}) =>
       <Fragment key={name}>
-      {i === 3 && collection === "全部" && slideCard("Product Strategy")}
+
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={23} color={color}/>
@@ -107,7 +125,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
             </Box></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="400" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">{pageTitle ? "从这里开始" : "Page"}</Text>
       </Button>
-      {collection === "全部" && i === pageTemplates.length - 1 && slideCard("Creative Campaign Brief")}
+
       </Fragment>)}</Box>
   </Box>;
 }

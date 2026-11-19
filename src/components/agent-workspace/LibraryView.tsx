@@ -1011,7 +1011,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           onClick={() => setPurge({scope:"all",items:files?.filter(item => item.deleted) || []})}>清空回收站</Button>
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
-        <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
+        <LibraryTemplates onBrowse={()=>setGalleryOpen(true)} collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {!sitesSection && failed && searchTerm && <Flex role="alert" align="center" justify="center" wrap="wrap" gap="12px" py="16px">
           <Text fontSize="16px" textAlign="center">{visible?.length ? "连接失败，正在显示上次加载的搜索结果。" : failed}</Text>
           <Button h="24px" minW={0} px="8px" fontSize="14px" borderRadius="full" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} onClick={()=>setAttempt(value=>value+1)}>重试</Button>
