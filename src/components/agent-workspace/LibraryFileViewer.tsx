@@ -48,6 +48,8 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [body,setBody] = useState<string>();
+  const [previewSize,setPreviewSize] = useState<number>();
+  const size = item.size ?? previewSize;
   const [error,setError] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const historySelection = useRef<HTMLButtonElement>(null);
@@ -77,9 +79,14 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
     if (!markdown && !plain) return;
     const controller = new AbortController();
     setBody(undefined);
+    setPreviewSize(undefined);
     setError(false);
-    readLibraryAttachment(item,controller.signal).then(file=>file.text()).then(text=>{
-      if (!controller.signal.aborted) setBody(text);
+    readLibraryAttachment(item,controller.signal).then(async file=>{
+      const text = await file.text();
+      if (!controller.signal.aborted) {
+        setBody(text);
+        setPreviewSize(file.size);
+      }
     }).catch(()=>{if (!controller.signal.aborted) setError(true);});
     return () => controller.abort();
   },[item,markdown,plain,attempt]);
@@ -167,7 +174,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
         {item.firstSeenAt && <><dt>首次出现在会话中</dt><dd><time dateTime={item.firstSeenAt}>{new Date(item.firstSeenAt).toLocaleString("zh-CN")}</time></dd></>}
         {item.createdAt && <><dt>创建时间</dt><dd><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("zh-CN")}</time>
           {item.createdBy && <Text fontSize="xs" color="gray.600">由 {item.createdBy}</Text>}</dd></>}
-        {item.size !== undefined && <><dt>文件大小</dt><dd>{displayFileSize(item.size)}</dd></>}
+        {size !== undefined && <><dt>文件大小</dt><dd>{displayFileSize(size)}</dd></>}
       </Box>
       {item.permission && <Box mt={5} pt={4} borderTopWidth="1px">
         <Heading as="h3" fontSize="sm">您的权限</Heading><Text mt={2} fontSize="sm">{item.permission}</Text>
