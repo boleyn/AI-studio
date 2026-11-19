@@ -311,7 +311,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     setQuery("");
   };
   const requestedTypes = [router.query.libraryType].flat();
-  const types = slidesSection ? [] : fileTypes.filter(type => requestedTypes.includes(type));
+  const availableTypes = allHome && tab === "收藏" ? fileTypes.filter(type => type !== "页面") : fileTypes;
+  const types = slidesSection ? [] : availableTypes.filter(type => requestedTypes.includes(type));
   const sources = slidesSection || allHome ? fileSources.filter(source => [router.query.librarySource].flat().includes(source)) : [];
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
@@ -905,9 +906,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             sx={{"& [role=menuitemcheckbox]":{height:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},
               "& [role=group] > p":{height:"28px",m:0,px:"10px",lineHeight:"28px",fontSize:"13px"},
               "& .chakra-menu__icon-wrapper":{order:1,ms:"auto",me:0}}}>{!slidesSection && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
-            {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
+            {availableTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup>}
-          {(slidesSection || (allHome && (filterCount > 0 || searchTerm))) && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
+          {(slidesSection || (allHome && (tab === "收藏" || tab === "你的条目" || filterCount > 0 || searchTerm))) && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
             {fileSources.map(source => <MenuItemOption key={source} value={source}><Flex align="center" gap={2}>{source === "已上传" ? <Upload size={20} aria-hidden/> : <Pencil size={20} aria-hidden/>}{source}</Flex></MenuItemOption>)}
           </MenuOptionGroup>}</MenuList>
         </Menu>}
