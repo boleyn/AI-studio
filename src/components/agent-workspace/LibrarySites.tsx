@@ -75,7 +75,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
     align="center" justify="center" bg="gray.50" color="gray.400">
     <PanelsTopLeft size={grid ? 32 : 19} aria-hidden/>
     <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(site.id)+"/cover"}
-      position="absolute" inset={0} w="full" h="full" objectFit="cover" onError={event=>{event.currentTarget.style.display="none";}}/>
+      position="absolute" inset={0} w="full" h="full" objectFit="cover" onLoad={event=>{event.currentTarget.style.removeProperty("display");}} onError={event=>{event.currentTarget.style.display="none";}}/>
   </Flex>;
   const siteLink = (site: Site) => {
     const published = site.publishedAt ? new Date(site.publishedAt) : undefined;

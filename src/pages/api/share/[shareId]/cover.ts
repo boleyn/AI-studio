@@ -5,7 +5,16 @@ import { getShareLink } from "@server/shares/shareStorage";
 import { getProjectAccessState, readProjectFile } from "@server/projects/projectStorage";
 import { isMissingStorageObject } from "@server/storage/s3";
 
-const coverPaths = ["public/og-image.png", "og-image.png", "public/og-image.jpg", "og-image.jpg"];
+const coverFormats = [
+  ["png", "image/png"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["webp", "image/webp"],
+  ["avif", "image/avif"],
+] as const;
+const covers = coverFormats.flatMap(([extension, contentType]) =>
+  ["public/og-image", "og-image"].map(base => ({path:base+"."+extension, contentType})),
+);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "private, no-store");
@@ -20,10 +29,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await getProjectAccessState(share.projectToken, share.ownerUserId) !== "ok" ||
       !await canViewRestrictedSite(share.ownerUserId, share.projectToken, String(auth.user._id))) return res.status(404).end();
 
-  for (const path of coverPaths) {
+  for (const {path, contentType} of covers) {
     try {
       const {buffer} = await readProjectFile(share.projectToken, path);
-      res.setHeader("Content-Type", path.endsWith(".png") ? "image/png" : "image/jpeg");
+      res.setHeader("Content-Type", contentType);
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.status(200).send(buffer);
     } catch (error) {
