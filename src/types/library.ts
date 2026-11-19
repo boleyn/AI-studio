@@ -5,6 +5,7 @@ export interface LibraryFile {
   appearance?: SpaceAppearance;
   id: string;
   siteId?: string;
+  siteSlug?: string;
   shareId?: string;
   editablePageId?: string;
   sharedPage?: boolean;

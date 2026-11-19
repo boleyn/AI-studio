@@ -169,6 +169,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
             const response = await fetch("/api/library/sites",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:settings.id,slug:slugDraft})});
             if (!response.ok) throw new Error(response.status===409 ? "这个网址已被使用，请换一个。" : "网址保存失败，请重试。");
             setSites(rows=>rows?.map(site=>site.id===settings.id ? {...site,slug:slugDraft} : site));
+            onSitesChanged();
             setSlugDraft(undefined);
           } catch(error) {setSlugError(error instanceof Error ? error.message : "网址保存失败");}
           finally {setSaving(false);}

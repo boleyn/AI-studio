@@ -7,7 +7,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
+import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
@@ -189,7 +189,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       return;
     }
     if (file.siteId) {
-      void router.push("/share/preview/"+encodeURIComponent(file.siteId));
+      void router.push(sitePreviewPath(file.siteId,file.siteSlug));
       return;
     }
     if (isContainer(file)) {
@@ -237,7 +237,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   function itemLink(file: LibraryFile) {
     if (file.deleted) return <span title={file.name}>{file.name}</span>;
     if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
-    if (file.siteId) return <Link title={file.name} href={"/share/preview/"+encodeURIComponent(file.siteId)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
+    if (file.siteId) return <Link title={file.name} href={sitePreviewPath(file.siteId,file.siteSlug)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
     return <Link title={file.name} href={href} shallow scroll={false} prefetch={false} onClick={event=>{

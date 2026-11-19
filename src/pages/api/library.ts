@@ -19,7 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Cache-Control", "private, no-store");
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; siteSlug?:string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
   if (req.method === "DELETE") {
     const id = req.query.id;
     if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
@@ -154,7 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   for (const site of await listLibrarySites(owner,names)) {
     const id = siteLibraryId(site.token);
-    rows.set(id,{id,siteId:site.id,kind:"站点",name:site.name,path:"",token:"",project:site.ownerName || "",chatId:"",conversation:"",
+    rows.set(id,{id,siteId:site.id,siteSlug:site.slug,kind:"站点",name:site.name,path:"",token:"",project:site.ownerName || "",chatId:"",conversation:"",
       permission:site.shared ? "可查看" : "所有者",
       ...(site.shared ? {shareId:site.id} : {}),time:site.time ? new Date(site.time).toISOString() : ""});
   }
@@ -169,7 +169,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   const listed = [...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
     const entry = preferences.get(owner + "/" + file.id);
-    return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
+    return entry ? { ...file, siteSlug:file.shareId ? file.siteSlug : entry.siteSlug ?? file.siteSlug, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time));
   if (!restoring) return res.json(listed);
   const request = z.object({id:z.string().regex(/^[a-f0-9]{64}$/),head:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);
