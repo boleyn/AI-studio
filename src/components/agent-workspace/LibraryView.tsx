@@ -197,6 +197,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error);
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
+      // Supersede any library snapshot requested before this page existed.
+      setAttempt(value => value + 1);
       setNewKind(undefined);
       if (page.folderId && page.kind === "页面") {
         navigateList("全部","推荐",containingFolderId(page),page.id,true);
