@@ -642,7 +642,9 @@ const ChatInput = ({
                 w={item.isImage ? "12.5%" : "calc(50% - 3px)"}
               >
                 <Box
-                  _hover={{ ".file-preview-close": { display: "block" } }}
+                  sx={{ "@media (hover: hover) and (pointer: fine)": {
+                    "&:not(:hover):not(:focus-within) .file-preview-close": { opacity: 0 },
+                  } }}
                   alignItems="center"
                   border="1px solid #E2E8F0"
                   borderRadius="8px"
@@ -655,9 +657,13 @@ const ChatInput = ({
                   <CloseButton
                     bg="white"
                     borderRadius="999px"
+                    transition="none"
                     className="file-preview-close"
-                    display={["block", "none"]}
-                    onClick={() => setFiles((prev) => prev.filter((f) => f.id !== item.id))}
+                    aria-label={`移除附件 ${item.file.name}`}
+                    onClick={() => {
+                      setFiles((prev) => prev.filter((f) => f.id !== item.id));
+                      textAreaRef.current?.focus();
+                    }}
                     position="absolute"
                     right="-8px"
                     size="sm"
