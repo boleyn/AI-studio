@@ -7,7 +7,7 @@ import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
 interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
 
-export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
+export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab: string; query: string; grid: boolean; onSitesChanged: () => void }) {
   const toast = useToast();
   const [pendingDelete,setPendingDelete] = useState<Site>();
   const cancelDelete = useRef<HTMLButtonElement>(null);
@@ -56,6 +56,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
       if (!response.ok && response.status !== 404) throw new Error();
       setPendingDelete(undefined);
       setSites(rows=>rows?.filter(row=>row.id!==site.id));
+      onSitesChanged();
       setSettings(undefined);
       toast({status:"success",title:"站点已删除"});
     } catch { toast({status:"error",title:"站点删除失败，请重试"}); }
@@ -103,6 +104,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
         const response = await fetch("/api/library",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:settings.libraryId,changes:{name}})});
         if (!response.ok) throw new Error();
         setSites(rows=>rows?.map(row=>row.id===settings.id ? {...row,name} : row));
+        onSitesChanged();
         setSettings({...settings,name});
         setTitle(name);
         toast({status:"success",title:"已保存站点名称"});

@@ -788,7 +788,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <Box role="tabpanel" id="library-sites-panel" aria-labelledby={"library-sites-tab-" + tabs.indexOf(tab)}>
-        <LibrarySites tab={tab} query={query} grid={grid}/>
+        <LibrarySites tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
       </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
