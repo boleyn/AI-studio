@@ -842,6 +842,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           }}),
           "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
+          "& td:nth-child(3), & td:nth-child(4)":{color:"#5d5d5d"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2)":{paddingInlineStart:allHome ? {base:"24px",xl:"8px"} : "8px"},
           "& td:nth-of-type(2)":{paddingInlineStart:section === "全部" && !folder ? "24px" : "8px"},
