@@ -153,8 +153,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...(site.shared ? {shareId:site.id} : {}),time:site.time ? new Date(site.time).toISOString() : ""});
   }
   const restores = db.collection<LibraryFile & {_id:string; owner:string; pending?:boolean}>("library_restored_versions");
-  for await (const {_id,owner:recordOwner,...file} of restores.find({owner,pending:{$ne:true},token:{$in:[...names.keys()]}})) {
-    rows.set(file.id,file);
+  for await (const file of restores.find({owner,pending:{$ne:true},token:{$in:[...names.keys()]}},
+    {projection:{_id:0,owner:0,pending:0}})) {
+    const chat = chats.get(JSON.stringify([file.token,file.chatId]));
+    if (!chat) continue;
+    rows.set(file.id,{...file,project:names.get(file.token) || "",
+      conversation:chat.deleteTime ? "" : chat.customTitle || chat.title || "未命名会话"});
   }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   const listed = [...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
