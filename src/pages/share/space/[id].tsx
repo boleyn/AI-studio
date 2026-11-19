@@ -4,6 +4,7 @@ import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/ser
 import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import NextLink from "next/link";
+import { CircleAlert } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -59,7 +60,10 @@ function SharedSpaceContents() {
       href={page ? spacePath : "/?"+new URLSearchParams({view:"library",libraryTab:"与你共享"})}>
       {page ? "返回共享空间" : "返回「与你共享」"}
     </Button>}
-    {error ? <Stack role="alert" align="start" spacing={3}><Text>{error.message}</Text>
+    {error ? <Stack align="center" spacing={3} maxW="26rem" mx="auto" py="12vh" textAlign="center">
+      <CircleAlert size={24} color="#777" aria-hidden/>
+      <Box role="alert"><Heading as="h1" size="sm">{page ? "无法打开共享页面" : "无法打开共享空间"}</Heading>
+        <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">{error.message}</Text></Box>
       {error.login ? <Button as="a" href={"/login?" + new URLSearchParams({lastRoute:router.asPath})} size="sm" borderRadius="full">登录</Button> :
         <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
