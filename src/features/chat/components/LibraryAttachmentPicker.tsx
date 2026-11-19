@@ -140,13 +140,13 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         const used = new Set<string>();
         for (const file of files) {
           if (errors.has(file.id)) continue;
-          let parent = parents.get(file.id);
+          let parent = file.folderId;
           while (parent && !used.has(parent)) {
             used.add(parent);
             parent = parents.get(parent);
           }
         }
-        recordLibraryOpen(folders.filter(folder => used.has(folder.id)).map(folder => folder.id));
+        recordLibraryOpen([...folders, ...sharedSpaces.values()].filter(folder => used.has(folder.id)).map(folder => folder.id));
       }
       const added = files.length - errors.size;
       for (const [id,message] of failedSpaces) errors.set(id,message);

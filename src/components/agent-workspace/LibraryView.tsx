@@ -536,7 +536,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       toast({status:"info", title:"所选位置中没有可添加的文件或页面。", isClosable:true});
       return;
     }
-    const activityItems = [...attachments, ...selection.filter(isContainer), ...sites.values()];
+    const usedSpaces = new Set(attachments.filter(item => item.sharedPage).map(item => item.folderId));
+    const activityItems = [...attachments, ...selection.filter(isContainer), ...[...shared.values()].filter(space => usedSpaces.has(space.id)), ...sites.values()];
     return usePicked("chat", attachments, siteLinks.length ? siteLinks.join("\n") : undefined, undefined, activityItems);
   }
   function moveSelection() {
