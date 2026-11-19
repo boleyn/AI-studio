@@ -907,7 +907,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               "& .chakra-menu__icon-wrapper":{order:1,ms:"auto",me:0}}}>{!slidesSection && <MenuOptionGroup title="文件类型" type="checkbox" value={types} onChange={value => updateListOptions(Array.isArray(value) ? value : [value], grid)}>
             {fileTypes.map(type => <MenuItemOption key={type} value={type}>{type}</MenuItemOption>)}
           </MenuOptionGroup>}
-          {(slidesSection || (allHome && filterCount > 0)) && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
+          {(slidesSection || (allHome && (filterCount > 0 || searchTerm))) && <MenuOptionGroup title="来源" type="checkbox" value={sources} onChange={value => updateListOptions(types,grid,Array.isArray(value) ? value : [value])}>
             {fileSources.map(source => <MenuItemOption key={source} value={source}><Flex align="center" gap={2}>{source === "已上传" ? <Upload size={20} aria-hidden/> : <Pencil size={20} aria-hidden/>}{source}</Flex></MenuItemOption>)}
           </MenuOptionGroup>}</MenuList>
         </Menu>}
