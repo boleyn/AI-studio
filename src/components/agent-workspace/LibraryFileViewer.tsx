@@ -150,7 +150,7 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         <IconButton ref={closeButton} variant="ghost" size="sm" boxSize="36px" borderRadius="full" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
       </Flex>
     </Flex>
-    <Flex flex="1" minH={0} direction={{base:"column",lg:"row"}}>
+    <Flex flex="1" minH={0} position="relative" direction={{base:"column",lg:"row"}}>
     <Flex direction="column" flex="1" minW={0} minH={0}>
     <Flex flex="1" minH={0} position="relative">
     <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
@@ -170,8 +170,31 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
           <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text><Button size="sm" borderRadius="full" isLoading={downloading} onClick={download}>下载文件</Button>
         </Flex>}
     </Box>
+
+    </Flex>
+    {(resumeFileChat || (draftMinimized && !fileChatOpen)) && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
+      onClick={resumeFileChat || (()=>setDraftMinimized(false))} aria-label="展开聊天窗口">聊天</Button>}
+    </Flex>
+    {!fileChatOpen && !resumeFileChat && !draftMinimized && <Flex as="aside" aria-label="新聊天" direction="column"
+      position="relative" w={{base:"100%",lg:fileChatWidth+"%"}} flexShrink={0} minW={0} bg="white" borderInlineStartWidth={{base:0,lg:"1px"}} borderTopWidth={{base:"1px",lg:0}}>
+      <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} breakpoint="lg"/>
+      <Flex align="center" justify="space-between" px={4} minH="44px">
+        <Heading as="h2" fontSize="sm">新聊天</Heading>
+        <IconButton size="sm" variant="ghost" aria-label="最小化聊天窗口" icon={<Minus size={16}/>} onClick={()=>setDraftMinimized(true)}/>
+      </Flex>
+      <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" mt="auto" p={3}
+      onSubmit={async event=>{
+        event.preventDefault();
+        if (openingChat) return;
+        setOpeningChat(true);
+        try {await askAboutFile(question.trim());} finally {setOpeningChat(false);}
+      }}>
+      <Input aria-label="询问此文件" placeholder="询问此文件" value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
+      <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
+      </Flex>
+    </Flex>}
     {panel && <Box as="aside" aria-label={panel === "info" ? "文件详情" : "版本历史记录"} position={{base:"absolute",lg:"relative"}}
-      insetY={0} right={0} w="min(100%, 296px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" px={4} pt="5px" pb={4}>
+      insetY={0} right={0} zIndex={1} mr={{base:0,lg:"8px"}} mb={{base:0,lg:"8px"}} w="min(100%, 296px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" px={4} pt="5px" pb={4}>
       <Flex align="center" justify="space-between" mr="-8px"><Heading size="sm" fontWeight="400" lineHeight="24px">{panel === "info" ? "文件详情" : "版本历史记录"}</Heading>
         <IconButton size="sm" boxSize="36px" borderRadius="full" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
       </Flex>
@@ -199,28 +222,6 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         <Heading as="h3" fontSize="sm">您的权限</Heading><Text mt={2} fontSize="sm">{item.permission}</Text>
       </Box>}</>}
     </Box>}
-    </Flex>
-    {(resumeFileChat || (draftMinimized && !fileChatOpen)) && <Button alignSelf="flex-end" m={3} size="sm" borderRadius="full" leftIcon={<MessageSquare size={16}/>}
-      onClick={resumeFileChat || (()=>setDraftMinimized(false))} aria-label="展开聊天窗口">聊天</Button>}
-    </Flex>
-    {!fileChatOpen && !resumeFileChat && !draftMinimized && <Flex as="aside" aria-label="新聊天" direction="column"
-      position="relative" w={{base:"100%",lg:fileChatWidth+"%"}} flexShrink={0} minW={0} bg="white" borderInlineStartWidth={{base:0,lg:"1px"}} borderTopWidth={{base:"1px",lg:0}}>
-      <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} breakpoint="lg"/>
-      <Flex align="center" justify="space-between" px={4} minH="44px">
-        <Heading as="h2" fontSize="sm">新聊天</Heading>
-        <IconButton size="sm" variant="ghost" aria-label="最小化聊天窗口" icon={<Minus size={16}/>} onClick={()=>setDraftMinimized(true)}/>
-      </Flex>
-      <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" mt="auto" p={3}
-      onSubmit={async event=>{
-        event.preventDefault();
-        if (openingChat) return;
-        setOpeningChat(true);
-        try {await askAboutFile(question.trim());} finally {setOpeningChat(false);}
-      }}>
-      <Input aria-label="询问此文件" placeholder="询问此文件" value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
-      <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
-      </Flex>
-    </Flex>}
     </Flex>
   </Flex>;
 }
