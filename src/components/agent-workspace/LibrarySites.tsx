@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import SiteDomains from "./SiteDomains";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
 interface Site { slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
@@ -182,6 +183,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
           {slugError && <Text role="alert" mt={2} fontSize="sm" color="red.600">{slugError}</Text>}</ModalBody><ModalFooter gap={2}>
           <Button isDisabled={saving} onClick={()=>setSlugDraft(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!slugDraft || slugDraft===settings.slug}>更改 URL</Button></ModalFooter></form>
       </ModalContent></Modal>
+    <SiteDomains key={settings.id} siteId={settings.id}/>
     <Heading as="h3" size="sm" mt={6}>共享设置</Heading>
     <Flex mt={2} gap={3} align="center" wrap="wrap"><Text>谁可以查看你的站点</Text><Text ml="auto">{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>
       <Button size="sm" aria-label="管理共享" onClick={()=>setSharing(settings)}>管理</Button></Flex>
