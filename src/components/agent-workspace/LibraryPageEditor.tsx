@@ -34,8 +34,15 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
           response.status === 403 ? "当前账号没有访问权限。" : response.status === 404 ? "页面可能已删除，或共享权限已变更。" : "暂时无法加载，请稍后重试。");
         return;
       }
-      const data = await response.json();
+      const data = await response.json().catch(error => {
+        if (error instanceof SyntaxError) return null;
+        throw error;
+      });
       if (abort.signal.aborted) return;
+      if (typeof data?.name !== "string" || typeof data.body !== "string") {
+        setLoadError("页面内容无法读取，请重新加载。");
+        return;
+      }
       const draft = drafts?.get(url);
       const currentRevision = data.revision || 0;
       setContent(draft || {name:data.name,body:data.body});
