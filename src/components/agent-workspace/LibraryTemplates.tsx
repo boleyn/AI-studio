@@ -253,7 +253,7 @@ export function TemplateGallery({ onClose, onPick, onWorkbook, onEditWorkbook, o
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
       <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px" pb={{base:4, md:6}}>Templates</ModalHeader>
-      <ModalCloseButton aria-label="关闭对话框" />
+      <ModalCloseButton aria-label="关闭对话框" top="11px" right="11px" borderRadius="8px"><X size={20} aria-hidden /></ModalCloseButton>
       <Flex px={{base:4, md:"30px"}} pb={4} gap={2} align="center" wrap="wrap">
         <Flex role="tablist" aria-label="模板分类" maxW="full" overflowX="auto">
           {galleryCategories.map((label, index) =>
