@@ -404,6 +404,12 @@ const ChatItem = ({
                           {!canOpen && <Text as="span" fontSize="xs" color="gray.600">{unavailable}</Text>}
                         </Flex>
                       )}
+                      {imageFailed && <Button size="xs" variant="ghost" mx={2} mb={2} aria-label={`重新加载 ${name}`}
+                        onClick={() => setFailedImages(previous => {
+                          const next = new Set(previous);
+                          next.delete(fileUrl);
+                          return next;
+                        })}>重新加载</Button>}
                     </Box>
                   );
                 })}
