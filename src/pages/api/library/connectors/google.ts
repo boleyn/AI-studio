@@ -26,7 +26,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     httpOnly: true, sameSite: "lax", secure: redirect.startsWith("https:"), path: cookiePath, maxAge: age,
   });
   if (req.method === "POST") {
-    const state = randomBytes(32).toString("hex");
+    const siteId = req.body?.siteId;
+    if (siteId !== undefined && (typeof siteId !== "string" || !/^[0-9a-f]{24}$/.test(siteId))) return res.status(400).end();
+    const state = randomBytes(32).toString("hex") + (siteId ? "." + siteId : "");
     res.setHeader("Set-Cookie", cookie(owner + "." + state, 600));
     const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: "code",
       scope: req.body?.allowRename === true ? "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata" : "https://www.googleapis.com/auth/drive.readonly", access_type: "offline", prompt: "consent", state });
@@ -35,10 +37,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "GET") return res.setHeader("Allow", "GET, POST").status(405).end();
   const expected = Buffer.from(req.cookies[cookieName] || "");
   const provided = Buffer.from(owner + "." + req.query.state);
-  const returnTo = "/?view=library&libraryConnectors=";
+  let returnTo = "/?view=library&libraryConnectors=";
   if (!expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return res.redirect(303, returnTo + "invalid-session");
   }
+  const siteId = typeof req.query.state === "string" && /^[a-f0-9]{64}\.([a-f0-9]{24})$/.exec(req.query.state)?.[1];
+  if (siteId) returnTo = "/share/preview/" + siteId + "?libraryConnectors=";
   // A stale tab must not clear the state for a newer authorization attempt.
   res.setHeader("Set-Cookie", cookie("", 0));
   if (typeof req.query.code !== "string") return res.redirect(303, returnTo + (req.query.error === "access_denied" ? "cancelled" : "error"));

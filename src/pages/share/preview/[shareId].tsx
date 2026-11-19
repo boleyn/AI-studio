@@ -1,8 +1,10 @@
 import { sitePreviewPath } from "@/types/library";
+import LibraryConnectors from "@/components/agent-workspace/LibraryConnectors";
+import { getMongoDb } from "@server/db/mongo";
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
-import { Box, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex } from "@chakra-ui/react";
 import { SandpackProvider, SandpackPreview, SandpackStack, type SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import { githubLight } from "@codesandbox/sandpack-themes";
 
@@ -27,6 +29,9 @@ type SharePreviewPageProps = {
   previewPath: string;
   shareId: string;
   initialProject: PreviewProject;
+  driveEnabled: boolean;
+  signedIn: boolean;
+  connectorStatus: string | null;
 };
 
 type SharePayload = {
@@ -108,7 +113,8 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles => {
   return output;
 };
 
-const SharePreviewPage = ({ shareId, previewPath, initialProject }: SharePreviewPageProps) => {
+const SharePreviewPage = ({ shareId, previewPath, initialProject, driveEnabled, signedIn, connectorStatus }: SharePreviewPageProps) => {
+  const [connectionsOpen,setConnectionsOpen] = useState(Boolean(connectorStatus));
   const [project, setProject] = useState<PreviewProject>({
     ...initialProject,
     files: normalizeFiles(initialProject.files),
@@ -194,6 +200,10 @@ const SharePreviewPage = ({ shareId, previewPath, initialProject }: SharePreview
   return (
     <Flex direction="column" h="100vh" bg="gray.50" overflow="hidden">
       <Head><title>{project.name}</title></Head>
+      {driveEnabled && <Flex justify="end" px={3} py={1}>
+        <Button size="sm" variant="ghost" onClick={() => signedIn ? setConnectionsOpen(true) : window.location.assign("/login?lastRoute="+encodeURIComponent(previewPath))}>连接我的 Google Drive</Button>
+      </Flex>}
+      {driveEnabled && signedIn && connectionsOpen && <LibraryConnectors siteId={shareId} callbackStatus={connectorStatus || undefined} close={()=>setConnectionsOpen(false)}/>}
       <Box flex="1" minH="0" position="relative">
         <SandpackProvider
           key={sandpackRuntimeId}
@@ -261,6 +271,9 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
     props: {
       shareId,
       previewPath,
+      driveEnabled: Boolean(await (await getMongoDb()).collection("site_plugins").findOne({owner:share.ownerUserId,projectToken:share.projectToken,id:"google-drive"},{projection:{_id:1}})),
+      signedIn: Boolean(getAuthUserFromRequest(context.req)?.sub),
+      connectorStatus: typeof context.query.libraryConnectors === "string" ? context.query.libraryConnectors : null,
       initialProject: {
         token: project.token,
         name: settings?.name || project.name,
