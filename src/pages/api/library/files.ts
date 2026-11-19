@@ -60,7 +60,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const id = _id.toHexString();
   const storageKey = "library/" + owner + "/" + id;
   const time = new Date().toISOString();
-  await uploadObjectToStorage({key:storageKey,body:Buffer.concat(chunks),contentType:"application/octet-stream"});
+  try {
+    await uploadObjectToStorage({key:storageKey,body:Buffer.concat(chunks),contentType:"application/octet-stream"});
+  } catch (error) {
+    if (isStorageUnavailable(error)) return res.status(503).json({error:"文件存储暂时不可用，请稍后重试。"});
+    throw error;
+  }
   try {
     await items.insertOne({_id,owner,name,time,createdAt:time,size,fromTemplate,reference,folderId,kind:"上传",storageKey,originalName:name});
   } catch (error) {
