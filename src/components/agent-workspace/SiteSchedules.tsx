@@ -1,6 +1,6 @@
 import { Box, Button, Flex, Heading, Input, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, Select, Switch, Textarea, Text } from "@chakra-ui/react";
 import { DateTime } from "luxon";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Schedule } from "@/shared/schedules/types";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -10,6 +10,8 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [tasks, setTasks] = useState<Schedule[]>();
   const [context, setContext] = useState<{token:string; models:{id:string; label:string; reasoning?:boolean}[]; chats:{id:string; title:string}[]}>();
   const [model, setModel] = useState("");
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [prompt, setPrompt] = useState("");
   const [draft, setDraft] = useState<string>();
   const [endsOnDate, setEndsOnDate] = useState(false);
   const [unit, setUnit] = useState("weekly");
@@ -30,6 +32,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
     const morning = now.startOf("day").set({hour:9});
     setFirstTime((morning > now ? morning : morning.plus({days:1})).toFormat("yyyy-MM-dd'T'HH:mm"));
     setModel("");
+    setPrompt(title);
     setDraft(title);
   }
   const [error, setError] = useState("");
@@ -61,7 +64,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
     <Flex justify="space-between" align="center"><Heading as="h2" size="sm">已安排的任务</Heading>
       <Button size="sm" borderRadius="full" isDisabled={!tasks || draft !== undefined} onClick={()=>edit("")}>创建任务</Button></Flex>
     <Text mt={1} mb={4} fontSize="sm" color="gray.600">按设定的任务时间自动更新你的站点</Text>
-    {draft !== undefined && context && <Modal isOpen isCentered scrollBehavior="inside" onClose={()=>{if (!saving) setDraft(undefined);}}>
+    {draft !== undefined && context && <Modal isOpen isCentered initialFocusRef={promptRef} scrollBehavior="inside" onClose={()=>{if (!saving) setDraft(undefined);}}>
       <ModalOverlay/><ModalContent mx={3} borderRadius="16px"><ModalHeader pr={12}>为 {siteName} 安排任务</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" isDisabled={saving}/><ModalBody><form key={draft} onSubmit={async event=>{
       event.preventDefault();
@@ -80,7 +83,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         }
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
-            title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? frequency === "custom" ? form.get("unit") : frequency : "once",
+            title:prompt.trim().split("\n")[0].slice(0,100), prompt:prompt.trim(), repeat:repeating ? frequency === "custom" ? form.get("unit") : frequency : "once",
             ...(repeating && frequency === "custom" ? {interval:Number(form.get("interval"))} : {}),
             ...(weeklySelection ? {weekdays} : {}),
             ...(form.get("model") ? {model:form.get("model")} : {}),
@@ -96,8 +99,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
       finally { setSaving(false); }
     }}>
       <Flex as="fieldset" mb={5} disabled={saving} direction="column" gap={2}>
-        <label>任务名称<Input name="title" defaultValue={draft} required maxLength={100}/></label>
-        <label>任务说明<Textarea name="prompt" defaultValue={draft} required maxLength={4000}/></label>
+        <Textarea ref={promptRef} aria-label="任务说明" placeholder="说明…" value={prompt} onChange={event=>setPrompt(event.target.value)} required maxLength={4000}/>
         <label>关联对话<Select name="chatId" required>{context.chats.map(chat=><option key={chat.id} value={chat.id}>{chat.title}</option>)}</Select></label>
         {!context.chats.length && <Text fontSize="sm">请先在站点项目中保存一段对话。</Text>}
         <Flex align="center" justify="space-between"><label htmlFor="site-task-repeat">重复执行任务</label>
@@ -132,7 +134,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           </Select></label>
         </details>
         {saveError && <Text role="alert">{saveError}</Text>}
-        <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length}>保存任务</Button>
+        <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length || !prompt.trim()}>创建</Button>
           <Button size="sm" onClick={()=>setDraft(undefined)}>取消</Button></Flex>
       </Flex>
     </form></ModalBody></ModalContent></Modal>}
