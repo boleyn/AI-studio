@@ -49,8 +49,17 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   if (req.method !== "PATCH") return res.status(405).end();
   const record = await domains.findOne(matching,{sort:{verified:-1,_id:1}});
   if (!record) return res.status(404).end();
-  const records = await resolveTxt("_bore-site."+host).catch(()=>[]);
-  if (!records.some(parts=>parts.join("")===record.challenge)) return res.status(422).json({error:"尚未找到匹配的 TXT 记录，请检查 DNS 配置后重试。"});
+  let records: string[][];
+  try {
+    records = await resolveTxt("_bore-site."+host);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENODATA" || code === "ENOTFOUND") {
+      return res.status(422).json({error:"尚未查到 TXT 记录。如果刚刚添加，请等待 DNS 更新后再验证。"});
+    }
+    return res.status(503).json({error:"DNS 查询暂时失败，请稍后重新验证。"});
+  }
+  if (!records.some(parts=>parts.join("")===record.challenge)) return res.status(422).json({error:"已查到 TXT 记录，但记录值不匹配。请核对验证值后重试。"});
   await domains.createIndex({host:1},{unique:true,partialFilterExpression:{verified:true}});
   try {
     const update = await domains.updateOne({_id:record._id,challenge:record.challenge},{$set:{verified:true}});
