@@ -855,8 +855,8 @@ export default function AgentWorkspace({
               size="sm"
               variant="ghost"
               color="ink.secondary"
-              onClick={() => {
-                setActiveNav("chat");
+              onClick={async () => {
+                await setActiveNav("chat");
                 if (activeProject) handleNewConversationInProject(activeProject.token);
                 else createModal.onOpen();
               }}
