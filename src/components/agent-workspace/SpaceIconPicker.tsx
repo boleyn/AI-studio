@@ -1,4 +1,4 @@
-import { Box, Button, Flex, IconButton, Input, Popover, PopoverBody, PopoverContent, PopoverTrigger, VisuallyHidden } from "@chakra-ui/react";
+import { Box, Button, Flex, IconButton, Input, Popover, PopoverBody, PopoverContent, PopoverTrigger, Text, VisuallyHidden } from "@chakra-ui/react";
 import { Folder, DollarSign, Book, GraduationCap, Pencil, PenLine, Code, Terminal, Music, Popcorn, Sparkles, Palette, Stethoscope, Activity, Flower, Briefcase, BarChart3, Weight, Dumbbell, Notebook, Scale, Orbit, Plane, Globe, Wrench, PawPrint, FlaskConical, Brain, Heart, Sprout, Layers } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SpaceAppearance } from "@/types/library";
@@ -24,7 +24,7 @@ export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;
         <Input ref={search} type="search" size="sm" h="28px" px="8px" borderRadius="6px" aria-label="搜索图标" placeholder="搜索图标" value={query} onChange={e=>setQuery(e.target.value)}/>
         <Flex role="group" aria-label="图标颜色" h="32px" align="center" justify="space-around" my="12px">{Object.entries(colors).map(([name,color])=>
           <Button key={name} aria-label={"使用"+name} aria-pressed={value.color===name} variant="ghost" size="xs" onClick={()=>onChange({...value,color:name})}><Box boxSize="14px" bg={color} borderRadius="full" outline={value.color===name?"1px solid":undefined} outlineOffset="2px"/></Button>)}</Flex>
-        <VisuallyHidden role="status">{options.length} 个图标</VisuallyHidden>
+        {options.length > 0 && <VisuallyHidden role="status">{options.length} 个图标</VisuallyHidden>}
         <Box role="grid" aria-label="图标" onKeyDown={event=>{
           const offsets:Record<string,number> = {ArrowLeft:-1,ArrowRight:1,ArrowUp:-8,ArrowDown:8};
           const offset = offsets[event.key];
@@ -40,6 +40,7 @@ export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;
               {row.map(([name,Icon])=><Box role="gridcell" key={name} textAlign="center"><IconButton w="32px" maxW="full" minW={0} tabIndex={tabStop===name ? 0 : -1} onFocus={()=>setFocused(name)} size="sm" variant="ghost" aria-label={name} aria-pressed={value.icon===name} bg={value.icon===name ? "#efefef" : undefined} title={name} icon={<Icon size={18} color={colors[value.color as keyof typeof colors]}/>} onClick={()=>onChange({...value,icon:name})}/></Box>)}
             </Box>)}</Box>
         </Box>
+        {options.length === 0 && <Text role="status" textAlign="center" fontSize="sm" color="#5d5d5d" py={3}>未找到匹配的图标</Text>}
       </PopoverBody></PopoverContent>
   </Popover>;
 }
