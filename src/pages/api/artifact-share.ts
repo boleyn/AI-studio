@@ -28,6 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const version = typeof body.version === "string" ? body.version : "";
       let bytes:Buffer;
       let livePage = false;
+      let fileOrigin: "上传" | "生成" = "生成";
       let filename = path;
       const libraryItemId = typeof body.libraryItemId === "string" ? body.libraryItemId : undefined;
       if (libraryItemId) {
@@ -35,12 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const native = await (await getMongoDb()).collection("library_pages").findOne({_id:new ObjectId(libraryItemId),owner:userId,deleted:{$ne:true}});
         if (!native || (native.kind && !["上传","页面"].includes(native.kind))) return res.status(404).end();
         filename = native.name;
-        if (native.kind === "上传") bytes = (await getObjectFromStorage({key:native.storageKey})).buffer;
+        if (native.kind === "上传") {
+          fileOrigin = native.fromTemplate ? "生成" : "上传";
+          bytes = (await getObjectFromStorage({key:native.storageKey})).buffer;
+        }
         else { livePage = true; bytes = Buffer.alloc(0); filename += ".md"; }
       } else {
         if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
         if (await getProjectAccessState(token,userId) !== "ok") return res.status(404).end();
         if (body.chatUpload === true) {
+          fileOrigin = "上传";
           if (typeof body.chatId !== "string" || !body.chatId) return res.status(400).end();
           const key = assertChatScopedStoragePath({storagePath:path,token,chatId:body.chatId});
           bytes = (await getObjectFromStorage({key})).buffer;
@@ -50,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           bytes = source.buffer;
         }
       }
-      const share = await createArtifactShare({projectToken:libraryItemId ? "" : token,libraryItemId,livePage,ownerId:userId,ownerName:auth.user.username,path:filename,bytes});
+      const share = await createArtifactShare({projectToken:libraryItemId ? "" : token,libraryItemId,livePage,fileOrigin:livePage ? undefined : fileOrigin,ownerId:userId,ownerName:auth.user.username,path:filename,bytes});
       if (!share) throw new Error("Share creation did not return a record");
       return res.status(201).json({ id: share._id, filename: share.filename, owner: share.ownerName, members: share.members, livePage:share.livePage });
     }

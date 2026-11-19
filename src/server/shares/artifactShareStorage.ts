@@ -8,6 +8,7 @@ type ArtifactShare = {
   _id: string;
   libraryItemId?: string;
   livePage?: boolean;
+  fileOrigin?: "上传" | "生成";
   projectToken: string;
   ownerId: string;
   ownerName: string;
@@ -21,6 +22,7 @@ const objectKey = (id: string) => `artifact-shares/${id}/snapshot`;
 export async function createArtifactShare(input: {
   libraryItemId?: string;
   livePage?: boolean;
+  fileOrigin?: "上传" | "生成";
   projectToken: string;
   ownerId: string;
   ownerName: string;
@@ -33,7 +35,10 @@ export async function createArtifactShare(input: {
     .update(input.bytes).digest("hex");
   const shares = await collection();
   const existing = await shares.findOne({ _id: id });
-  if (existing && !input.livePage) return existing;
+  if (existing && !input.livePage) {
+    if (input.fileOrigin && !existing.fileOrigin) await shares.updateOne({_id:id},{$set:{fileOrigin:input.fileOrigin}});
+    return existing;
+  }
   if (!input.livePage) await uploadObjectToStorage({
     key: objectKey(id),
     body: input.bytes,
@@ -43,6 +48,7 @@ export async function createArtifactShare(input: {
   const share = {
     _id: id,
     projectToken: input.projectToken,
+    ...(input.fileOrigin ? {fileOrigin:input.fileOrigin} : {}),
     ...(input.livePage ? {livePage:true} : {}),
     ...(input.libraryItemId ? {libraryItemId:input.libraryItemId} : {}),
     ownerId: input.ownerId,
@@ -85,6 +91,6 @@ export async function deleteProjectArtifactShares(projectToken: string) {
 }
 
 export async function listReceivedArtifactShares(userId:string) {
-  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId"|"livePage"|"members">>(
-    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1,livePage:1,members:{$elemMatch:{userId}}}).toArray();
+  return (await collection()).find({"members.userId":userId}).project<Pick<ArtifactShare,"_id"|"ownerName"|"filename"|"ownerId"|"projectToken"|"libraryItemId"|"livePage"|"fileOrigin"|"members">>(
+    {ownerName:1,filename:1,ownerId:1,projectToken:1,libraryItemId:1,livePage:1,fileOrigin:1,members:{$elemMatch:{userId}}}).toArray();
 }

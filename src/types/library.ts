@@ -8,6 +8,7 @@ export interface LibraryFile {
   shareId?: string;
   editablePageId?: string;
   sharedPage?: boolean;
+  fileOrigin?: "上传" | "生成";
   reference?: ImageReference;
   directUpload?: boolean;
   fromTemplate?: boolean;

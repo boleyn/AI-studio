@@ -328,7 +328,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
-    (!sources.length || (file.kind === "上传" && !file.fromTemplate && !file.sharedPage && sources.includes("已上传")) || ((file.kind === "生成" || file.fromTemplate) && sources.includes("生成的文件"))) &&
+    (!sources.length || (file.shareId ? (file.fileOrigin === "上传" && sources.includes("已上传")) || (file.fileOrigin === "生成" && sources.includes("生成的文件")) :
+      (file.kind === "上传" && !file.fromTemplate && sources.includes("已上传")) || ((file.kind === "生成" || file.fromTemplate) && sources.includes("生成的文件")))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
