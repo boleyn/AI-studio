@@ -448,8 +448,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           description:<Box><Text>{action === "chat"
             ? "对话尚未开始。请重试，或调整选择后再开始聊天。"
             : partialDownload ? `将下载已读取的 ${attachments.length} 个文件。以下文件需要重试。` : "请根据以下提示重试。"}</Text>
-            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map(({file,message})=>
-              <li key={file.id}><strong>{file.name}</strong> · {message}</li>)}</Box></Box>});
+            <Box as="ul" mt={2} listStyleType="none" maxH="8rem" overflowY="auto">{unavailable.map(({file,message})=>
+              <Box as="li" key={file.id} py={1}>
+                <Text fontWeight="semibold" overflowWrap="anywhere">{file.name}</Text>
+                <Text fontSize="sm">{message}</Text>
+              </Box>)}</Box></Box>});
         if (!partialDownload) return;
       }
       if (action === "chat") {
