@@ -168,6 +168,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!source?.version || !names.has(source.token)) return res.status(404).end();
   const head = listed.find(file => file.kind === "生成" && !file.deleted && file.token === source.token && file.chatId === source.chatId && file.path === source.path);
   const id = createHash("sha256").update(JSON.stringify(["restore",request.data.head])).digest("hex");
+  const priorRestore = preferences.get(owner + "/" + id);
+  if (priorRestore?.purged || priorRestore?.deleted) return res.status(409).end();
   if (head?.id === id) return head.version === source.version ? res.json(head) : res.status(409).end();
   if (!head?.version || head.id !== request.data.head || head.id === source.id) return res.status(409).end();
   const [live, current, previous] = await Promise.all([
