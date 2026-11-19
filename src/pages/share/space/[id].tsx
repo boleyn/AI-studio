@@ -6,7 +6,7 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
-type Contents = {name:string;body?:string;pages?:{id:string;name:string}[]};
+type Contents = {name:string;body?:string;pages?:{id:string;name:string;path?:string}[]};
 export default function SharedSpace() {
   const router = useRouter();
   const {id,page} = router.query;
@@ -37,7 +37,7 @@ export default function SharedSpace() {
     {page && <Button as="a" href={"/share/space/"+id} variant="ghost" mb={4}>返回资料空间</Button>}
     {error ? <Text role="alert">{error}</Text> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
-      {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id}>{item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
+      {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
           {typeof id === "string" && typeof page === "string" && <Button size="sm" variant="outline" mt={6} isLoading={downloading} onClick={async () => {
             setDownloading(true);
