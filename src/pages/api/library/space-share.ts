@@ -12,7 +12,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   const id = req.query.id;
   if (typeof id !== "string" || !/^[a-f0-9]{24}$/.test(id)) return res.status(404).end();
   const db = await getMongoDb();
-  const pages = db.collection<{owner:string;name:string;kind?:string|null;sharedBy?:string;body?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
+  const pages = db.collection<{owner:string;name:string;kind?:string|null;sharedBy?:string;body?:string;time?:string;folderId?:string;members?:{userId:string;username:string}[]}>("library_pages");
   const userId = String(auth.user._id);
   const active = {deleted:{$ne:true},purging:{$ne:true}};
   const filter = {...active,_id:new ObjectId(id),kind:"资料空间"};
@@ -66,13 +66,13 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     }
     return res.json({owner,name:page.name,body:page.body});
   }
-  const included: {id:string;name:string;path:string}[] = [];
+  const included: {id:string;name:string;path:string;time:string}[] = [];
   const paths = new Map([[id,""]]);
   const visited = new Set([id]);
   let parents = [id];
   while (parents.length) {
     const children = await pages.find({...accessible,folderId:{$in:parents}},
-      {projection:{name:1,kind:1,folderId:1}}).toArray();
+      {projection:{name:1,kind:1,folderId:1,time:1}}).toArray();
     parents = [];
     for (const child of children) {
       const childId = String(child._id);
@@ -81,7 +81,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
       const path = [paths.get(child.folderId || ""),child.name].filter(Boolean).join(" / ");
       paths.set(childId,path);
       parents.push(childId);
-      if (child.kind !== "文件夹") included.push({id:childId,name:child.name,path});
+      if (child.kind !== "文件夹") included.push({id:childId,name:child.name,path,time:child.time || child._id.getTimestamp().toISOString()});
     }
   }
   const key = (pageId:string) => userId + "/space-" + id + "-" + pageId;
