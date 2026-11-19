@@ -1,3 +1,5 @@
+export const chatUploadSegment = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown";
+
 // Older chat uploads use a flat mirror. New uploads keep their unique directory
 // when projected into the workspace so repeated names resolve to the right bytes.
 export function chatAttachmentMirrorPath(storagePath: string, safeName: string) {

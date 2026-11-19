@@ -1,3 +1,4 @@
+import { chatUploadSegment } from "@/shared/chat/attachmentPath";
 import { libraryOrigin } from "../services/libraryFileOrigin";
 import { inferAttachmentMimeType } from "./attachmentMimeType";
 import { extractText } from "@shared/chat/messages";
@@ -213,16 +214,19 @@ export function resolveChatUploadUrl(file: Pick<UploadedFileArtifact, "storagePa
   const path = file.storagePath?.replace(/^\/+/, "");
   if (!path) return "";
   // A copied attachment can still be scoped to the original conversation.
+  const origin = /^chat_uploads\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)\/\.files\//.exec(path);
   const savedUrl = [file.previewUrl, file.downloadUrl, file.publicUrl].find(url => {
     if (!url?.startsWith("/api/core/chat/files/view?")) return false;
     const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-    return Boolean(params.get("token") && params.get("chatId")) &&
+    const savedToken = params.get("token");
+    const savedChat = params.get("chatId");
+    return savedToken && savedChat && (!origin || (chatUploadSegment(savedToken) === origin[1] && chatUploadSegment(savedChat) === origin[2])) &&
       params.get("storagePath")?.replace(/^\/+/, "") === path;
   });
   if (savedUrl) return savedUrl;
   // Older messages can retain only the storage key when an attachment is reused.
-  const origin = /^chat_uploads\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)\/\.files\//.exec(path);
-  const currentTokenSegment = token.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+
+  const currentTokenSegment = chatUploadSegment(token);
   return toStableChatFileViewUrl({
     storagePath: path,
     token: origin && origin[1] !== currentTokenSegment ? origin[1] : token,

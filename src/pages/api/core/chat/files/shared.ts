@@ -1,3 +1,5 @@
+import { chatUploadSegment as toSafeSegment } from "@/shared/chat/attachmentPath";
+export { toSafeSegment };
 import path from "node:path";
 import { normalizeStorageKey } from "@server/storage/s3";
 
@@ -5,7 +7,6 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILES = 20;
 export const CHAT_UPLOAD_ROOT = "chat_uploads";
 
-export const toSafeSegment = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown";
 
 export const toSafeFileName = (value: string) => {
   const base = path.basename((value || "file").trim());
