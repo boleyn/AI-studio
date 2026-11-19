@@ -55,7 +55,7 @@ export default function SharedSpace() {
             setDownloading(true);
             try {
               const params = new URLSearchParams({id,page,contents:"1",download:"1"});
-              await downloadAuthenticatedFile("/api/library/space-share?" + params, markdownFilename(data.name));
+              await downloadAuthenticatedFile("/api/library/space-share?" + params, markdownFilename(data.name), true);
             } catch (error) {
               toast({status:"error",title:"下载失败",description:error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "请稍后重试。"});
             } finally {

@@ -4,7 +4,7 @@ import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
 import { resolveChatUploadUrl } from "../utils/chatPanelUtils";
-import { MAX_UPLOAD_FILE_SIZE, redirectedToLogin } from "./files";
+import { MAX_UPLOAD_FILE_SIZE, responseFilename, redirectedToLogin } from "./files";
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
@@ -163,14 +163,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   const blob = await readAttachmentBlob(response, item.name, maxBytes);
   let filename = item.sharedPage ? markdownFilename(item.name) : sharedPreviewFilename(item.name, libraryTypeName(item));
   if (item.sharedPage || item.directUpload) {
-    const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-    if (encoded) {
-      try {
-        filename = decodeURIComponent(encoded) || filename;
-      } catch {
-        // Older responses may contain a malformed filename. Keep the listed title.
-      }
-    }
+    filename = responseFilename(response, filename);
   }
   if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(filename),{type:"text/markdown"}),item.id);
   const inferred = inferAttachmentMimeType(libraryTypeName(item), item.name);

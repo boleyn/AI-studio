@@ -270,7 +270,17 @@ export function redirectedToLogin(response: Response) {
   return response.redirected && new URL(response.url).pathname === "/login";
 }
 
-export async function downloadAuthenticatedFile(endpoint: string, filename: string) {
+export function responseFilename(response: Response, fallback: string) {
+  const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (!encoded) return fallback;
+  try {
+    return decodeURIComponent(encoded) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function downloadAuthenticatedFile(endpoint: string, filename: string, preferResponseName = false) {
   const response = await fetch(endpoint, { headers: withAuthHeaders() });
   if (redirectedToLogin(response)) throw new Error("请重新登录后下载。");
   if (!response.ok) {
@@ -283,7 +293,7 @@ export async function downloadAuthenticatedFile(endpoint: string, filename: stri
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = preferResponseName ? responseFilename(response, filename) : filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

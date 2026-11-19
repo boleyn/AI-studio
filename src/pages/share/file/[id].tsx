@@ -82,7 +82,7 @@ export default function SharedArtifactPage() {
       <Button leftIcon={<Download size={16} />} size="sm" variant="ghost" isLoading={downloading} onClick={async ()=>{
         setDownloading(true);
         try {
-          await downloadAuthenticatedFile(url, previewName);
+          await downloadAuthenticatedFile(url, previewName, true);
         } catch (error) {
           toast({status:"error",title:"下载失败",description:error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "请稍后重试。"});
         } finally {
