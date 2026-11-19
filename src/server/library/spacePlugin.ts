@@ -1,3 +1,4 @@
+import { chatUploadOrigin, resolveUploadScope } from "@/shared/chat/attachmentPath";
 import { getProjectAccessState, readProjectArtifactVersion } from "@server/projects/projectStorage";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { assertChatScopedStoragePath } from "@/pages/api/core/chat/files/shared";
@@ -15,9 +16,10 @@ async function readHistoricalLibraryText(owner:string,id:string) {
   if (!file || !/\.(md|markdown|txt)$/i.test(file.path)) return null;
   let buffer:Buffer;
   if (file.kind === "上传" && file.chatId && !file.directUpload) {
-    const access = await getChatTokenAccessState(file.token,owner);
+    const scope = resolveUploadScope(chatUploadOrigin(file.path),file.token,file.chatId);
+    const access = await getChatTokenAccessState(scope.token,owner);
     if (access !== "ok_project" && access !== "ok_skill") return null;
-    const key = assertChatStoragePath(assertChatScopedStoragePath({storagePath:file.path,token:file.token,chatId:file.chatId}));
+    const key = assertChatStoragePath(assertChatScopedStoragePath({storagePath:file.path,...scope}));
     ({buffer} = await getObjectFromStorage({key,bucketType:"private"}));
   } else if (file.kind === "生成" && file.version) {
     if (await getProjectAccessState(file.token,owner) !== "ok") return null;
