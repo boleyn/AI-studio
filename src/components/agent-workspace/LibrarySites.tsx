@@ -16,21 +16,31 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const [saving,setSaving] = useState(false);
   const [sharing, setSharing] = useState<Site>();
   const [sites, setSites] = useState<Site[]>();
-  const [failed, setFailed] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    setFailed(false);
+    setLoadError("");
     fetch("/api/library/sites", { headers: withAuthHeaders(), signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error();
+        if (response.status === 401) throw new Error("登录已过期，请重新登录。");
+        if (!response.ok) throw new Error("站点服务暂时不可用，请稍后重试。");
         const rows: Site[] = await response.json();
+        if (!Array.isArray(rows) || rows.some(site => !site || typeof site.name !== "string" || typeof site.id !== "string")) throw new Error("站点列表未能加载，请重试。");
         if (!controller.signal.aborted) setSites(rows);
       })
-      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
+      .catch(error => {
+        if (controller.signal.aborted) return;
+        setLoadError(error instanceof TypeError ? "连接失败，请检查网络后重试。" :
+          error instanceof SyntaxError ? "站点列表未能加载，请重试。" : error.message);
+      });
     return () => controller.abort();
   }, [attempt]);
-  if (failed) return <Button onClick={() => setAttempt(value => value + 1)}>重新加载站点</Button>;
+  if (loadError) return <Flex direction="column" align="center" py={12} gap={3}>
+    <Box role="alert" textAlign="center"><Heading as="h2" size="sm">无法加载站点</Heading>
+      <Text mt={1} fontSize="sm" color="gray.600">{loadError}</Text></Box>
+    <Button size="sm" variant="outline" borderRadius="full" onClick={() => setAttempt(value => value + 1)}>重新加载站点</Button>
+  </Flex>;
   if (!sites) return <Text role="status">正在加载站点…</Text>;
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
