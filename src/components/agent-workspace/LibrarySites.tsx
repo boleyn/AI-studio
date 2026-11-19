@@ -5,7 +5,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { id: string; name: string; shared: boolean; visitors?: number }
+interface Site { id: string; name: string; shared: boolean; ownerName?: string; visitors?: number }
 
 export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
   const [sharing, setSharing] = useState<Site>();
@@ -39,8 +39,8 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
     {dialog}</Box> : <Text>{empty}</Text>;
   return <Box overflowX="auto"><Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="站点"
     sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"}}}>
-    <thead><tr><th scope="col">站点</th><th scope="col">共享对象</th><th scope="col">访客数（近30天）</th></tr></thead>
-    <tbody>{visible.length ? visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td><td>拥有链接的人 {shareButton(site)}</td><td>{site.visitors ?? "—"}</td></tr>)
+    <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}</tr></thead>
+    <tbody>{visible.length ? visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>拥有链接的人 {shareButton(site)}</td>{tab !== "与你共享" && <td>{site.visitors ?? "—"}</td>}</tr>)
       : <tr><td colSpan={3}>{empty}</td></tr>}</tbody>
   </Box>{dialog}</Box>;
 }
