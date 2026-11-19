@@ -20,7 +20,7 @@ const formattingCommands = [
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string,excerpt:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id"|"localPageName">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string,excerpt:string)=>void}) {
   const [reading,setReading] = useState(false);
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
@@ -141,7 +141,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     setOpeningChat(true);
     try {
       const title = content.name.trim() || "无标题页";
-      const snapshot = new File(["# " + title + "\n\n" + body],markdownFilename(title),{type:"text/markdown"});
+      const snapshot = new File(["# " + title + "\n\n" + body],markdownFilename(page.localPageName || title),{type:"text/markdown"});
       const quote = selectedText && hasSelection ? selectedText.split("\n").map(line=>"> " + line).join("\n") + "\n\n" : undefined;
       await onChat(fromLibrary(snapshot,shareId || page.id),prompt ?? quote);
     } catch { setStatus("无法打开聊天，请重试"); }
