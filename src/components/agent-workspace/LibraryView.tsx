@@ -427,7 +427,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     if (!relative) return "—";
     if (!searchResults) return relative;
     if (time === file.openedAt) return relative + "打开";
-    if (file.shareId && time === file.time) return relative + "共享";
+    if (file.siteId) return relative + "发布";
+    if (file.shareId && file.kind === "上传" && time === file.time) return relative + "共享";
     return relative + "修改";
   }
   function compareRows(a: LibraryFile, b: LibraryFile) {
