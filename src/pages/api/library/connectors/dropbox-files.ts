@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createDecipheriv } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
+import { sendDropboxAttachment } from "@server/library/dropboxAttachment";
 import { getMongoDb } from "@server/db/mongo";
 
 interface DropboxEntry {
@@ -14,9 +15,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!auth) return;
   res.setHeader("Cache-Control", "private, no-store");
   if (req.method !== "GET") return res.setHeader("Allow", "GET").status(405).end();
-  const { folder = "", cursor } = req.query;
+  const { folder = "", cursor, file } = req.query;
   if (typeof folder !== "string" || (folder && !/^id:[\w-]+$/.test(folder)) ||
       (cursor !== undefined && typeof cursor !== "string")) return res.status(400).end();
+
+  if (file !== undefined && (typeof file !== "string" || !/^id:[\w-]+$/.test(file))) return res.status(400).end();
 
   const owner = String(auth.user._id);
   const db = await getMongoDb();
@@ -37,6 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     const token = await tokenResponse.json();
     if (!tokenResponse.ok || typeof token.access_token !== "string") return res.status(502).json({ error: "无法读取 Dropbox 授权，请重新连接。" });
+    if (typeof file === "string") return await sendDropboxAttachment(file, token.access_token, res);
     const response = await fetch("https://api.dropboxapi.com/2/files/list_folder" + (cursor ? "/continue" : ""), {
       method: "POST", headers: { Authorization: "Bearer " + token.access_token, "Content-Type": "application/json" },
       body: JSON.stringify(cursor ? { cursor } : { path: folder, limit: 100 }),
