@@ -66,7 +66,6 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       </Box></Flex>
     </Link>;
   };
-  const shareButton = (site: Site) => !site.shared && <Button size="xs" variant="ghost" onClick={() => setSharing(site)}>共享</Button>;
   async function deleteSite(site: Site) {
     if (saving || site.shared) return;
     setSaving(true);
@@ -113,8 +112,17 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     </AlertDialog>
   </>;
   if (settings) return <Box maxW="720px">
-    <Button variant="link" isDisabled={saving} onClick={()=>setSettings(undefined)}>返回站点</Button>
+    <Flex align="center" gap={2}>
+      <Button variant="ghost" size="sm" mr="auto" isDisabled={saving} onClick={()=>setSettings(undefined)}>返回站点</Button>
+      <Button as="a" size="sm" href={siteUrl(settings)} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
+      {settings.editUrl && <Button as="a" size="sm" href={settings.editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>}
+    </Flex>
     <Heading as="h2" size="md" my={4}>{settings.name}</Heading>
+    <Flex as="nav" aria-label="站点详情" gap={4} pb={3} borderBottomWidth="1px">
+      <Text aria-current="page" fontWeight="semibold">设置</Text>
+      <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
+    </Flex>
+    <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
       event.preventDefault();
       const name = title.trim();
@@ -136,7 +144,10 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
         <Button type="submit" isLoading={saving} isDisabled={!title.trim() || title.trim()===settings.name}>保存</Button></Flex>
     </Box>
     <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
-    <Flex mt={4} gap={3} align="center"><Text>{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>{shareButton(settings)}</Flex>
+    <Heading as="h3" size="sm" mt={6}>共享设置</Heading>
+    <Flex mt={2} gap={3} align="center" wrap="wrap"><Text>谁可以查看你的站点</Text><Text ml="auto">{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>
+      <Button size="sm" aria-label="管理共享" onClick={()=>setSharing(settings)}>管理</Button></Flex>
+    <Heading as="h3" size="sm" mt={6}>危险操作区</Heading>
     <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
     {dialog}
   </Box>;
