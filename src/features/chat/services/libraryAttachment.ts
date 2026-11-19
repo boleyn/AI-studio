@@ -59,11 +59,20 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   return fromLibrary(new File([blob],item.name,{type}),item.id);
 }
 
+export async function readLibraryAttachments(items: LibraryFile[]) {
+  const reads: PromiseSettledResult<File>[] = [];
+  for (let start = 0; start < items.length; start += 6) {
+    const batch = items.slice(start, start + 6);
+    reads.push(...await Promise.allSettled(batch.map(item => readLibraryAttachment(item))));
+  }
+  return reads;
+}
+
 export async function addLibraryAttachments(
   items: LibraryFile[],
   upload: (files: File[]) => Promise<(string | undefined)[]>,
 ) {
-  const reads = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
+  const reads = await readLibraryAttachments(items);
   const ready: File[] = [];
   const errors = new Map<string, string>();
   reads.forEach((read, index) => {

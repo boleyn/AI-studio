@@ -10,7 +10,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -366,7 +366,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string) {
     setBatchBusy(true);
     try {
-      const results = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
+      const results = await readLibraryAttachments(items);
       const attachments: File[] = [];
       const unavailable: {file:LibraryFile;message:string}[] = [];
       results.forEach((result,index) => {
