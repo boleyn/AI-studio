@@ -683,7 +683,7 @@ export default function AgentWorkspace({
               </Menu>
             ) : (
               <Text fontSize="14px" fontWeight="600" color="ink.primary">
-                请选择或创建项目
+                {loadingProjects ? "聊天" : "请选择或创建项目"}
               </Text>
             )}
             {activeProject && !sidebarOpen && (
@@ -789,6 +789,8 @@ export default function AgentWorkspace({
                   onCreateProject: createModal.onOpen,
                 }}
               />
+            ) : loadingProjects ? (
+              <Flex h="100%" align="center" justify="center" role="status"><Spinner size="sm" label="正在加载工作区" /></Flex>
             ) : (
               <Flex h="100%" align="center" justify="center" direction="column" gap={3}>
                 <Text color="gray.500" fontSize="14px">
