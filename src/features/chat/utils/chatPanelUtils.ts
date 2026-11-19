@@ -219,7 +219,10 @@ export function resolveChatUploadUrl(file: Pick<UploadedFileArtifact, "storagePa
     return Boolean(params.get("token") && params.get("chatId")) &&
       params.get("storagePath")?.replace(/^\/+/, "") === path;
   });
-  return savedUrl || toStableChatFileViewUrl({storagePath:path, token, chatId});
+  if (savedUrl) return savedUrl;
+  // Older messages can retain only the storage key when an attachment is reused.
+  const originalChat = /^chat_uploads\/[^/]+\/([a-zA-Z0-9._-]+)\/\.files\//.exec(path)?.[1];
+  return toStableChatFileViewUrl({storagePath:path, token, chatId:originalChat || chatId});
 }
 
 export const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
