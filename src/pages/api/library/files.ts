@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
-import { deleteStorageObjects, getObjectFromStorage, isStorageUnavailable, uploadObjectToStorage } from "@server/storage/s3";
+import { deleteStorageObjects, getObjectFromStorage, isMissingStorageObject, isStorageUnavailable, uploadObjectToStorage } from "@server/storage/s3";
 import { MAX_FILE_SIZE } from "../core/chat/files/shared";
 import { referenceTypes, type LibraryFile, type ImageReference } from "@/types/library";
 
@@ -24,6 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ({ buffer } = await getObjectFromStorage({ key: item.storageKey }));
     } catch (error) {
       if (isStorageUnavailable(error)) return res.status(503).json({ error: "文件存储暂时不可用，请稍后重试。" });
+      if (isMissingStorageObject(error)) return res.status(404).json({ error: "文件不存在" });
       throw error;
     }
     res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(item.name));

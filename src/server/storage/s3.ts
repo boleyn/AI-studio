@@ -17,6 +17,12 @@ const transientStorageCodes = new Set([
   "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN",
 ]);
 
+export function isMissingStorageObject(error: unknown) {
+  const failure = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+  return failure?.name === "NoSuchKey" || failure?.name === "NotFound" ||
+    (failure?.$metadata?.httpStatusCode === 404 && failure.name !== "NoSuchBucket");
+}
+
 export function isStorageUnavailable(error: unknown) {
   const failure = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } } | null;
   const status = failure?.$metadata?.httpStatusCode ?? 0;
