@@ -39,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!native || (native.kind && !["上传","页面"].includes(native.kind))) return res.status(404).end();
         filename = native.name;
         if (native.kind === "上传") {
-          fileOrigin = native.fromTemplate ? "生成" : "上传";
+          fileOrigin = native.sourceChat || native.fromTemplate ? "生成" : "上传";
           bytes = (await getObjectFromStorage({key:native.storageKey})).buffer;
         } else {
           livePage = true;
