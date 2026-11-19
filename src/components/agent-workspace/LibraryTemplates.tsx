@@ -1,3 +1,4 @@
+import { workbookTemplates } from "@/types/libraryWorkbookTemplates";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { FileText, Presentation, Upload, BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
@@ -105,21 +106,12 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
   </Box>;
 }
 
-const workbookTemplates = [
-  {name: "Analytics Dashboard", columns: ["Metric", "Period", "Actual", "Target", "Variance"], formula: "C2-D2"},
-  {name: "Financial Budget", columns: ["Category", "Month", "Budget", "Actual", "Remaining"], formula: "C2-D2"},
-  {name: "Operating Calendar", columns: ["Date", "Activity", "Owner", "Status"]},
-  {name: "Project Tracker", columns: ["Task", "Owner", "Due date", "Status"]},
-  {name: "Sales Pipeline", columns: ["Opportunity", "Stage", "Value", "Probability", "Weighted value"], formula: "C2*D2"},
-  {name: "Three-Statement Forecast", columns: ["Period", "Revenue", "Expenses", "Net income"], formula: "B2-C2"},
-];
-
-function TemplateActions({label, onUse, onEdit}: {label:string; onUse:()=>void; onEdit?:()=>void}) {
+function TemplateActions({label, onUse, onEdit, onUninstall}: {label:string; onUse:()=>void; onEdit?:()=>void; onUninstall?:()=>void}) {
   return <Menu>
   <MenuButton as={IconButton} aria-label={label} icon={<MoreHorizontal size={16} />}
     size="xs" position="absolute" top={2} right={2} borderRadius="full" bg="white"
     opacity={{base:1, md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} _expanded={{opacity:1}} />
-  <MenuList><MenuItem onClick={onUse}>Use template</MenuItem>{onEdit && <MenuItem onClick={onEdit}>Edit</MenuItem>}</MenuList>
+  <MenuList><MenuItem onClick={onUse}>Use template</MenuItem>{onEdit && <MenuItem onClick={onEdit}>Edit</MenuItem>}{onUninstall && <MenuItem onClick={onUninstall}>Uninstall</MenuItem>}</MenuList>
 </Menu>;
 }
 
@@ -150,7 +142,26 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
 
-  const workbooks = workbookTemplates.filter(template =>
+  const [removed, setRemoved] = useState<string[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/library/templates", {signal:controller.signal})
+      .then(async response => {
+        if (!response.ok) throw new Error();
+        const names: string[] = await response.json();
+        if (!controller.signal.aborted) setRemoved(current => [...new Set([...current, ...names])]);
+      }).catch(() => { if (!controller.signal.aborted) setBuildError("无法读取已安装模板，请重新打开模板库。"); });
+    return () => controller.abort();
+  }, []);
+  async function uninstall(name: string) {
+    try {
+      const response = await fetch("/api/library/templates", {method:"DELETE", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name})});
+      if (!response.ok) throw new Error();
+      setRemoved(current => [...new Set([...current, name])]);
+      setBuildError("");
+    } catch { setBuildError(`无法卸载“${name}”，请重试。`); }
+  }
+  const workbooks = workbookTemplates.filter(template => !removed.includes(template.name) &&
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
   const matches = (name: string) => name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -207,7 +218,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
               </Box>
               <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
             </Button>
-            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} onEdit={() => createWorkbook(template, true)} />
+            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} onEdit={() => createWorkbook(template, true)} onUninstall={() => uninstall(template.name)} />
             </Box>) : [];
   const slideCards = shows("幻灯片") ? slides.map(name =>
             <Box key={name} position="relative" role="group">
