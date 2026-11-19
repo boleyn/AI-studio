@@ -16,6 +16,7 @@ export const specSchema = z
     endDate: z.string().date().optional(),
     firstAt: z.string().datetime({ offset: true }),
     timezone: z.string().max(80).refine(IANAZone.isValidZone),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
     interval: z.number().int().min(1).max(999).optional(),
     repeat: z.enum(["once", "daily", "weekdays", "weekly", "monthly", "hourly", "yearly"]),
   })
@@ -52,6 +53,21 @@ export function nextOccurrence(spec: ScheduleSpec, now: number): number | null {
     const candidate = spec.repeat === "weekdays" && date.weekday > 5 ? date.plus({days:8-date.weekday}) : date;
     return spec.repeat !== "once" && spec.endDate && candidate.toISODate()! > spec.endDate ? null : candidate.toMillis();
   };
+  if (spec.repeat === "weekly" && spec.weekdays?.length) {
+    const stride = spec.interval ?? 1;
+    const anchor = first.startOf("week");
+    const current = DateTime.fromMillis(Math.max(now, first.toMillis()), {zone:spec.timezone});
+    const elapsedWeeks = Math.floor(current.startOf("week").diff(anchor, "weeks").weeks);
+    const activeWeek = Math.floor(elapsedWeeks / stride) * stride;
+    const days = [...new Set(spec.weekdays)].sort((a,b) => a-b);
+    for (const week of [activeWeek, activeWeek + stride]) {
+      for (const weekday of days) {
+        const candidate = first.plus({days:week * 7 + weekday - first.weekday});
+        if (candidate >= first && candidate.toMillis() > now) return withinEndDate(candidate);
+      }
+    }
+    return null;
+  }
   if (first.toMillis() > now) return withinEndDate(first);
   if (spec.repeat === "once") return null;
   const interval = spec.interval ?? 1;

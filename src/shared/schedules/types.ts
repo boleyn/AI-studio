@@ -9,6 +9,7 @@ export type ScheduleSpec = {
   timezone: string;
   repeat: "once" | "daily" | "weekdays" | "weekly" | "monthly" | "hourly" | "yearly";
   interval?: number;
+  weekdays?: number[];
 };
 export type Schedule = ScheduleSpec & {
   _id: string;

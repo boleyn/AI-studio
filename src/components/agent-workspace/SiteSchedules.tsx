@@ -12,6 +12,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [model, setModel] = useState("");
   const [draft, setDraft] = useState<string>();
   const [endsOnDate, setEndsOnDate] = useState(false);
+  const [unit, setUnit] = useState("weekly");
   const [frequency, setFrequency] = useState("daily");
   const [repeating, setRepeating] = useState(true);
   const [zone, setZone] = useState("UTC");
@@ -21,6 +22,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   function edit(title: string) {
     setSaveError("");
     setFrequency("daily");
+    setUnit("weekly");
     setRepeating(true);
     setEndsOnDate(false);
     const now = DateTime.local();
@@ -68,6 +70,9 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
       setSaving(true);
       setSaveError("");
       try {
+        const weeklySelection = repeating && frequency === "custom" && unit === "weekly";
+        const weekdays = form.getAll("weekday").map(Number);
+        if (weeklySelection && !weekdays.length) throw new Error("请至少选择一个星期几。");
         const localTime = form.get("date") + "T" + form.get("time");
         const start = DateTime.fromISO(localTime, {zone});
         if (!start.isValid || start.toFormat("yyyy-MM-dd'T'HH:mm") !== localTime) {
@@ -77,6 +82,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? frequency === "custom" ? form.get("unit") : frequency : "once",
             ...(repeating && frequency === "custom" ? {interval:Number(form.get("interval"))} : {}),
+            ...(weeklySelection ? {weekdays} : {}),
             ...(form.get("model") ? {model:form.get("model")} : {}),
             ...(form.has("effort") ? {reasoningEffort:form.get("effort")} : {}),
             newChatEachRun:form.has("newChatEachRun"),
@@ -98,9 +104,13 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           <Switch id="site-task-repeat" isChecked={repeating} onChange={event=>setRepeating(event.target.checked)}/></Flex>
         <label hidden={!repeating}>频率<Select value={frequency} onChange={event=>setFrequency(event.target.value)}><option value="daily">每天</option><option value="weekdays">工作日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="custom">自定义</option></Select></label>
         {repeating && frequency === "custom" && <Flex gap={2}>
-          <label>重复<Select name="unit" defaultValue="weekly"><option value="hourly">每小时</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option></Select></label>
+          <label>重复<Select name="unit" value={unit} onChange={event=>setUnit(event.target.value)}><option value="hourly">每小时</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option></Select></label>
           <label>每隔<Input name="interval" type="number" defaultValue={1} min={1} max={999} step={1} required/></label>
         </Flex>}
+        {repeating && frequency === "custom" && unit === "weekly" && <fieldset><legend>星期几</legend>
+          <Flex gap={2} wrap="wrap">{["一","二","三","四","五","六","日"].map((day,index)=><label key={day}>
+            <input type="checkbox" name="weekday" value={index+1} defaultChecked/> 星期{day}
+          </label>)}</Flex></fieldset>}
         <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
         <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
         {repeating && <label>结束重复<Select value={endsOnDate ? "date" : "never"} onChange={event=>setEndsOnDate(event.target.value === "date")}>
