@@ -19,12 +19,12 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
   const [activeId,setActiveId] = useState("");
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = (name: string) => name.toLocaleLowerCase().includes(needle);
+  const needle = query.trim().normalize("NFC").toLowerCase();
+  const matches = (name: string) => name.normalize("NFC").toLowerCase().includes(needle);
   const chats = projects.flatMap(project => project.conversations.map(chat => ({
     id: JSON.stringify([project.token,chat.id]), time:chat.updatedAt, label: chat.title, icon:<MessageSquare size={16} aria-hidden/>, open: () => onChat(project.token, chat.id)
   }))).filter(chat => matches(chat.label));
-  const items = files.filter(file => !file.deleted && [file.name,file.conversation,file.project].some(matches)).map(file => ({
+  const items = files.filter(file => !file.deleted && [file.name,file.path,file.conversation,file.project].some(matches)).map(file => ({
     id: file.id, time:file.openedAt, label: file.name, icon:<LibraryItemIcon item={file} compact/>, source: file.conversation || file.project, open: () => onFile(file)
   }));
   const groups = [
