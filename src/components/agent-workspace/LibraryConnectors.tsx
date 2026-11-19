@@ -5,7 +5,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 const endpoint = "/api/library/connectors/google";
 export default function LibraryConnectors({ close, callbackStatus }: { close: () => void; callbackStatus?: string }) {
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean }>();
-  const [error, setError] = useState(callbackStatus === "error" ? "连接失败，请重试" : "");
+  const [error, setError] = useState(callbackStatus === "invalid-session" ? "此次授权请求已失效，请重新连接 Google Drive。" : callbackStatus === "error" ? "连接失败，请重试" : "");
   const [attempt, setAttempt] = useState(0);
   const [statusFailed, setStatusFailed] = useState(false);
   const [busy, setBusy] = useState(false);
