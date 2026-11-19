@@ -447,7 +447,9 @@ const ChatInput = ({
         );
         return matched ? undefined : "上传失败，请重试";
       } catch (error) {
-        const message = error instanceof Error ? error.message : "上传失败，请重试";
+        const message = error instanceof TypeError && /fetch|network|load failed/i.test(error.message)
+          ? "连接失败，请检查网络后重试。"
+          : (error instanceof Error && error.message.trim()) || "上传失败，请重试。";
         setFiles((prev) =>
           prev.map((item) =>
             item.id === fileItem.id
