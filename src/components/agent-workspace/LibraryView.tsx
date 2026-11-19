@@ -162,9 +162,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       const page:LibraryFile = await response.json();
       setFiles(previous => [page,...previous || []]);
       setNewKind(undefined);
-      if (parentId && page.kind === "页面") {
+      if (page.folderId && page.kind === "页面") {
         recordOpen(page);
-        navigateList("全部","推荐",files?.some(item=>item.id===parentId && item.kind==="页面") ? folder?.id : parentId,page.id,true);
+        navigateList("全部","推荐",containingFolderId(page),page.id,true);
       } else openItem(page);
     } catch (error) { toast({status:"error",title:"无法创建"+kind+"，请重试",description:error instanceof Error ? error.message : undefined}); }
     finally {setCreating(false);}
@@ -427,22 +427,23 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
     } finally { setBatchBusy(false); }
   }
-  function pageUrl(file:LibraryFile) {
-    const url = new URL("/",window.location.origin);
-    url.searchParams.set("view","library");
-    url.searchParams.set("libraryItem",file.id);
+  function containingFolderId(file:LibraryFile) {
     const visited = new Set<string>();
     let parentId = file.folderId;
     while (parentId && !visited.has(parentId)) {
       visited.add(parentId);
       const parent = files?.find(item=>item.id === parentId && !item.deleted);
       if (!parent) break;
-      if (isContainer(parent)) {
-        url.searchParams.set("libraryFolder",parent.id);
-        break;
-      }
+      if (isContainer(parent)) return parent.id;
       parentId = parent.folderId;
     }
+  }
+  function pageUrl(file:LibraryFile) {
+    const url = new URL("/",window.location.origin);
+    url.searchParams.set("view","library");
+    url.searchParams.set("libraryItem",file.id);
+    const containerId = containingFolderId(file);
+    if (containerId) url.searchParams.set("libraryFolder",containerId);
     return url.href;
   }
   async function copyPage(file:LibraryFile, markdown:boolean) {
