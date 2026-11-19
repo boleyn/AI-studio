@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Heading, Input, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, Select, Textarea, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, Input, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, Select, Switch, Textarea, Text } from "@chakra-ui/react";
 import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import type { Schedule } from "@/shared/schedules/types";
@@ -10,11 +10,13 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [tasks, setTasks] = useState<Schedule[]>();
   const [context, setContext] = useState<{token:string; chats:{id:string; title:string}[]}>();
   const [draft, setDraft] = useState<string>();
+  const [repeating, setRepeating] = useState(true);
   const [firstTime, setFirstTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   function edit(title: string) {
     setSaveError("");
+    setRepeating(true);
     const now = DateTime.local();
     const morning = now.startOf("day").set({hour:9});
     setFirstTime((morning > now ? morning : morning.plus({days:1})).toFormat("yyyy-MM-dd'T'HH:mm"));
@@ -60,8 +62,8 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
       try {
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
-            title:form.get("title"), prompt:form.get("prompt"), repeat:form.get("repeat"),
-            firstAt:new Date(String(form.get("time"))).toISOString(), timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+            title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
+            firstAt:new Date(String(form.get("date")) + "T" + String(form.get("time"))).toISOString(), timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
           }})});
         if (!response.ok) throw new Error((await response.json()).error || "创建任务失败");
         setDraft(undefined);
@@ -74,8 +76,11 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         <label>任务说明<Textarea name="prompt" defaultValue={draft} required maxLength={4000}/></label>
         <label>关联对话<Select name="chatId" required>{context.chats.map(chat=><option key={chat.id} value={chat.id}>{chat.title}</option>)}</Select></label>
         {!context.chats.length && <Text fontSize="sm">请先在站点项目中保存一段对话。</Text>}
-        <label>首次运行时间<Input type="datetime-local" defaultValue={firstTime} name="time" required/></label>
-        <label>重复<Select name="repeat" defaultValue="daily"><option value="once">单次</option><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
+        <Flex align="center" justify="space-between"><label htmlFor="site-task-repeat">重复执行任务</label>
+          <Switch id="site-task-repeat" isChecked={repeating} onChange={event=>setRepeating(event.target.checked)}/></Flex>
+        <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
+        <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
+        <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
         {saveError && <Text role="alert">{saveError}</Text>}
         <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length}>保存任务</Button>
           <Button size="sm" onClick={()=>setDraft(undefined)}>取消</Button></Flex>
