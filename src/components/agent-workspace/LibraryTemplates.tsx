@@ -142,14 +142,14 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
 
-  const [removed, setRemoved] = useState<string[]>([]);
+  const [removed, setRemoved] = useState<string[] | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/library/templates", {signal:controller.signal})
       .then(async response => {
         if (!response.ok) throw new Error();
         const names: string[] = await response.json();
-        if (!controller.signal.aborted) setRemoved(current => [...new Set([...current, ...names])]);
+        if (!controller.signal.aborted) setRemoved(current => [...new Set([...(current ?? []), ...names])]);
       }).catch(() => { if (!controller.signal.aborted) setBuildError("无法读取已安装模板，请重新打开模板库。"); });
     return () => controller.abort();
   }, []);
@@ -157,11 +157,11 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
     try {
       const response = await fetch("/api/library/templates", {method:"DELETE", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name})});
       if (!response.ok) throw new Error();
-      setRemoved(current => [...new Set([...current, name])]);
+      setRemoved(current => [...new Set([...(current ?? []), name])]);
       setBuildError("");
     } catch { setBuildError(`无法卸载“${name}”，请重试。`); }
   }
-  const workbooks = workbookTemplates.filter(template => !removed.includes(template.name) &&
+  const workbooks = workbookTemplates.filter(template => removed !== null && !removed.includes(template.name) &&
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
   const matches = (name: string) => name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -296,7 +296,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
         <SimpleGrid columns={{base:2, md:3}} columnGap={{base:3, md:6}} rowGap={{base:6, md:10}}>
           {cards}
         </SimpleGrid>
-        {!cards.length && <Text textAlign="center" color="gray.500" py={8}>未找到匹配的模板</Text>}
+        {removed === null && shows("电子表格") && !buildError && <Text role="status" textAlign="center" color="gray.500" py={4}>正在加载资料库</Text>}
+        {!cards.length && (!shows("电子表格") || removed !== null) && <Text textAlign="center" color="gray.500" py={8}>未找到匹配的模板</Text>}
       </ModalBody>
     </ModalContent>
   </Modal>;
