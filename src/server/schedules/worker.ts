@@ -36,7 +36,9 @@ async function reply(task: StoredSchedule) {
           : "";
     return content ? [{ role: m.role, content: content.slice(-2000) }] : [];
   });
-  const model = (await getChatModelCatalog()).defaultModel;
+  const catalog = await getChatModelCatalog();
+  const model = task.model ?? catalog.defaultModel;
+  if (task.model && !catalog.models.some(option => option.id === model)) throw new Error("所选模型已不可用");
   const client = createAgentModelClient(
     model,
     getConfiguredContextWindow(model),

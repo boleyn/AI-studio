@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
+import { getChatModelCatalog } from "@server/aiProxy/catalogStore";
 import { listConversations } from "@server/conversations/conversationStorage";
 import { getMongoDb } from "@server/db/mongo";
 import { requireAuth } from "@server/auth/session";
@@ -63,8 +64,9 @@ export default async function handler(
       .sort({ nextAt: 1 })
       .toArray();
     if (filter.token) {
-      const chats = await listConversations(filter.token);
-      return res.status(200).json({ tasks, token: filter.token, chats: chats.map(({ id, title }) => ({ id, title })) });
+      const [chats, catalog] = await Promise.all([listConversations(filter.token), getChatModelCatalog()]);
+      const models = catalog.models.map(({id,label}) => ({id,label}));
+      return res.status(200).json({ tasks, models, token: filter.token, chats: chats.map(({ id, title }) => ({ id, title })) });
     }
     return res.status(200).json({ tasks });
   }

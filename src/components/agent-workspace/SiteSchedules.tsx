@@ -8,7 +8,7 @@ const labels = { active: "已启用", running: "执行中", paused: "已暂停",
 
 export default function SiteSchedules({ siteId, siteName }: { siteId: string; siteName: string }) {
   const [tasks, setTasks] = useState<Schedule[]>();
-  const [context, setContext] = useState<{token:string; chats:{id:string; title:string}[]}>();
+  const [context, setContext] = useState<{token:string; models:{id:string; label:string}[]; chats:{id:string; title:string}[]}>();
   const [draft, setDraft] = useState<string>();
   const [endsOnDate, setEndsOnDate] = useState(false);
   const [repeating, setRepeating] = useState(true);
@@ -42,7 +42,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         if (!Array.isArray(data.tasks)) throw new Error();
         if (!controller.signal.aborted) {
           setTasks(data.tasks);
-          setContext({ token: data.token, chats: data.chats });
+          setContext({ token: data.token, models: data.models, chats: data.chats });
         }
       } catch {
         if (!controller.signal.aborted) setError("无法加载已安排的任务，请稍后重试。");
@@ -72,6 +72,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
+            ...(form.get("model") ? {model:form.get("model")} : {}),
             newChatEachRun:form.has("newChatEachRun"),
             ...(repeating && endsOnDate ? {endDate:form.get("endDate")} : {}),
             firstAt:start.toISO(), timezone:zone,
@@ -102,6 +103,10 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           </Select></label>
           <Flex align="center" justify="space-between" mt={2}><label htmlFor="site-task-new-chat">每次运行时都开启新聊天</label>
             <Switch id="site-task-new-chat" name="newChatEachRun"/></Flex>
+          <label>模型<Select name="model" defaultValue="">
+            <option value="">默认模型</option>
+            {context.models.map(model=><option key={model.id} value={model.id}>{model.label}</option>)}
+          </Select></label>
         </details>
         {saveError && <Text role="alert">{saveError}</Text>}
         <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length}>保存任务</Button>
