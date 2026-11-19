@@ -232,14 +232,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   useEffect(() => {
     if (typeof lookupName === "string") setQuery(lookupName);
   }, [lookupName,setQuery]);
-  function clearLibrarySearch() {
-    setQuery("");
-    if (lookupName !== undefined) {
+  function editLibrarySearch(value:string) {
+    setQuery(value);
+    if (lookupName !== undefined && value !== lookupName) {
       const nextQuery = {...router.query};
       delete nextQuery.librarySearch;
       void router.replace({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
     }
-    search.current?.focus();
   }
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
   const section = [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
@@ -805,10 +804,10 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             <InputLeftElement pointerEvents="none" w={allHome ? "40px" : undefined} color="gray.500"><Search size={16} aria-hidden/></InputLeftElement>
             <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={personalSection ? "搜索个人页面" : allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
               placeholder={personalSection ? "搜索个人页面" : sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "37px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
-              value={query} onChange={event => setQuery(event.target.value)}/>
+              value={query} onChange={event => editLibrarySearch(event.target.value)}/>
             {query && <InputRightElement w={allHome ? "40px" : undefined}><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
               boxSize={allHome ? "16px" : undefined} minW={allHome ? "16px" : undefined}
-              icon={<X size={allHome ? 16 : 14}/>} onClick={clearLibrarySearch}/></InputRightElement>}
+              icon={<X size={allHome ? 16 : 14}/>} onClick={()=>{editLibrarySearch(""); search.current?.focus();}}/></InputRightElement>}
           </InputGroup>;
   return <Flex flex="1" minW={0} minH={0}>
     <SkipNavLink id="library-content" zIndex="skipLink">跳转到内容</SkipNavLink>
