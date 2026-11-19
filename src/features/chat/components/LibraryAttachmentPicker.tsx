@@ -42,11 +42,14 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     fetch("/api/library",{headers:withAuthHeaders(),signal:controller.signal}).then(async response => {
       if (!response.ok) throw new Error();
       const data:LibraryFile[] = await response.json();
-      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted && !item.siteId && item.kind !== "文件夹" && item.kind !== "资料空间"));
+      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted));
     }).catch(() => {if (!controller.signal.aborted) setError("无法加载资料空间");});
     return () => controller.abort();
   },[attempt]);
-  const visible = items?.filter(item => [item.name,item.project,sourceLabel(item)].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const namesById = new Map(items?.map(item=>[item.id,item.name]));
+  const attachable = items?.filter(item=>!item.siteId && item.kind !== "文件夹" && item.kind !== "资料空间");
+  const locationLabel = (item:LibraryFile) => [item.folderId && namesById.get(item.folderId),sourceLabel(item)].filter(Boolean).join(" · ");
+  const visible = attachable?.filter(item => [item.name,item.project,locationLabel(item)].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   async function add() {
     if (busy || !items) return;
     setBusy(true);
@@ -85,8 +88,8 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
         {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
       </Flex>}
       {visible?.length === 0 && <Box role="status" px={4} py={8} textAlign="center">
-        <Text fontSize="sm" fontWeight="medium">{items?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
-        <Text mt={1} fontSize="xs" color="gray.600">{items?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
+        <Text fontSize="sm" fontWeight="medium">{attachable?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
+        <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
       </Box>}
       {visible?.map(item=>{
         const checked=selected.includes(item.id);
@@ -95,8 +98,8 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
           <LibrarySelectionIndicator checked={checked}/>
-          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated>{item.name}</Text>
-            <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={sourceLabel(item)}>{sourceLabel(item)}</Text>
+          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated title={item.name}>{item.name}</Text>
+            <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
             {fileErrors.has(item.id) && <Text id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box>
 
