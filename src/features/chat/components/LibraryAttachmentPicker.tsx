@@ -55,11 +55,12 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     setBusy(true);
     setError("");
     try {
-      const picked = items.filter(item => selected.includes(item.id));
+      const itemsById = new Map(items.map(item => [item.id, item]));
+      const picked = selected.map(id => itemsById.get(id)).filter((item): item is LibraryFile => Boolean(item));
       const errors = await addLibraryAttachments(picked, onAdd);
       setFileErrors(errors);
       if (errors.size) {
-        setSelected([...errors.keys()]);
+        setSelected(selected.filter(id => errors.has(id)));
         setQuery("");
         setError("有 " + errors.size + " 项未添加，请查看文件旁的提示后重试。");
       } else {
