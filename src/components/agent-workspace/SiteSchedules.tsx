@@ -11,6 +11,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [context, setContext] = useState<{token:string; chats:{id:string; title:string}[]}>();
   const [draft, setDraft] = useState<string>();
   const [repeating, setRepeating] = useState(true);
+  const [zone, setZone] = useState("UTC");
   const [firstTime, setFirstTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -18,6 +19,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
     setSaveError("");
     setRepeating(true);
     const now = DateTime.local();
+    setZone(now.zoneName || "UTC");
     const morning = now.startOf("day").set({hour:9});
     setFirstTime((morning > now ? morning : morning.plus({days:1})).toFormat("yyyy-MM-dd'T'HH:mm"));
     setDraft(title);
@@ -60,10 +62,15 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
       setSaving(true);
       setSaveError("");
       try {
+        const localTime = form.get("date") + "T" + form.get("time");
+        const start = DateTime.fromISO(localTime, {zone});
+        if (!start.isValid || start.toFormat("yyyy-MM-dd'T'HH:mm") !== localTime) {
+          throw new Error("这个时间在所选时区中不存在，请调整开始时间。");
+        }
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
-            firstAt:new Date(String(form.get("date")) + "T" + String(form.get("time"))).toISOString(), timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+            firstAt:start.toISO(), timezone:zone,
           }})});
         if (!response.ok) throw new Error((await response.json()).error || "创建任务失败");
         setDraft(undefined);
@@ -81,6 +88,11 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
         <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
         <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
+        <details><summary>高级</summary>
+          <label>时区<Select value={zone} onChange={event=>setZone(event.target.value)}>
+            {[...new Set([Intl.DateTimeFormat().resolvedOptions().timeZone, "UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [])])].map(name=><option key={name} value={name}>{name}</option>)}
+          </Select></label>
+        </details>
         {saveError && <Text role="alert">{saveError}</Text>}
         <Flex gap={2}><Button type="submit" size="sm" isLoading={saving} isDisabled={!context.chats.length}>保存任务</Button>
           <Button size="sm" onClick={()=>setDraft(undefined)}>取消</Button></Flex>
