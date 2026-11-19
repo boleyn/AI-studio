@@ -145,7 +145,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     await response.body?.cancel();
     throw new LibraryReadError(413,item.name);
   }
-  const blob = await response.blob();
+  const blob = await readAttachmentBlob(response, item.name, maxBytes);
   if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(item.name),{type:"text/markdown"}),item.id);
   const inferred = inferAttachmentMimeType(libraryTypeName(item), item.name);
   const mediaType = blob.type.split(";")[0].trim().toLowerCase();
@@ -154,6 +154,28 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     : blob.type;
   const filename = sharedPreviewFilename(item.name, libraryTypeName(item));
   return fromLibrary(new File([blob],filename,{type}),item.id);
+}
+
+async function readAttachmentBlob(response: Response, name: string, maxBytes?: number) {
+  if (maxBytes === undefined || !response.body) return response.blob();
+  const reader = response.body.getReader();
+  const chunks: ArrayBuffer[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new LibraryReadError(413, name);
+      }
+      chunks.push(value.slice().buffer);
+    }
+    return new Blob(chunks, {type: response.headers.get("Content-Type") || ""});
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export async function readLibraryAttachments(items: LibraryFile[], purpose: "chat" | "download") {
