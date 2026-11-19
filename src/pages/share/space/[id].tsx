@@ -53,16 +53,17 @@ function SharedSpaceContents() {
     }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof SyntaxError ? "共享内容未能加载，请重试。" : reason instanceof LibraryReadError || reason instanceof TypeError ? libraryReadMessage(reason) : "共享内容未能加载，请重试。"});});
     return ()=>controller.abort();
   },[id,page,router,attempt]);
+  const spacePath = typeof id === "string" ? "/share/space/"+encodeURIComponent(id) : undefined;
   return <Box as="main" maxW="780px" mx="auto" p={6}>
-    {typeof id === "string" && <Button as="a" variant="ghost" mb={4}
-      href={page ? "/share/space/"+id : "/?"+new URLSearchParams({view:"library",libraryTab:"与你共享"})}>
+    {spacePath && <Button as={NextLink} variant="ghost" mb={4}
+      href={page ? spacePath : "/?"+new URLSearchParams({view:"library",libraryTab:"与你共享"})}>
       {page ? "返回共享空间" : "返回「与你共享」"}
     </Button>}
     {error ? <Stack role="alert" align="start" spacing={3}><Text>{error.message}</Text>
       {error.login ? <Button as="a" href={"/login?" + new URLSearchParams({lastRoute:router.asPath})} size="sm" borderRadius="full">登录</Button> :
         <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
-      {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link as={NextLink} key={item.id} href={"?"+new URLSearchParams({page:item.id})} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
+      {data.pages && spacePath ? <Stack>{data.pages.length ? data.pages.map(item=><Link as={NextLink} key={item.id} href={spacePath+"?"+new URLSearchParams({page:item.id})} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown interactivePages>{data.body || ""}</LibraryMarkdown>
           {typeof id === "string" && typeof page === "string" && <Button size="sm" variant="outline" mt={6} isLoading={downloading} onClick={async () => {
             setDownloading(true);
