@@ -678,8 +678,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   }
   async function copySpace(space:LibraryFile,field:"链接"|"ID") {
     try {
-      const url = new URL("/share/space/"+space.id,window.location.origin);
-      await navigator.clipboard.writeText(field === "ID" ? space.id : url.href);
+      const id = space.shareId || space.id;
+      const url = new URL("/share/space/"+encodeURIComponent(id),window.location.origin);
+      await navigator.clipboard.writeText(field === "ID" ? id : url.href);
       toast({status:"success",title:"已复制资料空间"+field});
     } catch { toast({status:"error",title:"复制失败，请重试"}); }
   }
@@ -693,6 +694,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     <Portal><MenuList w={personalSection ? "220px" : "240px"} minW="0" p="10px" borderWidth={0} boxShadow="0 0 0 0.5px rgb(0 0 0 / 10%), 0 0 0 0.5px rgb(0 0 0 / 10%), 0 8px 16px -4px rgb(0 0 0 / 12%)" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
+      {file.kind === "资料空间" && <MenuItem icon={<Copy size={20}/>} onClick={()=>copySpace(file,"链接")}>复制资料空间链接</MenuItem>}
       {file.siteId && <>
         <MenuItem icon={<Copy size={20}/>} onClick={async () => {
           try {
@@ -805,7 +807,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=>space.shareId ? actions(space) : <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
         <MenuList onKeyDownCapture={event=>{
           if (copyMenuId !== space.id || !["Escape","ArrowLeft"].includes(event.key)) return;
