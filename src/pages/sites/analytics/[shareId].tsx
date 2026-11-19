@@ -15,7 +15,6 @@ interface Props {
   requests: number;
   visitors: number;
   views: number;
-  pages: {id:string; visitors:number; views:number}[];
   daily: {day:string; visitors:number; views:number}[];
 }
 
@@ -42,14 +41,6 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
     {$match:{projectToken:share.projectToken,day:{$gte:dates[0],$lte:dates[days-1]}}},
     {$facet:{
       daily:[{$group:{_id:"$day",views:{$sum:"$views"},visitors:{$sum:{$cond:["$viewer",1,0]}}}}],
-      pages:[
-        {$project:{viewer:1,entries:{$objectToArray:{$ifNull:["$pages",{}]}}}},
-        {$unwind:"$entries"},
-        {$group:{_id:{page:"$entries.k",viewer:"$viewer"},views:{$sum:"$entries.v"}}},
-        {$group:{_id:"$_id.page",visitors:{$sum:{$cond:["$_id.viewer",1,0]}},views:{$sum:"$views"}}},
-        {$sort:{views:-1,_id:1}},
-        {$project:{_id:0,id:"$_id",visitors:1,views:1}},
-      ],
       distinct:[{$match:{viewer:{$type:"string"}}},{$group:{_id:"$viewer"}},{$count:"count"}],
     }},
   ]).toArray();
@@ -57,7 +48,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
     const row = report?.daily.find((entry:{_id:string}) => entry._id === day);
     return {day,visitors:Number(row?.visitors || 0),views:Number(row?.views || 0)};
   });
-  return {props:{shareId,name:settings?.name || project.name,days,daily,pages:report?.pages || [],requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
+  return {props:{shareId,name:settings?.name || project.name,days,daily,requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
 };
 
 function TrafficTrend({daily}: Pick<Props,"daily">) {
@@ -91,7 +82,7 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
   </Box>;
 }
 
-export default function SiteAnalytics({name,shareId,days,daily,visitors,views,requests,pages}:Props) {
+export default function SiteAnalytics({name,shareId,days,daily,visitors,views,requests}:Props) {
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={"/share/preview/"+shareId}>访问</Link></Flex>
     <Box as="section" aria-label={name} mt={6} mb={4}>
@@ -118,10 +109,10 @@ export default function SiteAnalytics({name,shareId,days,daily,visitors,views,re
       <Heading as="h2" size="md">流量趋势</Heading><Text fontSize="sm" color="gray.600">每日</Text>
     </Flex>
     <TrafficTrend daily={daily}/>
-    <Heading as="h2" size="md" my={3}>热门页面</Heading>
-    {pages.length ? <Box as="table" width="full" mb={6} fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>
-      <thead><tr><th>页面</th><th>独立访客数</th><th>页面浏览量</th></tr></thead>
-      <tbody>{pages.map(page=><tr key={page.id}><td><Link href={"/share/preview/"+encodeURIComponent(page.id)}>/share/preview/{page.id}</Link></td><td>{page.visitors}</td><td>{page.views}</td></tr>)}</tbody>
+    <Heading as="h2" size="md" my={3}>热门路径</Heading>
+    {views > 0 ? <Box as="table" width="full" mb={6} fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>
+      <thead><tr><th>路径</th><th>独立访客数</th><th title="此路径的页面访问请求">请求数</th></tr></thead>
+      <tbody><tr><td><Link href={"/share/preview/"+encodeURIComponent(shareId)} aria-label="访问站点首页">/</Link></td><td>{visitors}</td><td>{views}</td></tr></tbody>
     </Box> : <Text mb={6}>暂无页面访问记录</Text>}
     <Heading as="h2" size="md" mb={3}>每日明细</Heading>
     <Box as="table" w="full" fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>

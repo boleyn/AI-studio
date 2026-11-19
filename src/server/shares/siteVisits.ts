@@ -21,9 +21,9 @@ export async function recordSiteVisit(share: ShareLinkData, cookie?: string) {
   if (viewer === share.ownerUserId) return;
   const db = await getMongoDb();
   const day = new Date().toISOString().slice(0, 10);
-  await db.collection<{_id:string;projectToken:string;day:string;views:number;pages?:Record<string,number>;viewer:string|null}>("site_daily_visits").updateOne(
+  await db.collection<{_id:string;projectToken:string;day:string;views:number;viewer:string|null}>("site_daily_visits").updateOne(
     { _id: JSON.stringify([share.projectToken, day, viewer]) },
-    { $setOnInsert: {projectToken:share.projectToken, day, viewer}, $inc: {views:1,["pages."+share.shareId]:1} },
+    { $setOnInsert: {projectToken:share.projectToken, day, viewer}, $inc: {views:1} },
     { upsert:true },
   );
 }
