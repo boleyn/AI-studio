@@ -439,6 +439,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         body: JSON.stringify((isNative(file) || file.directUpload) ? changes : {id:file.id, changes}) });
       if (!response.ok) throw new Error();
       setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} : item));
+      if (file.kind === "页面" && changes.deleted !== undefined) setAttempt(value => value + 1);
       setRename(undefined);
       return true;
     } catch {

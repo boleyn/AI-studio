@@ -70,6 +70,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!await pages.findOne({owner,_id:new ObjectId(patch.data.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
     }
     const {expectedRevision,...changes} = patch.data;
+    if (typeof changes.deleted === "boolean" && Object.keys(patch.data).length === 1 &&
+        await pages.findOne({...filter, kind:{$in:["页面", null]}}, {projection:{_id:1}})) {
+      const root = req.query.id;
+      if (changes.deleted) {
+        const seen = new Set([root]);
+        let parents = [root];
+        while (parents.length) {
+          const children = await pages.find({owner, folderId:{$in:parents}, kind:{$in:["页面", null]},
+            deleted:{$ne:true}, purging:{$ne:true}}, {projection:{_id:1}}).toArray();
+          parents = children.map(child => child._id.toHexString()).filter(id => !seen.has(id));
+          for (const id of parents) seen.add(id);
+        }
+        await pages.updateMany({owner, _id:{$in:[...seen].map(id => new ObjectId(id))}, deleted:{$ne:true}, purging:{$ne:true}},
+          {$set:{deleted:true, deletedAt:time, trashRoot:root, time}});
+      } else {
+        await pages.updateMany({owner, deleted:true, purging:{$ne:true}, $or:[{_id:filter._id}, {trashRoot:root}]},
+          {$set:{deleted:false, deletedAt:null, time}, $unset:{trashRoot:""}});
+      }
+      return res.json({time});
+    }
     const versionFilter = expectedRevision === undefined ? {} :
       expectedRevision === 0 ? {$or:[{revision:0},{revision:{$exists:false}}]} : {revision:expectedRevision};
     const editsContent = changes.name !== undefined || changes.body !== undefined;
