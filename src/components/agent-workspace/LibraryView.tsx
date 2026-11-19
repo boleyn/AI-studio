@@ -266,6 +266,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     else query.libraryTab = nextTab;
     return { pathname: router.pathname, query };
   }
+  const itemMarkers = (file: LibraryFile) => <>
+    {file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>}
+    {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}
+  </>;
   function itemLink(file: LibraryFile) {
     if (file.deleted) return <span title={file.name}>{file.name}</span>;
     if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
@@ -956,7 +960,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
             bg={selected.includes(file.id) ? "#f3f3f3" : undefined} cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
             <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
-            <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
+            <LibraryItemIcon item={file}/><Flex my={2} align="center" gap={1} minW={0} overflowWrap="anywhere">{itemLink(file)}{itemMarkers(file)}</Flex>
             {actions(file)}
           </Box>)}
         </Box> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
@@ -1029,7 +1033,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{itemMarkers(file)}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
