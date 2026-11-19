@@ -332,7 +332,8 @@ const ChatItem = ({
               <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
                 {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
                 {previewSourceLink}
-              </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
+              </Flex>}{previewText.trim() ? <LibraryMarkdown>{previewText}</LibraryMarkdown> :
+                <Text textAlign="center" py={6} fontSize="sm" color="gray.600">此 Markdown 附件没有正文。</Text>}</>}
           </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
