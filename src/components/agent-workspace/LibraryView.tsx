@@ -949,11 +949,14 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           lines.push("请询问我想添加哪个已在工作空间中启用的插件。");
           return onChat([], lines.join("\n"), undefined, false, token);
         }} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
-      </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
+      </Box> : failed && searchTerm ? <Flex role="alert" align="center" justify="center" wrap="wrap" gap="12px" py="16px">
+          <Text title={failed} fontSize="16px">无法加载搜索结果</Text>
+          <Button h="24px" minW={0} px="8px" fontSize="14px" borderRadius="full" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} onClick={()=>setAttempt(value=>value+1)}>重试</Button>
+        </Flex> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
-          <Box role="alert"><Heading as="h2" fontSize="md">{searchTerm ? "无法加载搜索结果" : "无法加载资料列表"}</Heading>
+          <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
             <Text mt={1} fontSize="sm" color="gray.600">{failed}</Text></Box>
-          <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>{searchTerm ? "重试" : "重新加载"}</Button>
+          <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重新加载</Button>
         </Flex> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
