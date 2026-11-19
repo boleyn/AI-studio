@@ -6,6 +6,7 @@ export default function SpaceInviteInput({accounts,onChange,query,setQuery}:{acc
   const account = query.trim();
   const [result,setResult] = useState<{account:string;name?:string;error?:boolean}>();
   const list = useId();
+  const [attempt, setAttempt] = useState(0);
   useEffect(()=>{
     if (!account) return;
     const controller = new AbortController();
@@ -18,7 +19,7 @@ export default function SpaceInviteInput({accounts,onChange,query,setQuery}:{acc
       } catch { if (!controller.signal.aborted) setResult({account,error:true}); }
     },200);
     return ()=>{clearTimeout(timer);controller.abort();};
-  },[account]);
+  },[account,attempt]);
   const current = result?.account===account ? result : undefined;
   function select() {
     if (!current?.name) return;
@@ -32,7 +33,10 @@ export default function SpaceInviteInput({accounts,onChange,query,setQuery}:{acc
       onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter" && !e.nativeEvent.isComposing){e.preventDefault();select();}}}/>
     {account && <Box id={list} role="listbox" aria-label="添加邮箱地址" p={2} borderWidth="1px" borderRadius="8px">
       {current?.name ? <Button role="option" aria-selected={accounts.includes(account)} type="button" w="100%" justifyContent="start" variant="ghost" size="sm" onClick={select}>{current.name}</Button> :
-        <Text role="status" fontSize="sm">{!current ? "正在搜索用户" : current.error ? "无法搜索用户，请重新输入" : "未找到匹配的收件人"}</Text>}
+        current?.error ? <Flex align="center" justify="space-between" gap={2}>
+          <Text role="status" fontSize="sm">暂时无法搜索用户</Text>
+          <Button type="button" size="xs" variant="ghost" onClick={()=>{setResult(undefined);setAttempt(value=>value+1);}}>重试</Button>
+        </Flex> : <Text role="status" fontSize="sm">{current ? "未找到匹配的收件人" : "正在搜索用户"}</Text>}
     </Box>}
   </Box>;
 }
