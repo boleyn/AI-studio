@@ -178,10 +178,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     } catch (error) { toast({status:"error",title:"无法创建"+kind+"，请重试",description:error instanceof Error ? error.message : undefined}); }
     finally {setCreating(false);}
   }
-  function recordOpen(file:LibraryFile) {
+  function recordOpen(selection:LibraryFile | LibraryFile[]) {
+    const ids = new Set((Array.isArray(selection) ? selection : [selection]).map(file => file.id));
     const openedAt = new Date().toISOString();
-    setFiles(current => current?.map(item => item.id === file.id ? {...item, openedAt} : item));
-    recordLibraryOpen(file.id);
+    setFiles(current => current?.map(item => ids.has(item.id) ? {...item, openedAt} : item));
+    recordLibraryOpen([...ids]);
   }
   function openItem(file:LibraryFile) {
     recordOpen(file);
@@ -398,7 +399,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
       if (action === "chat") {
         await onChat(attachments,question,itemId);
-        recordLibraryOpen(items.map(file => file.id));
+        recordOpen(items);
         return;
       }
       if (!attachments.length) return;
