@@ -43,11 +43,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return await sendDriveAttachment(req.query.file,data.access_token,res,req.query.download === "1");
     }
     const scope = req.query.scope || "mine";
+    const search = typeof req.query.query === "string" ? req.query.query.trim() : "";
     const terms = ["trashed = false"];
-    if (folder !== "root" || scope === "mine") terms.push("'" + folder + "' in parents");
+    if (folder !== "root" || (scope === "mine" && !search)) terms.push("'" + folder + "' in parents");
+    else if (scope === "mine") terms.push("'me' in owners");
     else if (scope === "shared") terms.push("sharedWithMe");
-    if (typeof req.query.query === "string" && req.query.query.trim()) {
-      const escaped = req.query.query.trim().replaceAll("\\","\\\\").replaceAll("'","\\'");
+    if (search) {
+      const escaped = search.replaceAll("\\","\\\\").replaceAll("'","\\'");
       terms.push("name contains '" + escaped + "'");
     }
     const recent = folder === "root" && scope === "recent";
