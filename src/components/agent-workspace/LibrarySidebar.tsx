@@ -15,14 +15,15 @@ type Props = {
   createMenu: ReactNode;
   spaceActions:(space:LibraryFile)=>ReactNode;
   onNewSpace: () => void;
-  section: string;
+  section?: string;
+  activeSpaceId?: string;
   files: LibraryFile[];
   onSection: (section: string) => void;
   onFile: (file: LibraryFile) => void;
   onSearch: () => void;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, files, onSection, onFile, onSearch, onCollapse }: Props) {
+export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, onCollapse }: Props) {
   const [driveConnected,setDriveConnected] = useState(false);
   useEffect(()=>{
     const controller = new AbortController();
@@ -65,8 +66,8 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
     </Flex>
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
-      bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={16}/>} onClick={() => onSection(name)}>{name}</Button>)}
-    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" leftIcon={<HardDrive size={16}/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
+      aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={16}/>} onClick={() => onSection(name)}>{name}</Button>)}
+    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<HardDrive size={16}/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
     <Box overflowY="auto" mt={5} flex="1">
       <Button variant="ghost" size="sm" color="gray.500" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
@@ -74,9 +75,9 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
       {recent && items.length > 5 && <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "展开显示"}</Button>}
       <Flex mt={5} align="center" justify="space-between"><Button size="sm" variant="ghost" color="gray.500" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
         <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
-      {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={section === item.name ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" w="full" justifyContent="start"
-        title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{!item.shareId && spaceActions(item)}</Flex>)}
+      {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={activeSpaceId === item.id ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" w="full" justifyContent="start"
+        aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{!item.shareId && spaceActions(item)}</Flex>)}
     </Box>
-    <Button variant="ghost" justifyContent="start" size="sm" leftIcon={<Trash2 size={16}/>} onClick={() => onSection("回收站")}>回收站</Button>
+    <Button variant="ghost" justifyContent="start" size="sm" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={16}/>} onClick={() => onSection("回收站")}>回收站</Button>
   </Flex>;
 }

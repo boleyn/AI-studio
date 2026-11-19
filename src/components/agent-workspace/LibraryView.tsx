@@ -566,7 +566,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
-      </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder?.name || section} files={files || []} onSection={changeSection}
+      </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder ? undefined : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
       onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={() => setSidebar(false)} /></Box>}
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
