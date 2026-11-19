@@ -73,7 +73,7 @@ export default function LibraryDrive({connect,onAttach,onBusyChange}:{connect?:(
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "无法读取文件夹");
         if (!controller.signal.aborted) setResult(data);
-      }).catch(reason=>{if (!controller.signal.aborted) setError(reason.message || "无法读取文件夹");});
+      }).catch(reason=>{if (!controller.signal.aborted) setError(reason instanceof TypeError ? "请检查网络连接后重试。" : reason instanceof SyntaxError ? "文件列表未能加载，请重试。" : reason.message || "无法读取文件夹");});
     return ()=>controller.abort();
   },[folder,page,scope,query,sort,attempt]);
   const recent = scope === "recent" && folder === "root";
@@ -92,7 +92,12 @@ export default function LibraryDrive({connect,onAttach,onBusyChange}:{connect?:(
         setScope(value);setPath([{id:"root",name:label}]);setPages([""]);setSearch("");setQuery("");
       }}>{label}</Button>)}</Flex>
     {path.length>1 && <Flex as="nav" aria-label="文件夹路径" my={3} wrap="wrap">{path.map((part,i)=><Button key={part.id} size="sm" variant="ghost" onClick={()=>{setPath(path.slice(0,i+1));setPages([""]);}}>{part.name}</Button>)}</Flex>}
-    {error ? <Flex align="center" gap={2}><Text role="alert">{error}</Text><Button onClick={()=>setAttempt(n=>n+1)}>重试</Button>{connect && <Button onClick={connect}>连接插件</Button>}</Flex> :
+    {error ? <Flex role="alert" align="center" wrap="wrap" gap={2} p={3} borderRadius="10px" bg="#faf5f2" color="#694332">
+      <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/>
+      <Text flex="1 1 12rem" fontSize="sm" overflowWrap="anywhere">{error}</Text>
+      <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(n=>n+1)}>重试</Button>
+      {connect && <Button size="xs" variant="ghost" borderRadius="full" onClick={connect}>连接插件</Button>}
+    </Flex> :
     !result ? <Text role="status">正在加载文件…</Text> : <><Box overflowX="auto"><Box as="table" width="full" fontSize="sm" textAlign="left" aria-label="Google Drive 文件"
       sx={{"& th":{fontWeight:"normal",color:"gray.600"},"& td":{borderTop:"1px solid #eee",height:"50px",paddingInline:"8px"}}}>
       <thead><tr>{sortHeader("name","名称")}{sortHeader("modified",recent ? "最近活动时间" : "修改日期")}
