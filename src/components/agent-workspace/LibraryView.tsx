@@ -956,7 +956,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               "& [role=checkbox]":{background:"white",insetBlockStart:"auto",insetBlockEnd:"19px",insetInlineEnd:"19px",
                 width:"20px",height:"20px",borderRadius:"4px",boxShadow:"0 1px 4px #0003"},
               "& [role=checkbox][aria-checked=true]":{background:"#171717",color:"white",borderColor:"transparent"},
-              "@media (hover:hover)":{"&:not(:hover):not(:focus-within) .image-actions:not(:has([aria-expanded=true])), &[data-selecting=false]:not(:hover):not(:focus-within) [role=checkbox]":{opacity:0}}
+              "@media (hover:hover) and (not (any-pointer:coarse))":{"&:not(:hover):not(:focus-within) .image-actions:not(:has([aria-expanded=true])), &[data-selecting=false]:not(:hover):not(:focus-within) [role=checkbox]":{opacity:0}}
             }}>
               <Box as="button" display="block" w="full" overflow="hidden" borderRadius="16px" borderWidth="1px"
                 onClick={() => picked.length ? checkItem(file.id) : openItem(file)} aria-label={picked.length ? (selected.includes(file.id) ? "取消选择" : "选择") + "图像 " + file.name : file.name}>
