@@ -199,13 +199,16 @@ const ChatItem = ({
   const toast = useToast();
   const [creatingPage,setCreatingPage] = React.useState(false);
   const [savedPage,setSavedPage] = React.useState<string>();
+  const pageBody = timelineHasAnswer
+    ? timelineItems.flatMap(item => item.type === "answer" && item.text?.trim() ? [item.text] : []).join("\n\n")
+    : content;
   async function saveAnswerPage() {
-    if (!content || creatingPage || savedPage) return;
+    if (!pageBody.trim() || creatingPage || savedPage) return;
     setCreatingPage(true);
     try {
-      const name = content.trim().split("\n")[0].replace(/^#{1,6}\s+/, "").slice(0, 100) || "无标题页";
+      const name = pageBody.trim().split("\n")[0].replace(/^#{1,6}\s+/, "").slice(0, 100) || "无标题页";
       const response = await fetch("/api/library/pages", {method:"POST",
-        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:content,kind:"页面",sourceChat:token && activeConversationId ? {token,chatId:activeConversationId} : undefined})});
+        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:pageBody,kind:"页面",sourceChat:token && activeConversationId ? {token,chatId:activeConversationId} : undefined})});
       if (!response.ok) throw new Error();
       const page: LibraryFile = await response.json();
       setSavedPage(page.id);
@@ -641,7 +644,7 @@ const ChatItem = ({
               )
             ) : null}
 
-            {isWorkspaceChat && isAssistant && !isStreaming && content?.trim() && <Box>
+            {isWorkspaceChat && isAssistant && !isStreaming && pageBody.trim() && <Box>
               {savedPage ? <Link fontSize="sm" href={"/?" + new URLSearchParams({view:"library",libraryItem:savedPage})}>打开已保存的页面</Link> :
                 <Button size="xs" variant="ghost" isLoading={creatingPage} onClick={saveAnswerPage}>保存为资料空间页面</Button>}
             </Box>}
