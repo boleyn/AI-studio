@@ -12,6 +12,7 @@ import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile 
 import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
+import { redirectedToLogin } from "@features/chat/services/files";
 import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, includeSharedPages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
@@ -91,7 +92,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     const problems: {name:string; reason:string}[] = [];
     setCreating(true);
     try {
-      for (const file of selected) {
+      for (const [index,file] of selected.entries()) {
         const params = new URLSearchParams({name:file.name});
         if (fromTemplate) params.set("fromTemplate","1");
         if (reference) { params.set("referenceType",reference.type); params.set("referenceName",reference.name); }
@@ -99,10 +100,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         let item: LibraryFile;
         try {
           const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
+          if (response.status === 401 || redirectedToLogin(response)) {
+            for (const remaining of selected.slice(index)) {
+              problems.push({name:remaining.name,reason:"请重新登录后上传。"});
+            }
+            break;
+          }
           if (!response.ok) {
             const failure = await response.json().catch(()=>null);
             problems.push({name:file.name,reason:failure?.error ||
-              (response.status === 413 ? "文件超过上传大小限制。" : response.status === 401 ? "请重新登录后上传。" : "请稍后重试。")});
+              (response.status === 413 ? "文件超过上传大小限制。" : "请稍后重试。")});
             continue;
           }
           item = await response.json();
