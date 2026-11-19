@@ -40,6 +40,14 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     drafts?.set(url,{...next,revision});
     setStatus("尚未保存");
   }
+  function acknowledgeConflict() {
+    if (!content || !conflict) return;
+    const latestRevision = conflict.revision || 0;
+    drafts?.set(url,{...content,revision:latestRevision});
+    setRevision(latestRevision);
+    setConflict(undefined);
+    setStatus("尚未保存");
+  }
   async function save() {
     if (!content || busy || conflict) return;
     setBusy(true);
@@ -78,7 +86,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     content && <Box maxW="760px" mx="auto" mt="8vh">
       {conflict && <Box as="section" aria-label="最新版本" borderWidth="1px" borderRadius="12px" p={4} mb={5}>
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
-        <Button size="sm" onClick={()=>{setRevision(conflict.revision || 0);setConflict(undefined);setStatus("请核对草稿后保存");}}>已对照，继续编辑草稿</Button>
+        <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
       <Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
