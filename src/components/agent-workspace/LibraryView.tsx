@@ -823,9 +823,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <LibrarySites onPluginChat={(token,name)=>onChat([], `帮我将一个插件连接到 ${name}，让网站访客可以使用自己账户中的数据。请询问我想连接哪个已在工作空间中启用的插件。`, undefined, false, token)} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
       </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
-          <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
+          <Box role="alert"><Heading as="h2" fontSize="md">{searchTerm ? "无法加载搜索结果" : "无法加载资料列表"}</Heading>
             <Text mt={1} fontSize="sm" color="gray.600">{failed}</Text></Box>
-          <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重新加载</Button>
+          <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>{searchTerm ? "重试" : "重新加载"}</Button>
         </Flex> :
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
