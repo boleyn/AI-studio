@@ -28,7 +28,7 @@ export default function SpaceInviteInput({accounts,onChange,query,setQuery}:{acc
   }
   return <Box>
     <Flex wrap="wrap" gap={1}>{accounts.map(item=><Button key={item} type="button" size="xs" aria-label={"移除 "+item} onClick={()=>onChange(accounts.filter(value=>value!==item))}>{item} ×</Button>)}</Flex>
-    <Input role="combobox" aria-label="添加邮箱地址" aria-controls={list} aria-expanded={Boolean(account)} autoComplete="off" placeholder="输入飞书邮箱或本地账号" value={query} maxLength={103}
+    <Input h="36px" px="12px" py="4px" borderRadius="6px" borderColor="blackAlpha.300" role="combobox" aria-label="添加邮箱地址" aria-controls={list} aria-expanded={Boolean(account)} autoComplete="off" placeholder="输入飞书邮箱或本地账号" value={query} maxLength={103}
       onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter" && !e.nativeEvent.isComposing){e.preventDefault();select();}}}/>
     {account && <Box id={list} role="listbox" aria-label="添加邮箱地址" p={2} borderWidth="1px" borderRadius="8px">
       {current?.name ? <Button role="option" aria-selected={accounts.includes(account)} type="button" w="100%" justifyContent="start" variant="ghost" size="sm" onClick={select}>{current.name}</Button> :
