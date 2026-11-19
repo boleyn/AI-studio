@@ -912,9 +912,13 @@ export default function AgentWorkspace({
         setLibraryDraft({chatId:chat.id,files,text,imageMode});
         if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
         else setFileChat(undefined);
-        await setActiveNav(itemId ? "library" : "chat", chat.id);
+        const projectLoaded = projects.some(project => project.token === token);
+        if (!existingChat && !projectLoaded) {
+          await fetchProjects();
+        }
         handleSelectConversation(token,chat.id);
-        if (!existingChat) await fetchProjects();
+        await setActiveNav(itemId ? "library" : "chat", chat.id);
+        if (!existingChat && projectLoaded) await fetchProjects();
       }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
