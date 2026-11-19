@@ -719,7 +719,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               {item.id===folder.id ? item.name : <Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}>{item.name}</Button>}</Flex>)}</> : section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={allHome ? "241px" : "240px"} sx={allHome ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
             <InputLeftElement pointerEvents="none" w={allHome ? "44px" : undefined} color="gray.500"><Search size={allHome ? 20 : 16} aria-hidden/></InputLeftElement>
-            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
+            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
               placeholder={sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "40px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
               value={query} onChange={event => setQuery(event.target.value)}/>
             {query && <InputRightElement><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
