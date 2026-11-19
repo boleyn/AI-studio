@@ -147,8 +147,14 @@ const finalizeUploadedFiles = async ({
     throw new Error(typeof data.error === "string" ? data.error : "上传确认失败");
   }
 
-  const origins = new Map(files.map(file => [file.storagePath,file.libraryItemId]));
-  return (data.files ?? []).map(file => ({...file,libraryItemId:file.storagePath ? origins.get(file.storagePath) : undefined}));
+  const origins = new Map<string, string>();
+  for (const file of files) {
+    if (file.storagePath && file.libraryItemId) origins.set(file.storagePath.replace(/^\/+/, ""), file.libraryItemId);
+  }
+  return (data.files ?? []).map(file => ({
+    ...file,
+    libraryItemId: origins.get(file.storagePath?.replace(/^\/+/, "") ?? "") ?? file.libraryItemId,
+  }));
 };
 
 export const uploadChatFiles = async ({
