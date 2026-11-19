@@ -1,4 +1,4 @@
-import { markdownFilename } from "@/types/library";
+import { sharedPreviewFilename, markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "@server/db/mongo";
 import { getObjectFromStorage } from "@server/storage/s3";
@@ -108,7 +108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).send(buffer);
     }
 
-    return res.status(200).json({ filename, owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
+    return res.status(200).json({ filename, previewName:sharedPreviewFilename(filename,native?.originalName), owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
   } catch (error) {
     console.error("Artifact share request failed", error);
     return res.status(500).json({ error: "暂时无法处理共享文件" });

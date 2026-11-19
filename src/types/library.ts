@@ -45,3 +45,8 @@ export function libraryActivityTime(file: LibraryFile) {
 export function markdownFilename(title: string) {
   return /\.(md|markdown)$/i.test(title) ? title : title + ".md";
 }
+
+export function sharedPreviewFilename(name: string, originalName?: string) {
+  const extension = originalName?.match(/\.[a-z0-9]{1,12}$/i)?.[0];
+  return extension && !name.toLowerCase().endsWith(extension.toLowerCase()) ? name + extension : name;
+}
