@@ -10,12 +10,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const auth = await requireAuth(req, res);
   if (!auth) return;
   res.setHeader("Cache-Control", "private, no-store");
+  const owner = String(auth.user._id);
+  if (req.method === "DELETE") {
+    const id = req.query.id;
+    if (typeof id !== "string" || !id) return res.status(400).end();
+    const links = (await getMongoDb()).collection("share_links");
+    const link = await links.findOne({shareId:id, ownerUserId:owner, mode:"preview"},{projection:{projectToken:1}});
+    if (!link || typeof link.projectToken !== "string") return res.status(404).end();
+    await links.deleteMany({projectToken:link.projectToken, ownerUserId:owner, mode:"preview"});
+    return res.status(204).end();
+  }
   if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
+    res.setHeader("Allow", "GET, DELETE");
     return res.status(405).end();
   }
 
-  const owner = String(auth.user._id);
   const projects = await listProjectOverviewItems(owner);
   const names = new Map(projects.map(project => [project.token, project.name]));
   const sites = await listLibrarySites(owner,names);

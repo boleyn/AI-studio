@@ -46,6 +46,18 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
     </Link>;
   };
   const shareButton = (site: Site) => !site.shared && <Button size="xs" variant="ghost" onClick={() => setSharing(site)}>共享</Button>;
+  async function deleteSite(site: Site) {
+    if (saving || site.shared || !window.confirm("删除「"+site.name+"」？此站点的所有预览链接将失效，项目源文件会保留。")) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/library/sites?id="+encodeURIComponent(site.id),{method:"DELETE",headers:withAuthHeaders()});
+      if (!response.ok && response.status !== 404) throw new Error();
+      setSites(rows=>rows?.filter(row=>row.id!==site.id));
+      setSettings(undefined);
+      toast({status:"success",title:"站点已删除"});
+    } catch { toast({status:"error",title:"站点删除失败，请重试"}); }
+    finally {setSaving(false);}
+  }
   const siteMenu = (site: Site) => <Menu placement="bottom-end">
     <MenuButton as={IconButton} size="sm" variant="ghost" aria-label={site.name + " 的更多操作"} icon={<MoreHorizontal size={16}/>}/>
     <Portal><MenuList minW="180px" p={2} borderRadius="16px">
@@ -60,6 +72,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
       {!site.shared && <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
       {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>{setTitle(site.name);setSettings(site);}}>设置</MenuItem>}
+      {!site.shared && <MenuItem color="red.600" isDisabled={saving} onClick={()=>deleteSite(site)}>删除站点</MenuItem>}
     </MenuList></Portal>
   </Menu>;
   const dialog = sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>;
@@ -87,6 +100,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
     </Box>
     <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
     <Flex mt={4} gap={3} align="center"><Text>拥有链接的人可以查看</Text>{shareButton(settings)}</Flex>
+    <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>deleteSite(settings)}>删除站点</Button>
     {dialog}
   </Box>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
