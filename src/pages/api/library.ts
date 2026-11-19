@@ -82,15 +82,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (Array.isArray(meta?.workspaceArtifactPaths)) {
       for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion);
     }
-    const attachment = (path: unknown, name: unknown, size?:unknown) => {
-      if (typeof path === "string" && /^\/?chat_uploads\//.test(path)) add("上传", path, name, undefined, size);
-    };
-    if (Array.isArray(msg.artifact?.files)) {
-      for (const file of msg.artifact.files) if (!file?.libraryItemId) attachment(file?.storagePath, file?.name, file?.size);
-    }
     const blocks = msg.message?.content ?? msg.content;
-    if (Array.isArray(blocks)) {
-      for (const block of blocks) if (block?.type === "attachment" && !block.library_item_id) attachment(block.source_storage_path || block.storage_path, block.name);
+    const attachments = [
+      ...(Array.isArray(msg.artifact?.files) ? msg.artifact.files.map((file: {storagePath?:string;name?:string;size?:number;libraryItemId?:string} | null) => ({
+        path:file?.storagePath, name:file?.name, size:file?.size, origin:file?.libraryItemId,
+      })) : []),
+      ...(Array.isArray(blocks) ? blocks.filter(block => block?.type === "attachment").map(block => ({
+        path:block.source_storage_path || block.storage_path, name:block.name, size:undefined, origin:block.library_item_id,
+      })) : []),
+    ];
+    const referencedPaths = new Set(attachments.filter(file => file.origin && typeof file.path === "string")
+      .map(file => file.path.replace(/^\/+/, "")));
+    for (const file of attachments) {
+      if (!file.origin && typeof file.path === "string" && /^\/?chat_uploads\//.test(file.path) &&
+          !referencedPaths.has(file.path.replace(/^\/+/, ""))) add("上传", file.path, file.name, undefined, file.size);
     }
   }
   const pages = db.collection("library_pages").find({owner},{projection:{name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
