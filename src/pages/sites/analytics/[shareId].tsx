@@ -97,12 +97,21 @@ export default function SiteAnalytics({name,shareId,days,daily,visitors,views,re
       <Link href={"/?"+new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId})}>设置</Link>
       <Text aria-current="page" fontWeight="semibold">分析</Text>
     </Flex>
-    <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
-      <Heading as="h2" size="md">分析</Heading>
-      <Flex as="nav" aria-label="日期范围" gap={2}>{[7,30].map(n=><Link key={n} href={"?days="+n} aria-current={n===days?"page":undefined} bg={n===days?"gray.100":undefined} borderRadius="full" px={3} py={1}>{n} 天</Link>)}</Flex>
+    <Flex align="center" wrap="wrap" gap={4} my={6}>
+      <Flex flex="1" wrap="wrap" columnGap={{base:4,md:12}} rowGap={3}>
+        <Box>独立访客数<Text fontSize="2xl">{visitors}</Text></Box>
+        <Box title="预览页面及预览数据接口的成功请求">请求数<Text fontSize="2xl">{requests}</Text></Box>
+        <Box>页面浏览量<Text fontSize="2xl">{views}</Text></Box>
+      </Flex>
+      <Flex as="nav" aria-label="日期范围" p="2px" bg="gray.100" borderRadius="10px">
+        {[7,30].map(n=><Link key={n} href={"?days="+n} aria-current={n===days?"page":undefined}
+          minW={n===7?"40px":"48px"} h="24px" lineHeight="24px" textAlign="center" fontSize="12px"
+          bg={n===days?"#fcfcfc":"transparent"} borderRadius="8px">{n} 天</Link>)}
+      </Flex>
     </Flex>
-    <Flex gap={12} my={6}><Box>独立访客数<Text fontSize="2xl">{visitors}</Text></Box><Box title="预览页面及预览数据接口的成功请求">请求数<Text fontSize="2xl">{requests}</Text></Box><Box>页面浏览量<Text fontSize="2xl">{views}</Text></Box></Flex>
-    <Heading as="h2" size="md" mb={3}>流量趋势</Heading>
+    <Flex align="center" justify="space-between" mb={3}>
+      <Heading as="h2" size="md">流量趋势</Heading><Text fontSize="sm" color="gray.600">每日</Text>
+    </Flex>
     <TrafficTrend daily={daily}/>
     <Heading as="h2" size="md" my={3}>热门页面</Heading>
     {pages.length ? <Box as="table" width="full" mb={6} fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>
