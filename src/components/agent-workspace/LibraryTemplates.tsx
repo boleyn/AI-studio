@@ -256,12 +256,14 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
       <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px" pb={{base:4, md:6}}>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
       <Flex px={{base:4, md:"30px"}} pb={4} gap={2} align="center" wrap="wrap">
-        <Flex role="tablist" aria-label="模板分类" gap={2} maxW="full" overflowX="auto">
+        <Flex role="tablist" aria-label="模板分类" maxW="full" overflowX="auto">
           {galleryCategories.map((label, index) =>
             <Button key={label} ref={index === 0 ? firstCategory : undefined} id={`gallery-tab-${index}`}
               role="tab" aria-selected={category === label} aria-controls="gallery-results"
               tabIndex={category === label ? 0 : -1} size="sm" h="38px" px="16px" py="9px" borderRadius="full" flexShrink={0}
-              variant={category === label ? "solid" : "ghost"} onClick={() => selectCategory(label)}
+              variant="ghost" fontWeight={category === label ? 500 : 400}
+              color={category === label ? "#0d0d0d" : "#8f8f8f"} bg={category === label ? "rgb(0 0 0 / 5%)" : "transparent"}
+              onClick={() => selectCategory(label)}
               onKeyDown={event => {
                 const count = galleryCategories.length;
                 const targets: Record<string, number> = {
