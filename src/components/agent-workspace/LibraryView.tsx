@@ -1000,16 +1000,21 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             }}
             onPointerMove={event=>{
               const drag = rowDrag.current;
-              if (!drag || event.buttons !== 1 || selectionLocked || !(event.target instanceof Element)) return;
-              const row = event.target.closest("tr");
-              if (!row || (!draggedRows.current && row.sectionRowIndex === drag.start)) return;
-              draggedRows.current = true;
+              if (!drag || event.buttons !== 1 || selectionLocked) return;
+              const row = document.elementFromPoint(event.clientX,event.clientY)?.closest("tr");
+              if (!row || row.parentElement !== event.currentTarget) return;
+              if (!draggedRows.current) {
+                if (row.sectionRowIndex === drag.start) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                draggedRows.current = true;
+              }
               const end = row.sectionRowIndex;
               const range = visible.slice(Math.min(drag.start,end),Math.max(drag.start,end)+1).map(item=>item.id);
               setSelected(drag.additive ? [...new Set([...drag.original,...range])] : range);
             }}
             onPointerUp={()=>{rowDrag.current = undefined;}}
             onPointerCancel={()=>{rowDrag.current = undefined;}}
+            onLostPointerCapture={()=>{rowDrag.current = undefined;}}
             onClickCapture={event=>{
               if (draggedRows.current && event.detail) {
                 draggedRows.current = false;
