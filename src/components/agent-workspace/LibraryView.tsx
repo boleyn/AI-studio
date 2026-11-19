@@ -911,7 +911,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <Button borderRadius="full" colorScheme="red" onClick={()=>{setConfirmSpaceDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
       </ModalContent>
     </Modal>
-    <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="20px" borderRadius="24px">
+    <Modal isOpen={newKind === "文件夹"} onClose={() => setNewKind(undefined)} isCentered><ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">新建{newKind}</ModalHeader><form onSubmit={event => {event.preventDefault(); if (title.trim() && newKind) void createPage(title.trim(),"",newKind);}}>
         <ModalBody p={0} mt="12px"><FormLabel m={0} mb="8px" lineHeight="24px" htmlFor="library-container-name">{newKind}名称</FormLabel><Input h="36px" fontSize="14px" borderRadius="6px" id="library-container-name" autoFocus value={title} maxLength={255}
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter p={0} mt="12px" gap="12px"><Button minW="66px" h="32px" borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
