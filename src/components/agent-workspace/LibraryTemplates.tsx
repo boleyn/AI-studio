@@ -41,7 +41,24 @@ const slideTemplates = [
   "Market Trends Report",
   "Project Kickoff",
 ] as const;
-const imageTemplates = ["海报", "室内设计", "徽标", "插画", "职业形象照", "图标", "产品照", "周边商品", "信息图", "宣传单", "书籍封面", "应用效果图", "包装", "广告", "缩略图", "网站效果图"];
+const imageTemplates = [
+  {name: "海报", cover: "poster"},
+  {name: "室内设计", cover: "interior-design"},
+  {name: "徽标", cover: "logo"},
+  {name: "插画", cover: "illustration"},
+  {name: "职业形象照", cover: "headshot"},
+  {name: "图标", cover: "icon"},
+  {name: "产品照", cover: "product-photo"},
+  {name: "周边商品", cover: "merch"},
+  {name: "信息图", cover: "infographic"},
+  {name: "宣传单", cover: "flyer"},
+  {name: "书籍封面", cover: "book-cover"},
+  {name: "应用效果图", cover: "app-mockup"},
+  {name: "包装", cover: "packaging"},
+  {name: "广告", cover: "advertisement"},
+  {name: "缩略图", cover: "thumbnail"},
+  {name: "网站效果图", cover: "website-mockup"},
+];
 export type SlideTemplateName = typeof slideTemplates[number];
 
 export default function LibraryTemplates({ collection, onPick, onClose, onSlides }: {collection:"页面"|"幻灯片"|"全部"; onSlides:(name:SlideTemplateName)=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
@@ -124,7 +141,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   );
   const matches = (name: string) => name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const slides = slideTemplates.filter(matches);
-  const images = imageTemplates.filter(matches);
+  const images = imageTemplates.filter(({name}) => matches(name));
   const shows = (kind: string) => category === "为你推荐" || category === kind;
   async function createWorkbook(template: typeof workbookTemplates[number]) {
     if (building) return;
@@ -208,9 +225,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
               <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
             </Button>)}
-          {shows("图像") && images.map(name =>
+          {shows("图像") && images.map(({name, cover}) =>
             <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
-              <Flex bg="gray.50" borderRadius="12px" aspectRatio="16/10" align="center" justify="center">{name}</Flex>
+              <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="full" bg="gray.50" borderRadius="12px" aspectRatio="4/3" objectFit="contain" />
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
             </Button>)}
         </SimpleGrid>
