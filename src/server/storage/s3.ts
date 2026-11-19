@@ -1,6 +1,10 @@
 // @ts-nocheck
 // @ts-nocheck
 import path from "node:path";
+import { Agent } from "node:https";
+import { lookup } from "node:dns";
+import { isIP } from "node:net";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { Readable } from "node:stream";
 
 import {
@@ -73,7 +77,22 @@ export const getS3Client = () => {
     throw new Error("对象存储配置缺失：请检查 STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY");
   }
 
+  const address = process.env.STORAGE_S3_CONNECT_IP?.trim();
+  let requestHandler;
+  if (address && STORAGE_S3_ENDPOINT) {
+    const endpoint = new URL(STORAGE_S3_ENDPOINT);
+    const family = isIP(address);
+    if (!family || endpoint.protocol !== "https:") throw new Error("对象存储直连需要 HTTPS 端点和有效 IP 地址");
+    requestHandler = new NodeHttpHandler({ httpsAgent: new Agent({ keepAlive: true,
+      lookup(hostname, options, callback) {
+        if (hostname !== endpoint.hostname) return lookup(hostname, options, callback);
+        if (options.all) return callback(null, [{ address, family }]);
+        callback(null, address, family);
+      },
+    }) });
+  }
   s3Client = new S3Client({
+    requestHandler,
     region: STORAGE_REGION,
     endpoint: STORAGE_S3_ENDPOINT || undefined,
     forcePathStyle: STORAGE_S3_FORCE_PATH_STYLE,
