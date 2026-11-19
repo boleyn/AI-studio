@@ -96,7 +96,7 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   }
   const spaceName = typeof data.name === "string" && data.name.trim() ? data.name : space.name;
   return data.pages.map(page => ({
-    ...space, folderId:space.id, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传", time:page.time || space.time, openedAt:page.openedAt,
+    ...space, invitedAt:undefined, folderId:space.id, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传", time:page.time || space.time, openedAt:page.openedAt,
     path:page.path || page.name, sharedPage:true, sharedSpaceName:spaceName,
   }));
 }

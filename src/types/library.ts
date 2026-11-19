@@ -55,8 +55,11 @@ export function libraryFileOrigin(file: LibraryFile) {
 }
 
 export function libraryActivityTime(file: LibraryFile) {
-  const latestChange = file.sharedPageUpdatedAt && file.sharedPageUpdatedAt > file.time ? file.sharedPageUpdatedAt : file.time;
-  return file.openedAt && file.openedAt > latestChange ? file.openedAt : latestChange;
+  let latest = file.time;
+  for (const time of [file.sharedPageUpdatedAt, file.openedAt, file.invitedAt]) {
+    if (time && time > latest) latest = time;
+  }
+  return latest;
 }
 
 export function markdownFilename(title: string) {
