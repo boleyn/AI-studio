@@ -5,7 +5,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
-import { LibraryReadError, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
+import { LibraryReadError, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
@@ -134,7 +134,9 @@ const ChatItem = ({
           const url = new URL(preview.url,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
           response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
-          if (response.ok) {
+          const redirectedToLogin = response.redirected && new URL(response.url).pathname === "/login";
+          if (redirectedToLogin && !preview.libraryItemId) throw new LibraryReadError(401,preview.name);
+          if (response.ok && !redirectedToLogin) {
             const value = await response.text();
             showContent(value, false);
             return;
@@ -152,9 +154,7 @@ const ChatItem = ({
           showContent(await original.text(), true);
           return;
         }
-        const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
-        if (!library.ok) throw new LibraryReadError(library.status,preview.name);
-        const items: LibraryFile[] = await library.json();
+        const items = await loadLibraryFiles(signal);
         const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
         if (item) {
           const value = await (await readLibraryAttachment(item,signal)).text();
@@ -169,7 +169,7 @@ const ChatItem = ({
       setPreviewError(status === 401 ? "请重新登录后打开附件。" :
         status === 403 ? "当前账号没有读取该附件的权限。" :
         status === 404 || status === 410 ? "找不到这份附件，请检查原文件是否仍可打开。" :
-        status ? "暂时无法读取附件，请稍后重试。" : "连接失败，请检查网络后重试。");
+        status ? "暂时无法读取附件，请稍后重试。" : error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "暂时无法读取附件，请稍后重试。");
     });
     return () => controller.abort();
   },[preview]);
