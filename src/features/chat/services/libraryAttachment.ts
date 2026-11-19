@@ -45,7 +45,14 @@ export async function addLibraryAttachments(
   const errors = new Map<string, string>();
   reads.forEach((read, index) => {
     if (read.status === "fulfilled") ready.push(read.value);
-    else errors.set(items[index].id, "无法读取“" + items[index].name + "”");
+    else {
+      const status = read.reason instanceof LibraryReadError ? read.reason.status : undefined;
+      let message = "暂时无法读取，请稍后重试。";
+      if (status === 401) message = "登录已过期，请重新登录。";
+      if (status === 403) message = "当前账号没有读取权限，请联系文件所有者。";
+      if (status === 404 || status === 410) message = "文件可能已删除或共享已结束，请重新选择。";
+      errors.set(items[index].id,message);
+    }
   });
   if (ready.length) {
     const uploadErrors = await upload(ready);
