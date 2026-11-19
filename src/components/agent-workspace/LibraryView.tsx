@@ -753,7 +753,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
-          <colgroup><col style={{width:"32px"}}/><col style={{width:"calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
+          <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox label={allChecked ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(allChecked ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
