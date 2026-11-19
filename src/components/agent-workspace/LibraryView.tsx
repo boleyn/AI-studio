@@ -51,6 +51,8 @@ const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿",
 export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
+  const rowDrag = useRef<{start:number; original:string[]; additive:boolean}>();
+  const draggedRows = useRef(false);
   const [batchBusy,setBatchBusy] = useState(false);
   const [moveFailures,setMoveFailures] = useState<string[]>([]);
   const [batchMove,setBatchMove] = useState(false);
@@ -988,7 +990,34 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
-          <tbody>{visible.map(file => <Box as="tr" key={key(file)} aria-selected={selected.includes(file.id)}
+          <tbody style={{userSelect:"none"}}
+            onPointerDown={event=>{
+              rowDrag.current = undefined;
+              draggedRows.current = false;
+              if (selectionLocked || event.pointerType !== "mouse" || event.button !== 0 ||
+                  !(event.target instanceof Element) || event.target.closest("a,button,input")) return;
+              const row = event.target.closest("tr");
+              if (row) rowDrag.current = {start:row.sectionRowIndex,original:selected,additive:event.ctrlKey || event.metaKey};
+            }}
+            onPointerMove={event=>{
+              const drag = rowDrag.current;
+              if (!drag || event.buttons !== 1 || selectionLocked || !(event.target instanceof Element)) return;
+              const row = event.target.closest("tr");
+              if (!row || (!draggedRows.current && row.sectionRowIndex === drag.start)) return;
+              draggedRows.current = true;
+              const end = row.sectionRowIndex;
+              const range = visible.slice(Math.min(drag.start,end),Math.max(drag.start,end)+1).map(item=>item.id);
+              setSelected(drag.additive ? [...new Set([...drag.original,...range])] : range);
+            }}
+            onPointerUp={()=>{rowDrag.current = undefined;}}
+            onPointerCancel={()=>{rowDrag.current = undefined;}}
+            onClickCapture={event=>{
+              if (draggedRows.current && event.detail) {
+                draggedRows.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+              }
+            }}>{visible.map(file => <Box as="tr" key={key(file)} aria-selected={selected.includes(file.id)}
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
