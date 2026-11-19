@@ -1,7 +1,7 @@
 import LibraryCardGrid from "./LibraryCardGrid";
 import useDriveConnected from "./useDriveConnected";
 import { formatFileSize, markdownFilename, matchesExportedPageName } from "@/types/library";
-import { libraryActivityTime, libraryFileOrigin } from "@/types/library";
+import { libraryActivityTime, libraryFileOrigin, libraryTypeName } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
@@ -1051,9 +1051,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Box>
         </Box> : grid ? <LibraryCardGrid masonry={allHome}>
           {visible.map(file => {
-            const spreadsheet = fileType(file) === "电子表格";
+            const type = fileType(file);
+            const spreadsheet = type === "电子表格";
+            const path = libraryTypeName(file);
+            const documentCard = type === "文档" && /\.(doc[xm]?|dot[xm]|odt)$/i.test(path);
+            const archiveCard = type === "其他" && /\.(zip|rar|7z|tar|gz)$/i.test(path);
             const {Icon, color} = libraryIconAppearance(file);
-            return allHome && !isContainer(file) && (spreadsheet || /\.(zip|rar|7z|tar|gz|docx?)$/i.test(file.name)) ? (
+            return allHome && (spreadsheet || documentCard || archiveCard) ? (
             <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={spreadsheet ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
               cursor="pointer" onClick={event=>clickItemSurface(event,file)}
