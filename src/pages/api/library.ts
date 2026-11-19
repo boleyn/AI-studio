@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Cache-Control", "private, no-store");
   const db = await getMongoDb();
   const owner = String(auth.user._id);
-  const settings = db.collection<{ _id: string; owner: string; siteSlug?:string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
+  const settings = db.collection<{ _id: string; owner: string; trashRoot?: string; siteSlug?:string; purged?:boolean; openedAt?: string; deletedAt?:string | null; folderId?: string | null; name?: string; deleted?: boolean; favorite?: boolean; pinned?:boolean }>("library_file_settings");
   if (req.method === "DELETE") {
     const id = req.query.id;
     if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
@@ -43,7 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!result.success) return res.status(400).json({ error: "无效的文件操作" });
     const { id, changes } = result.data;
     if (changes.folderId && !await db.collection("library_pages").findOne({owner,_id:new ObjectId(changes.folderId),kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}})) return res.status(400).end();
-    await settings.updateOne({ _id: owner + "/" + id, owner }, { $set: {...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} }, { upsert: true });
+    await settings.updateOne({ _id: owner + "/" + id, owner }, {
+      ...(changes.deleted === false ? {$unset:{trashRoot:"" as const}} : {}),
+      $set: {...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} }, { upsert: true });
     return res.status(204).end();
   }
   const {listed,names,preferences,chats,restores} = await listLibraryContents(owner,auth.user.displayName || auth.user.username);

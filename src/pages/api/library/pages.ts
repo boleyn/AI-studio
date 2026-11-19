@@ -101,6 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const editsContent = changes.name !== undefined || changes.body !== undefined;
     const saved = await pages.findOneAndUpdate({...filter,...versionFilter},{
       $set:{...changes,time,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? time : null})},
+      ...(changes.deleted === false ? {$unset:{trashRoot:"" as const}} : {}),
       ...(editsContent ? {$inc:{revision:1}} : {}),
     },{returnDocument:"after",projection:{revision:1}});
     if (saved) return res.json({time,revision:saved.revision || 0});
