@@ -108,7 +108,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
     <Box role="alert"><Text fontWeight="600">无法加载预览</Text>
       <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">{error}</Text>
     </Box>
-    <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setError("");setAttempt(n=>n+1);}}>重新加载</Button>
+    <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{setImageUrl(undefined);setBody(undefined);setError("");setAttempt(n=>n+1);}}>重新加载</Button>
   </Flex>;
   return <Flex flex="1" minW={0} minH={0} direction={{base:"column",lg:"row"}}>
     <Flex as="section" aria-label="文件查看器" direction="column" minW={0} flex="1" onKeyDown={event=>{
