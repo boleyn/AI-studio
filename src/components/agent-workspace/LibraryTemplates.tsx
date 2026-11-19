@@ -87,11 +87,16 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     <Text mt="10px" lineHeight="20px" fontSize="sm" fontWeight="400">{name}</Text>
     <Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">幻灯片</Text>
   </Button>;
-  return <Box as="section" mb="40px" role="group">
+  return <Box as="section" mb="40px" role="group" sx={{containerType:"inline-size"}}>
     <Flex align="center" gap="6px"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
       <IconButton opacity={{base:1,md:0}} sx={{"@media (any-pointer:coarse), (hover:none)":{opacity:1}}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} aria-label="关闭“在资料空间中共同创建”" size="xs" boxSize="20px" minW="20px" borderRadius={0} color="#8f8f8f" variant="ghost" icon={<X size={14}/>} onClick={onClose}/></Flex>
     <Text color="#8f8f8f" fontSize="sm" mt="2px" lineHeight="20px" mb="12px">选择一个模板，与 ChatGPT 和你的团队开始协作</Text>
-    <Box ref={strip} display="grid" gridAutoFlow="column" gridAutoColumns={{base:"max(144px, calc(75% - 12px))", md:"max(144px, calc(23.0769% - 14.7692px))"}} marginInlineStart="-16px" paddingInline="16px" gap="16px" overflowX="auto" sx={{scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color},i) =>
+    <Box ref={strip} display="grid" gridAutoFlow="column" gridAutoColumns="max(9rem, calc((100% - 1rem) * 3 / 4))" marginInlineStart="-16px" paddingInline="16px" gap="16px" overflowX="auto" sx={{
+      "@container (min-width: 32rem)": {gridAutoColumns:"max(9rem, calc((100% - 2rem) * 3 / 7))"},
+      "@container (min-width: 48rem)": {gridAutoColumns:"max(9rem, calc((100% - 3rem) * 3 / 10))"},
+      "@container (min-width: 64rem)": {gridAutoColumns:"max(9rem, calc((100% - 4rem) * 3 / 13))"},
+      "@container (min-width: 80rem)": {gridAutoColumns:"max(9rem, calc((100% - 5rem) * 3 / 16))"},
+      scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color},i) =>
       <Fragment key={name}>
       {i === 3 && collection === "全部" && slideCard("Photography Portfolio")}
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
