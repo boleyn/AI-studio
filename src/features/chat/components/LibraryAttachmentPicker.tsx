@@ -81,7 +81,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
           onClick={()=>setShowDrive(drive)}>{source}</Button>;
       })}
     </Flex>}
-    {showDrive ? <ModalBody><LibraryDrive onAttach={async files=>{
+    {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
       const errors = await onAdd(files);
       if (errors[0]) throw new Error(errors[0]);
       onClose();

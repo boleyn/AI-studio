@@ -6,7 +6,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { formatRelativeTime } from "./relativeTime";
 
 interface DriveFile {id:string; name:string; mimeType:string; webViewLink?:string; modifiedTime?:string; viewedByMeTime?:string; size?:string}
-export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAttach:(files:File[])=>Promise<void>}) {
+export default function LibraryDrive({connect,onAttach,onBusyChange}:{connect?:()=>void;onBusyChange?:(busy:boolean)=>void;onAttach:(files:File[])=>Promise<void>}) {
   const [scope,setScope] = useState("recent");
   const [sort,setSort] = useState({key:"name",descending:false});
   const [search,setSearch] = useState("");
@@ -48,7 +48,9 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
     finally {setRenaming(false);}
   }
   async function attach(file: DriveFile) {
+    if (attaching) return;
     setAttaching(file.id);
+    onBusyChange?.(true);
     setAttachmentError(undefined);
     try {
       const response = await fetch("/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id}),{headers:withAuthHeaders()});
@@ -60,7 +62,7 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
       const name = encoded ? decodeURIComponent(encoded) : file.name;
       await onAttach([new File([await response.blob()],name,{type:response.headers.get("X-Attachment-Type") || file.mimeType})]);
     } catch (reason) {setAttachmentError({file,message:reason instanceof TypeError ? "请检查网络连接后重试。" : reason instanceof Error ? reason.message : "添加失败"});}
-    finally {setAttaching("");}
+    finally {setAttaching("");onBusyChange?.(false);}
   }
   const [attempt,setAttempt] = useState(0);
   useEffect(()=>{
