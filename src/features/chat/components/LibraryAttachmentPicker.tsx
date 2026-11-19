@@ -99,6 +99,19 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setFileErrors(new Map());
     setError("");
   }
+  function toggleItem(item: LibraryFile) {
+    setSelected(previous => previous.some(entry => entry.id === item.id)
+      ? previous.filter(entry => entry.id !== item.id)
+      : [...previous, item]);
+    setError("");
+    if (fileErrors.has(item.id)) {
+      setFileErrors(previous => {
+        const next = new Map(previous);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }
   async function add() {
     if (busy || !items) return;
     setBusy(true);
@@ -166,7 +179,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
-          onClick={()=>setSelected(previous=>previous.some(entry=>entry.id===item.id)?previous.filter(entry=>entry.id!==item.id):[...previous,item])}>
+          onClick={()=>toggleItem(item)}>
           <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated title={item.name}>{item.name}</Text>
             <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
@@ -176,6 +189,6 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         </Flex>;
       })}
     </ModalBody><ModalFooter px={5} py={3} mt={2} borderTop="1px solid #eee" gap={2}><Button size="sm" variant="ghost" borderRadius="full" isDisabled={busy} onClick={onClose}>取消</Button>
-      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!selected.length} onClick={add}>添加{selected.length ? "（"+selected.length+"）" : ""}</Button>
+      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!selected.length} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length ? "（"+selected.length+"）" : ""}</Button>
     </ModalFooter></>}</ModalContent></Modal>;
 }
