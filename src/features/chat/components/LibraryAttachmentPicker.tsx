@@ -7,7 +7,7 @@ import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, expandLibrarySelection, isContainer, loadSharedSpacePages, loadLibraryFiles } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, isContainer, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -52,7 +52,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     request.then(data => {
       if (controller.signal.aborted) return;
       const loaded = data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
-      if (!space) rootItems.current = loaded;
+      if (space) recordLibraryOpen(space.id);
+      else rootItems.current = loaded;
       setItems(loaded);
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
