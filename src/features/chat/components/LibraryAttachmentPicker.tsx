@@ -34,6 +34,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const [items,setItems] = useState<LibraryFile[]>();
   const [space,setSpace] = useState<LibraryFile>();
   const [query,setQuery] = useState(initialQuery);
+  const rootQuery = useRef(initialQuery);
   const [selected,setSelected] = useState<LibraryFile[]>([]);
   const rootItems = useRef<LibraryFile[]>([]);
   const [error,setError] = useState("");
@@ -85,9 +86,10 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
   }
   function browseSpace(next?: LibraryFile) {
+    if (next) rootQuery.current = query;
     setSpace(next);
     setItems(undefined);
-    setQuery("");
+    setQuery(next ? "" : rootQuery.current);
     setError("");
   }
   function toggleItem(item: LibraryFile) {
