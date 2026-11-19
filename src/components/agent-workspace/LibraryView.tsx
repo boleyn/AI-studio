@@ -415,7 +415,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       if (unavailable.length) {
         const partialDownload = action === "download" && attachments.length > 0;
         toast({status:partialDownload ? "warning" : "error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : partialDownload ? "部分文件无法下载" : "无法下载所选资料",
-          description:<Box><Text>以下资料读取失败。</Text>
+          description:<Box><Text>{action === "chat"
+            ? "对话尚未开始。请重试，或调整选择后再开始聊天。"
+            : partialDownload ? `将下载已读取的 ${attachments.length} 个文件。以下文件需要重试。` : "请根据以下提示重试。"}</Text>
             <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map(({file,message})=>
               <li key={file.id}><strong>{file.name}</strong> · {message}</li>)}</Box></Box>});
         if (!partialDownload) return;
