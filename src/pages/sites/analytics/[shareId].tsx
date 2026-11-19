@@ -41,16 +41,16 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
   const [report] = await db.collection("site_daily_visits").aggregate([
     {$match:{projectToken:share.projectToken,day:{$gte:dates[0],$lte:dates[days-1]}}},
     {$facet:{
-      daily:[{$group:{_id:"$day",views:{$sum:"$views"},visitors:{$sum:1}}}],
+      daily:[{$group:{_id:"$day",views:{$sum:"$views"},visitors:{$sum:{$cond:["$viewer",1,0]}}}}],
       pages:[
         {$project:{viewer:1,entries:{$objectToArray:{$ifNull:["$pages",{}]}}}},
         {$unwind:"$entries"},
         {$group:{_id:{page:"$entries.k",viewer:"$viewer"},views:{$sum:"$entries.v"}}},
-        {$group:{_id:"$_id.page",visitors:{$sum:1},views:{$sum:"$views"}}},
+        {$group:{_id:"$_id.page",visitors:{$sum:{$cond:["$_id.viewer",1,0]}},views:{$sum:"$views"}}},
         {$sort:{views:-1,_id:1}},
         {$project:{_id:0,id:"$_id",visitors:1,views:1}},
       ],
-      distinct:[{$group:{_id:"$viewer"}},{$count:"count"}],
+      distinct:[{$match:{viewer:{$type:"string"}}},{$group:{_id:"$viewer"}},{$count:"count"}],
     }},
   ]).toArray();
   const daily = dates.map(day => {
