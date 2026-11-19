@@ -558,8 +558,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
-      subpages={!editor.shareId && <Flex direction="column" align="start" gap={1} mt={4}>
-        {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=><Button key={item.id} size="sm" variant="ghost" onClick={()=>openItem(item)}>{item.name}</Button>)}
+      subpages={!editor.shareId && <Flex as="nav" aria-label="子页面" direction="column" align="start" gap={1} mt={4}>
+        {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=>
+          <Flex key={item.id} align="center" gap={2} maxW="full" px={2} borderRadius="8px" _hover={{bg:"surface.hover"}}
+            sx={{"& a":{py:2,minWidth:0,overflowWrap:"anywhere"}}}>
+            <LibraryItemIcon item={item} compact/>{itemLink(item)}
+          </Flex>)}
         <Button size="sm" variant="ghost" leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
