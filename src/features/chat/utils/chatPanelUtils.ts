@@ -209,6 +209,19 @@ export const toStableChatFileViewUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
+export function resolveChatUploadUrl(file: Pick<UploadedFileArtifact, "storagePath" | "previewUrl" | "downloadUrl">, token: string, chatId: string) {
+  const path = file.storagePath?.replace(/^\/+/, "");
+  if (!path) return "";
+  // A copied attachment can still be scoped to the original conversation.
+  const savedUrl = [file.previewUrl, file.downloadUrl].find(url => {
+    if (!url?.startsWith("/api/core/chat/files/view?")) return false;
+    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    return Boolean(params.get("token") && params.get("chatId")) &&
+      params.get("storagePath")?.replace(/^\/+/, "") === path;
+  });
+  return savedUrl || toStableChatFileViewUrl({storagePath:path, token, chatId});
+}
+
 export const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
   if (!storagePath || !token) return "";
   const params = new URLSearchParams({
@@ -241,19 +254,9 @@ export const hydrateHistoryUserMessage = ({
   const hydratedFiles = files.map((file) => {
     const isChatUpload = /^\/?chat_uploads\//.test(file.storagePath || "");
     if (!isChatUpload && !isImageArtifact(file)) return file;
-    // Copied conversations can retain attachments scoped to the original chat.
-    if (isChatUpload) {
-      const originalUrl = [file.previewUrl, file.downloadUrl].find(url => {
-        if (!url?.startsWith("/api/core/chat/files/view?")) return false;
-        const saved = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-        return Boolean(saved.get("token") && saved.get("chatId")) &&
-          saved.get("storagePath")?.replace(/^\/+/, "") === file.storagePath?.replace(/^\/+/, "");
-      });
-      if (originalUrl) return originalUrl === file.previewUrl ? file : {...file, previewUrl:originalUrl};
-    }
     const stablePreviewUrl =
       (isChatUpload
-        ? toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId })
+        ? resolveChatUploadUrl(file, token, chatId)
         : file.publicUrl || toProjectFileViewUrl({ storagePath: file.storagePath, token })) ||
       file.previewUrl;
     if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;

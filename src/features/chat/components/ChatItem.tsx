@@ -8,7 +8,7 @@ import type { LibraryFile } from "@/types/library";
 import { LibraryReadError, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
-import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
+import { toProjectFileViewUrl, resolveChatUploadUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
 import { artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
@@ -371,9 +371,8 @@ const ChatItem = ({
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
                   const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
                     /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
-                  const savedChatUrl = [file.previewUrl, file.downloadUrl].find(url => url?.startsWith("/api/core/chat/files/view?"));
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
-                    ? savedChatUrl || toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
+                    ? resolveChatUploadUrl(file,token,activeConversationId || "")
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
