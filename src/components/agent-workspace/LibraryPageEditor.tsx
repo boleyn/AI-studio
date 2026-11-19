@@ -9,7 +9,7 @@ import type { LibraryFile } from "@/types/library";
 
 import LibraryMarkdown from "./LibraryMarkdown";
 
-export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse)";
+export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse), (orientation: landscape) and (max-height: 540px) and (pointer: coarse)";
 
 const formattingCommands = [
   {command:"/heading", label:"标题", markdown:"## "},
