@@ -102,6 +102,7 @@ const ChatInput = ({
   const theme = useTheme() as Record<string, any>;
   const chatInputTheme = theme?.workspace?.chatInput || {};
   const skillTheme = chatInputTheme?.skillMention || {};
+  const pendingLibraryMention = useRef<{text:string;start:number;end:number}>();
   const [libraryQuery, setLibraryQuery] = useState<string>();
   const [imageModeKey,setImageModeKey] = useState<string>();
   const imageMode = Boolean(draftStorageKey && imageModeKey === draftStorageKey);
@@ -363,7 +364,7 @@ const ChatInput = ({
   const applySelectedSkill = useCallback(
     (skillName: string) => {
       if (skillName === "/library" && mentionRange) {
-        setText(text.slice(0,mentionRange.start) + text.slice(mentionRange.end));
+        pendingLibraryMention.current = {text,...mentionRange};
         setMentionRange(null);
         setSkillQuery("");
         const query = text.slice(mentionRange.start + 1, mentionRange.end);
@@ -937,7 +938,18 @@ const ChatInput = ({
                 <MenuItem onClick={() => setLibraryQuery("")}>从资料空间添加</MenuItem>
               </MenuList></Portal>
             </Menu>
-            {libraryQuery !== undefined && <LibraryAttachmentPicker initialQuery={libraryQuery} onClose={() => setLibraryQuery(undefined)} onAdd={picked => onPickFiles(picked, true)}/>}
+            {libraryQuery !== undefined && <LibraryAttachmentPicker initialQuery={libraryQuery} onClose={() => {
+              pendingLibraryMention.current = undefined;
+              setLibraryQuery(undefined);
+            }} onAdd={async picked => {
+              const errors = await onPickFiles(picked, true);
+              const mention = pendingLibraryMention.current;
+              if (mention && errors.some(error => !error)) {
+                setText(current => current === mention.text ? current.slice(0,mention.start) + current.slice(mention.end) : current);
+                pendingLibraryMention.current = undefined;
+              }
+              return errors;
+            }}/>}
             {workspaceLayout ? (
               <>
                 <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
