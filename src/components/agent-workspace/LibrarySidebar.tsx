@@ -80,6 +80,6 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
       {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={activeSpaceId === item.id ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" w="full" justifyContent="start"
         aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{!item.shareId && spaceActions(item)}</Flex>)}
     </Box>
-    <Button variant="ghost" justifyContent="start" size="sm" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={16}/>} onClick={() => onSection("回收站")}>回收站</Button>
+    <Button variant="ghost" justifyContent="start" size="sm" flexShrink={0} h="35px" mb="9px" px="8px" iconSpacing="6px" fontWeight="normal" borderRadius="8px" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={20} strokeWidth={1.6}/>} onClick={() => onSection("回收站")}>回收站</Button>
   </Flex>;
 }
