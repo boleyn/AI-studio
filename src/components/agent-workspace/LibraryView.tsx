@@ -441,10 +441,6 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return usePicked("chat", attachments);
   }
   const key = (file: LibraryFile) => file.id;
-  const download = (file: LibraryFile) => isArtifactImage(libraryTypeName(file)) ?
-    <IconButton size="sm" variant="ghost" borderRadius="full" aria-label="下载文件" title="下载文件"
-      icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> :
-    <Button size="xs" variant="ghost" isLoading={batchBusy} onClick={()=>usePicked("download",[file])}>下载</Button>;
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
     try {
@@ -656,7 +652,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         !file.deleted && file.kind === "生成" && file.token === detail.token &&
         file.chatId === detail.chatId && file.path === detail.path
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
-      fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={download(detail)} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
+      fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={()=>usePicked("download",[detail])} downloading={batchBusy} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
       subpages={!editor.shareId && <Flex as="nav" aria-label="子页面" direction="column" align="start" gap={1} mt={4}>
         {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=>

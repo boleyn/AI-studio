@@ -1,7 +1,7 @@
 import { libraryTypeName, markdownFilename } from "@/types/library";
 import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuDivider, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
-import { CircleAlert, ChevronDown, Library, Minus, MessageSquare, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CircleAlert, ChevronDown, Download, Share2, Library, Minus, MessageSquare, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import LibraryMarkdown from "./LibraryMarkdown";
 import type { LibraryFile } from "@/types/library";
 import { libraryAttachmentUrl, libraryReadMessage, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
@@ -15,7 +15,8 @@ interface Props extends FileChatSizing {
   item: LibraryFile;
   versions: LibraryFile[];
   openVersion: (file: LibraryFile) => void;
-  download: ReactNode;
+  download: () => void;
+  downloading: boolean;
   share?:()=>void;
   fileChatOpen:boolean;
   resumeFileChat?:()=>void;
@@ -39,7 +40,7 @@ export default function LibraryFileViewer(props: Props) {
   return <FilePreview key={props.item.id} {...props} panel={panel} setPanel={setPanel}/>;
 }
 
-function FilePreview({item,versions,openVersion,download,share,fileChatWidth,setFileChatWidth,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
+function FilePreview({item,versions,openVersion,download,downloading,share,fileChatWidth,setFileChatWidth,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
   panel?: ViewerPanel;
   setPanel: (panel?: ViewerPanel) => void;
 }) {
@@ -139,8 +140,9 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
           {[50,75,100,125,150,200].map(percent=><MenuItem key={percent} onClick={()=>setScale(percent/100)}>{percent}%</MenuItem>)}
         </MenuList>
       </Menu>}
-      <Flex role="group" aria-label="文件操作" align="center" gap={1} flexShrink={0}>
-        {download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}
+      <Flex role="group" aria-label="文件操作" align="center" gap="2px" flexShrink={0}>
+        <IconButton aria-label="下载" title="下载" size="sm" borderRadius="full" variant="ghost" icon={<Download size={16}/>} isLoading={downloading} onClick={download}/>
+        {share && <Button size="sm" minW="80px" borderRadius="full" leftIcon={<Share2 size={16}/>} onClick={share}>分享</Button>}
       </Flex>
       <Flex role="group" aria-label="查看器控件" align="center" flexShrink={0}>
         <IconButton ref={closeButton} variant="ghost" size="sm" boxSize="36px" borderRadius="full" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
@@ -161,7 +163,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
       </Flex> : document ? <ExtendedFilePreview key={attempt} url={libraryAttachmentUrl(item)} name={name} onRetry={()=>setAttempt(n=>n+1)}/> :
         <Flex h="100%" align="center" justify="center" direction="column" gap={2} textAlign="center" px={4}>
           <LibraryItemIcon item={item}/><Text fontSize="xs" color="gray.500">无法预览</Text><Heading size="md">{item.name}</Heading>
-          <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text>{download}
+          <Text fontSize="sm" color="gray.600">此文件类型可下载或添加到聊天</Text><Button size="sm" borderRadius="full" isLoading={downloading} onClick={download}>下载文件</Button>
         </Flex>}
     </Box>
     {panel && <Box as="aside" aria-label={panel === "info" ? "文件详情" : "版本历史记录"} position={{base:"absolute",lg:"relative"}}
