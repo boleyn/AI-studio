@@ -1,5 +1,5 @@
 import { AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
-import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
+import { Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -133,8 +133,25 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     {dialog}
   </Box>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
-  if (grid) return <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
-    {visible.map(site => <Box key={site.id} p={4} borderWidth="1px" borderRadius="14px">{siteLink(site)}{siteMenu(site)}</Box>)}
+  if (grid) return <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(min(100%,250px),1fr))" gap={6}>
+    {visible.map(site => {
+      const published = new Date(site.publishedAt || "");
+      const AudienceIcon = site.restricted ? LockKeyhole : Link2;
+      return <Box as="article" key={site.id} position="relative" minW={0} overflow="hidden" borderRadius="16px" boxShadow="0 2px 12px rgba(0,0,0,.07)">
+        <Flex aspectRatio="3 / 2" align="center" justify="center" bg="gray.50" color="gray.400"><PanelsTopLeft size={32} aria-hidden/></Flex>
+        <Flex px={3} py={2} minH="64px" align="center" gap={2}>
+          <Box flex="1" minW={0}>
+            <Link display="block" isTruncated fontSize="sm" fontWeight="medium" href={siteUrl(site)}
+              aria-label={"访问 "+site.name} _after={{content:'""',position:"absolute",inset:0}}>{site.name}</Link>
+            <Flex align="center" gap={1} color="#666" fontSize="xs">
+              {site.shared ? <Text>{audience(site)}</Text> : <Button variant="link" position="relative" zIndex={1} color="inherit" fontSize="inherit" fontWeight="normal"
+                leftIcon={<AudienceIcon size={13} aria-hidden/>} iconSpacing={1} aria-label={audience(site)+"，打开 "+site.name+" 的共享设置"} onClick={()=>setSharing(site)}>{audience(site)}</Button>}
+              {Number.isFinite(published.getTime()) && <><span aria-hidden>·</span><time dateTime={published.toISOString()}>{published.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})}</time></>}
+            </Flex>
+          </Box><Box position="relative" zIndex={1}>{siteMenu(site)}</Box>
+        </Flex>
+      </Box>;
+    })}
     {dialog}</Box>;
   return <Box overflowX="auto"><Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="站点"
     sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"},
