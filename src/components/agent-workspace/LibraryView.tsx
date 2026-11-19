@@ -1325,7 +1325,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <Button colorScheme="red" onClick={() => {setConfirmDiscard(false); setReferenceDraft(undefined);}}>放弃更改</Button>
         </ModalFooter></ModalContent>
     </Modal>
-    {(connectors || router.query.libraryConnectors) && <LibraryConnectors callbackStatus={typeof router.query.libraryConnectors === "string" ? router.query.libraryConnectors : undefined} close={()=>{
+    {(connectors || router.query.libraryConnectors) && <LibraryConnectors onAttach={onChat} callbackStatus={typeof router.query.libraryConnectors === "string" ? router.query.libraryConnectors : undefined} close={()=>{
       setConnectors(false);
       if (router.query.libraryConnectors) {
         const query = {...router.query};

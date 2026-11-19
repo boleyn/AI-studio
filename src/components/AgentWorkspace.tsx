@@ -227,6 +227,7 @@ export default function AgentWorkspace({
       delete nextQuery.libraryFolder;
       delete nextQuery.librarySection;
       delete nextQuery.libraryTab;
+      delete nextQuery.libraryConnectors;
       delete nextQuery.librarySource;
       delete nextQuery.libraryType;
       delete nextQuery.libraryLayout;

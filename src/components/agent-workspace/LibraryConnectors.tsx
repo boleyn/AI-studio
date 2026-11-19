@@ -3,6 +3,8 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import DropboxFilePicker from "./DropboxFilePicker";
+
 const providerIcons: Record<string,string> = { "Google Drive":"google-drive.png", Box:"box.svg", Dropbox:"dropbox.svg", SharePoint:"sharepoint.svg" };
 
 const endpoints: Record<string, string> = {
@@ -12,7 +14,8 @@ const endpoints: Record<string, string> = {
   Dropbox: "/api/library/connectors/dropbox",
 };
 type Status = { configured: boolean; connected: boolean };
-export default function LibraryConnectors({ close, callbackStatus, siteId }: { siteId?: string; close: () => void; callbackStatus?: string }) {
+export default function LibraryConnectors({ close, callbackStatus, siteId, onAttach }: { onAttach?: (files: File[]) => Promise<void>; siteId?: string; close: () => void; callbackStatus?: string }) {
+  const [browseDropbox, setBrowseDropbox] = useState(false);
   const [provider, setProvider] = useState<string>();
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   const callbackProvider = Object.keys(endpoints).find(name => callbackStatus?.startsWith(name.toLowerCase() + "-")) ?? "Google Drive";
@@ -44,6 +47,7 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
   }
   const services = siteId ? ["Google Drive"] : ["Google Drive","Box","Dropbox","SharePoint"];
   const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
+  if (browseDropbox && onAttach) return <DropboxFilePicker back={() => setBrowseDropbox(false)} onAttach={onAttach}/>;
   if (provider) {
     const available = statuses[provider]?.configured;
     const displayName = provider === "SharePoint" ? "Microsoft SharePoint" : provider;
@@ -75,6 +79,7 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
               setAttempt(value=>value+1);
             }}>重试读取状态</Button> : <Text role="status" fontSize="sm" color="gray.600">正在读取…</Text>
           ) : statuses[name]?.connected ? <Flex align="center" gap={2}>
+            {name === "Dropbox" && onAttach && <Button size="sm" variant="ghost" onClick={() => setBrowseDropbox(true)}>浏览文件</Button>}
             <Text fontSize="sm" color="gray.600">已连接</Text>
             <Button size="sm" variant="outline" borderRadius="full" isDisabled={!statuses[name].configured} isLoading={busy}
               aria-label={"重新连接 " + name} onClick={()=>connect(name)}>重新连接</Button>
