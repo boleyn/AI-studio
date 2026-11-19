@@ -548,7 +548,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     requestAnimationFrame(()=>menu?.querySelector<HTMLElement>(open ? "[data-copy-link]" : "[data-copy-trigger]")?.focus());
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
-    <MenuButton as={IconButton} variant="ghost" size="xs" aria-label={file.kind === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
+    <MenuButton as={IconButton} variant="ghost" size="xs" isDisabled={selectionLocked} aria-label={file.kind === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
     <Portal><MenuList w="240px" minW="0" p="9px" borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge([file])}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
@@ -872,7 +872,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{new Date(file.deletedAt).toLocaleDateString("zh-CN")}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
-                icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving}
+                icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>}
               {actions(file)}</Flex></td>
           </Box>)}</tbody>
