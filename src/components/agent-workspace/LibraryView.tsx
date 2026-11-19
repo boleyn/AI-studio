@@ -398,7 +398,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     <IconButton size="sm" variant="ghost" borderRadius="full" aria-label="下载文件" title="下载文件"
       icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> : file.kind === "上传" ?
     <Button as="a" size="xs" variant="ghost" href={downloadUrl(file)}>下载</Button> :
-    <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version)
+    <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version,file.name)
       .catch(() => toast({ status:"error", title:"无法下载此文件" }))}>下载</Button>;
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
@@ -508,7 +508,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         </Box>}
       </Box>}
       {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
-        <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
+        <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version,file.name).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       {!pagesSection && <>
         <MenuDivider my={2}/>
         <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
