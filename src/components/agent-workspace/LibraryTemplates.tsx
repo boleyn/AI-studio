@@ -114,20 +114,21 @@ const workbookTemplates = [
   {name: "Three-Statement Forecast", columns: ["Period", "Revenue", "Expenses", "Net income"], formula: "B2-C2"},
 ];
 
-function TemplateActions({label, onUse}: {label:string; onUse:()=>void}) {
+function TemplateActions({label, onUse, onEdit}: {label:string; onUse:()=>void; onEdit?:()=>void}) {
   return <Menu>
   <MenuButton as={IconButton} aria-label={label} icon={<MoreHorizontal size={16} />}
     size="xs" position="absolute" top={2} right={2} borderRadius="full" bg="white"
     opacity={{base:1, md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} _expanded={{opacity:1}} />
-  <MenuList><MenuItem onClick={onUse}>Use template</MenuItem></MenuList>
+  <MenuList><MenuItem onClick={onUse}>Use template</MenuItem>{onEdit && <MenuItem onClick={onEdit}>Edit</MenuItem>}</MenuList>
 </Menu>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpload, onSlides, onImage }: {
+export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEditWorkbook, onUpload, onSlides, onImage }: {
   onSlides: (name?: SlideTemplateName) => void;
   onImage: (name: string) => void;
   onUpload: () => void;
   onWorkbook: (file: File) => void;
+  onEditWorkbook: (file: File, name: string) => Promise<void>;
   triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
   onPick: (name: string, body: string) => void;
@@ -156,7 +157,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   const slides = slideTemplates.filter(matches);
   const images = imageTemplates.filter(({name}) => matches(name));
   const shows = (kind: string) => category === "为你推荐" || category === kind;
-  async function createWorkbook(template: typeof workbookTemplates[number]) {
+  async function createWorkbook(template: typeof workbookTemplates[number], edit = false) {
     if (building) return;
     setBuilding(template.name);
     setBuildError("");
@@ -171,8 +172,10 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
       sheet["!cols"] = template.columns.map(() => ({wch:20}));
       const book = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(book, sheet, template.name);
-      onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
-        {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      const file = new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
+        {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      if (edit) await onEditWorkbook(file, template.name);
+      else onWorkbook(file);
     } catch {
       setBuildError(`无法创建“${template.name}”，请重试。`);
     } finally {
@@ -204,7 +207,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
               </Box>
               <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
             </Button>
-            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
+            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} onEdit={() => createWorkbook(template, true)} />
             </Box>) : [];
   const slideCards = shows("幻灯片") ? slides.map(name =>
             <Box key={name} position="relative" role="group">
