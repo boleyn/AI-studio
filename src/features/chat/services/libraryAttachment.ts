@@ -44,7 +44,9 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   if (!space.shareId) return [];
   const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}),
     {headers:withAuthHeaders(), signal});
-  if (!response.ok) throw new Error("无法读取共享空间，请检查访问权限后重试。");
+  if (response.status === 401) throw new Error("请重新登录后打开共享空间。");
+  if (response.status === 403 || response.status === 404) throw new Error("共享空间已不可访问，请联系所有者确认。");
+  if (!response.ok) throw new Error("共享空间暂时无法加载，请稍后重试。");
   const data: {pages:{id:string;name:string}[]} = await response.json();
   return data.pages.map(page => ({
     ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传",

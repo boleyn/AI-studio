@@ -421,8 +421,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setBatchBusy(true);
       try {
         for (const space of shared) attachments.push(...await loadSharedSpacePages(space));
-      } catch {
-        toast({status:"error", title:"无法读取共享空间，请检查访问权限后重试。"});
+      } catch (error) {
+        toast({status:"error", title:"无法读取共享空间", isClosable:true,
+          description:error instanceof TypeError ? "连接失败，请检查网络后重试。" :
+            error instanceof Error ? error.message : "请稍后重试。"});
         return;
       } finally {
         setBatchBusy(false);
