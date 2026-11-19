@@ -191,7 +191,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     readProjectArtifactVersion(source.token,source.version,source.path),
   ]);
   if (!live.buffer.equals(current.buffer) && !live.buffer.equals(previous.buffer)) return res.status(409).end();
-  const restored: LibraryFile = {...head,id,version:source.version,size:previous.buffer.length,time:new Date().toISOString()};
+  const headTime = Date.parse(head.time);
+  const restoredAt = Number.isFinite(headTime) ? Math.max(Date.now(), headTime + 1) : Date.now();
+  const restored: LibraryFile = {...head,id,version:source.version,size:previous.buffer.length,time:new Date(restoredAt).toISOString()};
   const record = await restores.findOneAndUpdate({_id:id,owner},{$setOnInsert:{...restored,owner,pending:true}},{upsert:true,returnDocument:"after"});
   if (!record || record.version !== source.version) return res.status(409).end();
   if (record.pending) {
