@@ -1,3 +1,4 @@
+import { saveLinkedSkillFiles } from "@server/library/skillDeliverables";
 import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { z } from "zod";
 import { loadConversationGoal, saveConversationGoal, loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
@@ -836,6 +837,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             files: nextSkillFiles,
           },
         });
+      }
+      if (!isProjectToken && conversationId) {
+        const reply = runResult.assistantMessage.message?.content;
+        await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantMessageIdForSnapshot,
+          typeof reply === "string" ? reply : sdkContentToText(reply ?? []), toPublicSkillRuntimeFiles(updatedFiles));
       }
       streamEvent(res, SdkStreamEventEnum.streamEvent, {
         subtype: "files_updated",
