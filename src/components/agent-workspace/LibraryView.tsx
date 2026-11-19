@@ -2,7 +2,7 @@ import AttachmentFilename from "@features/chat/components/AttachmentFilename";
 import LibraryMarkdown from "./LibraryMarkdown";
 import LibraryCardGrid from "./LibraryCardGrid";
 import useDriveConnected from "./useDriveConnected";
-import { formatFileSize, markdownFilename, matchesExportedPageName } from "@/types/library";
+import { formatFileSize, markdownFilename, matchesLibraryName } from "@/types/library";
 import { libraryActivityTime, libraryFileOrigin, libraryTypeName } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
@@ -431,9 +431,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   function matchesSearch(file: LibraryFile) {
     if (!searchTerm) return true;
-    if (personalSection) return file.name.normalize("NFC").toLowerCase().includes(searchTerm);
-    if (matchesExportedPageName(file, searchTerm)) return true;
-    return matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation]
+    if (personalSection) return matchesLibraryName(file, searchTerm);
+    if (matchesLibraryName(file, searchTerm)) return true;
+    return matchesLibraryType(file, searchTerm) || [file.path, file.project, file.conversation]
       .some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm));
   }
   const activeParentPages = new Set(files?.filter(item => item.kind === "页面" && !item.deleted).map(item => item.id));

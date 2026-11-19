@@ -66,6 +66,10 @@ export function matchesExportedPageName(file: LibraryFile, normalizedQuery: stri
     markdownFilename(file.name).normalize("NFC").toLowerCase() === normalizedQuery;
 }
 
+export function matchesLibraryName(file: LibraryFile, normalizedQuery: string) {
+  return file.name.normalize("NFC").toLowerCase().includes(normalizedQuery) || matchesExportedPageName(file, normalizedQuery);
+}
+
 export function sharedPreviewFilename(name: string, originalName?: string) {
   const extension = originalName?.match(/\.[a-z0-9]{1,12}$/i)?.[0];
   return extension && !name.toLowerCase().endsWith(extension.toLowerCase()) ? name + extension : name;
