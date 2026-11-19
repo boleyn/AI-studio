@@ -199,11 +199,11 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         <IconButton size="sm" boxSize="36px" borderRadius="full" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
       </Flex>
       {panel === "history" ? <Flex direction="column" mt={4} gap={1}>
-        {versions.map(version => <Button key={version.id} ref={version.id === item.id ? historySelection : undefined} variant={version.id === item.id ? "solid" : "ghost"}
+        {versions.map((version,index) => <Button key={version.id} ref={version.id === item.id ? historySelection : undefined} variant={version.id === item.id ? "solid" : "ghost"}
           justifyContent="space-between" size="sm" aria-current={version.id === item.id ? "true" : undefined}
           onClick={()=>{if (version.id !== item.id) openVersion(version);}}>
           {version.shareId ? "共享版本" : version.time ? new Date(version.time).toLocaleString("zh-CN") : version.name}
-          {version.id === item.id && <Text as="span" fontSize="xs">正在查看</Text>}
+          {index === 0 ? <Text as="span" fontSize="xs">当前版本</Text> : version.id === item.id && <Text as="span" fontSize="xs">正在查看</Text>}
         </Button>)}
       </Flex> : <><Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
       <Text fontSize="xs" color="gray.600" mt={1}>资料空间</Text>
