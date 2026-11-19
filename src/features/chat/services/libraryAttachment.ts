@@ -3,7 +3,8 @@ import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
-import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE, redirectedToLogin } from "./files";
+import { resolveChatUploadUrl } from "../utils/chatPanelUtils";
+import { MAX_UPLOAD_FILE_SIZE, redirectedToLogin } from "./files";
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
@@ -115,7 +116,7 @@ export function libraryAttachmentUrl(item: LibraryFile) {
   let url = "/api/code?" + query;
   if (item.kind === "页面") url = "/api/library/pages?id=" + item.id;
   else if (item.directUpload) url = "/api/library/files?id=" + item.id;
-  else if (item.kind === "上传") url = buildDownloadUrl({storagePath:item.path,token:item.token,chatId:item.chatId});
+  else if (item.kind === "上传") url = resolveChatUploadUrl({storagePath:item.path},item.token,item.chatId);
   return url;
 }
 
