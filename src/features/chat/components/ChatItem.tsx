@@ -368,6 +368,10 @@ const ChatItem = ({
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const isMarkdown = /\.(md|markdown)$/i.test(name) ||
                     /^text\/markdown(?:;|$)/i.test(file.type || "");
+                  const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
+                    "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
+                  const openUrl = fileUrl || originalUrl;
+                  const canOpen = Boolean(isMarkdown || openUrl);
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
@@ -377,24 +381,23 @@ const ChatItem = ({
                       borderRadius="md"
                       overflow="hidden"
                     >
-                      {image ? (
-                        fileUrl ? (
+                      {image && fileUrl ? (
                           <Box as="img" src={fileUrl} alt={name} maxH="220px" objectFit="contain" w="100%" />
-                        ) : null
                       ) : (
                         <Flex
                           alignItems="center" gap={2}
-                          as="button" type="button" aria-label={`打开 ${name}`}
-                          cursor={fileUrl || isMarkdown ? "pointer" : "default"}
+                          as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，缺少附件地址`}
+                          cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
                             if (isMarkdown) setPreview({name,url:fileUrl,libraryItemId:file.libraryItemId});
-                            else if (fileUrl) window.open(fileUrl,"_blank","noopener,noreferrer");
+                            else if (openUrl) window.open(openUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
                           w="100%"
                         >
                           <LibraryItemIcon item={{name}}/>
                           <AttachmentFilename name={name}/>
+                          {!canOpen && <Text as="span" fontSize="xs" color="gray.600">缺少附件地址</Text>}
                         </Flex>
                       )}
                     </Box>
