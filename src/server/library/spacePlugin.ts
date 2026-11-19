@@ -76,15 +76,15 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
       context.registerTool<{pageId:string; revision:number; original:string; replacement:string}>({
         name:"EditLibraryPage",
         toolset:"library-spaces",
-        description:"按用户要求修改个人页面中的一处原文。先读取页面，提供版本号及能唯一定位的原文；其余正文保留。",
+        description:"按用户要求修改个人页面中的一处原文。先读取页面，提供版本号及能唯一定位的原文；其余正文保留。向空白页面写入首段时，原文传空字符串。",
         parameters:{
           type:"object",additionalProperties:false,required:["pageId","revision","original","replacement"],
           properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},revision:{type:"integer",minimum:0},
-            original:{type:"string",minLength:1,maxLength:500000},replacement:{type:"string",maxLength:500000}},
+            original:{type:"string",maxLength:500000},replacement:{type:"string",maxLength:500000}},
         },
         async handler(input,ctx) {
           if (ctx.isSubagent || !/^[a-f0-9]{24}$/.test(input.pageId) || !Number.isSafeInteger(input.revision) || input.revision < 0 ||
-              typeof input.original !== "string" || !input.original || typeof input.replacement !== "string")
+              typeof input.original !== "string" || typeof input.replacement !== "string")
             return {isError:true,content:"请提供页面编号、版本及需要替换的原文。"};
           const pages = (await getMongoDb()).collection("library_pages");
           const filter = {_id:new ObjectId(input.pageId),owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true},
@@ -92,7 +92,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           const page = await pages.findOne(filter,{projection:{body:1}});
           if (typeof page?.body !== "string") return {isError:true,content:"请重新读取页面并核对最新版本。"};
           const index = page.body.indexOf(input.original);
-          if (index < 0 || page.body.indexOf(input.original,index+1) >= 0)
+          if (index < 0 || (page.body.length > 0 && page.body.indexOf(input.original,index+1) >= 0))
             return {isError:true,content:"无法唯一定位原文，请核对内容并补充上下文。"};
           const body = page.body.slice(0,index) + input.replacement + page.body.slice(index+input.original.length);
           if (body.length > 500000) return {isError:true,content:"修改后的正文超过页面长度限制。"};
