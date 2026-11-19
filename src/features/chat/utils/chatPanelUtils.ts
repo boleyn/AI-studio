@@ -209,7 +209,7 @@ export const toStableChatFileViewUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
-const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
+export const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
   if (!storagePath || !token) return "";
   const params = new URLSearchParams({
     token,

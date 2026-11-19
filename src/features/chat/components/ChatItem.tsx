@@ -7,7 +7,7 @@ import type { LibraryFile } from "@/types/library";
 import { LibraryReadError, readLibraryAttachment } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
-import { toStableChatFileViewUrl } from "../utils/chatPanelUtils";
+import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
 import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
@@ -315,7 +315,7 @@ const ChatItem = ({
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
-                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || "";
+                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const isMarkdown = /\.(md|markdown)$/i.test(file.name || "") ||
                     /^text\/markdown(?:;|$)/i.test(file.type || "");
                   return (
