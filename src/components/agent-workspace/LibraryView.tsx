@@ -969,6 +969,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 setSelected([]);
                 if (name === tab) return;
                 const target = listUrl(section,name,undefined,undefined,allHome);
+                if (ownItems && sources.length) target.query.librarySource = sources;
                 if (query.trim()) target.query.librarySearch = query;
                 void router.push(target,undefined,{shallow:true,scroll:false});
               }}>{allHome && searchTerm && name === "推荐" ? "所有结果" : name}</Button>)}
