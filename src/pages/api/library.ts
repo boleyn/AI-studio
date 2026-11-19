@@ -60,8 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { "content.type": "attachment" }, { "message.content.type": "attachment" },
   ] }).project({ token: 1, chatId: 1, time: 1, "additional_kwargs.workspaceArtifactPaths": 1,
     "additional_kwargs.workspaceArtifactVersion": 1, "additional_kwargs.workspaceArtifactSizes": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1, "artifact.files.libraryItemId":1,
-    "content.library_item_id":1, "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
-    "message.content.library_item_id":1, "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
+    "content.size":1, "content.library_item_id":1, "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
+    "message.content.size":1, "message.content.library_item_id":1, "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
   for await (const msg of messages) {
     const chat = chats.get(JSON.stringify([msg.token, msg.chatId]));
     if (!chat) continue;
@@ -101,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         path:file?.storagePath, name:file?.name, size:file?.size, origin:file?.libraryItemId,
       })) : []),
       ...blocks.map(block => ({
-        path:block.source_storage_path || block.storage_path, name:block.name, size:undefined, origin:block.library_item_id,
+        path:block.source_storage_path || block.storage_path, name:block.name, size:block.size, origin:block.library_item_id,
       })),
     ];
     const referencedPaths = new Set(attachments.filter(file => file.origin && typeof file.path === "string")

@@ -241,6 +241,7 @@ const toUserMessageContentBlocks = ({
       type: "attachment",
       name: file.name || "",
       mime_type: file.type || "application/octet-stream",
+      size: file.size,
       ...(file.libraryItemId ? {library_item_id:file.libraryItemId} : {}),
       storage_path: storagePath,
       ...(typeof file.storagePath === "string" && file.storagePath.trim()
