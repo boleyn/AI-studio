@@ -1,5 +1,4 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import LibraryMarkdown from "./LibraryMarkdown";
 import { ArtifactSection } from "../workspace/ArtifactSection";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import { ArtifactFileIcon, artifactFileType } from "../workspace/ArtifactFileIcon";
@@ -86,7 +85,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, so
   if (version) query.set("version", version);
   const fileUrl = `/api/code?${query}`;
   const isSpreadsheet = isSpreadsheetFile(selectedPath);
-  const showDocumentZoom = /\.docx$/i.test(selectedPath);
+  const showDocumentZoom = /\.doc[xm]$/i.test(selectedPath);
   const onDocumentStateChange = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
     const percent = state.zoom ? Math.round(state.zoom.scale * 100) : 100;
     setDocumentZoom((previous) => previous?.url === fileUrl && previous.percent === percent
@@ -280,18 +279,7 @@ export default function WorkspaceFilesPanel({ token, version, conversationId, so
               : undefined}
             localOnly version={version} token={token} activeFile={selectedPath} sourceCode={version ? "" : selected.code} />
         ) : selected && showMarkdown ? (
-          <Box lineHeight="1.7" overflowWrap="anywhere" sx={{
-            "& h1, & h2, & h3": { fontWeight: 600, mt: 4, mb: 2 },
-            "& h1": { fontSize: "2xl" },
-            "& h2": { fontSize: "xl" },
-            "& p, & ul, & ol, & pre, & table": { mb: 4 },
-            "& ul, & ol": { pl: 6 },
-            "& pre": { overflowX: "auto", bg: "gray.50", p: 3, borderRadius: "md" },
-            "& th, & td": { border: "1px solid", borderColor: "gray.200", px: 2, py: 1 },
-            "& a": { textDecoration: "underline" },
-          }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.code}</ReactMarkdown>
-          </Box>
+          <Box lineHeight="1.7"><LibraryMarkdown>{selected.code}</LibraryMarkdown></Box>
         ) : selected ? (
           <ExtendedFilePreview key={`${fileUrl}:${previewAttempt}`} url={fileUrl}
             name={selectedPath.split("/").pop() || selectedPath} onRetry={retryPreview}
