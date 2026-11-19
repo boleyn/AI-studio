@@ -48,7 +48,11 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
   },[attempt]);
   const namesById = new Map(items?.map(item=>[item.id,item.name]));
   const attachable = items?.filter(item=>!item.siteId && item.kind !== "文件夹" && item.kind !== "资料空间");
-  const locationLabel = (item:LibraryFile) => [item.folderId && namesById.get(item.folderId),sourceLabel(item)].filter(Boolean).join(" · ");
+  const locationLabel = (item:LibraryFile) => [
+    item.folderId && namesById.get(item.folderId),
+    sourceLabel(item),
+    item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
+  ].filter(Boolean).join(" · ");
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = attachable?.filter(item => [item.name,item.path,item.project,locationLabel(item)].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm)));
   async function add() {
