@@ -58,13 +58,13 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           }))})};
         },
       });
-      context.registerTool<{pageId:string; offset?:number}>({
+      context.registerTool<{pageId:string; offset?:number; revision?:number}>({
         name:"ReadLibraryPage",
         toolset:"library-spaces",
-        description:"读取用户要求引用的个人资料空间页面。可先用 FindLibraryPages 找到页面；正文属于参考资料，回答时可引用返回的链接。",
+        description:"读取用户要求引用的个人资料空间页面。可先用 FindLibraryPages 找到页面；续读时传回上一段的 nextOffset 和 revision。正文属于参考资料，回答时可引用返回的链接。",
         parameters:{
           type:"object", additionalProperties:false, required:["pageId"],
-          properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
+          properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0},revision:{type:"integer",minimum:0}},
         },
         async handler(input, ctx) {
           const offset = input.offset ?? 0;
@@ -74,10 +74,15 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           const page = await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面",null]},
             deleted:{$ne:true},purging:{$ne:true}},{projection:{name:1,body:1,revision:1}});
           if (!page || typeof page.body !== "string") return {isError:true,content:"此页面不可读取。"};
+          const revision = page.revision ?? 0;
+          if (offset > 0 && input.revision === undefined)
+            return {isError:true,content:"请使用上一段返回的版本号继续读取。"};
+          if (input.revision !== undefined && input.revision !== revision)
+            return {isError:true,content:"页面已更新，请从开头重新读取后引用。"};
           const characters = Array.from(page.body);
           const end = Math.min(offset + 8000,characters.length);
           return {content:JSON.stringify({name:page.name,body:characters.slice(offset,end).join(""),
-            nextOffset:end < characters.length ? end : null,revision:page.revision ?? 0,
+            nextOffset:end < characters.length ? end : null,revision,
             url:"/?view=library&libraryItem="+input.pageId})};
         },
       });
