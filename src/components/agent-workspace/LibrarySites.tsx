@@ -1,4 +1,4 @@
-import { AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter, AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
 import { BarChart3, Trash2, Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
@@ -6,7 +6,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
+interface Site { slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
 
 const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
@@ -16,6 +16,8 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const cancelDelete = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const [title,setTitle] = useState("");
+  const [slugDraft,setSlugDraft] = useState<string>();
+  const [slugError,setSlugError] = useState("");
   const [saving,setSaving] = useState(false);
   const [sharing, setSharing] = useState<Site>();
   const [sites, setSites] = useState<Site[]>();
@@ -56,7 +58,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
   const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
-  const siteUrl = (site: Site) => "/share/preview/" + encodeURIComponent(site.id);
+  const siteUrl = (site: Site) => site.slug ? "/s/"+encodeURIComponent(site.slug) : "/share/preview/" + encodeURIComponent(site.id);
   const siteCover = (site: Site) => <Flex position="relative" overflow="hidden" flexShrink={0}
     w={grid ? "full" : "80px"} aspectRatio={grid ? "3 / 2" : "8 / 5"} borderRadius={grid ? 0 : "6px"}
     align="center" justify="center" bg="gray.50" color="gray.400">
@@ -154,7 +156,26 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Flex gap={2} my={2}><Input id="library-site-name" aria-label="站点标题" value={title} maxLength={255} isDisabled={saving} onChange={event=>setTitle(event.target.value)}/>
         <Button type="submit" isLoading={saving} isDisabled={!title.trim() || title.trim()===settings.name}>保存</Button></Flex>
     </Box>
-    <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
+    <Text mt={4}>网址</Text><Flex align="center" gap={3}><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
+      <Button size="sm" aria-label="更改托管站点 URL" onClick={()=>{setSlugError("");setSlugDraft(settings.slug || "");}}>更改</Button></Flex>
+    <Modal isOpen={slugDraft !== undefined} isCentered onClose={()=>{if (!saving) setSlugDraft(undefined);}}>
+      <ModalOverlay/><ModalContent mx={4} borderRadius="16px"><ModalHeader>更改 URL</ModalHeader><ModalCloseButton aria-label="关闭对话框" isDisabled={saving}/>
+        <form onSubmit={async event=>{
+          event.preventDefault();
+          if (!slugDraft || saving) return;
+          setSaving(true);setSlugError("");
+          try {
+            const response = await fetch("/api/library/sites",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:settings.id,slug:slugDraft})});
+            if (!response.ok) throw new Error(response.status===409 ? "这个网址已被使用，请换一个。" : "网址保存失败，请重试。");
+            setSites(rows=>rows?.map(site=>site.id===settings.id ? {...site,slug:slugDraft} : site));
+            setSlugDraft(undefined);
+          } catch(error) {setSlugError(error instanceof Error ? error.message : "网址保存失败");}
+          finally {setSaving(false);}
+        }}><ModalBody><Text mb={2}>为你的站点输入新的网址</Text>
+          <Flex align="center" gap={1}><Text>/s/</Text><Input autoFocus aria-label="站点 URL 名称" maxLength={63} pattern="[a-z0-9]+(-[a-z0-9]+)*" title="使用小写字母、数字和连字符" required value={slugDraft || ""} onChange={e=>setSlugDraft(e.target.value)}/></Flex>
+          {slugError && <Text role="alert" color="red.600">{slugError}</Text>}</ModalBody><ModalFooter gap={2}>
+          <Button isDisabled={saving} onClick={()=>setSlugDraft(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!slugDraft || slugDraft===settings.slug}>更改 URL</Button></ModalFooter></form>
+      </ModalContent></Modal>
     <Heading as="h3" size="sm" mt={6}>共享设置</Heading>
     <Flex mt={2} gap={3} align="center" wrap="wrap"><Text>谁可以查看你的站点</Text><Text ml="auto">{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>
       <Button size="sm" aria-label="管理共享" onClick={()=>setSharing(settings)}>管理</Button></Flex>

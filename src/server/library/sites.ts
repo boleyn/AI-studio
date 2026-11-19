@@ -41,11 +41,11 @@ export async function listLibrarySites(owner:string, names:Map<string,string>) {
       { $project: { time:1, id:1, name:1, memberCount:1, ownerId:1, ownerName: { $ifNull: [{ $first: "$owner.displayName" }, { $first: "$owner.username" }] } } },
     ]).toArray();
   const settingsKey = (site: (typeof received)[number]) => site.ownerId + "/" + siteLibraryId(String(site._id));
-  const settings = received.length ? await db.collection<{_id:string; name?:string; restricted?:boolean}>("library_file_settings")
-    .find({_id: {$in: received.map(settingsKey)}}, {projection: {name:1,restricted:1}})
+  const settings = received.length ? await db.collection<{_id:string; name?:string; restricted?:boolean;siteSlug?:string}>("library_file_settings")
+    .find({_id: {$in: received.map(settingsKey)}}, {projection: {name:1,restricted:1,siteSlug:1}})
     .toArray() : [];
   const sharedSettings = new Map(settings.map(entry => [entry._id, entry]));
-  return [...links.map(link => ({token:String(link._id),id:String(link.id),name:names.get(link._id) || "站点",time:link.time,ownerName:undefined,restricted:false,memberCount:link.memberCount,shared:false})),
-    ...received.map(link=>({token:String(link._id),id:String(link.id),name:sharedSettings.get(settingsKey(link))?.name || String(link.name),time:link.time,restricted:sharedSettings.get(settingsKey(link))?.restricted === true,memberCount:link.memberCount,ownerName:link.ownerName as string | undefined,shared:true}))]
+  return [...links.map(link => ({token:String(link._id),id:String(link.id),name:names.get(link._id) || "站点",time:link.time,ownerName:undefined,slug:undefined,restricted:false,memberCount:link.memberCount,shared:false})),
+    ...received.map(link=>({token:String(link._id),id:String(link.id),name:sharedSettings.get(settingsKey(link))?.name || String(link.name),time:link.time,slug:sharedSettings.get(settingsKey(link))?.siteSlug,restricted:sharedSettings.get(settingsKey(link))?.restricted === true,memberCount:link.memberCount,ownerName:link.ownerName as string | undefined,shared:true}))]
     .sort((a,b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0) || a.id.localeCompare(b.id));
 }
