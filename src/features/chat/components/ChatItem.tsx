@@ -420,6 +420,9 @@ const ChatItem = ({
                           {!canOpen && <Text as="span" fontSize="xs" color="gray.600">{unavailable}</Text>}
                         </Flex>
                       )}
+                      {!canOpen && file.name && <Link display="inline-block" mx={2} mb={2} fontSize="xs" textDecoration="underline"
+                        href={"/?" + new URLSearchParams({view:"library",librarySearch:file.name})}
+                        isExternal aria-label={`在资料空间查找 ${file.name}`}>在资料空间查找同名文件</Link>}
                       {imageFailed && <Button size="xs" variant="ghost" mx={2} mb={2} aria-label={`重新加载 ${name}`}
                         onClick={() => setFailedImages(previous => {
                           const next = new Set(previous);
