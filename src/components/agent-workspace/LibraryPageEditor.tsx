@@ -85,14 +85,14 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     } catch { setStatus("保存失败，请重试"); }
     finally { setBusy(false); }
   }
-  async function discussPage() {
+  async function discussPage(prompt?:string, body = content?.body) {
     if (!content || !onChat || openingChat) return;
     setOpeningChat(true);
     try {
       const title = content.name.trim() || "无标题页";
-      const snapshot = new File(["# " + title + "\n\n" + content.body],markdownFilename(title),{type:"text/markdown"});
+      const snapshot = new File(["# " + title + "\n\n" + body],markdownFilename(title),{type:"text/markdown"});
       const quote = selectedText && hasSelection ? selectedText.split("\n").map(line=>"> " + line).join("\n") + "\n\n" : undefined;
-      await onChat(fromLibrary(snapshot,shareId || page.id),quote);
+      await onChat(fromLibrary(snapshot,shareId || page.id),prompt ?? quote);
     } catch { setStatus("无法打开聊天，请重试"); }
     finally { setOpeningChat(false); }
   }
@@ -103,7 +103,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     }
   }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
-    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
+    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
       {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
       {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}</Flex>
     </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
@@ -118,13 +118,20 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
       <Textarea onKeyDown={event => {
-        if (!onCreateSubpage || busy || conflict || event.key !== "Enter" || event.shiftKey || event.ctrlKey ||
+        if (busy || openingChat || conflict || event.key !== "Enter" || event.shiftKey || event.ctrlKey ||
           event.metaKey || event.altKey || event.nativeEvent.isComposing || event.repeat) return;
         const {value, selectionStart, selectionEnd} = event.currentTarget;
         if (selectionStart !== selectionEnd) return;
         const lineStart = value.slice(0, selectionStart).lastIndexOf("\n") + 1;
-        if (value.slice(lineStart, selectionStart) !== "/page" ||
-          (selectionStart < value.length && value[selectionStart] !== "\n")) return;
+        if (selectionStart < value.length && value[selectionStart] !== "\n") return;
+        const line = value.slice(lineStart, selectionStart);
+        const request = /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
+        if (request && onChat) {
+          event.preventDefault();
+          void discussPage(request, value.slice(0, lineStart) + value.slice(selectionStart));
+          return;
+        }
+        if (line !== "/page" || !onCreateSubpage) return;
         event.preventDefault();
         edit({...content, body:value.slice(0, lineStart) + value.slice(selectionStart)});
         onCreateSubpage();
