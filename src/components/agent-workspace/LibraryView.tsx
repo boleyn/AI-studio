@@ -684,10 +684,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
+        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
-              size="sm" h="36px" px="18px" borderRadius="full" variant={tab === name ? "solid" : "ghost"}
+              size="sm" h="36px" px={slidesSection ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
+              sx={slidesSection ? {border:"1px solid transparent",fontSize:"14px",fontWeight:500,
+                color:tab === name ? "#0d0d0d" : "#5d5d5d",bg:tab === name ? "blackAlpha.50" : "transparent",
+                "&[aria-selected=true]":{bg:"rgba(0,0,0,.05)"}} : undefined}
               onKeyDown={event => {
                 const destinations: Record<string,number> = {Home:0,End:tabs.length-1,
                   ArrowLeft:(index+tabs.length-1)%tabs.length,ArrowRight:(index+1)%tabs.length};
@@ -718,8 +721,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           </MenuOptionGroup>}</MenuList>
         </Menu>}
         {!sitesSection && !pagesSection && <Box aria-hidden="true" w="1px" h="16px" mx={1} flexShrink={0} bg="blackAlpha.100"/>}
-        <IconButton role="checkbox" aria-label="网格视图" aria-checked={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
-        <IconButton role="checkbox" aria-label="列表视图" aria-checked={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
+        <IconButton boxSize={slidesSection ? "36px" : undefined} role="checkbox" aria-label="网格视图" aria-checked={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
+        <IconButton boxSize={slidesSection ? "36px" : undefined} role="checkbox" aria-label="列表视图" aria-checked={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
       </Box>
       {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
