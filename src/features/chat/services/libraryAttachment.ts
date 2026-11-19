@@ -4,6 +4,11 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
 
+export function recordLibraryOpen(id: string) {
+  void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
+    body:JSON.stringify({openedId:id})}).catch(() => undefined);
+}
+
 export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile[]> {
   const response = await fetch("/api/library", {headers:withAuthHeaders(), signal});
   if (response.status === 401) throw new Error("请先登录，再打开资料空间。");
@@ -71,6 +76,7 @@ export async function addLibraryAttachments(
       if (read.status !== "fulfilled") return;
       const reason = uploadErrors[uploadedIndex++];
       if (reason) errors.set(items[index].id, reason);
+      else recordLibraryOpen(items[index].id);
     });
   }
   return errors;

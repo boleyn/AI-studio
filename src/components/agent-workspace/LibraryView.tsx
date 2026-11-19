@@ -10,7 +10,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { LibraryReadError, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
+import { LibraryReadError, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -191,8 +191,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   function recordOpen(file:LibraryFile) {
     const openedAt = new Date().toISOString();
     setFiles(current => current?.map(item => item.id === file.id ? {...item, openedAt} : item));
-    void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
-      body:JSON.stringify({openedId:file.id})}).catch(() => undefined);
+    recordLibraryOpen(file.id);
   }
   function openItem(file:LibraryFile) {
     recordOpen(file);
