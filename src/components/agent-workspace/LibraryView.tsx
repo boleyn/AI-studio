@@ -421,6 +421,15 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     if (folder || personalSection) return file.sharedPageUpdatedAt || file.time;
     return libraryActivityTime(file);
   }
+  function activityLabel(file: LibraryFile) {
+    const time = rowTime(file);
+    const relative = formatRelativeTime(time,listTime);
+    if (!relative) return "—";
+    if (!searchResults) return relative;
+    if (time === file.openedAt) return relative + "打开";
+    if (file.shareId && time === file.time) return relative + "共享";
+    return relative + "修改";
+  }
   function compareRows(a: LibraryFile, b: LibraryFile) {
     const pinOrder = trashSection ? 0 : Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
     if (pinOrder) return pinOrder;
@@ -1229,7 +1238,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
-            <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{formatDeletionDate(file.deletedAt,listTime)}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
+            <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{formatDeletionDate(file.deletedAt,listTime)}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{activityLabel(file)}</time>}</td></>}<td><Flex align="center" justify="end">
               {fileType(file) === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
                 title={file.pinned ? "取消置顶" : "置顶"}
