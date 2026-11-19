@@ -840,7 +840,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             "& col:nth-child(4)": {width:"128px"},
             "& col:nth-child(5)": {width:"96px !important"},
           }}),
-          "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
+          "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2)":{paddingInlineStart:allHome ? {base:"24px",xl:"8px"} : "8px"},
