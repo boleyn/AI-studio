@@ -1,9 +1,9 @@
 import { sitePreviewPath } from "@/types/library";
 import {
-  Button, Flex, FormControl, FormLabel, Input, Modal, ModalBody, ModalCloseButton,
+  Button, Flex, IconButton, FormControl, FormLabel, Input, Modal, ModalBody, ModalCloseButton,
   Menu, MenuButton, MenuList, MenuItemOption, MenuOptionGroup, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Spinner, Text,
 } from "@chakra-ui/react";
-import { CircleAlert, ChevronDown, Link2, LockKeyhole } from "lucide-react";
+import { CircleHelp, CircleAlert, ChevronDown, Link2, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -76,7 +76,9 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
     <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
       <ModalContent mx={3} maxW={page ? "512px" : undefined} borderRadius={page ? "16px" : "20px"}>
-        <ModalHeader pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}</ModalHeader>
+        <ModalHeader display="flex" alignItems="center" gap={2} pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}
+          {page && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
+        </ModalHeader>
         <ModalCloseButton isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
         <ModalBody>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
@@ -87,7 +89,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
                 <FormLabel fontSize="sm">添加成员</FormLabel>
                 <Input placeholder={spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
               </FormControl>
-              <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>
+              {(!page || username.trim()) && <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>}
             </Flex>
             <Text mt={5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
             {siteId ? <select aria-label="站点链接访问权限" disabled={busy} value={share.restricted ? "invited" : "link"}
