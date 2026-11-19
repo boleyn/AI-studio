@@ -1229,6 +1229,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{formatDeletionDate(file.deletedAt,listTime)}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {fileType(file) === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
+                title={file.pinned ? "取消置顶" : "置顶"}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>}
               {actions(file)}</Flex></td>
