@@ -61,7 +61,9 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
       const data = await response.json().catch(() => null);
       if (!response.ok || !data) throw new Error(data?.error || "无法更新访问权限");
       setShare({ ...share, members: data.members });
-      if (!remove) setUsername("");
+      if (!remove && canEdit === undefined) {
+        setUsername(current => current === name ? "" : current);
+      }
     } catch (reason) {
       setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason instanceof Error ? reason.message : "无法更新访问权限");
     } finally {
