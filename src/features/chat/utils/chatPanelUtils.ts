@@ -239,9 +239,10 @@ export const hydrateHistoryUserMessage = ({
   if (files.length === 0) return message;
 
   const hydratedFiles = files.map((file) => {
-    if (!isImageArtifact(file)) return file;
+    const isChatUpload = /^\/?chat_uploads\//.test(file.storagePath || "");
+    if (!isChatUpload && !isImageArtifact(file)) return file;
     const stablePreviewUrl =
-      (/^\/?chat_uploads\//.test(file.storagePath || "")
+      (isChatUpload
         ? toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId })
         : file.publicUrl || toProjectFileViewUrl({ storagePath: file.storagePath, token })) ||
       file.previewUrl;

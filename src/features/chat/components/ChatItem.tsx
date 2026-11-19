@@ -317,7 +317,7 @@ const ChatItem = ({
                   const image = isImageFile({...file,name});
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
-                    ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
+                    ? (file.previewUrl?.startsWith("/api/core/chat/files/view?") ? file.previewUrl : toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""}))
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const isMarkdown = /\.(md|markdown)$/i.test(name) ||
