@@ -253,9 +253,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
   return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
-      <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px">Templates</ModalHeader>
+      <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px" pb={{base:4, md:6}}>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
-      <Flex px={6} pb={4} gap={2} align="center" wrap="wrap">
+      <Flex px={{base:4, md:"30px"}} pb={4} gap={2} align="center" wrap="wrap">
         <Flex role="tablist" aria-label="模板分类" gap={2} maxW="full" overflowX="auto">
           {galleryCategories.map((label, index) =>
             <Button key={label} ref={index === 0 ? firstCategory : undefined} id={`gallery-tab-${index}`}
@@ -302,7 +302,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
           </MenuList>
         </Menu>
       </Flex>
-      <ModalBody px={{base:4, md:8}} id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
+      <ModalBody px={{base:4, md:"30px"}} pt={{base:2, md:"36px"}} id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
         {loadFailed && shows("电子表格") && <Flex role="alert" align="center" gap={3} mb={3}>
           <Text fontSize="sm">无法加载电子表格模板。</Text>
           <Button size="sm" variant="outline" onClick={() => {
