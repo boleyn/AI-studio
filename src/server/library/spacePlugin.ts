@@ -1,3 +1,4 @@
+import { listLibraryContents } from "./contents";
 import { createHash } from "node:crypto";
 import { ObjectId } from "mongodb";
 import type { AgentPlugin } from "@/agent/plugins/types";
@@ -31,7 +32,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
       context.registerTool<{title?:string; parentId?:string; kind?:"页面"|"资料空间"|"文件夹"|"文件"; offset?:number}>({
         name:"FindLibraryPages",
         toolset:"library-spaces",
-        description:"默认按标题查找个人页面。可指定 kind 查找直接上传或保存到资料空间的文件，也可按名称查找资料空间或文件夹，再用其编号作为 parentId 查找直接子项。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
+        description:"默认按标题查找个人页面。可指定 kind 查找个人资料空间中的上传文件和对话生成文件，也可按名称查找资料空间或文件夹，再用其编号作为 parentId 查找直接子项。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
         parameters:{
           type:"object", additionalProperties:false,
           properties:{kind:{type:"string",enum:["页面","资料空间","文件夹","文件"]},title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
@@ -46,8 +47,20 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           if (!Number.isSafeInteger(offset) || offset < 0) return {isError:true,content:"搜索起始位置无效。"};
           const kind = input.kind ?? "页面";
           if (!["页面","资料空间","文件夹","文件"].includes(kind)) return {isError:true,content:"条目类型无效。"};
+          if (kind === "文件") {
+            const {listed} = await listLibraryContents(owner);
+            const needle = title.normalize("NFC").toLowerCase();
+            const files = listed.filter(file => !file.deleted && !file.shareId && (file.kind === "上传" || file.kind === "生成") &&
+              (!input.parentId || file.folderId === input.parentId) && file.name.normalize("NFC").toLowerCase().includes(needle));
+            const parents = new Map(listed.filter(item=>!item.deleted).map(item=>[item.id,item.name]));
+            const hasMore = offset+20 < files.length;
+            return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
+              id:file.id,kind,name:file.name,modifiedAt:file.time,parentId:file.folderId,parentName:parents.get(file.folderId || ""),
+              conversation:file.conversation,url:"/?view=library&libraryItem="+file.id,
+            }))})};
+          }
           const matches = await pages.find({
-            owner,kind:kind === "页面" ? {$in:["页面",null]} : kind === "文件" ? "上传" : kind,deleted:{$ne:true},purging:{$ne:true},
+            owner,kind:kind === "页面" ? {$in:["页面",null]} : kind,deleted:{$ne:true},purging:{$ne:true},
             ...(input.parentId ? {folderId:input.parentId} : {}),
             ...(title ? {name:{$regex:title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),$options:"i"}} : {}),
           },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).skip(offset).limit(21).toArray();
