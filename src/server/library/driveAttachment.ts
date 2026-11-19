@@ -17,8 +17,9 @@ export async function sendDriveAttachment(id: string, accessToken: string, res: 
   if (!meta.ok) return res.status(404).json({error:"文件不可用"});
   const file = await meta.json();
   if (file.trashed || !file.capabilities?.canDownload) return res.status(403).json({error:"没有下载此文件的权限"});
-  if (!download && Number(file.size) > limit) return res.status(413).json({error:"附件超过 10 MB"});
   const format = formats[file.mimeType];
+  // Workspace exports can be smaller or larger than their native Drive representation.
+  if (!download && !format && Number(file.size) > limit) return res.status(413).json({error:"附件超过 10 MB"});
   if (!format && file.mimeType.startsWith("application/vnd.google-apps.")) return res.status(415).json({error:"此文件类型暂不支持引用"});
   const url = format ? base + "/export?" + new URLSearchParams({mimeType:format[0]}) : base + "?alt=media&supportsAllDrives=true";
   const content = await fetch(url,{headers});
