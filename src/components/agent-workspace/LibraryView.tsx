@@ -704,12 +704,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
     return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [15, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : allHome ? "36px" : undefined} minW={!rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}
-      textAlign={rail ? "start" : "center"}>
-      <Flex as="span" display="inline-flex" align="center" lineHeight="20px" gap={rail ? "6px" : "4px"} verticalAlign="middle">
+      sx={{ "& > span:last-child": { display: "inline-flex", flex: "0 0 auto", alignItems: "center", gap: rail ? "6px" : "4px", whiteSpace: "nowrap", lineHeight: "20px" } }}>
         {rail && <Plus size={20} aria-hidden/>}
         {folderMenu ? "新建" : "创建"}
         {!rail && <ChevronDown size={16} aria-hidden/>}
-      </Flex></MenuButton>
+      </MenuButton>
             <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{rail && <Text h="28px" px="8px" fontSize="14px" color="#707070">创建新内容</Text>}{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
               {!folderMenu && <MenuDivider my="8px"/>}
               <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>
