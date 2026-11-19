@@ -725,13 +725,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
-    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [15, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} onFocus={(event: React.FocusEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : allHome ? "36px" : undefined} minW={!rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
+    const personalTrigger = personalSection && !rail;
+    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [15, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} onFocus={(event: React.FocusEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : !rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
         <Flex as="span" display="flex" align="center" justify={rail ? "flex-start" : "center"} gap={rail ? "6px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
         {rail && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
         </svg>}
+        {personalTrigger && <Plus size={16} aria-hidden/>}
         {folderMenu ? "新建" : "创建"}
-        {!rail && <ChevronDown size={16} aria-hidden/>}
+        {!rail && !personalTrigger && <ChevronDown size={16} aria-hidden/>}
         </Flex>
       </MenuButton>
             <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{rail && <Text h="28px" px="8px" fontSize="14px" color="#707070">创建新内容</Text>}{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
@@ -861,7 +863,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               icon={<X size={14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
           </InputGroup>
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
-            onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
+            onClick={() => startCreativeChat("图像")}>创建图像</Button> : personalSection ? createMenu(false) : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
         <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
