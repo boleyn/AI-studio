@@ -1,4 +1,6 @@
-import { Box, Button, Heading, Link, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, Heading, Link, Stack, Text, useToast } from "@chakra-ui/react";
+import { downloadAuthenticatedFile } from "@features/chat/services/files";
+import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -8,6 +10,8 @@ type Contents = {name:string;body?:string;pages?:{id:string;name:string}[]};
 export default function SharedSpace() {
   const router = useRouter();
   const {id,page} = router.query;
+  const toast = useToast();
+  const [downloading,setDownloading] = useState(false);
   const [data,setData] = useState<Contents>();
   const [error,setError] = useState("");
   useEffect(()=>{
@@ -35,8 +39,17 @@ export default function SharedSpace() {
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id}>{item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
-          {typeof id === "string" && typeof page === "string" && <Button as="a" size="sm" variant="outline" mt={6}
-            href={"/api/library/space-share?" + new URLSearchParams({id,page,contents:"1",download:"1"})}>下载 Markdown</Button>}
+          {typeof id === "string" && typeof page === "string" && <Button size="sm" variant="outline" mt={6} isLoading={downloading} onClick={async () => {
+            setDownloading(true);
+            try {
+              const params = new URLSearchParams({id,page,contents:"1",download:"1"});
+              await downloadAuthenticatedFile("/api/library/space-share?" + params, markdownFilename(data.name));
+            } catch {
+              toast({status:"error",title:"下载失败，请确认仍有访问权限后重试。"});
+            } finally {
+              setDownloading(false);
+            }
+          }}>下载 Markdown</Button>}
         </>}
     </>}
   </Box>;

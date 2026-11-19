@@ -249,12 +249,16 @@ export const buildDownloadUrl = ({
 export async function downloadWorkspaceArtifact(token: string, path: string, version?: string, filename?: string) {
   const query = new URLSearchParams({ token, action: "view", path });
   if (version) query.set("version", version);
-  const response = await fetch(`/api/code?${query}`, { headers: withAuthHeaders() });
+  return downloadAuthenticatedFile(`/api/code?${query}`, filename || path.split("/").pop() || "file");
+}
+
+export async function downloadAuthenticatedFile(endpoint: string, filename: string) {
+  const response = await fetch(endpoint, { headers: withAuthHeaders() });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename || path.split("/").pop() || "file";
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
