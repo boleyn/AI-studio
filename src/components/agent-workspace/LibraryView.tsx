@@ -383,7 +383,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const childFolders = destinations.filter(item => (item.folderId || "") === destination);
   function rowTime(file: LibraryFile) {
     if (section === "回收站") return file.deletedAt || "";
-    if (folder) return file.time;
+    if (folder || personalSection) return file.time;
     return libraryActivityTime(file);
   }
   function compareRows(a: LibraryFile, b: LibraryFile) {
@@ -1013,7 +1013,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
+              {column === "source" ? (personalSection ? "资料空间" : "来源") : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? (personalSection ? "名字" : "名称") : column === "size" ? "大小" : personalSection ? "更新时间" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody style={{userSelect:"none"}}
             onPointerDown={event=>{
@@ -1053,7 +1053,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{itemMarkers(file)}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
-              <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
+              <td>{formatFileSize(file.size)}</td></> : <><td>{personalSection ? "个人" : section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
