@@ -222,20 +222,20 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
             <Box key={template.name} position="relative" role="group">
             <Button w="full" aria-label={`Use ${template.name}`} isLoading={building === template.name} isDisabled={Boolean(building)} variant="unstyled" height="auto"
               textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
-              <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+              <Box p={3} bg="#f1f6f2" borderRadius="24px" aspectRatio="7/5" overflow="hidden">
                 <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
                 <Flex bg="white">{template.columns.map(column =>
                   <Text key={column} flex={1} p={1} fontSize="8px" border="1px solid #ddd">{column}</Text>)}</Flex>
               </Box>
-              <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
+              <Text mt="12px" pb="8px" px="8px" fontSize="14px" lineHeight="20px" textAlign="center">{template.name}</Text>
             </Button>
             <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} onEdit={() => createWorkbook(template, true)} onUninstall={() => uninstall(template.name)} />
             </Box>) : [];
   const slideCards = shows("幻灯片") ? slides.map(name =>
             <Box key={name} position="relative" role="group">
             <Button w="full" aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
-              <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
+              <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="7/5" objectFit="cover" borderRadius="24px" />
+              <Text mt="12px" pb="8px" px="8px" fontSize="14px" lineHeight="20px" textAlign="center">{name}</Text>
             </Button>
             <TemplateActions label={`Actions for ${name}`} onUse={() => onSlides(name)} />
             </Box>) : [];
