@@ -377,7 +377,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   }
   const [listSorts, setListSorts] = useState<Record<string, {column: "name" | "time" | "size"; ascending: boolean}>>({});
   const sortKey = allHome ? "全部/" + tab : "list";
-  const requestedSort = listSorts[sortKey];
+  const searchResults = allHome && tab === "推荐" && Boolean(query.trim());
+  const requestedSort = searchResults ? undefined : listSorts[sortKey];
   const trashSection = section === "回收站";
   const sort = !trashSection && requestedSort && (folder || requestedSort.column !== "size") ? requestedSort : {column:"time",ascending:false};
   function sortBy(column: "name" | "time" | "size") {
@@ -1176,7 +1177,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection || Boolean(allHome && searchTerm && column === "name")} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
+              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection || searchResults || Boolean(allHome && searchTerm && column === "name")} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : searchResults ? "最近活动时间" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody style={{userSelect:"none"}}
             onPointerDown={event=>{
