@@ -740,7 +740,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
           onClick={() => setPurge(files?.filter(item => item.deleted))}>清空回收站</Button>
       </Flex>}
-      <Box>{showTemplates && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
+      <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
