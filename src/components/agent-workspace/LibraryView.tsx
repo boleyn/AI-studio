@@ -264,6 +264,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [purge,setPurge] = useState<LibraryFile[]>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
+  const [renameError, setRenameError] = useState("");
   const suffix = renameSuffix(rename);
   const newName = title.trim() + suffix;
   const canRename = Boolean(title.trim() && rename && newName !== rename.name);
@@ -446,13 +447,22 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     try {
       const response = await fetch((isNative(file) || file.directUpload) ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
         body: JSON.stringify((isNative(file) || file.directUpload) ? changes : {id:file.id, changes}) });
-      if (!response.ok) throw new Error();
+      if (!response.ok) {
+        if (changes.name !== undefined) {
+          setRenameError(response.status === 401 ? "请重新登录后重命名。" :
+            response.status === 403 ? "当前账号没有重命名权限。" :
+            response.status === 404 ? "找不到此项目，请刷新资料空间。" : "名称未能保存，请重试。");
+          return false;
+        }
+        throw new Error();
+      }
       setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} : item));
       if (file.kind === "页面" && changes.deleted !== undefined) setAttempt(value => value + 1);
-      setRename(undefined);
+      if (changes.name !== undefined) setRename(undefined);
       return true;
     } catch {
-      if (notifyFailure) toast({ status:"error", title:"未能保存更改，请重试" });
+      if (changes.name !== undefined) setRenameError("名称未能保存，请检查网络连接后重试。");
+      else if (notifyFailure) toast({ status:"error", title:"未能保存更改，请重试" });
       return false;
     } finally { setSaving(false); }
   }
@@ -558,7 +568,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
-      <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRename(file); }}>重命名</MenuItem>
+      <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRenameError(""); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <Box position="relative" onBlur={event=>{
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setCopyMenuId(undefined);
@@ -647,7 +657,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         </> : <>
           <MenuItem onClick={()=>setSharing(space)}>分享</MenuItem>
           <MenuItem onClick={()=>update(space,{pinned:!space.pinned})}>{space.pinned ? "取消置顶" : "置顶"}</MenuItem>
-          <MenuItem onClick={()=>{setTitle(space.name);setRename(space);}}>重命名</MenuItem>
+          <MenuItem onClick={()=>{setTitle(space.name);setRenameError("");setRename(space);}}>重命名</MenuItem>
           <MenuItem data-copy-trigger="" aria-haspopup="menu" closeOnSelect={false}
             onClick={event=>toggleCopyMenu(space.id,event.currentTarget.closest('[role="menu"]'),true)}
             onKeyDown={event=>{if (event.key === "ArrowRight") {
@@ -1056,9 +1066,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">重命名{rename && isNative(rename) ? rename.kind : "文件"}</ModalHeader>
       <form onSubmit={event => {event.preventDefault(); if(rename && canRename && !saving) void update(rename,{name:newName});}}>
         <ModalBody p={0} mt={3}><Text as="label" htmlFor="library-rename" display="block" fontSize="sm" lineHeight="24px">文件名</Text>
-          <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} h="34px" isReadOnly={saving} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
-            onFocus={event => event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => setTitle(event.target.value)}/>
-            {suffix && <Text color="gray.600">{suffix}</Text>}</Flex></ModalBody>
+          <Flex align="center" gap={2} mt={2} px="10px" h="36px" border="1px solid" borderColor="gray.300" borderRadius="10px" _focusWithin={{borderColor:"gray.700"}}><Input variant="unstyled" fontSize="sm" minW={0} h="34px" isReadOnly={saving} aria-describedby={renameError ? "library-rename-error" : undefined} id="library-rename" ref={renameInput} value={title} maxLength={255-suffix.length}
+            onFocus={event => event.target.setSelectionRange(event.target.value.length,event.target.value.length)} onChange={event => {setRenameError("");setTitle(event.target.value);}}/>
+            {suffix && <Text color="gray.600">{suffix}</Text>}</Flex>
+          {renameError && <Text role="alert" id="library-rename-error" mt={2} fontSize="sm" color="red.700">{renameError}</Text>}</ModalBody>
         <ModalFooter p={0} mt={3} gap={3}><Button minW="66px" isDisabled={saving} h={8} px={4} borderRadius="full" variant="outline" onClick={() => setRename(undefined)}>取消</Button><Button minW="82px" h={8} px={4} borderRadius="full" bg="#171717" color="white" _hover={{bg:"#303030"}} type="submit" isLoading={saving} isDisabled={!canRename}>重命名</Button></ModalFooter>
       </form></ModalContent></Modal>
   </Flex>;
