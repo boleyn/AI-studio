@@ -57,7 +57,8 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       setFileErrors(errors);
       if (errors.size) {
         setSelected([...errors.keys()]);
-
+        setQuery("");
+        setError("有 " + errors.size + " 项未添加，请查看文件旁的提示后重试。");
       } else {
         onClose();
       }
@@ -84,14 +85,14 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       {visible?.length===0 && <Text color="gray.500" p={3}>没有符合条件的文件或页面</Text>}
       {visible?.map(item=>{
         const checked=selected.includes(item.id);
-        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={"library-source-"+item.id} aria-checked={checked} disabled={busy}
+        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
           <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated>{item.name}</Text>
             <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={sourceLabel(item)}>{sourceLabel(item)}</Text>
-            {fileErrors.has(item.id) && <Text role="alert" color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
+            {fileErrors.has(item.id) && <Text id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box>
 
         </Flex>;
