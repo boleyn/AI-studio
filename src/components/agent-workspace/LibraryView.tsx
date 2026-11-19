@@ -635,20 +635,26 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     clearBatchNotice(noticeKey);
     const failed: LibraryFile[] = [];
     const parents = new Map(files?.filter(item => item.kind === "页面" || isContainer(item)).map(item => [item.id, item.folderId]));
-    function pageDepth(file: LibraryFile) {
+    function ancestors(file: LibraryFile) {
       const seen = new Set<string>();
       let parent = file.folderId;
       while (parent && parents.has(parent) && !seen.has(parent)) {
         seen.add(parent);
         parent = parents.get(parent);
       }
-      return seen.size;
+      return [...seen];
     }
-    const ordered = picked.map(file => ({file, depth:pageDepth(file)})).sort((a,b) => a.depth - b.depth);
+    const ordered = picked.map(file => ({file, parents:ancestors(file)})).sort((a,b) => a.parents.length - b.parents.length);
+    const trashedContainers = new Set<string>();
     setBatchBusy(true);
     try {
-      for (const {file} of ordered) {
-        if (!await update(file, {deleted:!restoring}, false)) failed.push(file);
+      for (const {file, parents} of ordered) {
+        if (parents.some(id => trashedContainers.has(id))) continue;
+        if (!await update(file, {deleted:!restoring}, false)) {
+          failed.push(file);
+        } else if (!restoring && isNative(file) && (isContainer(file) || file.kind === "页面")) {
+          trashedContainers.add(file.id);
+        }
       }
       if (failed.length) {
         const action = restoring ? "恢复" : "移入回收站";
