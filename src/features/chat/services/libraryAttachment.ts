@@ -87,10 +87,15 @@ export class LibraryReadError extends Error {
 }
 
 export function libraryReadMessage(reason: unknown) {
+  if (reason instanceof TypeError && /fetch|network|load failed/i.test(reason.message)) {
+    return "连接失败，请检查网络后重试。";
+  }
   const status = reason instanceof LibraryReadError ? reason.status : undefined;
   if (status === 401) return "登录已过期，请重新登录。";
   if (status === 403) return "当前账号没有读取权限，请联系文件所有者。";
   if (status === 404 || status === 410) return "文件可能已删除或共享已结束，请重新选择。";
+  if (status === 429) return "读取请求过于频繁，请稍后重试。";
+  if (status === 503) return "文件服务暂时不可用，请稍后重试。";
   return "暂时无法读取，请稍后重试。";
 }
 
