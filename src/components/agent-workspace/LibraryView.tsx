@@ -342,17 +342,18 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     try {
       const results = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
       const attachments: File[] = [];
-      const unavailable: string[] = [];
+      const unavailable: LibraryFile[] = [];
       results.forEach((result,index) => {
         if (result.status === "fulfilled") attachments.push(result.value);
-        else unavailable.push(items[index].name);
+        else unavailable.push(items[index]);
       });
       if (unavailable.length) {
-        toast({status:"error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : "无法下载所选资料",
+        const partialDownload = action === "download" && attachments.length > 0;
+        toast({status:partialDownload ? "warning" : "error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : partialDownload ? "部分文件无法下载" : "无法下载所选资料",
           description:<Box><Text>以下资料读取失败，请重试。</Text>
-            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map((name,index)=>
-              <li key={index}>{name}</li>)}</Box></Box>});
-        return;
+            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map(file=>
+              <li key={file.id}>{file.name}</li>)}</Box></Box>});
+        if (!partialDownload) return;
       }
       if (action === "chat") {await onChat(attachments,question,itemId); return;}
       if (!attachments.length) return;
@@ -368,6 +369,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href=url; link.download=name; link.click();
+      if (items === picked && unavailable.length) setSelected(unavailable.map(file=>file.id));
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch(error) {toast({status:"error",title:error instanceof Error ? error.message : "操作失败"});}
     finally {setBatchBusy(false);}
