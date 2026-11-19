@@ -1,6 +1,7 @@
 import type { DeviceAccess } from "@/types/projectWorkspace";
 import { createLocalDeviceExecutor } from "../sandbox/environments/localDevice";
 import { BashTool, runTerminalCommand } from "../tools/builtin/terminalTool";
+import { siteConnectionsPlugin } from "@server/library/sitePlugin";
 import { schedulePlugin } from "@server/schedules/plugin";
 import { delegationRole, roleInstructions } from "../delegation/roles";
 import { goalStatusTool, resumeGoal, type SessionGoal } from "../app/goal";
@@ -179,6 +180,7 @@ export async function runAgentSession(
   try {
     plugins = await PluginRuntime.create(
       [...builtinPlugins, createMcpPlugin(loadMcpConfigsFromEnv()),
+        siteConnectionsPlugin(input.isSubagent ? undefined : input.userId, input.token),
         schedulePlugin(input.userId && input.token && input.chatId && !input.isSubagent
           ? { owner: input.userId, token: input.token, chatId: input.chatId } : undefined),
       ],
