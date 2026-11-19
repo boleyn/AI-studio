@@ -171,9 +171,9 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
       </Box>}
       {visible?.map(item=>{
-        if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" py={2} gap={3}
+        if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
           justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
-          <LibraryItemIcon item={item}/><Text flex="1" textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
+          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
         </Button>;
         const checked=selected.some(entry => entry.id === item.id);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
