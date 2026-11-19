@@ -1002,17 +1002,18 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             </Box>)}
           </Box>
         </Box> : personalSection && !grid ? <Box fontSize="sm" sx={{
-          "& [data-page-row]":{display:"grid",gridTemplateColumns:"minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 64px",alignItems:"center",gap:2,px:2,minH:"48px"},
+          "& [data-page-row]":{display:"grid",gridTemplateColumns:"minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 64px",alignItems:"center",gap:2,px:2,minH:"40px"},
           "& [data-page-row] > *":{minWidth:0},
         }}>
           <Box data-page-row="" color="#5d5d5d"><Text>名字</Text><Text>资料空间</Text><Text>更新时间</Text></Box>
           <Box as="ul" aria-label="页面" listStyleType="none" m={0} p={0}>
-            {visible.map(file=><Box as="li" key={file.id} data-page-row="" borderTopWidth="1px">
-              <Button variant="ghost" justifyContent="start" gap={2} px={0} aria-label={file.name} onClick={()=>openItem(file)}>
+            {visible.map(file=><Box as="li" key={file.id} data-page-row="" position="relative" borderTopWidth="1px" borderRadius="12px" _hover={{bg:"surface.hover"}}>
+              <Box as="button" position="absolute" inset={0} borderRadius="8px" aria-label={file.name} onClick={()=>openItem(file)}/>
+              <Flex align="center" gap={2} fontSize="16px" pointerEvents="none">
                 <LibraryItemIcon item={file} compact/><Text as="span" isTruncated>{file.name}</Text>
-              </Button>
+              </Flex>
               <Text color="#5d5d5d">个人</Text><Text as="time" color="#5d5d5d" dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</Text>
-              <Flex align="center" justify="end"><IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name}
+              <Flex position="relative" align="center" justify="end" pointerEvents="none" sx={{"& button":{pointerEvents:"auto"}}}><IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name}
                 aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked} icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}</Flex>
             </Box>)}
