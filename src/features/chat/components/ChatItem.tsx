@@ -383,7 +383,7 @@ const ChatItem = ({
                   const imageFailed = image && failedImages.has(fileUrl);
                   const openUrl = imageFailed ? originalUrl : fileUrl || originalUrl;
                   const unavailable = imageFailed ? "图片无法加载" : "缺少附件地址";
-                  const canOpen = Boolean(openUrl);
+                  const canOpen = isMarkdown || Boolean(openUrl);
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
