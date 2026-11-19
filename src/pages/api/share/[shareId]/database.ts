@@ -6,6 +6,8 @@ import { getShareLink } from "@server/shares/shareStorage";
 
 export const config = { api: { bodyParser: { sizeLimit: "256kb" } } };
 
+let indexReady: Promise<string> | undefined;
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "private, no-store");
   if (req.method !== "GET" && req.method !== "PUT") return res.setHeader("Allow", "GET, PUT").status(405).end();
@@ -16,6 +18,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const db = await getMongoDb();
   const scope = {owner:share.ownerUserId, projectToken:share.projectToken};
   const collection = db.collection("site_database_rows");
+  // Each table is paged by record id within one owner's published project.
+  indexReady ??= collection.createIndex({owner:1, projectToken:1, table:1, _id:1}).catch(error => {
+    indexReady = undefined;
+    throw error;
+  });
+  await indexReady;
   const {table, after} = req.query;
   if (req.method === "PUT") {
     if (req.headers["content-type"]?.split(";")[0] !== "application/json") return res.status(415).end();
