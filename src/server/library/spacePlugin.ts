@@ -28,23 +28,25 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           return {content:JSON.stringify({id:id.toHexString(),name,url:"/?view=library&libraryFolder="+id.toHexString()})};
         },
       });
-      context.registerTool<{title:string}>({
+      context.registerTool<{title:string; offset?:number}>({
         name:"FindLibraryPages",
         toolset:"library-spaces",
-        description:"按标题关键词查找当前用户自己的资料空间页面。返回页面链接和编号；若有多个同名结果，修改前先请用户确认。",
+        description:"按标题关键词查找当前用户自己的资料空间页面。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
         parameters:{
           type:"object", additionalProperties:false, required:["title"],
-          properties:{title:{type:"string",minLength:1,maxLength:255}},
+          properties:{title:{type:"string",minLength:1,maxLength:255},offset:{type:"integer",minimum:0}},
         },
         async handler(input, ctx) {
           const title = typeof input.title === "string" ? input.title.trim() : "";
           if (ctx.isSubagent || !title || title.length > 255) return {isError:true,content:"请在主对话中提供要查找的页面标题。"};
           const pages = (await getMongoDb()).collection("library_pages");
+          const offset = input.offset ?? 0;
+          if (!Number.isSafeInteger(offset) || offset < 0) return {isError:true,content:"搜索起始位置无效。"};
           const matches = await pages.find({
             owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true},
             name:{$regex:title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),$options:"i"},
-          },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).limit(21).toArray();
-          return {content:JSON.stringify({hasMore:matches.length > 20,pages:matches.slice(0,20).map(page=>({
+          },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).skip(offset).limit(21).toArray();
+          return {content:JSON.stringify({hasMore:matches.length > 20,nextOffset:matches.length > 20 ? offset+20 : null,pages:matches.slice(0,20).map(page=>({
             id:page._id.toHexString(),name:page.name,modifiedAt:page.time,parentId:page.folderId,
             url:"/?view=library&libraryItem="+page._id.toHexString(),
           }))})};
