@@ -7,7 +7,7 @@ import { inferAttachmentMimeType } from "@features/chat/utils/attachmentMimeType
 
 type Entry = { id: string; name: string; folder: boolean };
 type Listing = { files: Entry[]; nextCursor?: string };
-type Provider = "Dropbox" | "Box";
+type Provider = "Dropbox" | "Box" | "SharePoint";
 
 async function readFiles(provider: Provider, params: URLSearchParams, signal?: AbortSignal) {
   const response = await fetch("/api/library/connectors/" + provider.toLowerCase() + "-files?" + params, { headers: withAuthHeaders(), signal });
@@ -74,7 +74,7 @@ export default function ConnectorFilePicker({ provider, back, onAttach }: { prov
         {path.length > 1 && <Button size="sm" variant="ghost" mb={2} isDisabled={Boolean(attaching)} onClick={() => { setPages([""]); setPath(path.slice(0,-1)); }}>返回上级文件夹</Button>}
         {error && <Text role="alert">{error}</Text>}
         {!listing && (error ? <Button size="sm" onClick={() => setAttempt(n => n + 1)}>重新加载</Button> : <Text role="status">正在加载文件…</Text>)}
-        {listing && !listing.files.length && <Text role="status">{search ? "未找到匹配文件" : "此文件夹为空"}</Text>}
+        {listing && !listing.files.length && <Text role="status">{search ? "未找到匹配文件" : provider === "SharePoint" ? "输入关键词以查找文件" : "此文件夹为空"}</Text>}
         {listing?.files.map(entry => <Flex key={entry.id} gap={3} minH="44px" align="center">
           {entry.folder ? <Button variant="ghost" leftIcon={<Folder size={16}/>} isDisabled={Boolean(attaching)} onClick={() => { setInput(""); setSearch(""); setPages([""]); setPath([...path,entry]); }}>{entry.name}</Button> :
             <><Text flex={1} overflowWrap="anywhere">{entry.name}</Text><Button size="sm" flexShrink={0} isLoading={attaching === entry.id} isDisabled={Boolean(attaching)} onClick={() => attach(entry)}>添加到聊天</Button></>}

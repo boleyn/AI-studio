@@ -15,7 +15,7 @@ const endpoints: Record<string, string> = {
 };
 type Status = { configured: boolean; connected: boolean };
 export default function LibraryConnectors({ close, callbackStatus, siteId, onAttach }: { onAttach?: (files: File[]) => Promise<void>; siteId?: string; close: () => void; callbackStatus?: string }) {
-  const [browseProvider, setBrowseProvider] = useState<"Dropbox" | "Box" | null>(null);
+  const [browseProvider, setBrowseProvider] = useState<"Dropbox" | "Box" | "SharePoint" | null>(null);
   const [provider, setProvider] = useState<string>();
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   const callbackProvider = Object.keys(endpoints).find(name => callbackStatus?.startsWith(name.toLowerCase() + "-")) ?? "Google Drive";
@@ -79,7 +79,7 @@ export default function LibraryConnectors({ close, callbackStatus, siteId, onAtt
               setAttempt(value=>value+1);
             }}>重试读取状态</Button> : <Text role="status" fontSize="sm" color="gray.600">正在读取…</Text>
           ) : statuses[name]?.connected ? <Flex align="center" gap={2}>
-            {(name === "Box" || name === "Dropbox") && onAttach && <Button size="sm" variant="ghost" onClick={() => setBrowseProvider(name)}>浏览文件</Button>}
+            {(name === "Box" || name === "Dropbox" || name === "SharePoint") && onAttach && <Button size="sm" variant="ghost" onClick={() => setBrowseProvider(name)}>浏览文件</Button>}
             <Text fontSize="sm" color="gray.600">已连接</Text>
             <Button size="sm" variant="outline" borderRadius="full" isDisabled={!statuses[name].configured} isLoading={busy}
               aria-label={"重新连接 " + name} onClick={()=>connect(name)}>重新连接</Button>

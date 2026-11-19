@@ -1,3 +1,4 @@
+import { sendConnectorDownload } from "@server/library/sendConnectorDownload";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
@@ -51,20 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (metadata.size > 10 * 1024 * 1024) return res.status(413).json({error:"附件超过 10 MB。"});
       const download = await fetch(base + "/files/" + file + "/content",{headers});
       if (download.status !== 200 || !download.body) return res.status(502).json({error:"Box 文件暂时无法下载，请重试。"});
-      const reader = download.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let length = 0;
-      for (;;) {
-        const {value,done} = await reader.read();
-        if (done) break;
-        length += value.length;
-        if (length > 10 * 1024 * 1024) { await reader.cancel(); return res.status(413).json({error:"附件超过 10 MB。"}); }
-        chunks.push(value);
-      }
-      res.setHeader("Content-Disposition","attachment; filename*=UTF-8''" + encodeURIComponent(metadata.name).replace(/['()*]/g,c=>"%" + c.charCodeAt(0).toString(16)));
-      res.setHeader("Content-Type","application/octet-stream");
-      res.setHeader("X-Content-Type-Options","nosniff");
-      return res.send(Buffer.concat(chunks));
+      return await sendConnectorDownload(download.body, metadata.name, res);
     }
     const params = new URLSearchParams({fields:"id,name,type",limit:"100"});
     if (search) { params.set("query",search); params.set("offset",cursor || "0"); }
