@@ -43,7 +43,7 @@ const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 
 
-export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
@@ -790,7 +790,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <Box role={siteDetails ? undefined : "tabpanel"} id="library-sites-panel" aria-labelledby={siteDetails ? undefined : "library-sites-tab-" + tabs.indexOf(tab)}>
-        <LibrarySites tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
+        <LibrarySites onPluginChat={(token,name)=>onChat([], `帮我将一个插件连接到 ${name}，让网站访客可以使用自己账户中的数据。请询问我想连接哪个已在工作空间中启用的插件。`, undefined, false, token)} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
       </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>

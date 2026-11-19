@@ -10,11 +10,11 @@ import SiteSchedules from "./SiteSchedules";
 import SiteDomains from "./SiteDomains";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
+interface Site { projectToken?:string; slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
 
 const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
-export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab: string; query: string; grid: boolean; onSitesChanged: () => void }) {
+export default function LibrarySites({ tab, query, grid, onSitesChanged, onPluginChat }: { onPluginChat:(token:string,name:string)=>Promise<void>; tab: string; query: string; grid: boolean; onSitesChanged: () => void }) {
   const toast = useToast();
   const [pendingDelete,setPendingDelete] = useState<Site>();
   const cancelDelete = useRef<HTMLButtonElement>(null);
@@ -146,7 +146,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Button variant="link" aria-current={plugins ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"plugins")}>插件</Button>
       <Button variant="link" aria-current={scheduled ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"scheduled")}>已安排</Button>
     </Flex>
-    {plugins ? <SitePlugins key={settings.id} siteId={settings.id} editUrl={settings.editUrl}/> : scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
+    {plugins ? <SitePlugins key={settings.id} siteId={settings.id} onAdd={settings.projectToken ? ()=>onPluginChat(settings.projectToken!,settings.name) : undefined}/> : scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
     <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
       event.preventDefault();

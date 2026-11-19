@@ -62,5 +62,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return [{...site,name:entry?.name || site.name}];
   });
   const counts = await countRecentSiteVisitors(visible.filter(site=>!site.shared).map(site=>site.token));
-  return res.json(visible.map(site=>({slug:site.shared ? site.slug : preferences.get(key(site.token))?.siteSlug,restricted:site.shared ? site.restricted : Boolean(preferences.get(key(site.token))?.restricted),memberCount:site.memberCount,id:site.id,name:site.name,publishedAt:site.time,shared:site.shared,ownerName:site.ownerName,...(site.shared ? {} : {libraryId:siteLibraryId(site.token),editUrl:"/project/" + encodeURIComponent(site.token),visitors:counts.get(site.token) || 0})})));
+  return res.json(visible.map(site=>({slug:site.shared ? site.slug : preferences.get(key(site.token))?.siteSlug,restricted:site.shared ? site.restricted : Boolean(preferences.get(key(site.token))?.restricted),memberCount:site.memberCount,id:site.id,name:site.name,publishedAt:site.time,shared:site.shared,ownerName:site.ownerName,...(site.shared ? {} : {projectToken:site.token,libraryId:siteLibraryId(site.token),editUrl:"/project/" + encodeURIComponent(site.token),visitors:counts.get(site.token) || 0})})));
 }
