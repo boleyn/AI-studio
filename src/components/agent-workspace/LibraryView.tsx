@@ -1046,7 +1046,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         !visible ? <Text role="status">正在加载文件…</Text> :
         !visible.length ? (query.trim() ?
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
-            <Heading as="h2" fontSize="lg" fontWeight="600">未找到匹配结果</Heading>
+            <Heading as="h2" fontSize="18px" lineHeight="24px" fontWeight="500">未找到匹配结果</Heading>
             <Text fontSize="sm" color="gray.600" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
           </Flex> : allHome && (tab === "收藏" || sharedItems) && !filterCount ?
           <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center" textAlign="center">
