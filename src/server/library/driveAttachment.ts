@@ -36,7 +36,8 @@ export async function sendDriveAttachment(id: string, accessToken: string, res: 
   const content = await fetch(url,{headers});
   if (!content.ok || !content.body) return driveReadFailure(content.status, res);
   const name = format && !file.name.toLowerCase().endsWith(format[1]) ? file.name + format[1] : file.name;
-  res.setHeader("Content-Disposition","attachment; filename*=UTF-8''" + encodeURIComponent(name));
+  const encodedName = encodeURIComponent(name).replace(/['()*]/g, char => "%" + char.charCodeAt(0).toString(16).toUpperCase());
+  res.setHeader("Content-Disposition","attachment; filename*=UTF-8''" + encodedName);
   res.setHeader("Content-Type","application/octet-stream");
   res.setHeader("X-Content-Type-Options","nosniff");
   res.setHeader("X-Attachment-Type",format?.[0] || file.mimeType);
