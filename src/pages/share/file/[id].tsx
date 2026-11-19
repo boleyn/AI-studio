@@ -39,10 +39,13 @@ export default function SharedArtifactPage() {
         if (!response.ok) throw new Error(response.status === 403 ? "当前账号没有访问权限。" :
           response.status === 404 ? "共享文件不存在或共享已结束。" : "暂时无法读取共享文件，请稍后重试。");
         const data = await response.json() as { filename: string; previewName?: string; editablePageId?: string };
+        if (!data || typeof data.filename !== "string" || !data.filename.trim()) {
+          throw new Error("共享文件信息不完整，请重新加载。");
+        }
         if (!controller.signal.aborted) setResult({ id, filename: data.filename, previewName:data.previewName, editablePageId:data.editablePageId });
       })
       .catch((reason) => {
-        if (!controller.signal.aborted) setResult({ id, error: reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message || "共享文件不可用。" });
+        if (!controller.signal.aborted) setResult({ id, error: reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason instanceof SyntaxError ? "共享文件信息无法读取，请重新加载。" : reason.message || "共享文件不可用。" });
       });
     return () => controller.abort();
   }, [id, endpoint, loadAttempt]);
