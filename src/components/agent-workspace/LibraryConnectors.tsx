@@ -29,11 +29,11 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
   }
   const services = siteId ? ["Google Drive"] : ["Google Drive","Box","Dropbox","SharePoint"];
   const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
-  return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
-    <ModalHeader>{heading}</ModalHeader><ModalBody>
-      <Text color="gray.600" fontSize="sm">{siteId ? "选择你的 Google 账号，授权读取云端硬盘中的文件。" : "连接文件服务，在资料空间中使用你的文件。"}</Text>
-      <Flex as="ul" aria-label={heading} direction="column" listStyleType="none" mt={4}>
-        {services.map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
+  return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} maxW={siteId ? undefined : "464px"} h={siteId ? undefined : "min(640px, calc(100dvh - 32px))"} my={4} borderRadius="16px">
+    <ModalHeader as="h2" textAlign={siteId ? undefined : "center"} pt={siteId ? undefined : "36px"} pb={siteId ? undefined : 0} fontSize={siteId ? undefined : "24px"} lineHeight={siteId ? undefined : "32px"}>{heading}</ModalHeader><ModalBody overflowY="auto">
+      <Text color="gray.600" fontSize={siteId ? "sm" : "md"} maxW={siteId ? undefined : "296px"} mx="auto" textAlign={siteId ? undefined : "center"}>{siteId ? "选择你的 Google 账号，授权读取云端硬盘中的文件。" : "无需离开伯仁，即可搜索你的文件、提问并使用工具"}</Text>
+      <Flex as="ul" aria-label={heading} direction="column" listStyleType="none" p={0} mt={siteId ? 4 : 3}>
+        {services.map(name=><Flex as="li" key={name} align="center" justify="space-between" minH={siteId ? undefined : "69px"} borderBottomWidth={siteId ? 0 : "1px"} py={2}>
           <Text>{name}</Text>{name === "Google Drive" && !status ? (
             statusFailed ? <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
               setStatusFailed(false);
@@ -48,6 +48,6 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
             isLoading={name === "Google Drive" && busy} onClick={connect}>{name === "Google Drive" && status?.configured ? "连接" : "暂不可用"}</Button>}
         </Flex>)}
       </Flex>{callbackStatus === "cancelled" && !error && <Text role="status" fontSize="sm" color="gray.600">已取消 Google Drive 授权。</Text>}{error && <Text role="alert" color="red.600">{error}</Text>}
-    </ModalBody><ModalFooter><Button borderRadius="full" onClick={close}>完成</Button></ModalFooter>
+    </ModalBody><ModalFooter pb={siteId ? undefined : 6}><Button w={siteId ? undefined : "full"} h={siteId ? undefined : "48px"} borderRadius="full" onClick={close}>完成</Button></ModalFooter>
   </ModalContent></Modal>;
 }
