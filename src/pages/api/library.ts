@@ -89,7 +89,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion, sizes.get(path));
     }
-    const blocks = msg.message?.content ?? msg.content;
+    const nestedContent = msg.message?.content;
+    const blocks = Array.isArray(nestedContent) && nestedContent.some(block => block?.type === "attachment")
+      ? nestedContent
+      : msg.content;
     const attachments = [
       ...(Array.isArray(msg.artifact?.files) ? msg.artifact.files.map((file: {storagePath?:string;name?:string;size?:number;libraryItemId?:string} | null) => ({
         path:file?.storagePath, name:file?.name, size:file?.size, origin:file?.libraryItemId,

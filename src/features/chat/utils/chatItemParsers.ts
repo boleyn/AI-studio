@@ -413,7 +413,10 @@ const parseAgentResponseParts = (rawResponse: string) => {
 
 export const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
   const files = (message.artifact as {files?:unknown} | null)?.files;
-  const blocks = message.message?.content ?? message.content;
+  const nestedContent = message.message?.content;
+  const blocks = Array.isArray(nestedContent) && nestedContent.some(block => block?.type === "attachment")
+    ? nestedContent
+    : message.content;
   const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
     if (!block || block.type !== "attachment") return [];
     const storagePath = [block.source_storage_path,block.storage_path].find(path=>typeof path === "string" && path);
