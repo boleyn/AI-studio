@@ -371,14 +371,14 @@ const ChatItem = ({
                     ? (file.previewUrl?.startsWith("/api/core/chat/files/view?") ? file.previewUrl : toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""}))
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
-                  const isMarkdown = /\.(md|markdown)$/i.test(name) ||
+                  const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
                     /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
                   const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
                     "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
                   const imageFailed = image && failedImages.has(fileUrl);
                   const openUrl = imageFailed ? originalUrl : fileUrl || originalUrl;
                   const unavailable = imageFailed ? "图片无法加载" : "缺少附件地址";
-                  const canOpen = Boolean(isMarkdown || openUrl);
+                  const canOpen = Boolean(openUrl);
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
@@ -402,7 +402,7 @@ const ChatItem = ({
                           p={2}
                           w="100%"
                         >
-                          <LibraryItemIcon item={{name}}/>
+                          <LibraryItemIcon item={{name,path:storagePath}}/>
                           <AttachmentFilename name={name}/>
                           {imageFailed && originalUrl && <Text as="span" fontSize="xs" color="gray.600">查看原件</Text>}
                           {!canOpen && <Text as="span" fontSize="xs" color="gray.600">{unavailable}</Text>}
