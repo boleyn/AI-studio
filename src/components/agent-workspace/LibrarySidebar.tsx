@@ -1,6 +1,6 @@
 import Link, { type LinkProps } from "next/link";
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text, useBreakpointValue } from "@chakra-ui/react";
-import { Bell, Plus, Files, Users, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, LayoutDashboard, Search, Trash2 } from "lucide-react";
+import { Bell, Plus, Files, Users, Library, PanelLeft, Search, Trash2 } from "lucide-react";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -8,9 +8,9 @@ import AttachmentFilename from "@features/chat/components/AttachmentFilename";
 import { type ReactNode, useRef, useState } from "react";
 
 const categories = [
-  { name: "全部", icon: Library }, { name: "你的条目", icon: Files }, { name: "与你共享", icon: Users }, { name: "页面", icon: FileText },
-  { name: "幻灯片", icon: GalleryHorizontalEnd }, { name: "站点", icon: LayoutDashboard },
-  { name: "图像", icon: Image },
+  { name: "全部", icon: Library },
+  { name: "你的条目", icon: Files },
+  { name: "与你共享", icon: Users },
 ];
 type Props = {
   driveConnected: boolean;
@@ -66,7 +66,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
     <Flex direction="column" mt="17px" gap="1px" sx={{"& > :is(button,a)":{height:"35px",paddingInline:"8px",borderRadius:"8px"},"& .chakra-button__icon":{marginInlineEnd:"6px"}}}>
     {categories.map(({name, icon: Icon}) => <Link key={name} href={sectionHref(name)} shallow scroll={false} prefetch={false} legacyBehavior passHref onNavigate={onSectionNavigate}><Button as="a" variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
       aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={20} strokeWidth={1.6}/>}>{name}</Button></Link>)}
-    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Flex boxSize="20px" align="center" justify="center"><Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/></Flex>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
+    {driveConnected && <Link href={sectionHref("Google Drive")} shallow scroll={false} prefetch={false} legacyBehavior passHref onNavigate={onSectionNavigate}><Button as="a" variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Flex boxSize="20px" align="center" justify="center"><Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/></Flex>}>Google Drive</Button></Link>}
     </Flex>
     <Box overflowY="auto" mt="17px" flex="1">
       <Flex align="center" justify="space-between"><Button size="sm" variant="ghost" ml="4px" flex="1" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
