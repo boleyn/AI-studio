@@ -17,7 +17,7 @@ const formattingCommands = [
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
@@ -124,6 +124,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     } catch { setStatus("无法打开聊天，请重试"); }
     finally { setOpeningChat(false); }
   }
+  const locationNav = locationLabel && <Flex as="nav" aria-label="面包屑导航" align="center" color="#5d5d5d" fontSize="14px" gap="4px" mt={2}>
+    <Text as="span">In</Text>
+    <Button variant="link" size="sm" color="inherit" fontWeight="normal" minW={0} onClick={onBack}>
+      <Text as="span" isTruncated>{locationLabel}</Text>
+    </Button>
+  </Flex>;
   return <Box flex="1" minW={0} p={6} overflowY="auto" onKeyDown={event => {
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
       event.preventDefault();
@@ -143,8 +149,8 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
-      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
-        onChange={event => {edit({...content,name:event.target.value});}}/>
+      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
+        onChange={event => {edit({...content,name:event.target.value});}}/>{locationNav}
       {(suggestSubpage || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
         onClick={()=>insertFormatting(lineStart, selection.end, item.markdown)}>{item.label} · {item.command}</Button>)}
