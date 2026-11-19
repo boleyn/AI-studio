@@ -444,7 +444,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       });
       if (unavailable.length) {
         const partialDownload = action === "download" && attachments.length > 0;
-        toast({status:partialDownload ? "warning" : "error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : partialDownload ? "部分文件无法下载" : "无法下载所选资料",
+        toast({status:partialDownload ? "warning" : "error",isClosable:true,duration:unavailable.length > 1 ? null : undefined,title:action === "chat" ? "无法添加所选资料" : partialDownload ? "部分文件无法下载" : "无法下载所选资料",
           description:<Box><Text>{action === "chat"
             ? "对话尚未开始。请重试，或调整选择后再开始聊天。"
             : partialDownload ? `将下载已读取的 ${attachments.length} 个文件。以下文件需要重试。` : "请根据以下提示重试。"}</Text>
@@ -570,7 +570,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         const action = restoring ? "恢复" : "移入回收站";
         const succeeded = picked.length - failed.length;
         toast({
-          status:succeeded ? "warning" : "error", isClosable:true,
+          status:succeeded ? "warning" : "error", isClosable:true, duration:failed.length > 1 ? null : undefined,
           title:succeeded ? `${succeeded} 项已${action}，${failed.length} 项失败` : `${failed.length} 项未能${action}`,
           description:<Box><Text>以下条目仍已勾选，可重试。</Text>
             <Text maxH="8rem" overflowY="auto" overflowWrap="anywhere">{failed.map(file => file.name).join("、")}</Text></Box>,
