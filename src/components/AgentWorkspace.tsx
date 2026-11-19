@@ -204,6 +204,10 @@ export default function AgentWorkspace({
   const [librarySidebarOpen,setLibrarySidebarOpen] = useState(true);
   const libraryNavButton = useRef<HTMLButtonElement>(null);
   function openLibraryHome() {
+    if (activeNav === "library" && !librarySidebarOpen) {
+      setLibrarySidebarOpen(true);
+      return;
+    }
     setLibrarySearch("");
     setLibrarySidebarOpen(true);
     const nextQuery = {...router.query, view:"library"} as typeof router.query;
