@@ -351,11 +351,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     else delete query.libraryLayout;
     void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
   }
-  const [requestedSort, setSort] = useState<{column: "name" | "time" | "size"; ascending: boolean}>();
+  const [listSorts, setListSorts] = useState<Record<string, {column: "name" | "time" | "size"; ascending: boolean}>>({});
+  const sortKey = allHome ? "全部/" + tab : "list";
+  const requestedSort = listSorts[sortKey];
   const trashSection = section === "回收站";
   const sort = !trashSection && requestedSort && (folder || requestedSort.column !== "size") ? requestedSort : {column:"time",ascending:false};
   function sortBy(column: "name" | "time" | "size") {
-    setSort({ column, ascending: sort.column === column ? !sort.ascending : column === "name" });
+    setListSorts(previous => ({...previous, [sortKey]: {column, ascending: sort.column === column ? !sort.ascending : column === "name"}}));
   }
   const toast = useToast();
   const batchNotices = useRef(new Map<string, ReturnType<typeof toast>>());
