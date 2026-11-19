@@ -59,7 +59,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
         description:"默认按标题查找个人页面。可指定 kind 查找个人资料空间中的上传文件和对话生成文件，也可按名称查找资料空间或文件夹，再用其编号作为 parentId 查找直接子项。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
         parameters:{
           type:"object", additionalProperties:false,
-          properties:{origin:{type:"string",enum:["上传","生成"],description:"按文件来源筛选"},kind:{type:"string",enum:["页面","资料空间","文件夹","文件"]},title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
+          properties:{origin:{type:"string",enum:["上传","生成"],description:"按文件来源筛选"},kind:{type:"string",enum:["页面","资料空间","文件夹","文件"]},title:{type:"string",minLength:1,maxLength:255,description:"条目名称关键词；查找文件时也可使用来源会话名称"},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
         },
         async handler(input, ctx) {
           const title = typeof input.title === "string" ? input.title.trim() : "";
@@ -79,7 +79,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             const files = listed.filter(file => !file.deleted && !file.shareId && (file.kind === "上传" || file.kind === "生成") &&
               (!input.origin || libraryFileOrigin(file) === input.origin) &&
               (!input.parentId || file.folderId === input.parentId) &&
-              [file.name, file.path.split("/").pop()].some(name => name?.normalize("NFC").toLowerCase().includes(needle)));
+              [file.name, file.path.split("/").pop(), file.conversation].some(value => value?.normalize("NFC").toLowerCase().includes(needle)));
             const parents = new Map(listed.filter(item=>!item.deleted).map(item=>[item.id,item.name]));
             const hasMore = offset+20 < files.length;
             return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
