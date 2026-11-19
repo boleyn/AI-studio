@@ -6,10 +6,12 @@ import type { LibraryFile } from "@/types/library";
 
 import LibraryMarkdown from "./LibraryMarkdown";
 
+export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse)";
+
 export type PageDraft = {name:string;body:string;revision:number};
 
 export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
-  const [mobileReader] = useMediaQuery("(max-width: 767px) and (pointer: coarse)");
+  const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();

@@ -3,12 +3,12 @@ import { Download } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { ArtifactFileIcon } from "@/components/workspace/ArtifactFileIcon";
+import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
 import FilePreviewPanel, { isSpreadsheetFile } from "@/components/workspace/FilePreviewPanel";
 import ExtendedFilePreview from "@/components/workspace/ExtendedFilePreview";
 
-import LibraryPageEditor from "@/components/agent-workspace/LibraryPageEditor";
+import LibraryPageEditor, { mobilePageReaderQuery } from "@/components/agent-workspace/LibraryPageEditor";
 
 export default function SharedArtifactPage() {
   const { query } = useRouter();
@@ -62,9 +62,9 @@ export default function SharedArtifactPage() {
     onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:name+".md"})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
-      <ArtifactFileIcon name={current.filename} compact />
+      <LibraryItemIcon item={{name:current.filename}} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
-      {current.editablePageId && <Button size="sm" onClick={()=>setEditing(true)}>编辑页面</Button>}
+      {current.editablePageId && <Button size="sm" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} onClick={()=>setEditing(true)}>编辑页面</Button>}
       {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
       <Button as="a" href={url} download={current.filename} leftIcon={<Download size={16} />} size="sm" variant="ghost">下载</Button>
     </Flex>
