@@ -41,6 +41,27 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
   return {props:{shareId,name:project.name,days,daily,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
 };
 
+function TrafficTrend({daily}: Pick<Props,"daily">) {
+  const maximum = Math.max(1,...daily.map(row=>Math.max(row.views,row.visitors)));
+  const x = (index:number) => 48 + index * 648 / (daily.length - 1);
+  const y = (value:number) => 158 - value * 132 / maximum;
+  const points = (metric:"visitors"|"views") => daily.map((row,index)=>x(index)+","+y(row[metric])).join(" ");
+  return <Box as="figure" mb={6}>
+    <svg viewBox="0 0 720 192" width="100%" role="img" aria-label="每日独立访客数和页面浏览量，详细数值见下表">
+      {[0,Math.ceil(maximum/2),maximum].filter((v,i,a)=>a.indexOf(v)===i).map(tick=><g key={tick}>
+        <line x1="48" x2="696" y1={y(tick)} y2={y(tick)} stroke="#ddd"/>
+        <text x="40" y={y(tick)+4} textAnchor="end" fontSize="12" fill="#555">{tick}</text>
+      </g>)}
+      <polyline points={points("views")} fill="none" stroke="#2563eb" strokeWidth="3"/>
+      <polyline points={points("visitors")} fill="none" stroke="#08775b" strokeWidth="2" strokeDasharray="5 4"/>
+      {[0,Math.floor(daily.length/2),daily.length-1].map(index=><text key={index} x={x(index)} y="182" textAnchor="middle" fontSize="12" fill="#555">{daily[index].day.slice(5)}</text>)}
+    </svg>
+    <Flex as="figcaption" gap={4} justify="center" fontSize="sm">
+      <Text color="#2563eb">实线 · 页面浏览量</Text><Text color="#08775b">虚线 · 独立访客数</Text>
+    </Flex>
+  </Box>;
+}
+
 export default function SiteAnalytics({name,shareId,days,daily,visitors,views}:Props) {
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={"/share/preview/"+shareId}>访问</Link></Flex>
@@ -51,6 +72,7 @@ export default function SiteAnalytics({name,shareId,days,daily,visitors,views}:P
     </Flex>
     <Flex gap={12} my={6}><Box>独立访客数<Text fontSize="2xl">{visitors}</Text></Box><Box>页面浏览量<Text fontSize="2xl">{views}</Text></Box></Flex>
     <Heading as="h2" size="md" mb={3}>流量趋势</Heading>
+    <TrafficTrend daily={daily}/>
     <Box as="table" w="full" fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>
       <thead><tr><th>日期（UTC）</th><th>独立访客数</th><th>页面浏览量</th></tr></thead>
       <tbody>{daily.map(row=><tr key={row.day}><td>{row.day}</td><td>{row.visitors}</td><td>{row.views}</td></tr>)}</tbody>
