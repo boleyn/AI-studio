@@ -655,6 +655,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     navigateList("全部","推荐",containingFolderId(file),file.id,true);
   }
   function pageUrl(file:LibraryFile) {
+    if (file.sharedPage && file.shareId) return new URL("/share/file/"+encodeURIComponent(file.shareId),window.location.origin).href;
     const url = new URL("/",window.location.origin);
     url.searchParams.set("view","library");
     url.searchParams.set("libraryItem",file.id);
@@ -705,7 +706,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       {(["页面","演示文稿"].includes(fileType(file))) && <MenuItem icon={file.pinned ? <PinOff size={personalSection ? 20 : 16}/> : <Pin size={personalSection ? 20 : 16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
       <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRenameError(""); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={personalSection ? 20 : 16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
-      {file.kind === "页面" && <Box position="relative" onBlur={event=>{
+      {(file.kind === "页面" || file.sharedPage) && <Box position="relative" onBlur={event=>{
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setCopyMenuId(undefined);
       }}>
         <MenuItem data-copy-trigger="" aria-haspopup="menu" aria-expanded={copyMenuId === file.id}
