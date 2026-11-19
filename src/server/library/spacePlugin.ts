@@ -59,12 +59,13 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           }
           const identity = JSON.stringify(["library-page",owner,token,chatId,ctx.toolUseId]);
           const id = new ObjectId(createHash("sha256").update(identity).digest("hex").slice(0,24));
-          await pages.updateOne({_id:id,owner},{$setOnInsert:{
+          const saved = await pages.findOneAndUpdate({_id:id,owner},{$setOnInsert:{
             kind:"页面", name, body:input.body, folderId, sourceChat:{token,chatId}, time:new Date().toISOString(),
-          }},{upsert:true});
+          }},{upsert:true,returnDocument:"after",projection:{name:1,folderId:1,deleted:1,purging:1}});
+          if (!saved || saved.deleted || saved.purging) return {isError:true,content:"此页面已不可用。"};
           const query = new URLSearchParams({view:"library",libraryItem:id.toHexString()});
-          if (folderId) query.set("libraryFolder",folderId);
-          return {content:JSON.stringify({id:id.toHexString(),name,url:"/?"+query})};
+          if (saved.folderId) query.set("libraryFolder",saved.folderId);
+          return {content:JSON.stringify({id:id.toHexString(),name:saved.name,url:"/?"+query})};
         },
       });
     },
