@@ -7,20 +7,20 @@ import { inferAttachmentMimeType } from "@features/chat/utils/attachmentMimeType
 
 type Entry = { id: string; name: string; folder: boolean };
 type Listing = { files: Entry[]; nextCursor?: string };
-const endpoint = "/api/library/connectors/dropbox-files";
+type Provider = "Dropbox" | "Box";
 
-async function readDropbox(params: URLSearchParams, signal?: AbortSignal) {
-  const response = await fetch(endpoint + "?" + params, { headers: withAuthHeaders(), signal });
-  if (redirectedToLogin(response) || response.status === 401) throw new Error("请重新登录后打开 Dropbox。");
+async function readFiles(provider: Provider, params: URLSearchParams, signal?: AbortSignal) {
+  const response = await fetch("/api/library/connectors/" + provider.toLowerCase() + "-files?" + params, { headers: withAuthHeaders(), signal });
+  if (redirectedToLogin(response) || response.status === 401) throw new Error("请重新登录后打开 " + provider + "。");
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.error || "Dropbox 暂时不可用，请重试。");
+    throw new Error(data?.error || provider + " 暂时不可用，请重试。");
   }
   return response;
 }
 
-export default function DropboxFilePicker({ back, onAttach }: { back: () => void; onAttach: (files: File[]) => Promise<void> }) {
-  const [path, setPath] = useState([{ id: "", name: "Dropbox" }]);
+export default function ConnectorFilePicker({ provider, back, onAttach }: { provider: Provider; back: () => void; onAttach: (files: File[]) => Promise<void> }) {
+  const [path, setPath] = useState([{ id: "", name: provider as string }]);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [pages, setPages] = useState([""]);
@@ -44,19 +44,19 @@ export default function DropboxFilePicker({ back, onAttach }: { back: () => void
     const params = new URLSearchParams({ folder: folder.id });
     if (search) params.set("query", search);
     if (cursor) params.set("cursor", cursor);
-    readDropbox(params, controller.signal).then(response => response.json()).then(data => {
+    readFiles(provider, params, controller.signal).then(response => response.json()).then(data => {
       if (!controller.signal.aborted) setListing(data);
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason.message);
     });
     return () => controller.abort();
-  }, [folder.id, cursor, search, attempt]);
+  }, [provider, folder.id, cursor, search, attempt]);
 
   async function attach(entry: Entry) {
     setAttaching(entry.id);
     setError("");
     try {
-      const response = await readDropbox(new URLSearchParams({ file: entry.id }));
+      const response = await readFiles(provider, new URLSearchParams({ file: entry.id }));
       const name = responseFilename(response, entry.name);
       await onAttach([new File([await response.blob()], name, { type: inferAttachmentMimeType(name) })]);
     } catch (reason) {
@@ -69,7 +69,7 @@ export default function DropboxFilePicker({ back, onAttach }: { back: () => void
     <ModalOverlay/><ModalContent mx={3} borderRadius="16px">
       <ModalHeader pr={12} overflowWrap="anywhere">{folder.name}</ModalHeader><ModalCloseButton aria-label="关闭" isDisabled={Boolean(attaching)}/>
       <ModalBody>
-        {path.length === 1 && <Input type="search" aria-label="搜索 Dropbox 文件" placeholder="搜索 Dropbox 文件" mb={3}
+        {path.length === 1 && <Input type="search" aria-label={"搜索 " + provider + " 文件"} placeholder={"搜索 " + provider + " 文件"} mb={3}
           value={input} isDisabled={Boolean(attaching)} onChange={event => setInput(event.target.value)}/>}
         {path.length > 1 && <Button size="sm" variant="ghost" mb={2} isDisabled={Boolean(attaching)} onClick={() => { setPages([""]); setPath(path.slice(0,-1)); }}>返回上级文件夹</Button>}
         {error && <Text role="alert">{error}</Text>}
