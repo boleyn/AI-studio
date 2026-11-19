@@ -1,9 +1,13 @@
 .control { position: relative; vertical-align: middle; }
 
-.control::before, .cardControl::before {
+.cardControl::before {
   content: "";
   position: absolute;
   inset: -9px;
+}
+
+@media (any-pointer: coarse) {
+  .control::before { content: ""; position: absolute; inset: -9px; }
 }
 
 .cardControl {
