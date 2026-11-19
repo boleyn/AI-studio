@@ -369,12 +369,13 @@ const ChatItem = ({
                   const name = file.name || file.storagePath?.split("/").pop() || `文件 ${index + 1}`;
                   const image = isImageFile({...file,name});
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
-                  const fileUrl = storagePath?.startsWith("chat_uploads/")
-                    ? (file.previewUrl?.startsWith("/api/core/chat/files/view?") ? file.previewUrl : toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""}))
-                    : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
-                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
                     /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
+                  const savedChatUrl = [file.previewUrl, isMarkdown ? file.downloadUrl : undefined].find(url => url?.startsWith("/api/core/chat/files/view?"));
+                  const fileUrl = storagePath?.startsWith("chat_uploads/")
+                    ? savedChatUrl || toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
+                    : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
+                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
                     "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
                   const imageFailed = image && failedImages.has(fileUrl);
