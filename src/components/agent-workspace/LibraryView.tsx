@@ -1146,6 +1146,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             "& :is(th,td):last-child":{paddingInlineEnd:0},
           }}),
           ...(allHome && {
+            "@container (min-width: 680px) and (max-width: 959px)": {
+              "& col:nth-child(2)": {width:"auto !important"},
+              "& col:nth-child(3)": {width:"19% !important"},
+              "& col:nth-child(4)": {width:"112px"},
+              "& col:last-child": {width:hasPageActions ? "64px !important" : "32px !important"},
+            },
             "@container (max-width: 679px)": {
               "& :is(col, th, td):nth-child(3)": {display:"none"},
               "& col:nth-child(2)": {width:"auto !important"},
