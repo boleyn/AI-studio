@@ -818,8 +818,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
-          "& th:nth-of-type(2)":{paddingInlineStart:"8px"},
-          "& td:nth-of-type(2)":{paddingInlineStart:section === "全部" && !folder ? "24px" : "8px"},
+          "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:section === "全部" && !folder ? "24px" : "8px"},
           "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
