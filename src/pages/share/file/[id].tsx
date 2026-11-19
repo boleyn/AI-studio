@@ -2,7 +2,7 @@ import { markdownFilename } from "@/types/library";
 import { Box, Button, Flex, IconButton, Spinner, Text, useToast } from "@chakra-ui/react";
 import { ArrowLeft, Download } from "lucide-react";
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
@@ -10,7 +10,7 @@ import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
 import FilePreviewPanel, { isSpreadsheetFile } from "@/components/workspace/FilePreviewPanel";
 import ExtendedFilePreview from "@/components/workspace/ExtendedFilePreview";
 
-import LibraryPageEditor, { mobilePageReaderQuery } from "@/components/agent-workspace/LibraryPageEditor";
+import LibraryPageEditor, { mobilePageReaderQuery, type PageDraft } from "@/components/agent-workspace/LibraryPageEditor";
 
 export default function SharedArtifactPage() {
   const { query } = useRouter();
@@ -20,6 +20,7 @@ export default function SharedArtifactPage() {
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
   const [result, setResult] = useState<{ id: string; filename?: string; previewName?: string; editablePageId?: string; error?: string; needsLogin?: boolean }>();
   const [loadAttempt,setLoadAttempt] = useState(0);
+  const pageDrafts = useRef(new Map<string,PageDraft>());
   const [editing,setEditing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
@@ -70,7 +71,7 @@ export default function SharedArtifactPage() {
   const previewName = current.previewName || current.filename;
   const isSpreadsheet = isSpreadsheetFile(previewName);
   const retry = () => setAttempt((value) => value + 1);
-  if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
+  if (editing && current.editablePageId) return <LibraryPageEditor drafts={pageDrafts.current} key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
     onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:markdownFilename(name),previewName:markdownFilename(name)})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
