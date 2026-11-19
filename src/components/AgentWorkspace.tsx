@@ -191,7 +191,7 @@ export default function AgentWorkspace({
   type WorkspaceView = "chat" | "schedules" | "projects" | "library";
   const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
     ? query.view : "chat";
-  const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
+  const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;projectToken:string;minimized:boolean}>();
   const [fileChatWidth, setFileChatWidth] = useState(38);
   const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
     fileChat.chatId === visibleChatId ? fileChat : undefined;
@@ -895,7 +895,8 @@ export default function AgentWorkspace({
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
       {activeNav === "library" && <LibraryView query={librarySearch} setQuery={setLibrarySearch} sidebar={librarySidebarOpen} onCollapseSidebar={()=>{setLibrarySidebarOpen(false);libraryNavButton.current?.focus();}} fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
-        let token = projectToken || activeProject?.token || projects[0]?.token;
+        const existingChat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? fileChat : undefined;
+        let token = existingChat?.projectToken || projectToken || activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
           token = existing[0]?.token;
@@ -906,11 +907,10 @@ export default function AgentWorkspace({
             token = created.token;
           }
         }
-        const existingChat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? fileChat : undefined;
         const chat = existingChat ? {id:existingChat.chatId} : await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text,imageMode});
-        if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
+        if (itemId) setFileChat({itemId,chatId:chat.id,projectToken:token,minimized:false});
         else setFileChat(undefined);
         const projectLoaded = projects.some(project => project.token === token);
         if (!existingChat && !projectLoaded) {
