@@ -450,6 +450,10 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
     } else {
       const eligible = (item:MessageFile) => !reservedPaths.has(item.storagePath?.replace(/^\/+/, ""));
       index = file.libraryItemId ? remaining.findIndex(item => eligible(item) && item.libraryItemId === file.libraryItemId) : -1;
+      if (index < 0 && path) {
+        index = remaining.findIndex(item => eligible(item) && item.storagePath?.replace(/^\/+/, "") === path &&
+          (!item.libraryItemId || item.libraryItemId === file.libraryItemId || (!file.libraryItemId && !reservedOrigins.has(item.libraryItemId))));
+      }
       if (index < 0) {
         index = remaining.findIndex(item => eligible(item) && item.name === file.name &&
           (!item.libraryItemId || (!file.libraryItemId && !reservedOrigins.has(item.libraryItemId))));
