@@ -624,7 +624,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </Box>}
       {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
         <MenuItem icon={<Download size={20}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
-      {!pagesSection && <>
+      {!pagesSection && file.kind !== "页面" && !file.sharedPage && <>
         <MenuDivider my={2}/>
         <MenuItem icon={<Bookmark size={20}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
         {!isContainer(file) && <MenuItem icon={<FolderInput size={20}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMoveFailures([]);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
