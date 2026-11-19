@@ -931,10 +931,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         w="max-content" maxW="calc(100vw - 24px)" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
+        {trashSection ? <>
+          <Button size="sm" minW="78px" bg="white" color="black" leftIcon={<RotateCcw size={16}/>} isDisabled={selectionLocked} onClick={changeTrashSelection}>恢复</Button>
+          <Button size="sm" minW="106px" bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={selectionLocked} onClick={()=>setPurge(picked)}>永久删除</Button>
+        </> : <>
         <Button size="sm" minW={{md:"102px"}} bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         <Button size="sm" minW={{md:"78px"}} bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
-        <Button size="sm" minW={{md:"74px"}} bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>{section==="回收站" ? "恢复" : "删除"}</Button>
+        <Button size="sm" minW={{md:"74px"}} bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>删除</Button>
         <Menu placement="top-end" gutter={5}><MenuButton as={IconButton} size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800" w="180px" minW={0} p="10px" borderWidth={0} borderRadius="16px"><MenuItem h="36px" px="10px" borderRadius="12px" icon={<FolderInput size={20}/>} isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
+        </>}
         <IconButton size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
     </Box>
@@ -1039,7 +1044,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </ModalContent>
     </Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
-      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "清空回收站？" : "永久删除项目？"}</ModalHeader>
+      <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge && purge.length > 1 ? "永久删除这些项目？" : "永久删除项目？"}</ModalHeader>
         <ModalBody>{purge?.length === 1 ? "“" + purge[0].name + "”" : (purge?.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
         <ModalFooter gap={2}><Button isDisabled={saving} onClick={() => setPurge(undefined)}>取消</Button>
           <Button colorScheme="red" isLoading={saving} onClick={async () => {
