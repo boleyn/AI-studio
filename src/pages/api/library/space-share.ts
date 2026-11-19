@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
-import { findSpaceInviteRecipient, findUserByUsername } from "@server/auth/userStore";
+import { findSpaceInviteRecipient } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 
 export default async function handler(req:NextApiRequest,res:NextApiResponse) {
@@ -23,12 +23,18 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     if (!owner) return res.status(403).end();
     const name = req.body?.username;
     if (typeof name !== "string" || !name.trim() || name.length > 100) return res.status(400).end();
-    const user = req.body.remove === true ? await findUserByUsername(name.trim()) : await findSpaceInviteRecipient(name.trim());
-    if (!user || String(user._id) === userId) return res.status(400).json({error:"请选择有效的成员账号"});
-    const member = {username:user.username,userId:String(user._id)};
     const updateFilter = {...filter,owner:userId};
-    if (req.body.remove === true) await pages.updateOne(updateFilter,{$pull:{members:member}});
-    else await pages.updateOne(updateFilter,{$addToSet:{members:member},$set:{sharedBy:auth.user.displayName || auth.user.username}});
+    if (req.body.remove === true) {
+      const member = space.members?.find(entry => req.body.userId
+        ? entry.userId === req.body.userId : entry.username === name.trim());
+      if (member) await pages.updateOne(updateFilter, {$pull:{members:{userId:member.userId}}});
+    } else {
+      const user = await findSpaceInviteRecipient(name.trim());
+      if (!user || String(user._id) === userId) return res.status(400).json({error:"请选择有效的成员账号"});
+      const member = {username:user.username,userId:String(user._id)};
+      await pages.updateOne({...updateFilter,"members.userId":{$ne:member.userId}},
+        {$push:{members:member},$set:{sharedBy:auth.user.displayName || auth.user.username}});
+    }
     const updated = await pages.findOne(updateFilter,{projection:{members:1}});
     return res.json({members:updated?.members || []});
   }
