@@ -98,7 +98,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
       "@container (min-width: 80rem)": {gridAutoColumns:"max(9rem, calc((100% - 5rem) * 3 / 16))"},
       scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color},i) =>
       <Fragment key={name}>
-      {i === 3 && collection === "全部" && slideCard("Photography Portfolio")}
+      {i === 3 && collection === "全部" && slideCard("Product Strategy")}
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={23} color={color}/>
