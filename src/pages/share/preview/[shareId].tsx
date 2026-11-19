@@ -112,10 +112,24 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
     files: normalizeFiles(initialProject.files),
   });
 
+  const [unavailable, setUnavailable] = useState("");
   useEffect(() => {
+    if (unavailable) return;
+    const controller = new AbortController();
+    let loading = false;
     const timer = window.setInterval(async () => {
+      if (loading) return;
+      loading = true;
       try {
-        const response = await fetch(`/api/share/${encodeURIComponent(shareId)}`);
+        const response = await fetch(`/api/share/${encodeURIComponent(shareId)}`, {signal:controller.signal});
+        if (response.status === 401) {
+          window.location.replace("/login?lastRoute=" + encodeURIComponent("/share/preview/" + shareId));
+          return;
+        }
+        if (response.status === 403 || response.status === 404) {
+          setUnavailable(response.status === 403 ? "当前账号已无权查看此站点。" : "此站点的分享链接已失效。");
+          return;
+        }
         if (!response.ok) return;
         const payload = (await response.json()) as SharePayload;
         if (payload.mode !== "preview") return;
@@ -128,14 +142,17 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
           setProject(current => ({...current, name:payload.project.name}));
         }
       } catch {
-        // ignore polling errors in preview mode
+        // Keep the current preview during a temporary network outage.
+      } finally {
+        loading = false;
       }
     }, 5000);
 
     return () => {
+      controller.abort();
       window.clearInterval(timer);
     };
-  }, [shareId, project.updatedAt, project.name]);
+  }, [shareId, project.updatedAt, project.name, unavailable]);
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(project.dependencies);
@@ -169,6 +186,9 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
     [project.template, project.token, project.updatedAt, providerFiles, shareId]
   );
 
+  if (unavailable) return <Flex as="main" minH="100vh" align="center" justify="center">
+    <Head><title>站点无法访问</title></Head><Box role="alert">{unavailable}</Box>
+  </Flex>;
   return (
     <Flex direction="column" h="100vh" bg="gray.50" overflow="hidden">
       <Head><title>{project.name}</title></Head>
