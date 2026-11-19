@@ -84,7 +84,10 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
         <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/><Text flex="1" minW={0} overflowWrap="anywhere" fontSize="sm">{error}</Text>
         {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
       </Flex>}
-      {visible?.length===0 && <Text color="gray.500" p={3}>没有符合条件的文件或页面</Text>}
+      {visible?.length === 0 && <Box role="status" px={4} py={8} textAlign="center">
+        <Text fontSize="sm" fontWeight="medium">{items?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
+        <Text mt={1} fontSize="xs" color="gray.600">{items?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
+      </Box>}
       {visible?.map(item=>{
         const checked=selected.includes(item.id);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
