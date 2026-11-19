@@ -262,7 +262,13 @@ export async function downloadWorkspaceArtifact(token: string, path: string, ver
 
 export async function downloadAuthenticatedFile(endpoint: string, filename: string) {
   const response = await fetch(endpoint, { headers: withAuthHeaders() });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const message = response.status === 401 ? "请重新登录后下载。" :
+      response.status === 403 ? "当前账号没有下载权限。" :
+      response.status === 404 || response.status === 410 ? "文件已不可访问，请确认文件或共享链接仍有效。" :
+      "文件暂时无法下载，请稍后重试。";
+    throw new Error(message);
+  }
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;

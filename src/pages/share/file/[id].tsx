@@ -75,8 +75,8 @@ export default function SharedArtifactPage() {
         setDownloading(true);
         try {
           await downloadAuthenticatedFile(url, current.filename!);
-        } catch {
-          toast({status:"error",title:"下载失败，请确认网络连接和文件访问权限后重试。"});
+        } catch (error) {
+          toast({status:"error",title:"下载失败",description:error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "请稍后重试。"});
         } finally {
           setDownloading(false);
         }
