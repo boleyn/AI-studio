@@ -427,15 +427,17 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const reservedOrigins = new Set(artifactFiles.map(file => file.libraryItemId).filter(Boolean));
   const merged = artifactFiles.map(file => {
     const path = file.storagePath?.replace(/^\/+/, "");
-    const index = path?.startsWith("chat_uploads/")
-      ? remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path)
-      : remaining.findIndex(item => {
-          if (reservedPaths.has(item.storagePath?.replace(/^\/+/, ""))) return false;
-          if (item.libraryItemId && (file.libraryItemId || reservedOrigins.has(item.libraryItemId))) {
-            return item.libraryItemId === file.libraryItemId;
-          }
-          return item.name === file.name;
-        });
+    let index: number;
+    if (path?.startsWith("chat_uploads/")) {
+      index = remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path);
+    } else {
+      const eligible = (item:MessageFile) => !reservedPaths.has(item.storagePath?.replace(/^\/+/, ""));
+      index = file.libraryItemId ? remaining.findIndex(item => eligible(item) && item.libraryItemId === file.libraryItemId) : -1;
+      if (index < 0) {
+        index = remaining.findIndex(item => eligible(item) && item.name === file.name &&
+          (!item.libraryItemId || (!file.libraryItemId && !reservedOrigins.has(item.libraryItemId))));
+      }
+    }
     if (index < 0) return file;
     const [block] = remaining.splice(index, 1);
     const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type));
