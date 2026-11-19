@@ -43,7 +43,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
   const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
   const [activityOpen,setActivityOpen] = useState(false);
   return <Flex as="aside" w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>
-    <Flex align="center" pl="8px" pr="3px" gap="8px" mb={3}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
+    <Flex align="center" pl="8px" pr="3px" gap="8px" mb={2}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
       <Popover isOpen={activityOpen} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} placement="bottom-start" gutter={5} isLazy>
         <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="动态" icon={<Bell size={20} strokeWidth={1.6}/>} /></PopoverTrigger>
         <Portal><PopoverContent aria-label="动态" width="min(384px, calc(100vw - 24px))" height="320px" borderRadius="12px" boxShadow="lg">
@@ -65,9 +65,11 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
       <IconButton ref={toggleRef} size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={20} strokeWidth={1.6}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
+    <Flex direction="column" mt="17px" gap="1px" sx={{"& > button":{height:"35px",paddingInline:"8px",borderRadius:"8px"}}}>
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
       aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={16}/>} onClick={() => onSection(name)}>{name}</Button>)}
     {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
+    </Flex>
     <Box overflowY="auto" mt={5} flex="1">
       <Button variant="ghost" size="sm" color="gray.500" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
