@@ -1,5 +1,6 @@
 import { sitePreviewPath } from "@/types/library";
 import type { GetServerSideProps } from "next";
+import { ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
@@ -13,6 +14,7 @@ interface Props {
   name: string;
   shareId: string;
   previewPath: string;
+  editUrl: string;
   days: number;
   requests: number;
   visitors: number;
@@ -50,7 +52,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
     const row = report?.daily.find((entry:{_id:string}) => entry._id === day);
     return {day,visitors:Number(row?.visitors || 0),views:Number(row?.views || 0)};
   });
-  return {props:{shareId,previewPath:sitePreviewPath(shareId, settings?.siteSlug),name:settings?.name || project.name,days,daily,requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
+  return {props:{shareId,editUrl:"/project/"+encodeURIComponent(share.projectToken),previewPath:sitePreviewPath(shareId, settings?.siteSlug),name:settings?.name || project.name,days,daily,requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
 };
 
 function TrafficTrend({daily}: Pick<Props,"daily">) {
@@ -84,14 +86,18 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
   </Box>;
 }
 
-export default function SiteAnalytics({name,shareId,previewPath,days,daily,visitors,views,requests}:Props) {
+export default function SiteAnalytics({name,shareId,previewPath,editUrl,days,daily,visitors,views,requests}:Props) {
   const detailPath = (tab?:string) => {
     const params = new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId});
     if (tab) params.set("siteDetail",tab);
     return "/?" + params;
   };
   return <Box as="main" maxW="960px" mx="auto" p={6}>
-    <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={previewPath}>访问</Link></Flex>
+    <Flex align="center" gap={2}>
+      <Button as="a" variant="ghost" size="sm" mr="auto" href="/?view=library&librarySection=站点">返回站点</Button>
+      <Button as="a" size="sm" href={previewPath} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
+      <Button as="a" size="sm" href={editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>
+    </Flex>
     <Box as="section" aria-label={name} mt={6} mb={4}>
       <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{name}</Heading>
       <Link href={previewPath} fontSize="sm" color="gray.600" overflowWrap="anywhere">{previewPath}</Link>
