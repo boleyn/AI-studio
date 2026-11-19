@@ -715,7 +715,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
-        <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
+        <Flex display={{base:"flex", md:"none"}} align="center" gap={1}>
+          <Menu placement="bottom-start">
+            <MenuButton as={IconButton} variant="ghost" size="sm" aria-label="资料空间导航" icon={<PanelLeftOpen size={18}/>}/>
+            <Portal><MenuList>
+              {sections.filter(name => name !== "Google Drive").map(name =>
+                <MenuItem key={name} aria-current={!folder && section === name ? "page" : undefined} onClick={() => changeSection(name)}>{name}</MenuItem>)}
+            </MenuList></Portal>
+          </Menu>
+          <Button variant="ghost" onClick={onBack}>返回聊天</Button>
+        </Flex>
         <Flex align="center" gap={2} minW={0} maxW="full"><Heading as="h1" display="flex" alignItems="center" flexWrap={folder ? "wrap" : undefined} minW={0} gap={2} fontSize="24px" lineHeight="36px" fontWeight="500">
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
             {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center" maxW="full" minW={0}><ChevronRight size={16} style={{flexShrink:0}}/>
