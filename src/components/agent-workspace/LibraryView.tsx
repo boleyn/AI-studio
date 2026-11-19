@@ -729,9 +729,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
+        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
-            <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
+            <Button key={name} role="tab" id={sitesSection ? "library-sites-tab-" + index : undefined}
+              aria-controls={sitesSection && tab === name ? "library-sites-panel" : undefined} aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
               sx={slidesSection || allHome ? {border:"1px solid transparent",fontSize:"14px",fontWeight:500,
                 color:tab === name ? "#0d0d0d" : "#5d5d5d",bg:tab === name ? "blackAlpha.50" : "transparent",
@@ -786,7 +787,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
-      {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
+      {sitesSection ? <Box role="tabpanel" id="library-sites-panel" aria-labelledby={"library-sites-tab-" + tabs.indexOf(tab)}>
+        <LibrarySites tab={tab} query={query} grid={grid}/>
+      </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
             <Text mt={1} fontSize="sm" color="gray.600">{failed}</Text></Box>
