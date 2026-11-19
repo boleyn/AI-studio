@@ -415,8 +415,11 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const files = (message.artifact as {files?:unknown} | null)?.files;
   const blocks = message.message?.content ?? message.content;
   const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
-    if (!block || block.type !== "attachment" || typeof block.name !== "string") return [];
-    return [{...(typeof block.library_item_id === "string" ? {libraryItemId:block.library_item_id} : {}), name:block.name,type:block.mime_type,storagePath:block.source_storage_path || block.storage_path,
+    if (!block || block.type !== "attachment") return [];
+    const storagePath = [block.source_storage_path,block.storage_path].find(path=>typeof path === "string" && path);
+    const name = typeof block.name === "string" && block.name ? block.name : storagePath?.split("/").pop();
+    if (!name) return [];
+    return [{...(typeof block.library_item_id === "string" ? {libraryItemId:block.library_item_id} : {}), name,type:block.mime_type,storagePath,
       downloadUrl:block.download_url,previewUrl:block.preview_url}];
   }) : [];
   if (!Array.isArray(files) || !files.length) return attachments;
