@@ -106,6 +106,7 @@ const ChatItem = ({
 }) => {
   const {token,activeConversationId} = useChatPanelViewContext();
   const [preview,setPreview] = React.useState<{name:string;url:string;libraryItemId?:string}>();
+  const [failedImages,setFailedImages] = React.useState<Set<string>>(() => new Set());
   const [previewText,setPreviewText] = React.useState<string>();
   const [showLibrarySource,setShowLibrarySource] = React.useState(false);
   const [previewError,setPreviewError] = React.useState("");
@@ -370,7 +371,9 @@ const ChatItem = ({
                     /^text\/markdown(?:;|$)/i.test(file.type || "");
                   const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
                     "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
-                  const openUrl = fileUrl || originalUrl;
+                  const imageFailed = image && failedImages.has(fileUrl);
+                  const openUrl = imageFailed ? originalUrl : fileUrl || originalUrl;
+                  const unavailable = imageFailed ? "图片无法加载" : "缺少附件地址";
                   const canOpen = Boolean(isMarkdown || openUrl);
                   return (
                     <Box
@@ -381,12 +384,12 @@ const ChatItem = ({
                       borderRadius="md"
                       overflow="hidden"
                     >
-                      {image && fileUrl ? (
-                          <Box as="img" src={fileUrl} alt={name} maxH="220px" objectFit="contain" w="100%" />
+                      {image && fileUrl && !imageFailed ? (
+                          <Box as="img" src={fileUrl} alt={name} onError={()=>setFailedImages(previous=>new Set(previous).add(fileUrl))} maxH="220px" objectFit="contain" w="100%" />
                       ) : (
                         <Flex
                           alignItems="center" gap={2}
-                          as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，缺少附件地址`}
+                          as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，${unavailable}`}
                           cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
                             if (isMarkdown) setPreview({name,url:fileUrl,libraryItemId:file.libraryItemId});
@@ -397,7 +400,8 @@ const ChatItem = ({
                         >
                           <LibraryItemIcon item={{name}}/>
                           <AttachmentFilename name={name}/>
-                          {!canOpen && <Text as="span" fontSize="xs" color="gray.600">缺少附件地址</Text>}
+                          {imageFailed && originalUrl && <Text as="span" fontSize="xs" color="gray.600">查看原件</Text>}
+                          {!canOpen && <Text as="span" fontSize="xs" color="gray.600">{unavailable}</Text>}
                         </Flex>
                       )}
                     </Box>
