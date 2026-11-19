@@ -1,4 +1,4 @@
-import { libraryTypeName } from "@/types/library";
+import { libraryActivityTime, libraryTypeName } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
@@ -339,7 +339,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   function rowTime(file: LibraryFile) {
     if (section === "回收站") return file.deletedAt || "";
     if (folder) return file.time;
-    return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
+    return libraryActivityTime(file);
   }
   function sortValue(file: LibraryFile) {
     if (folder && sort.column === "size") return String(file.size ?? 0);

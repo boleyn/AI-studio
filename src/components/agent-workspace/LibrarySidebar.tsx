@@ -1,6 +1,6 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
 import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
-import type { LibraryFile } from "@/types/library";
+import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -39,8 +39,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
-  const recentTime = (file:LibraryFile) => file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
-  const recentItems = [...items].sort((a,b)=>recentTime(b).localeCompare(recentTime(a)));
+  const recentItems = [...items].sort((a,b)=>libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
   const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
   const [activityOpen,setActivityOpen] = useState(false);
   return <Flex as="aside" position="relative" sx={{"&:hover .collapse-library-sidebar, &:focus-within .collapse-library-sidebar":{opacity:1,pointerEvents:"auto"}}} w={{md:"248px",xl:"288px"}} flexShrink={0} direction="column" bg="#fafafa" borderRight="1px solid #eee" p="8px" minH={0}>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import type { LibraryFile } from "@/types/library";
+import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { CircleAlert, Search, X } from "lucide-react";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
@@ -40,7 +40,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     const controller = new AbortController();
     setError("");
     loadLibraryFiles(controller.signal).then(data => {
-      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted));
+      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a))));
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
     });

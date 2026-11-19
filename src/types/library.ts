@@ -37,3 +37,7 @@ export interface LibraryFile {
 export function libraryTypeName(item: {path?:string; name:string}) {
   return item.path && /\.[^./\\]+$/.test(item.path) ? item.path : item.name;
 }
+
+export function libraryActivityTime(file: LibraryFile) {
+  return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
+}
