@@ -39,11 +39,15 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const [fileErrors,setFileErrors] = useState(new Map<string,string>());
   const listRef = useRef<HTMLDivElement>(null);
   const rootScroll = useRef(0);
+  const focusFailedItem = useRef(false);
   useEffect(() => {
     if (items) listRef.current?.scrollTo({top:space ? 0 : rootScroll.current});
   }, [items,space]);
   useEffect(() => {
-    if (fileErrors.size) listRef.current?.scrollTo({top:0});
+    if (!fileErrors.size || !focusFailedItem.current) return;
+    focusFailedItem.current = false;
+    listRef.current?.scrollTo({top:0});
+    listRef.current?.querySelector<HTMLButtonElement>("button[data-attachment-error]")?.focus({preventScroll:true});
   }, [fileErrors]);
   const [busy,setBusy] = useState(false);
   const [attempt,setAttempt] = useState(0);
@@ -143,6 +147,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         }
         recordLibraryOpen(folders.filter(folder => used.has(folder.id)).map(folder => folder.id));
       }
+      focusFailedItem.current = errors.size > 0;
       setFileErrors(errors);
       if (errors.size) {
         setSelected(files.filter(item => errors.has(item.id)));
@@ -203,7 +208,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         </Button>;
         const checked=selected.some(entry => entry.id === item.id);
         const source = locationLabel(item);
-        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
+        return <Flex as="button" type="button" key={item.id} role="checkbox" data-attachment-error={fileErrors.has(item.id) || undefined} aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
           width="100%" direction="column" align="stretch" gap={1} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>toggleItem(item)}>
