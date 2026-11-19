@@ -416,12 +416,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     finally {setBatchBusy(false);}
   }
   async function startSelectionChat(selection: LibraryFile[]) {
-    const attachments = expandLibrarySelection(selection, files || []);
-    const shared = selection.filter(item => isContainer(item) && item.shareId);
-    if (shared.length) {
+    const shared = new Map<string, LibraryFile>();
+    const attachments = expandLibrarySelection(selection, files || [], shared);
+    if (shared.size) {
       setBatchBusy(true);
       try {
-        for (const space of shared) attachments.push(...await loadSharedSpacePages(space));
+        for (const space of shared.values()) attachments.push(...await loadSharedSpacePages(space));
       } catch (error) {
         toast({status:"error", title:"无法读取共享空间", isClosable:true,
           description:error instanceof TypeError ? "连接失败，请检查网络后重试。" :

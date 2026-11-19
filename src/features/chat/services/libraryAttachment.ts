@@ -7,8 +7,12 @@ import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE } from "./files";
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
-export function expandLibrarySelection(selection: LibraryFile[], files: LibraryFile[]) {
-    const folders = new Set(selection.filter(isContainer).map(item => item.id));
+export function expandLibrarySelection(selection: LibraryFile[], files: LibraryFile[], sharedSpaces?: Map<string, LibraryFile>) {
+    const containers = selection.filter(isContainer);
+    for (const item of containers) {
+      if (item.shareId) sharedSpaces?.set(item.id, item);
+    }
+    const folders = new Set(containers.map(item => item.id));
     if (!folders.size) return selection;
     const children = new Map<string,LibraryFile[]>();
     for (const file of files) {
@@ -20,6 +24,7 @@ export function expandLibrarySelection(selection: LibraryFile[], files: LibraryF
     const attachments = new Map(selection.filter(item => !isContainer(item)).map(item => [item.id, item]));
     for (const folderId of folders) {
       for (const file of children.get(folderId) || []) {
+        if (isContainer(file) && file.shareId) sharedSpaces?.set(file.id, file);
         if (isContainer(file) || file.kind === "页面") folders.add(file.id);
         if (!isContainer(file) && !file.siteId) attachments.set(file.id, file);
       }
