@@ -28,7 +28,7 @@ import LibrarySidebar from "./LibrarySidebar";
 const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 const isNative = (file:LibraryFile) => !file.shareId && (file.kind === "页面" || isContainer(file));
 function renameSuffix(file?: LibraryFile) {
-  if (!file || file.siteId || isNative(file)) return "";
+  if (!file || file.siteId || file.sharedPage || isNative(file)) return "";
   const dot = file.name.lastIndexOf(".");
   return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
 }

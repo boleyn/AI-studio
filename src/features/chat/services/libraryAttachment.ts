@@ -29,7 +29,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"}),item.id);
   }
   const blob = await response.blob();
-  if (item.sharedPage) return fromLibrary(new File([blob],item.path,{type:"text/markdown"}),item.id);
+  if (item.sharedPage) return fromLibrary(new File([blob],item.name + ".md",{type:"text/markdown"}),item.id);
   const type = !blob.type || blob.type.split(";")[0].trim() === "application/octet-stream"
     ? inferAttachmentMimeType(item.name, item.path)
     : blob.type;
