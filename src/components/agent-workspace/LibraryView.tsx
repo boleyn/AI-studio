@@ -946,7 +946,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
     <Modal isOpen={newKind === "资料空间"} onClose={closeSpaceDialog} isCentered>
-      <ModalOverlay/><ModalContent mx={3} maxW="512px" minH="238px" borderRadius="24px">
+      <ModalOverlay/><ModalContent mx={3} maxW="512px" minH="238px" borderWidth={0} borderRadius="24px">
         <ModalHeader as="h2" fontSize="20px">创建资料空间</ModalHeader><ModalCloseButton boxSize="36px" aria-label="关闭对话框" isDisabled={creating}/>
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
           <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
