@@ -10,7 +10,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { libraryAttachmentUrl, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
+import { libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -60,7 +60,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [batchBusy,setBatchBusy] = useState(false);
   const [moveFailures,setMoveFailures] = useState<string[]>([]);
   const [batchMove,setBatchMove] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [connectors, setConnectors] = useState(false);
   const [globalSearch,setGlobalSearch] = useState(false);
@@ -318,13 +318,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const toast = useToast();
   useEffect(() => {
     const controller = new AbortController();
-    setFailed(false);
-    fetch("/api/library", { headers: withAuthHeaders(), signal: controller.signal })
-      .then(response => {
-        if (!response.ok) throw new Error();
-        return response.json();
-      }).then(data => { if (!controller.signal.aborted) setFiles(data); })
-      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    setFailed("");
+    loadLibraryFiles(controller.signal)
+      .then(data => { if (!controller.signal.aborted) setFiles(data); })
+      .catch(reason => { if (!controller.signal.aborted) setFailed(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message); });
     return () => controller.abort();
   }, [attempt]);
   const destinations = files?.filter(item => isContainer(item) && !item.shareId && !item.deleted) || [];
@@ -713,7 +710,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       {sitesSection ? <LibrarySites tab={tab} query={query} grid={grid}/> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
-            <Text mt={1} fontSize="sm" color="gray.600">请稍后重新加载。</Text></Box>
+            <Text mt={1} fontSize="sm" color="gray.600">{failed}</Text></Box>
           <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重新加载</Button>
         </Flex> :
         !visible ? <Text role="status">正在加载文件…</Text> :

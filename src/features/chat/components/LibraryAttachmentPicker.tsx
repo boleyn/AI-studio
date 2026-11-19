@@ -6,7 +6,7 @@ import { CircleAlert, Search, X } from "lucide-react";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments } from "../services/libraryAttachment";
+import { addLibraryAttachments, loadLibraryFiles } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -39,11 +39,11 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    fetch("/api/library",{headers:withAuthHeaders(),signal:controller.signal}).then(async response => {
-      if (!response.ok) throw new Error();
-      const data:LibraryFile[] = await response.json();
+    loadLibraryFiles(controller.signal).then(data => {
       if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted));
-    }).catch(() => {if (!controller.signal.aborted) setError("无法加载资料空间");});
+    }).catch(reason => {
+      if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
+    });
     return () => controller.abort();
   },[attempt]);
   const namesById = new Map(items?.map(item=>[item.id,item.name]));

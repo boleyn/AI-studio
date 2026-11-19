@@ -4,6 +4,14 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
 
+export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile[]> {
+  const response = await fetch("/api/library", {headers:withAuthHeaders(), signal});
+  if (response.status === 401) throw new Error("请先登录，再打开资料空间。");
+  if (response.status === 403) throw new Error("当前账号没有访问资料空间的权限。");
+  if (!response.ok) throw new Error("资料空间暂时不可用，请稍后重试。");
+  return response.json();
+}
+
 export function libraryAttachmentUrl(item: LibraryFile) {
   if (item.shareId) return "/api/artifact-share?id=" + item.shareId + "&file=1";
   const query = new URLSearchParams({token:item.token, action:"view", path:item.path});
