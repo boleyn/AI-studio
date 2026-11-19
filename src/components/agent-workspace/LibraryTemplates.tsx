@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
@@ -37,6 +37,17 @@ const slideTemplates = [
 export type SlideTemplateName = typeof slideTemplates[number];
 
 export default function LibraryTemplates({ collection, onPick, onClose, onSlides }: {collection:"页面"|"幻灯片"|"全部"; onSlides:(name:SlideTemplateName)=>void; onPick:(name:string, body:string)=>void; onClose:()=>void}) {
+  const strip = useRef<HTMLDivElement>(null);
+  const [moreTemplates,setMoreTemplates] = useState(false);
+  useEffect(()=>{
+    const element = strip.current;
+    const lastCard = element?.lastElementChild;
+    if (!element || !lastCard) return;
+    const observer = new IntersectionObserver(([entry])=>setMoreTemplates(entry.intersectionRatio < 0.99),
+      {root:element,threshold:0.99});
+    observer.observe(lastCard);
+    return ()=>observer.disconnect();
+  },[collection]);
   const slideCard = (name:SlideTemplateName) => <Button key={name} aria-label={name} variant="unstyled" h="auto" minW={0} pb="8px" onClick={() => onSlides(name)}>
     <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" draggable={false} w="full"
       aspectRatio="16/9" objectFit="cover" borderRadius="12px" border="1px solid #e9e9e9"/>
@@ -47,7 +58,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     <Flex align="center" justify="space-between"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
       <IconButton opacity={{base:1,md:0}} _groupHover={{opacity:1}} _focusVisible={{opacity:1}} aria-label="关闭“在资料空间中共同创建”" size="xs" variant="ghost" icon={<X size={14}/>} onClick={onClose}/></Flex>
     <Text color="gray.500" fontSize="sm" mt="2px" lineHeight="20px" mb="12px">选择一个模板，与 ChatGPT 和你的团队开始协作</Text>
-    <Box display="grid" gridAutoFlow="column" gridAutoColumns={{base:"max(144px, calc(23.0769% - 18.4615px))","2xl":"17.4%"}} gap="16px" overflowX="auto" sx={{scrollbarWidth:"none",overscrollBehaviorX:"contain"}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : templates.map(({name,pageTitle,body,icon:Icon,color},i) =>
+    <Box ref={strip} display="grid" gridAutoFlow="column" gridAutoColumns={{base:"max(144px, calc(23.0769% - 18.4615px))","2xl":"17.4%"}} gap="16px" overflowX="auto" sx={{scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : templates.map(({name,pageTitle,body,icon:Icon,color},i) =>
       <Fragment key={name}>
       {i === 3 && collection === "全部" && slideCard("Product Strategy")}
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
