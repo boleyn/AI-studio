@@ -60,6 +60,9 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
   const document = isArtifactImage(name) || /\.(pdf|docx|xlsx|pptx|csv|tsv)$/i.test(name);
   const image = isArtifactImage(name);
+  const menuTitle = /\.zip$/i.test(item.name)
+    ? item.name.slice(0, -4).replace(/-+/g, " ").trim() || item.name
+    : item.name;
   const viewport = useRef<HTMLDivElement>(null);
   const [dimensions,setDimensions] = useState({width:0,height:0});
   const [fit,setFit] = useState(1);
@@ -122,8 +125,8 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
     else close();
   }}>
     <Flex as="header" align="center" ps={4} pe={2} h="52px" flexShrink={0} gap={2}>
-      <Menu><MenuButton as={Button} size="sm" variant="ghost" minW={0} maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : item.name)+" 的文件操作"}>
-        <Text isTruncated>{image ? "图像" : item.name}</Text></MenuButton>
+      <Menu><MenuButton as={Button} size="sm" variant="ghost" minW={0} maxW="65%" rightIcon={<ChevronDown size={14}/>} aria-label={(image ? item.name.replace(/\.[^.]+$/, "") : menuTitle)+" 的文件操作"}>
+        <Text isTruncated>{image ? "图像" : menuTitle}</Text></MenuButton>
         <MenuList>
           <MenuItem icon={<Library size={16}/>} onClick={openLibrary}>资料空间</MenuItem>
           <MenuDivider/>
