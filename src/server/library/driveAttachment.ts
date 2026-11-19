@@ -10,11 +10,22 @@ const formats: Record<string, [string, string]> = {
 };
 const limit = 10 * 1024 * 1024;
 
+function driveReadFailure(status: number, res: NextApiResponse) {
+  switch (status) {
+    case 401: return res.status(401).json({error:"Google Drive 授权已失效，请重新连接"});
+    case 403: return res.status(403).json({error:"Google Drive 拒绝了读取请求，请检查文件权限"});
+    case 404:
+    case 410: return res.status(status).json({error:"文件可能已删除或共享已结束"});
+    case 429: return res.status(429).json({error:"Google Drive 请求过于频繁，请稍后重试"});
+    default: return res.status(502).json({error:"Google Drive 暂时无法读取文件，请稍后重试"});
+  }
+}
+
 export async function sendDriveAttachment(id: string, accessToken: string, res: NextApiResponse, download = false) {
   const base = "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id);
   const headers = {Authorization: "Bearer " + accessToken};
   const meta = await fetch(base + "?supportsAllDrives=true&fields=name,mimeType,size,trashed,capabilities(canDownload)", {headers});
-  if (!meta.ok) return res.status(404).json({error:"文件不可用"});
+  if (!meta.ok) return driveReadFailure(meta.status, res);
   const file = await meta.json();
   if (file.trashed || !file.capabilities?.canDownload) return res.status(403).json({error:"没有下载此文件的权限"});
   const format = formats[file.mimeType];
@@ -23,7 +34,7 @@ export async function sendDriveAttachment(id: string, accessToken: string, res: 
   if (!format && file.mimeType.startsWith("application/vnd.google-apps.")) return res.status(415).json({error:"此文件类型暂不支持引用"});
   const url = format ? base + "/export?" + new URLSearchParams({mimeType:format[0]}) : base + "?alt=media&supportsAllDrives=true";
   const content = await fetch(url,{headers});
-  if (!content.ok || !content.body) return res.status(502).json({error:"无法读取 Drive 文件"});
+  if (!content.ok || !content.body) return driveReadFailure(content.status, res);
   const name = format && !file.name.toLowerCase().endsWith(format[1]) ? file.name + format[1] : file.name;
   res.setHeader("Content-Disposition","attachment; filename*=UTF-8''" + encodeURIComponent(name));
   res.setHeader("Content-Type","application/octet-stream");
