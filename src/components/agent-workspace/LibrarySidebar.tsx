@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
-import { HardDrive, Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
+import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeftClose, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -67,7 +67,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
     {createMenu}
     {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
       aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={16}/>} onClick={() => onSection(name)}>{name}</Button>)}
-    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<HardDrive size={16}/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
+    {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
     <Box overflowY="auto" mt={5} flex="1">
       <Button variant="ghost" size="sm" color="gray.500" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
