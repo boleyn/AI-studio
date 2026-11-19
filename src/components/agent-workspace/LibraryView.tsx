@@ -303,9 +303,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     else delete query.libraryLayout;
     void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
   }
-  const [sort, setSort] = useState<{column: "name" | "time" | "size"; ascending: boolean}>({ column: "time", ascending: false });
+  const [requestedSort, setSort] = useState<{column: "name" | "time" | "size"; ascending: boolean}>({ column: "time", ascending: false });
+  const sort = !folder && requestedSort.column === "size" ? {column:"time",ascending:false} : requestedSort;
   function sortBy(column: "name" | "time" | "size") {
-    setSort(previous => ({ column, ascending: previous.column === column ? !previous.ascending : column === "name" }));
+    setSort({ column, ascending: sort.column === column ? !sort.ascending : column === "name" });
   }
   const toast = useToast();
   useEffect(() => {
