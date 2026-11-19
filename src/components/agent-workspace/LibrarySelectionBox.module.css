@@ -20,6 +20,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin: 0;
   width: 16px;
   height: 16px;
   padding: 0;
@@ -43,8 +46,8 @@
 .cardControl[aria-checked="true"], .indicator[data-checked="true"] { background: white; }
 .control:focus-visible, .cardControl:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
-@media (hover: hover) and (min-width: 768px) {
+@media (hover: hover) and (not (any-pointer: coarse)) and (min-width: 768px) {
   table[data-selecting="false"] tr:not(:hover):not(:focus-within) .control { opacity: 0; }
 }
 
-.indicator { flex-shrink: 0; }
+.control:disabled, .cardControl:disabled { cursor: default; }
