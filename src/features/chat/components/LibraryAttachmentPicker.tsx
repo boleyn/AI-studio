@@ -82,8 +82,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     }
     return names.reverse().join(" / ");
   }
-  const selectedElsewhere = selected.filter(item => !itemsById.has(item.id));
-  const attachable = items && [...selectedElsewhere, ...items.filter(item=>!item.siteId)];
+  const failedElsewhere = selected.filter(item => fileErrors.has(item.id) && !itemsById.has(item.id));
+  const attachable = items && [...failedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
     item.sharedPage && item.path.endsWith(" / " + item.name) ? item.path.slice(0,-item.name.length - 3) : folderPath(item),
     sourceLabel(item),
