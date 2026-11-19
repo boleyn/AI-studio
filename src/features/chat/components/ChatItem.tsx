@@ -327,9 +327,11 @@ const ChatItem = ({
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
-              {previewSourceLink ? <Text fontSize="sm">{previewSourceLink}</Text> : (
-                <Link href={"/?" + new URLSearchParams({view:"library",librarySearch:preview?.name || ""})} isExternal fontSize="sm" textDecoration="underline">在资料空间查找同名文件</Link>
-              )}
+              <Flex align="center" justify="center" wrap="wrap" gap={3} fontSize="sm">
+                {previewSourceLink}
+                {preview?.name && <Link href={"/?" + new URLSearchParams({view:"library",librarySearch:preview.name})}
+                  isExternal textDecoration="underline">在资料空间查找同名文件</Link>}
+              </Flex>
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
               <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
