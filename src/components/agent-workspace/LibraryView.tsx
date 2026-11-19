@@ -1357,7 +1357,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           onChange={event => setTitle(event.target.value)}/></ModalBody><ModalFooter p={0} mt="12px" gap="12px"><Button minW="66px" h="32px" borderRadius="full" onClick={() => setNewKind(undefined)}>取消</Button>
           <Button minW="66px" h="32px" borderRadius="full" colorScheme="blackAlpha" type="submit" isLoading={creating} isDisabled={!title.trim()}>创建</Button></ModalFooter>
       </form></ModalContent></Modal>
-    <Modal initialFocusRef={moveFocus} isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton isDisabled={batchBusy} top={4} right={4} boxSize={6} aria-label="关闭对话框"/>
+    <Modal initialFocusRef={moveFocus} isOpen={Boolean(move) && newDestinationName === undefined} onClose={() => {if (!batchBusy) setMove(undefined);}} isCentered><ModalOverlay/><ModalContent mx={3} maxW="600px" p="19px" borderRadius="24px"><ModalHeader as="h2" p={0} fontSize="20px" lineHeight="28px">移动到…</ModalHeader><ModalCloseButton isDisabled={batchBusy} top={4} right={4} boxSize={6} borderRadius="4px" aria-label="关闭对话框"/>
       <ModalBody p={0} mt={3}><Flex as="nav" aria-label="移动目标位置" align="center" gap={1} wrap="wrap">
         {destination ? <Button ref={moveFocus} size="sm" h={6} variant="link" isDisabled={batchBusy} onClick={()=>setDestination("")}>资料库</Button> : <Text lineHeight="24px">资料库</Text>}
         {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/>{item.id===destination ? <Text aria-current="location">{item.name}</Text> : <Button size="sm" variant="link" isDisabled={batchBusy} onClick={()=>setDestination(item.id)}>{item.name}</Button>}</Flex>)}
@@ -1388,8 +1388,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <ModalBody p={0} mt={3}><FormLabel htmlFor="move-folder-name" fontSize="sm">文件夹名称</FormLabel>
             <Input id="move-folder-name" autoFocus maxLength={255} value={newDestinationName ?? ""} onChange={event=>setNewDestinationName(event.target.value)}/>
           </ModalBody>
-          <ModalFooter p={0} mt={3} gap={3}><Button size="sm" borderRadius="full" isDisabled={saving} onClick={()=>setNewDestinationName(undefined)}>取消</Button>
-            <Button size="sm" borderRadius="full" type="submit" isDisabled={!newDestinationName?.trim()} isLoading={saving}>创建</Button>
+          <ModalFooter p={0} mt={3} gap={3}><Button size="sm" minW="66px" borderRadius="full" isDisabled={saving} onClick={()=>setNewDestinationName(undefined)}>取消</Button>
+            <Button size="sm" minW="66px" borderRadius="full" type="submit" isDisabled={!newDestinationName?.trim()} isLoading={saving}>创建</Button>
           </ModalFooter>
         </form>
       </ModalContent>
