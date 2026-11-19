@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { randomUUID } from "node:crypto";
 import { getChatModelCatalog } from "../aiProxy/catalogStore";
 import {
@@ -91,8 +92,15 @@ export async function tick() {
   if (!task) return;
   const claim = { _id: task._id, state: "running" as const, runId: task.runId };
   try {
-    const { title, prompt, timezone, firstAt, repeat } = task;
-    specSchema.parse({ title, prompt, timezone, firstAt, repeat });
+    const { title, prompt, timezone, firstAt, repeat, endDate } = task;
+    specSchema.parse({ title, prompt, timezone, firstAt, repeat, endDate });
+    const today = DateTime.fromMillis(now, { zone: timezone }).toISODate();
+    if (repeat !== "once" && endDate && today && today > endDate) {
+      await col.updateOne(claim, {
+        $set: { state: "completed", lastResult: "已过结束日期，任务已结束" },
+      });
+      return;
+    }
     await reply(task);
     const nextAt = nextOccurrence(task, Date.now());
     await col.updateOne(claim, {
