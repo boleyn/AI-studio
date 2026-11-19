@@ -48,7 +48,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     observer.observe(lastCard);
     return ()=>observer.disconnect();
   },[collection]);
-  const pageTemplates = collection === "页面" ? templates.slice(1) : templates;
+  const pageTemplates = collection === "页面" ? templates.slice(1) : templates.slice(0, 8);
   const slideCard = (name:SlideTemplateName) => <Button key={name} aria-label={name} variant="unstyled" h="auto" minW={0} pb="8px" onClick={() => onSlides(name)}>
     <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" draggable={false} w="full"
       aspectRatio="16/9" objectFit="cover" borderRadius="12px" border="1px solid #e9e9e9"/>
@@ -61,13 +61,15 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     <Text color="gray.500" fontSize="sm" mt="2px" lineHeight="20px" mb="12px">选择一个模板，与 ChatGPT 和你的团队开始协作</Text>
     <Box ref={strip} display="grid" gridAutoFlow="column" gridAutoColumns={{base:"max(144px, calc(23.0769% - 18.4615px))","2xl":"17.4%"}} gap="16px" overflowX="auto" sx={{scrollbarWidth:"none",overscrollBehaviorX:"contain",maskImage:moreTemplates ? "linear-gradient(to right, black calc(100% - 24px), transparent)" : undefined}}>{collection === "幻灯片" ? slideTemplates.map(slideCard) : pageTemplates.map(({name,pageTitle,body,icon:Icon,color},i) =>
       <Fragment key={name}>
-      {i === 3 && collection === "全部" && slideCard("Product Strategy")}
+      {i === 3 && collection === "全部" && slideCard("Photography Portfolio")}
       <Button aria-label={name} variant="unstyled" display="block" height="auto" minW={0} w="full" pb="8px" whiteSpace="normal" onClick={() => onPick(pageTitle ?? name,body)}>
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={15} color={color}/>
             <Text mt={3} fontSize="7px" lineHeight="1.35" whiteSpace="pre-line">{body.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ")}</Text></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">{pageTitle ? "从这里开始" : "Page"}</Text>
-      </Button></Fragment>)}</Box>
+      </Button>
+      {collection === "全部" && i === pageTemplates.length - 1 && slideCard("Creative Campaign Brief")}
+      </Fragment>)}</Box>
   </Box>;
 }
 
