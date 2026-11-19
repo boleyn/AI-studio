@@ -68,11 +68,22 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     });
     return () => controller.abort();
   },[attempt,space]);
-  const namesById = new Map(items?.map(item=>[item.id,item.name]));
+  const itemsById = new Map(items?.map(item => [item.id, item]));
+  function folderPath(item: LibraryFile) {
+    const names: string[] = [];
+    const visited = new Set([item.id]);
+    let parent = item.folderId && itemsById.get(item.folderId);
+    while (parent && !visited.has(parent.id)) {
+      names.push(parent.name);
+      visited.add(parent.id);
+      parent = parent.folderId && itemsById.get(parent.folderId);
+    }
+    return names.reverse().join(" / ");
+  }
   const failedElsewhere = selected.filter(item => fileErrors.has(item.id) && !items?.some(row => row.id === item.id));
   const attachable = items && [...failedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
-    item.folderId && namesById.get(item.folderId),
+    folderPath(item),
     sourceLabel(item),
     item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
   ].filter(Boolean).join(" · ");
