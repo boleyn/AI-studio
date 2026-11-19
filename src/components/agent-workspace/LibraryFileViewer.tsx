@@ -171,9 +171,9 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         </Flex>}
     </Box>
     {panel && <Box as="aside" aria-label={panel === "info" ? "文件详情" : "版本历史记录"} position={{base:"absolute",lg:"relative"}}
-      insetY={0} right={0} w="min(100%, 300px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" p={4}>
-      <Flex align="center" justify="space-between"><Heading size="sm">{panel === "info" ? "文件详情" : "版本历史记录"}</Heading>
-        <IconButton size="sm" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
+      insetY={0} right={0} w="min(100%, 296px)" flexShrink={0} overflowY="auto" bg="white" borderLeftWidth="1px" px={4} pt="5px" pb={4}>
+      <Flex align="center" justify="space-between" mr="-8px"><Heading size="sm" fontWeight="400" lineHeight="24px">{panel === "info" ? "文件详情" : "版本历史记录"}</Heading>
+        <IconButton size="sm" boxSize="36px" borderRadius="full" variant="ghost" aria-label={panel === "info" ? "关闭文件信息面板" : "关闭版本历史记录"} icon={<X size={16}/>} onClick={()=>setPanel(undefined)}/>
       </Flex>
       {panel === "history" ? <Flex direction="column" mt={4} gap={1}>
         {versions.map(version => <Button key={version.id} ref={version.id === item.id ? historySelection : undefined} variant={version.id === item.id ? "solid" : "ghost"}
