@@ -14,7 +14,8 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const [attempt,setAttempt] = useState(0);
   const [busy,setBusy] = useState(false);
   const [selection,setSelection] = useState({start:0,end:0});
-  const selectedText = content?.body.slice(selection.start,selection.end).trim();
+  const selectedText = content?.body.slice(selection.start,selection.end);
+  const hasSelection = Boolean(selectedText?.trim());
   const [openingChat,setOpeningChat] = useState(false);
   const [status,setStatus] = useState("");
   const url = "/api/library/pages?id=" + encodeURIComponent(page.id) + (shareId ? "&share=" + encodeURIComponent(shareId) : "");
@@ -77,14 +78,14 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     try {
       const title = content.name.trim() || "无标题页";
       const snapshot = new File(["# " + title + "\n\n" + content.body],title + ".md",{type:"text/markdown"});
-      const quote = selectedText ? selectedText.split("\n").map(line=>"> " + line).join("\n") + "\n\n" : undefined;
+      const quote = selectedText && hasSelection ? selectedText.split("\n").map(line=>"> " + line).join("\n") + "\n\n" : undefined;
       await onChat(fromLibrary(snapshot,shareId || page.id),quote);
     } catch { setStatus("无法打开聊天，请重试"); }
     finally { setOpeningChat(false); }
   }
   return <Box flex="1" minW={0} p={6} overflowY="auto"><Flex align="center" justify="space-between">
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
-    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{selectedText ? "引用选中文字" : "在聊天中引用"}</Button>}
+    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
       <Button size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
     </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
       <Box flex={1}><Text fontWeight="medium">无法打开页面</Text><Text fontSize="sm">{loadError}</Text></Box>
