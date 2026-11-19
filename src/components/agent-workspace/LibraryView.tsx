@@ -1,5 +1,5 @@
 import useDriveConnected from "./useDriveConnected";
-import { markdownFilename } from "@/types/library";
+import { formatFileSize, markdownFilename } from "@/types/library";
 import { libraryActivityTime, libraryFileOrigin } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
@@ -36,13 +36,6 @@ function renameSuffix(file?: LibraryFile) {
   return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
 }
 
-function formatFileSize(bytes?: number) {
-  if (bytes === undefined) return "—";
-  if (bytes < 1024) return bytes + " B";
-  const units = ["B","KB","MB","GB","TB"];
-  const scale = Math.min(units.length-1,Math.floor(Math.log(bytes)/Math.log(1024)));
-  return (bytes / 1024 ** scale).toFixed(2) + " " + units[scale];
-}
 const libraryNameOrder = new Intl.Collator("zh-CN", {numeric:true});
 const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];

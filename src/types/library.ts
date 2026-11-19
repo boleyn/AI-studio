@@ -60,3 +60,11 @@ export function sharedPreviewFilename(name: string, originalName?: string) {
 export function sitePreviewPath(shareId: string, slug?: string) {
   return slug ? "/s/" + encodeURIComponent(slug) : "/share/preview/" + encodeURIComponent(shareId);
 }
+
+export function formatFileSize(bytes?: number) {
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return bytes + " B";
+  const units = ["B","KB","MB","GB","TB"];
+  const scale = Math.min(units.length-1,Math.floor(Math.log(bytes)/Math.log(1024)));
+  return (bytes / 1024 ** scale).toFixed(2) + " " + units[scale];
+}

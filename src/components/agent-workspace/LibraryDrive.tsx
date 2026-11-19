@@ -4,6 +4,7 @@ import { CircleAlert, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import { redirectedToLogin, responseFilename } from "@/features/chat/services/files";
+import { formatFileSize } from "@/types/library";
 import LibraryItemIcon from "./LibraryItemIcon";
 import { formatRelativeTime } from "./relativeTime";
 
@@ -112,7 +113,7 @@ export default function LibraryDrive({connect,onAttach,onBusyChange,onBackToLibr
           {file.mimeType==="application/vnd.google-apps.folder" ? <Button variant="link" fontSize="inherit" fontWeight="normal" color="inherit" textAlign="left" whiteSpace="normal" onClick={()=>{setPath([...path,file]);setPages([""]);setSearch("");setQuery("");}}>{file.name}</Button> :
           <Link href={file.webViewLink || "https://drive.google.com/open?id="+encodeURIComponent(file.id)} isExternal>{file.name}</Link>}</Flex></td>
         <td>{recent && file.viewedByMeTime && file.viewedByMeTime >= (file.modifiedTime || "") ? formatRelativeTime(file.viewedByMeTime)+"打开" : formatRelativeTime(file.modifiedTime) || "—"}</td>
-        {!recent && <td>{file.size ? new Intl.NumberFormat("zh-CN",{style:"unit",unit:"byte"}).format(Number(file.size)) : "—"}</td>}
+        {!recent && <td>{formatFileSize(file.size ? Number(file.size) : undefined)}</td>}
         <td>{file.mimeType!=="application/vnd.google-apps.folder" && <Button size="xs" variant="ghost" isLoading={attaching===file.id} isDisabled={Boolean(attaching)} onClick={()=>attach(file)}>添加到聊天</Button>}
           {file.mimeType!=="application/vnd.google-apps.folder" && <Menu placement="bottom-end">
             <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={`打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
