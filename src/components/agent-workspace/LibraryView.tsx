@@ -419,7 +419,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     else if (!file.deleted) openItem(file);
   }
   const allChecked = Boolean(visible?.length && visible.length === picked.length);
-  async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string) {
+  async function usePicked(action:"chat"|"download", items = picked, question?:string, itemId?:string, activityItems = items) {
     setBatchBusy(true);
     try {
       const results = await readLibraryAttachments(items, action);
@@ -441,7 +441,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
       if (action === "chat") {
         await onChat(attachments,question,itemId);
-        recordOpen(items);
+        recordOpen(activityItems);
         return;
       }
       if (!attachments.length) return;
@@ -485,7 +485,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       toast({status:"info", title:"所选位置中没有可添加的文件或页面。", isClosable:true});
       return;
     }
-    return usePicked("chat", attachments, siteLinks.length ? siteLinks.join("\n") : undefined);
+    const activityItems = [...attachments, ...selection.filter(isContainer), ...sites.values()];
+    return usePicked("chat", attachments, siteLinks.length ? siteLinks.join("\n") : undefined, undefined, activityItems);
   }
   function moveSelection() {
     setBatchMove(true);
