@@ -73,7 +73,7 @@ export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, s
       <Button variant="ghost" size="sm" color="gray.500" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
         justifyContent="start" fontWeight="normal" title={file.name} onClick={() => onFile(file)} leftIcon={<LibraryItemIcon item={file} compact/>}><Text isTruncated>{file.name}</Text></Button>)}
-      {recent && items.length > 5 && <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "展开显示"}</Button>}
+      {recent && recentItems.length > 5 && <Button variant="ghost" size="sm" color="gray.500" fontWeight="normal" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "展开显示"}</Button>}
       <Flex mt={5} align="center" justify="space-between"><Button size="sm" variant="ghost" color="gray.500" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
         <IconButton size="xs" variant="ghost" aria-label="创建资料空间" icon={<Plus size={14}/>} onClick={onNewSpace}/></Flex>
       {spaces && items.filter(item => item.kind === "资料空间").sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).map(item => <Flex key={item.id} align="center" borderRadius="md" bg={activeSpaceId === item.id ? "#eee" : undefined}><Button minW={0} size="sm" variant="ghost" w="full" justifyContent="start"
