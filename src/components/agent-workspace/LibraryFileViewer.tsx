@@ -1,4 +1,4 @@
-import { libraryTypeName } from "@/types/library";
+import { libraryTypeName, markdownFilename } from "@/types/library";
 import { Box, Button, Flex, Heading, Input, IconButton, Menu, MenuButton, MenuDivider, MenuItem, MenuList, Spinner, Text } from "@chakra-ui/react";
 import { CircleAlert, ChevronDown, Library, Minus, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -54,7 +54,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
   const [error,setError] = useState("");
   const closeButton = useRef<HTMLButtonElement>(null);
   const historySelection = useRef<HTMLButtonElement>(null);
-  const name = libraryTypeName(item);
+  const name = item.sharedPage ? markdownFilename(item.name) : libraryTypeName(item);
   const markdown = /\.(md|markdown)$/i.test(name);
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
   const document = isArtifactImage(name) || /\.(pdf|docx|xlsx|pptx|csv|tsv)$/i.test(name);
