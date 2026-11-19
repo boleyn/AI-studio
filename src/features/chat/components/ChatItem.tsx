@@ -107,7 +107,7 @@ const ChatItem = ({
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
   const {token,activeConversationId} = useChatPanelViewContext();
-  const [preview,setPreview] = React.useState<{name:string;url:string;html:boolean;libraryItemId?:string}>();
+  const [preview,setPreview] = React.useState<{name:string;url:string;alternateUrl?:string;html:boolean;libraryItemId?:string}>();
   const [failedImages,setFailedImages] = React.useState<Set<string>>(() => new Set());
   const [previewText,setPreviewText] = React.useState<string>();
   const [showLibrarySource,setShowLibrarySource] = React.useState(false);
@@ -134,9 +134,10 @@ const ChatItem = ({
         if (preview?.libraryItemId) recordLibraryOpen(preview.libraryItemId);
       }
       let copyError: unknown;
-      if (preview.url) {
+      for (const address of new Set([preview.url,preview.alternateUrl])) {
+        if (!address) continue;
         try {
-          const url = new URL(preview.url,window.location.href);
+          const url = new URL(address,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
           if (!externalAttachment && url.pathname === "/api/code" && url.searchParams.get("action") === "view-url") {
             url.searchParams.set("action", "view");
@@ -147,7 +148,7 @@ const ChatItem = ({
           showContent(await response.text(), false);
           return;
         } catch (error) {
-          if (signal.aborted || !preview.libraryItemId) throw error;
+          if (signal.aborted) throw error;
           copyError = error;
         }
       }
@@ -413,7 +414,7 @@ const ChatItem = ({
                           as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，${unavailable}`}
                           cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown || isHtml) openPreview({name,url:fileUrl,html:isHtml,libraryItemId:file.libraryItemId});
+                            if (isMarkdown || isHtml) openPreview({name,url:fileUrl,alternateUrl:[file.previewUrl,file.downloadUrl].find(url=>url !== fileUrl && url?.startsWith("/api/")),html:isHtml,libraryItemId:file.libraryItemId});
                             else if (openUrl) window.open(openUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
