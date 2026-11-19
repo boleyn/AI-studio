@@ -34,7 +34,6 @@ import {
   Square,
   Settings2,
 } from "lucide-react";
-import { libraryOrigin } from "../services/libraryFileOrigin";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import { AgentSkillsIcon } from "@components/common/Icon";
@@ -655,7 +654,7 @@ const ChatInput = ({
                     />
                   ) : (
                     <Flex align="center" gap={2} h="100%" pr={2}>
-                      {libraryOrigin(item.file) ? <LibraryItemIcon item={{name:item.file.name}}/> : <Box as="img" h="24px" src={`/icons/chat/${item.icon}.svg`} w="24px" />}
+                      <LibraryItemIcon item={{name:item.file.name}}/>
                       <Box minW={0}>
                         <Text className="textEllipsis" fontSize="xs" noOfLines={1}>
                           {item.file.name}
@@ -722,7 +721,6 @@ const ChatInput = ({
                   ))}
                   {selectedFilePaths.map((filePath) => {
                     const fileLabel = toFileTagLabel(filePath);
-                    const fileIcon = getFileIcon(fileLabel);
                     return (
                       <Flex
                         key={filePath}
@@ -739,7 +737,7 @@ const ChatInput = ({
                         pl={2}
                         pr={1}
                       >
-                        <Box as="img" h="16px" src={`/icons/chat/${fileIcon}.svg`} w="16px" />
+                        <LibraryItemIcon item={{name:fileLabel}} compact/>
                         <Text fontSize="12px" fontWeight={600} noOfLines={1}>
                           {fileLabel}
                         </Text>
