@@ -845,7 +845,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=>space.shareId ? actions(space) : <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar recentPageActions={page=><>{actions(page)}{!page.shareId && <IconButton size="xs" variant="ghost"
+      aria-label={`在 ${page.name} 下添加子页面`} icon={<Plus size={16}/>} isDisabled={creating}
+      onClick={()=>createPage("无标题页","","页面",undefined,page.id)}/>}</>} driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=>space.shareId ? actions(space) : <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
         <MenuList onKeyDownCapture={event=>{
           if (copyMenuId !== space.id || !["Escape","ArrowLeft"].includes(event.key)) return;

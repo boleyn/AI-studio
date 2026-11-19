@@ -17,6 +17,7 @@ type Props = {
   width?: number;
   setWidth: (width: number) => void;
   createMenu: ReactNode;
+  recentPageActions: (page:LibraryFile)=>ReactNode;
   spaceActions:(space:LibraryFile)=>ReactNode;
   onNewSpace: () => void;
   section?: string;
@@ -29,7 +30,7 @@ type Props = {
   onSearch: () => void;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, sectionHref, onSectionNavigate, onSection, onFile, onSearch, onCollapse }: Props) {
+export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, recentPageActions, spaceActions, onNewSpace, section, activeSpaceId, files, sectionHref, onSectionNavigate, onSection, onFile, onSearch, onCollapse }: Props) {
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [recentLimit, setRecentLimit] = useState(5);
@@ -75,7 +76,9 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
         aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{spaceActions(item)}</Flex>)}
       <Button mt="17px" variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.length > 0 && <Flex direction="column" gap="1px" mt="4px">
-      {recentItems.slice(0,recentLimit).map((file,index) => <Button key={file.id} ref={index === focusNewRecent.current ? node => {
+      {recentItems.slice(0,recentLimit).map((file,index) => <Flex key={file.id} align="center" sx={{
+        "@media (hover:hover) and (pointer:fine)": {"&:not(:hover):not(:focus-within) [data-page-actions]:not(:has([aria-expanded=true]))":{opacity:0}},
+      }}><Button minW={0} flex="1" ref={index === focusNewRecent.current ? node => {
         if (node) {
           focusNewRecent.current = undefined;
           node.focus();
@@ -85,7 +88,9 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
           {(file.kind === "上传" || file.kind === "生成") && !file.sharedPage
             ? <AttachmentFilename name={file.name} fontSize="inherit"/>
             : <Text isTruncated>{file.name}</Text>}
-        </Button>)}
+        </Button>
+        {(file.kind === "页面" || file.sharedPage) && <Flex data-page-actions="" align="center">{recentPageActions(file)}</Flex>}
+      </Flex>)}
       {recentItems.length > recentLimit && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" onClick={event => { focusNewRecent.current = event.detail === 0 ? recentLimit : undefined; setRecentLimit(limit => limit + 5); }}>展开显示</Button>}
       </Flex>}
     </Box>
