@@ -241,10 +241,10 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
             </Box>) : [];
   const imageCards = shows("图像") ? images.map(({name, cover}) =>
             <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
-              <Flex aspectRatio="7/5" align="center" justify="center" bg="gray.50" borderRadius="24px">
-                <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="72%" h="72%" objectFit="contain" />
+              <Flex aspectRatio="7/5" px="11.3%" py="9.9%" align="center" justify="center" bg="gray.50" borderRadius="24px">
+                <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" draggable={false} maxW="100%" maxH="100%" borderRadius="8px" objectFit="contain" />
               </Flex>
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
+              <Text mt="12px" pb="8px" px="8px" fontSize="14px" lineHeight="20px" textAlign="center">{name}</Text>
             </Button>) : [];
   const groups = [pageCards, slideCards, workbookCards, imageCards];
   const cards = Array.from({length: Math.max(...groups.map(group => group.length))},
