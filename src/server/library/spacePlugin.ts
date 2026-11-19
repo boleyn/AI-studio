@@ -78,7 +78,8 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             const needle = title.normalize("NFC").toLowerCase();
             const files = listed.filter(file => !file.deleted && !file.shareId && (file.kind === "上传" || file.kind === "生成") &&
               (!input.origin || libraryFileOrigin(file) === input.origin) &&
-              (!input.parentId || file.folderId === input.parentId) && file.name.normalize("NFC").toLowerCase().includes(needle));
+              (!input.parentId || file.folderId === input.parentId) &&
+              [file.name, file.path.split("/").pop()].some(name => name?.normalize("NFC").toLowerCase().includes(needle)));
             const parents = new Map(listed.filter(item=>!item.deleted).map(item=>[item.id,item.name]));
             const hasMore = offset+20 < files.length;
             return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
