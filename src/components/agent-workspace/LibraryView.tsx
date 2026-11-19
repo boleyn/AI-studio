@@ -255,6 +255,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const allHome = section === "全部" && !folder;
+  const typeList = allHome && typeNavigation && tab !== "推荐";
   const canDropFiles = !creating && (router.query.libraryFolder
     ? Boolean(folder && !folder.shareId)
     : section === "全部");
@@ -1193,7 +1194,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             },
           }),
           "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
-          "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
+          "& td":{height:typeList ? "64px" : "50px",lineHeight:"20px",verticalAlign:"middle"},
+          ...(typeList && {"& :is(col,td):nth-child(4)":{display:"none"}}),
           "& tbody td:not(:first-child)":{position:"relative","&::after":{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInline:0,borderBottom:"1px solid rgb(0 0 0 / 5%)"}},
           "& tbody tr:hover > td":{bg:"surface.hover"},
           "& tbody tr[aria-selected=true] > td":{bg:"#f3f3f3"},
@@ -1209,7 +1211,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           "@media (hover:hover) and (not (any-pointer:coarse))":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
-          {(!typeNavigation || tab === "推荐" || folder) && <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
+          {!typeList && <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection || searchResults || Boolean(allHome && searchTerm && column === "name")} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : searchResults ? "最近活动时间" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
@@ -1250,9 +1252,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file,true)}{itemMarkers(file)}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Box minW={0}><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file,true)}{itemMarkers(file)}</Flex>{typeList && <Text as="time" display="block" fontSize="12px" color="#5d5d5d" dateTime={rowTime(file)}>{activityLabel(file)}</Text>}</Box></Flex></td>
             {folder ? <><td><time dateTime={rowTime(file)}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time></td>
-              <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
+              <td>{formatFileSize(file.size)}</td></> : <><td>{typeList ? (file.shareId ? file.project || "与你共享" : "你") : section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
