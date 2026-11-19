@@ -98,6 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (req.query.file === "1") {
+      if (share.livePage && typeof native?.body !== "string") return res.status(422).json({error:"共享页面正文无法读取"});
       const buffer = share.livePage && native
         ? Buffer.from("# " + native.name + "\n\n" + native.body)
         : (await readArtifactShareSnapshot(id)).buffer;
