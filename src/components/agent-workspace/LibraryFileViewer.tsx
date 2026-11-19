@@ -60,7 +60,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
   const name = item.sharedPage ? markdownFilename(item.name) : libraryTypeName(item);
   const markdown = /\.(md|markdown)$/i.test(name);
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
-  const document = isArtifactImage(name) || /\.(pdf|docx|xlsx|pptx|csv|tsv)$/i.test(name);
+  const document = isArtifactImage(name) || /\.(pdf|doc[xm]|xls[xm]?|ppt[xm]|csv|tsv|ods)$/i.test(name);
   const image = isArtifactImage(name);
   const menuTitle = /\.zip$/i.test(item.name)
     ? item.name.slice(0, -4).replace(/-+/g, " ").trim() || item.name
