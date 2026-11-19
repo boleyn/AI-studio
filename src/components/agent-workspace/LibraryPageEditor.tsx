@@ -1,6 +1,6 @@
 import { markdownFilename } from "@/types/library";
 import { Box, Button, Flex, Input, Text, Textarea, useMediaQuery } from "@chakra-ui/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { fromLibrary } from "@features/chat/services/libraryFileOrigin";
 import type { LibraryFile } from "@/types/library";
@@ -9,9 +9,16 @@ import LibraryMarkdown from "./LibraryMarkdown";
 
 export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse)";
 
+const formattingCommands = [
+  {command:"/heading", label:"标题", markdown:"## "},
+  {command:"/checklist", label:"检查清单", markdown:"- [ ] "},
+  {command:"/table", label:"表格", markdown:"| 列一 | 列二 |\n| --- | --- |\n|  |  |"},
+];
+
 export type PageDraft = {name:string;body:string;revision:number};
 
 export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+  const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
@@ -24,9 +31,11 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const currentBody = content?.body ?? "";
   const lineStart = currentBody.slice(0, selection.start).lastIndexOf("\n") + 1;
   const commandPrefix = currentBody.slice(lineStart, selection.start);
-  const suggestSubpage = onCreateSubpage && !busy && !conflict && selection.start === selection.end &&
+  const showCommands = !busy && !conflict && selection.start === selection.end &&
     (!currentBody[selection.end] || currentBody[selection.end] === "\n") &&
-    commandPrefix.startsWith("/") && "/page".startsWith(commandPrefix);
+    commandPrefix.startsWith("/");
+  const matchingFormats = showCommands ? formattingCommands.filter(item=>item.command.startsWith(commandPrefix)) : [];
+  const suggestSubpage = showCommands && onCreateSubpage && "/page".startsWith(commandPrefix);
   const hasSelection = Boolean(selectedText?.trim());
   const [openingChat,setOpeningChat] = useState(false);
   const [status,setStatus] = useState("");
@@ -63,6 +72,14 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     setContent(next);
     drafts?.set(url,{...next,revision});
     setStatus("尚未保存");
+  }
+  function insertFormatting(start:number, end:number, markdown:string) {
+    if (!content) return;
+    edit({...content, body:content.body.slice(0,start) + markdown + content.body.slice(end)});
+    requestAnimationFrame(()=>{
+      bodyInput.current?.focus();
+      bodyInput.current?.setSelectionRange(start + markdown.length, start + markdown.length);
+    });
   }
   function createSubpageFromLine(start:number, end:number) {
     if (!content || !onCreateSubpage) return;
@@ -128,10 +145,13 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       </Box>}
       {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
+      {(suggestSubpage || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
+      {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
+        onClick={()=>insertFormatting(lineStart, selection.end, item.markdown)}>{item.label} · {item.command}</Button>)}
       {suggestSubpage && <Button size="sm" variant="outline" mt={3} onClick={()=>createSubpageFromLine(lineStart, selection.end)}>
         创建子页面 · /page
-      </Button>}
-      <Textarea onKeyDown={event => {
+      </Button>}</Flex>}
+      <Textarea ref={bodyInput} onKeyDown={event => {
         if (busy || openingChat || conflict || event.key !== "Enter" || event.shiftKey || event.ctrlKey ||
           event.metaKey || event.altKey || event.nativeEvent.isComposing || event.repeat) return;
         const {value, selectionStart, selectionEnd} = event.currentTarget;
@@ -139,6 +159,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         const lineStart = value.slice(0, selectionStart).lastIndexOf("\n") + 1;
         if (selectionStart < value.length && value[selectionStart] !== "\n") return;
         const line = value.slice(lineStart, selectionStart);
+        const format = formattingCommands.find(item=>item.command === line);
+        if (format) {
+          event.preventDefault();
+          insertFormatting(lineStart, selectionStart, format.markdown);
+          return;
+        }
         const request = /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
         if (request && onChat) {
           event.preventDefault();
