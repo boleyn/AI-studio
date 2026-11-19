@@ -1052,7 +1052,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center" textAlign="center">
             <Box position="relative" mt="88px" w="full">
               <Heading as="h2" fontSize="18px" lineHeight="24px" fontWeight="500">{tab === "收藏" ? "暂无收藏" : "文件夹为空"}</Heading>
-              {sharedItems && <Text position="absolute" w="full" mt={2} color="gray.600">与你共享的文件和页面将显示在这里</Text>}
+              {sharedItems && <Text position="absolute" w="full" mt={2} fontSize="14px" color="#5d5d5d">与你共享的文件和页面将显示在这里</Text>}
             </Box>
           </Flex> : folder && !filterCount ? <Flex role="status" direction="column" align="center" textAlign="center" py={16} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">{folder.kind === "资料空间" ? "资料空间为空" : "文件夹为空"}</Heading>
