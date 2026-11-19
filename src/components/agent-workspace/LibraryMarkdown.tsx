@@ -1,8 +1,9 @@
+import { Component } from "react";
 import { Box } from "@chakra-ui/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export default function LibraryMarkdown({children}:{children:string}) {
+function FormattedMarkdown({children}:{children:string}) {
   return <Box overflowWrap="anywhere" sx={{
     "& h1, & h2, & h3, & h4":{fontWeight:600,lineHeight:1.3,marginBlock:"1em .5em"},
     "& h1":{fontSize:"1.7em"}, "& h2":{fontSize:"1.3em"}, "& p":{marginBottom:3,whiteSpace:"pre-wrap"},
@@ -16,4 +17,28 @@ export default function LibraryMarkdown({children}:{children:string}) {
       table:({children})=><Box overflowX="auto" mb={3}><table>{children}</table></Box>
     }}>{children}</ReactMarkdown>
   </Box>;
+}
+
+export default class LibraryMarkdown extends Component<{children: string}, {failed: boolean}> {
+  state = {failed: false};
+
+  static getDerivedStateFromError() {
+    return {failed: true};
+  }
+
+  componentDidUpdate(previous: {children: string}) {
+    if (this.state.failed && previous.children !== this.props.children) {
+      this.setState({failed: false});
+    }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <Box>
+        <Box role="status" fontSize="sm" color="gray.600" mb={3}>已切换为纯文本预览</Box>
+        <Box as="pre" whiteSpace="pre-wrap" overflowWrap="anywhere" fontSize="sm">{this.props.children}</Box>
+      </Box>;
+    }
+    return <FormattedMarkdown>{this.props.children}</FormattedMarkdown>;
+  }
 }
