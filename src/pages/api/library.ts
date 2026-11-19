@@ -153,7 +153,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const id = share._id;
     const filename = share.livePage && page ? markdownFilename(page.name) : share.filename;
     const typePath = sharedPreviewFilename(filename, page?.originalName);
-    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin:page?.sourceChat ? "生成" : share.fileOrigin ?? (page?.kind === "上传" ? (page.fromTemplate ? "生成" : "上传") : undefined),editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:typePath,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    let fileOrigin = share.fileOrigin;
+    if (page?.sourceChat || page?.fromTemplate) fileOrigin = "生成";
+    else if (page?.kind === "上传") fileOrigin = "上传";
+    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin,editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:typePath,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   for (const site of await listLibrarySites(owner,names)) {
     const id = siteLibraryId(site.token);
