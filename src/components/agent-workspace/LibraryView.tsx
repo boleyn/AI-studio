@@ -98,13 +98,19 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         if (fromTemplate) params.set("fromTemplate","1");
         if (reference) { params.set("referenceType",reference.type); params.set("referenceName",reference.name); }
         if (parentId) params.set("folderId",parentId);
-        const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
-        if (!response.ok) {
-          const failure = await response.json().catch(()=>null);
-          toast({status:"error",title:file.name + " 上传失败",description:failure?.error});
+        let item: LibraryFile;
+        try {
+          const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
+          if (!response.ok) {
+            const failure = await response.json().catch(()=>null);
+            throw new Error(failure?.error || "请稍后重试。");
+          }
+          item = await response.json();
+        } catch (reason) {
+          toast({status:"error",title:file.name + " 上传未确认",description:reason instanceof TypeError ?
+            "网络连接中断，请检查资料列表后重试。" : reason instanceof Error ? reason.message : "请稍后重试。"});
           continue;
         }
-        const item:LibraryFile = await response.json();
         setFiles(previous => [item,...previous || []]);
         if (reference) setReferenceDraft(undefined);
         if (openCreated && parentId) {
