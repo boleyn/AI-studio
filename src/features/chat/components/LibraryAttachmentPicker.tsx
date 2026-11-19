@@ -198,19 +198,20 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       {visible?.map(item=>{
         if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
           justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
-          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated>{item.name}</Text><ChevronRight size={16} strokeWidth={1.75} aria-hidden style={{flexShrink:0}}/>
+          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated title={item.name}>{item.name}</Text><ChevronRight size={16} strokeWidth={1.75} aria-hidden style={{flexShrink:0}}/>
         </Button>;
         const checked=selected.some(entry => entry.id === item.id);
+        const source = locationLabel(item);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
-          width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
+          width="100%" direction="column" align="stretch" gap={1} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
           onClick={()=>toggleItem(item)}>
+          <Flex as="span" align="center" gap={3}>
           <LibrarySelectionIndicator checked={checked}/>
-          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><AttachmentFilename name={item.name} fontSize="sm"/>
-            <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
-            {fileErrors.has(item.id) && <Text id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
-          </Box>
-
+          <LibraryItemIcon item={item}/><Box as="span" flex="1" minW={0}><AttachmentFilename name={item.name} fontSize="sm"/>
+            <Text as="span" display="block" id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={source}>{source}</Text>
+          </Box></Flex>
+            {fileErrors.has(item.id) && <Text as="span" id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
         </Flex>;
       })}
     </ModalBody>
