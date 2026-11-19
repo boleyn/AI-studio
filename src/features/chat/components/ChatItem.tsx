@@ -313,6 +313,10 @@ const ChatItem = ({
     "& .markdown li > ul, & .markdown li > ol": { marginTop: "2px", marginBottom: "2px" },
   } as const;
 
+  const previewSourceLink = preview?.libraryItemId && (
+    <Link href={sharedSpacePageLocation(preview.libraryItemId)?.href ?? "/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
+      isExternal textDecoration="underline">在资料空间打开</Link>
+  );
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
       <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
@@ -322,12 +326,12 @@ const ChatItem = ({
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
+              {previewSourceLink && <Text fontSize="sm">{previewSourceLink}</Text>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
               <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
                 {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
-                <Link href={sharedSpacePageLocation(preview.libraryItemId)?.href ?? "/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
-                  isExternal textDecoration="underline">在资料空间打开</Link>
+                {previewSourceLink}
               </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
           </ModalBody></ModalContent></Modal>
       <Box
