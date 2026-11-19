@@ -1,5 +1,5 @@
-import { Box, Button, Flex, Link, Text } from "@chakra-ui/react";
-import { PanelsTopLeft } from "lucide-react";
+import { Box, Button, Flex, IconButton, Link, Text } from "@chakra-ui/react";
+import { ExternalLink, PanelsTopLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -29,7 +29,8 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
   const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
-  const siteLink = (site: Site) => <Link href={"/share/preview/" + encodeURIComponent(site.id)}>
+  const siteUrl = (site: Site) => "/share/preview/" + encodeURIComponent(site.id);
+  const siteLink = (site: Site) => <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
     <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Text as="span">{site.name}</Text></Flex>
   </Link>;
   const shareButton = (site: Site) => !site.shared && <Button size="xs" variant="ghost" onClick={() => setSharing(site)}>共享</Button>;
@@ -40,7 +41,10 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
     {dialog}</Box>;
   return <Box overflowX="auto"><Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="站点"
     sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"}}}>
-    <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}</tr></thead>
-    <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>拥有链接的人 {shareButton(site)}</td>{tab !== "与你共享" && <td>{site.visitors ?? "—"}</td>}</tr>)}</tbody>
+    <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}<th scope="col" aria-label="站点操作"/></tr></thead>
+    <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>拥有链接的人 {shareButton(site)}</td>{tab !== "与你共享" && <td>{site.visitors ?? "—"}</td>}
+      <td><IconButton as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost"
+        aria-label={"在新标签页中打开 " + site.name} icon={<ExternalLink size={16} aria-hidden/>}/></td>
+    </tr>)}</tbody>
   </Box>{dialog}</Box>;
 }
