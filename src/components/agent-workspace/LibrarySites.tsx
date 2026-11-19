@@ -167,15 +167,19 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
           setSaving(true);setSlugError("");
           try {
             const response = await fetch("/api/library/sites",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:settings.id,slug:slugDraft})});
-            if (!response.ok) throw new Error(response.status===409 ? "这个网址已被使用，请换一个。" : "网址保存失败，请重试。");
+            if (response.status===409) throw new Error("这个网址已被使用，请换一个。");
+            if (response.status===401) throw new Error("登录已过期，请重新登录后更改网址。");
+            if (response.status===404) throw new Error("站点不存在或你没有管理权限。");
+            if (!response.ok) throw new Error("网址暂时无法保存，请稍后重试。");
             setSites(rows=>rows?.map(site=>site.id===settings.id ? {...site,slug:slugDraft} : site));
             onSitesChanged();
             setSlugDraft(undefined);
-          } catch(error) {setSlugError(error instanceof Error ? error.message : "网址保存失败");}
+          } catch(error) {setSlugError(error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "网址保存失败");}
           finally {setSaving(false);}
         }}><ModalBody><Text mb={2}>为你的站点输入新的网址</Text>
-          <Flex align="center" gap={1}><Text>/s/</Text><Input autoFocus aria-label="站点 URL 名称" maxLength={63} pattern="[a-z0-9]+(-[a-z0-9]+)*" title="使用小写字母、数字和连字符" required value={slugDraft || ""} onChange={e=>setSlugDraft(e.target.value)}/></Flex>
-          {slugError && <Text role="alert" color="red.600">{slugError}</Text>}</ModalBody><ModalFooter gap={2}>
+          <Flex align="center" gap={1}><Text>/s/</Text><Input autoFocus aria-label="站点 URL 名称" maxLength={63} pattern="[a-z0-9]+(-[a-z0-9]+)*" isDisabled={saving} aria-describedby="site-slug-help" required value={slugDraft || ""} onChange={e=>{setSlugDraft(e.target.value);setSlugError("");}}/></Flex>
+          <Text id="site-slug-help" mt={2} fontSize="sm" color="gray.600">最多 63 个字符。可用小写字母和数字，词之间可用单个连字符。</Text>
+          {slugError && <Text role="alert" mt={2} fontSize="sm" color="red.600">{slugError}</Text>}</ModalBody><ModalFooter gap={2}>
           <Button isDisabled={saving} onClick={()=>setSlugDraft(undefined)}>取消</Button><Button type="submit" isLoading={saving} isDisabled={!slugDraft || slugDraft===settings.slug}>更改 URL</Button></ModalFooter></form>
       </ModalContent></Modal>
     <Heading as="h3" size="sm" mt={6}>共享设置</Heading>
