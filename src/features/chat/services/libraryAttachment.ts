@@ -147,7 +147,14 @@ export async function addLibraryAttachments(
     }
   });
   if (ready.length) {
-    const uploadErrors = await upload(ready);
+    let uploadErrors: (string | undefined)[];
+    try {
+      uploadErrors = await upload(ready);
+    } catch (reason) {
+      const message = reason instanceof TypeError ? "上传连接失败，请检查网络后重试。"
+        : reason instanceof Error && reason.message ? reason.message : "附件上传失败，请重试。";
+      uploadErrors = ready.map(() => message);
+    }
     const opened: string[] = [];
     let uploadedIndex = 0;
     reads.forEach((read, index) => {
