@@ -204,33 +204,36 @@ export async function addLibraryAttachments(
   items: LibraryFile[],
   upload: (files: File[]) => Promise<(string | undefined)[]>,
 ) {
-  const reads = await readLibraryAttachments(items, "chat");
-  const ready: File[] = [];
   const errors = new Map<string, string>();
-  reads.forEach((read, index) => {
-    if (read.status === "fulfilled") ready.push(read.value);
-    else {
-      errors.set(items[index].id, libraryReadMessage(read.reason));
-    }
-  });
-  if (ready.length) {
-    let uploadErrors: (string | undefined)[];
+  for (let start = 0; start < items.length; start += 6) {
+    const batch = items.slice(start, start + 6);
+    const reads = await readLibraryAttachments(batch, "chat");
+    const ready: File[] = [];
+    const ids: string[] = [];
+    reads.forEach((read, index) => {
+      const id = batch[index].id;
+      if (read.status === "rejected") {
+        errors.set(id, libraryReadMessage(read.reason));
+      } else {
+        ready.push(read.value);
+        ids.push(id);
+      }
+    });
+    if (!ready.length) continue;
     try {
-      uploadErrors = await upload(ready);
+      const results = await upload(ready);
+      const opened: string[] = [];
+      ids.forEach((id, index) => {
+        if (!(index in results)) errors.set(id, "未收到上传结果，请重试。");
+        else if (results[index]) errors.set(id, results[index]!);
+        else opened.push(id);
+      });
+      recordLibraryOpen(opened);
     } catch (reason) {
       const message = reason instanceof TypeError ? "上传连接失败，请检查网络后重试。"
         : reason instanceof Error && reason.message ? reason.message : "附件上传失败，请重试。";
-      uploadErrors = ready.map(() => message);
+      ids.forEach(id => errors.set(id, message));
     }
-    const opened: string[] = [];
-    let uploadedIndex = 0;
-    reads.forEach((read, index) => {
-      if (read.status !== "fulfilled") return;
-      const reason = uploadErrors[uploadedIndex++];
-      if (reason) errors.set(items[index].id, reason);
-      else opened.push(items[index].id);
-    });
-    recordLibraryOpen(opened);
   }
   return errors;
 }
