@@ -72,7 +72,15 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     <ModalOverlay bg="blackAlpha.400"/><ModalContent mx={3} maxW="540px" borderRadius="20px" overflow="hidden">
     <ModalHeader px={5} pt={5} pb={3} fontSize="18px" fontWeight="600">从资料空间添加</ModalHeader>
     <ModalCloseButton aria-label="关闭" isDisabled={busy} borderRadius="full" top={4} right={4}/>
-    {driveAvailable && <Flex px={5} pb={2} gap={2}><Button size="xs" aria-pressed={!showDrive} onClick={()=>setShowDrive(false)}>资料空间</Button><Button size="xs" aria-pressed={showDrive} onClick={()=>setShowDrive(true)}>Google Drive</Button></Flex>}
+    {driveAvailable && <Flex px={5} pb={3} gap={1} aria-label="附件来源" role="group">
+      {(["资料空间","Google Drive"] as const).map(source => {
+        const drive = source === "Google Drive";
+        const active = showDrive === drive;
+        return <Button key={source} size="sm" variant="ghost" borderRadius="full" aria-pressed={active}
+          bg={active ? "#ededed" : "transparent"} color={active ? "#171717" : "#666"} isDisabled={busy}
+          onClick={()=>setShowDrive(drive)}>{source}</Button>;
+      })}
+    </Flex>}
     {showDrive ? <ModalBody><LibraryDrive onAttach={async files=>{
       const errors = await onAdd(files);
       if (errors[0]) throw new Error(errors[0]);
