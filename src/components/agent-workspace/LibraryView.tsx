@@ -957,7 +957,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         </form></ModalContent></Modal>
     <Modal isOpen={confirmSpaceDiscard} initialFocusRef={continueEditing} onClose={()=>setConfirmSpaceDiscard(false)} isCentered>
       <ModalOverlay/><ModalContent mx={3} borderRadius="20px">
-        <ModalHeader>放弃更改？</ModalHeader><ModalBody>你的更改将丢失</ModalBody>
+        <ModalHeader as="h2">放弃更改？</ModalHeader><ModalBody>你的更改将丢失</ModalBody>
         <ModalFooter gap={2}><Button ref={continueEditing} borderRadius="full" onClick={()=>setConfirmSpaceDiscard(false)}>继续编辑</Button>
           <Button borderRadius="full" colorScheme="red" onClick={()=>{setConfirmSpaceDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
       </ModalContent>
