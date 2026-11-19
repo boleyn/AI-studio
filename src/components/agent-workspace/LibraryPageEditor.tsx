@@ -97,6 +97,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   }
   async function save() {
     if (mobileReader || !content?.name.trim() || busy || conflict) return;
+    const submittedDraft = drafts?.get(url);
     setBusy(true);
     try {
       const response = await fetch(url,{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({name:content.name,body:content.body,expectedRevision:revision})});
@@ -109,7 +110,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       const {time,revision:nextRevision} = await response.json();
       setRevision(nextRevision);
       onSaved(content.name.trim(),time);
-      drafts?.delete(url);
+      if (drafts && drafts.get(url) === submittedDraft) drafts.delete(url);
       setStatus("已保存");
     } catch { setStatus("保存失败，请重试"); }
     finally { setBusy(false); }
