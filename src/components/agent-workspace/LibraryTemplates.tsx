@@ -49,11 +49,11 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
     return ()=>observer.disconnect();
   },[collection]);
   const pageTemplates = collection === "页面" ? templates.slice(1) : templates.slice(0, 8);
-  const slideCard = (name:SlideTemplateName) => <Button key={name} aria-label={name} variant="unstyled" h="auto" minW={0} pb="8px" onClick={() => onSlides(name)}>
+  const slideCard = (name:SlideTemplateName) => <Button key={name} aria-label={name} variant="unstyled" display="block" w="full" h="auto" minW={0} pb="8px" whiteSpace="normal" onClick={() => onSlides(name)}>
     <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" draggable={false} w="full"
       aspectRatio="16/9" objectFit="cover" borderRadius="12px" border="1px solid #e9e9e9"/>
     <Text mt="10px" lineHeight="20px" fontSize="sm" fontWeight="400">{name}</Text>
-    <Text fontSize="xs" fontWeight="400" color="gray.500">幻灯片</Text>
+    <Text lineHeight="18px" fontSize="xs" fontWeight="400" color="gray.500">幻灯片</Text>
   </Button>;
   return <Box as="section" mb="40px" role="group">
     <Flex align="center" justify="space-between"><Heading fontWeight="400" fontSize="16px" lineHeight="24px">在资料空间中共同创建</Heading>
