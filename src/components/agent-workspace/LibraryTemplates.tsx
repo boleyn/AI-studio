@@ -171,7 +171,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
 
   return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
-    <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
+    <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
       <ModalHeader>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
       <Flex px={6} pb={4} gap={2} align="center" wrap="wrap">
@@ -179,7 +179,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           {galleryCategories.map((label, index) =>
             <Button key={label} ref={index === 0 ? firstCategory : undefined} id={`gallery-tab-${index}`}
               role="tab" aria-selected={category === label} aria-controls="gallery-results"
-              tabIndex={category === label ? 0 : -1} size="sm" borderRadius="full" flexShrink={0}
+              tabIndex={category === label ? 0 : -1} size="sm" h="38px" px="16px" py="9px" borderRadius="full" flexShrink={0}
               variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}
               onKeyDown={event => {
                 const count = galleryCategories.length;
@@ -209,9 +209,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           </MenuList>
         </Menu>
       </Flex>
-      <ModalBody id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
+      <ModalBody px={{base:4, md:8}} id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
         {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
-        <SimpleGrid columns={{base:2, md:4}} gap={4}>
+        <SimpleGrid columns={{base:2, md:3}} columnGap={{base:3, md:6}} rowGap={{base:6, md:10}}>
           {shows("页面") && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
             <Box key={name} position="relative" role="group">
             <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
@@ -245,7 +245,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
             </Button>)}
           {shows("图像") && images.map(({name, cover}) =>
             <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
-              <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="full" bg="gray.50" borderRadius="12px" aspectRatio="4/3" objectFit="contain" />
+              <Flex aspectRatio="7/5" align="center" justify="center" bg="gray.50" borderRadius="24px">
+                <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="72%" h="72%" objectFit="contain" />
+              </Flex>
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
             </Button>)}
         </SimpleGrid>
