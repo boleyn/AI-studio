@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import SiteDatabase from "./SiteDatabase";
 import SitePlugins from "./SitePlugins";
 import SiteSchedules from "./SiteSchedules";
 import SiteDomains from "./SiteDomains";
@@ -28,8 +29,9 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
   const settings = sites?.find(site=>!site.shared && site.id===router.query.librarySiteSettings);
   useEffect(()=>setTitle(settings?.name || ""),[settings?.id,settings?.name]);
   const scheduled = router.query.siteDetail === "scheduled";
+  const database = router.query.siteDetail === "database";
   const plugins = router.query.siteDetail === "plugins";
-  function navigateSettings(id?:string, detail?: "scheduled" | "plugins") {
+  function navigateSettings(id?:string, detail?: "scheduled" | "plugins" | "database") {
     const query = {...router.query};
     if (detail) query.siteDetail = detail;
     else delete query.siteDetail;
@@ -141,12 +143,13 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
       <Link href={siteUrl(settings)} fontSize="sm" color="gray.600" overflowWrap="anywhere">{siteUrl(settings)}</Link>
     </Box>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" borderBottomWidth="1px">
-      <Button variant="link" aria-current={scheduled || plugins ? undefined : "page"} onClick={()=>navigateSettings(settings.id)}>设置</Button>
+      <Button variant="link" aria-current={scheduled || plugins || database ? undefined : "page"} onClick={()=>navigateSettings(settings.id)}>设置</Button>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
+      <Button variant="link" aria-current={database ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"database")}>数据库</Button>
       <Button variant="link" aria-current={plugins ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"plugins")}>插件</Button>
       <Button variant="link" aria-current={scheduled ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"scheduled")}>已安排</Button>
     </Flex>
-    {plugins ? <SitePlugins key={settings.id} siteId={settings.id} onAdd={settings.projectToken ? ()=>onPluginChat(settings.projectToken!,settings.name) : undefined}/> : scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
+    {database ? <SiteDatabase key={settings.id} siteId={settings.id}/> : plugins ? <SitePlugins key={settings.id} siteId={settings.id} onAdd={settings.projectToken ? ()=>onPluginChat(settings.projectToken!,settings.name) : undefined}/> : scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
     <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
       event.preventDefault();
