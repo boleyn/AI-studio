@@ -99,6 +99,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
 }) {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [building,setBuilding] = useState<string>();
+  const [buildError,setBuildError] = useState("");
   const [category, setCategory] = useState("为你推荐");
   const pages = templates.slice(1).filter(template =>
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
@@ -108,18 +110,27 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
   async function createWorkbook(template: typeof workbookTemplates[number]) {
-    const XLSX = await import("xlsx");
-    const sheet = XLSX.utils.aoa_to_sheet([template.columns]);
-    if (template.formula) {
-      XLSX.utils.sheet_add_aoa(sheet, [[{t:"n", f:template.formula}]], {
-        origin: {r:1, c:template.columns.length - 1}
-      });
+    if (building) return;
+    setBuilding(template.name);
+    setBuildError("");
+    try {
+      const XLSX = await import("xlsx");
+      const sheet = XLSX.utils.aoa_to_sheet([template.columns]);
+      if (template.formula) {
+        XLSX.utils.sheet_add_aoa(sheet, [[{t:"n", f:template.formula}]], {
+          origin: {r:1, c:template.columns.length - 1}
+        });
+      }
+      sheet["!cols"] = template.columns.map(() => ({wch:20}));
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, sheet, template.name);
+      onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
+        {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+    } catch {
+      setBuildError(`无法创建“${template.name}”，请重试。`);
+    } finally {
+      setBuilding(undefined);
     }
-    sheet["!cols"] = template.columns.map(() => ({wch:20}));
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, sheet, template.name);
-    onWorkbook(new File([XLSX.write(book, {type:"array",bookType:"xlsx"})], template.name + ".xlsx",
-      {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
   }
 
   return <Modal finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
@@ -147,6 +158,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
         </Menu>
       </Flex>
       <ModalBody>
+        {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
           {category !== "电子表格" && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
             <Box key={name} position="relative" role="group">
@@ -163,7 +175,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           )}
           {category !== "页面" && workbooks.map(template =>
             <Box key={template.name} position="relative" role="group">
-            <Button w="full" aria-label={`Use ${template.name}`} variant="unstyled" height="auto"
+            <Button w="full" aria-label={`Use ${template.name}`} isLoading={building === template.name} isDisabled={Boolean(building)} variant="unstyled" height="auto"
               textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
               <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
