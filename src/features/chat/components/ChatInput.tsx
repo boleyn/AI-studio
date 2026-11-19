@@ -949,7 +949,7 @@ const ChatInput = ({
                 <MenuItem onClick={() => setLibraryQuery("")}>从资料空间添加</MenuItem>
               </MenuList></Portal>
             </Menu>
-            {libraryQuery !== undefined && <LibraryAttachmentPicker initialQuery={libraryQuery} onClose={() => {
+            {libraryQuery !== undefined && <LibraryAttachmentPicker finalFocusRef={textAreaRef} initialQuery={libraryQuery} onClose={() => {
               pendingLibraryMention.current = undefined;
               setLibraryQuery(undefined);
             }} onAdd={async picked => {

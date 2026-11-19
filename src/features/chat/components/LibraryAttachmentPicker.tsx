@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import useDriveConnected from "@/components/agent-workspace/useDriveConnected";
 import { libraryActivityTime, matchesLibraryName, type LibraryFile } from "@/types/library";
@@ -24,7 +24,7 @@ function sourceLabel(item:LibraryFile) {
   return item.kind === "生成" ? "会话生成的文件" : item.kind;
 }
 
-export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:{initialQuery?:string;onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
+export default function LibraryAttachmentPicker({initialQuery="",finalFocusRef,onClose,onAdd}:{finalFocusRef: RefObject<HTMLTextAreaElement>;initialQuery?:string;onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const searchRef = useRef<HTMLInputElement>(null);
   const driveAvailable = useDriveConnected();
   const [driveSelected,setShowDrive] = useState(false);
@@ -167,7 +167,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     } catch (err) {setError(err instanceof TypeError ? "连接失败，请检查网络后重试。" : err instanceof Error ? err.message : "添加失败");}
     finally {setBusy(false);}
   }
-  return <Modal isOpen initialFocusRef={searchRef} onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
+  return <Modal isOpen initialFocusRef={searchRef} finalFocusRef={finalFocusRef} onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
     <ModalOverlay bg="blackAlpha.400"/><ModalContent mx={3} maxW="540px" borderRadius="20px" overflow="hidden">
     <ModalHeader px={5} pt={5} pb={3} fontSize="18px" fontWeight="600">从资料空间添加</ModalHeader>
     <ModalCloseButton aria-label="关闭" isDisabled={busy} borderRadius="full" top={4} right={4}/>
