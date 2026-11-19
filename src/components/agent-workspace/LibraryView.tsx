@@ -111,7 +111,6 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         setFiles(previous => [item,...previous || []]);
         if (reference) setReferenceDraft(undefined);
         if (openCreated && parentId) {
-          recordOpen(item);
           navigateList("全部","推荐",parentId,item.id,true);
         } else if (openCreated) openItem(item);
       }
@@ -174,7 +173,6 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setFiles(previous => [page,...previous || []]);
       setNewKind(undefined);
       if (page.folderId && page.kind === "页面") {
-        recordOpen(page);
         navigateList("全部","推荐",containingFolderId(page),page.id,true);
       } else openItem(page);
     } catch (error) { toast({status:"error",title:"无法创建"+kind+"，请重试",description:error instanceof Error ? error.message : undefined}); }
@@ -187,12 +185,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     recordLibraryOpen([...ids]);
   }
   function openItem(file:LibraryFile) {
-    recordOpen(file);
     if (file.kind === "资料空间" && file.shareId) {
+      recordOpen(file);
       void router.push("/share/space/"+file.shareId);
       return;
     }
     if (file.siteId) {
+      recordOpen(file);
       window.open(sitePreviewPath(file.siteId,file.siteSlug), "_blank", "noopener,noreferrer");
       return;
     }
@@ -217,6 +216,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const allHome = section === "全部" && !folder;
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
+  const viewedId = opened?.id || (!router.query.libraryItem ? folder?.id : undefined);
+  useEffect(() => {
+    if (!viewedId) return;
+    const openedAt = new Date().toISOString();
+    setFiles(current => current?.map(file => file.id === viewedId ? {...file, openedAt} : file));
+    recordLibraryOpen(viewedId);
+  }, [viewedId]);
   const editor = opened?.kind === "页面" || opened?.editablePageId ? opened : undefined;
   const parentPage = editor && files?.find(item=>item.id===editor.folderId && item.kind==="页面" && !item.deleted);
   const detail = editor ? undefined : opened;
@@ -246,7 +252,6 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
     return <Link title={file.name} href={href} shallow scroll={false} prefetch={false} onClick={event=>{
-      recordOpen(file);
       if (container && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         setSelected([]);
         setQuery("");
