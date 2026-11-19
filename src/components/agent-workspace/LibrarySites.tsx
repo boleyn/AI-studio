@@ -1,3 +1,4 @@
+import { recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import { sitePreviewPath } from "@/types/library";
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter, AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
 import { BarChart3, Trash2, Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
@@ -12,7 +13,7 @@ import SiteSchedules from "./SiteSchedules";
 import SiteDomains from "./SiteDomains";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { projectToken?:string; slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
+interface Site { projectToken?:string; slug?:string; restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId: string; visitors?: number }
 
 const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
@@ -79,7 +80,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
   </Flex>;
   const siteLink = (site: Site) => {
     const published = site.publishedAt ? new Date(site.publishedAt) : undefined;
-    return <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
+    return <Link href={siteUrl(site)} onClick={()=>recordLibraryOpen(site.libraryId)} aria-label={"访问 " + site.name}>
       <Flex align="center" gap={4}>{siteCover(site)}<Box>
         <Text>{site.name}</Text>
         {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize="14px" lineHeight="20px" color="#5d5d5d">
@@ -113,7 +114,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
           toast({status:"success",title:"已复制链接"});
         } catch { toast({status:"error",title:"无法复制链接，请检查剪贴板权限。"}); }
       }}>复制链接</MenuItem>
-      <MenuItem as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
+      <MenuItem as="a" href={siteUrl(site)} onClick={()=>recordLibraryOpen(site.libraryId)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
       {!site.shared && <MenuItem as="a" icon={<BarChart3 size={16}/>} href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
       {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>navigateSettings(site.id)}>设置</MenuItem>}
@@ -214,7 +215,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
         {siteCover(site)}
         <Flex px={3} py={2} minH="64px" align="center" gap={2}>
           <Box flex="1" minW={0}>
-            <Link display="block" isTruncated fontSize="sm" fontWeight="medium" href={siteUrl(site)}
+            <Link display="block" isTruncated fontSize="sm" fontWeight="medium" href={siteUrl(site)} onClick={()=>recordLibraryOpen(site.libraryId)}
               aria-label={"访问 "+site.name} _after={{content:'""',position:"absolute",inset:0}}>{site.name}</Link>
             <Flex align="center" gap={1} color="#666" fontSize="xs">
               {site.shared ? <Text>{audience(site)}</Text> : <Button variant="link" position="relative" zIndex={1} color="inherit" fontSize="inherit" fontWeight="normal"
@@ -235,7 +236,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
     <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}<th scope="col" aria-label="站点操作"/></tr></thead>
     <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>{site.shared ? audience(site) : <Button size="sm" variant="ghost" fontWeight="normal"
         aria-label={audience(site)+"，打开 " + site.name + " 的共享设置"} onClick={()=>setSharing(site)}>{audience(site)}</Button>}</td>{tab !== "与你共享" && <td>{site.shared ? "—" : <Link href={"/sites/analytics/"+encodeURIComponent(site.id)} aria-label={"打开 "+site.name+" 的数据分析页面，查看过去 30 天的独立访客数"}>{site.visitors ?? 0} 位访客</Link>}</td>}
-      <td><IconButton as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost"
+      <td><IconButton as="a" href={siteUrl(site)} onClick={()=>recordLibraryOpen(site.libraryId)} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost"
         aria-label={"在新标签页中打开 " + site.name} icon={<ExternalLink size={16} aria-hidden/>}/>{siteMenu(site)}</td>
     </tr>)}</tbody>
   </Box>{dialog}</Box>;

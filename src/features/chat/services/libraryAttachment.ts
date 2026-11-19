@@ -50,7 +50,7 @@ export async function includeSharedPages(files: LibraryFile[], spaces: Iterable<
 export function recordLibraryOpen(selection: string | string[]) {
   const ids = typeof selection === "string" ? [selection] : [...new Set(selection)];
   for (let start = 0; start < ids.length; start += 100) {
-    void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
+    void fetch("/api/library", {method:"POST", keepalive:true, headers:withAuthHeaders({"Content-Type":"application/json"}),
       body:JSON.stringify({openedIds:ids.slice(start,start+100)})}).catch(() => undefined);
   }
 }
