@@ -1,6 +1,6 @@
 import { markdownFilename } from "@/types/library";
-import { Box, Button, Flex, Spinner, Text, useToast } from "@chakra-ui/react";
-import { Download } from "lucide-react";
+import { Box, Button, Flex, IconButton, Spinner, Text, useToast } from "@chakra-ui/react";
+import { ArrowLeft, Download } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
@@ -50,6 +50,9 @@ export default function SharedArtifactPage() {
     return () => controller.abort();
   }, [id, endpoint, loadAttempt]);
 
+  const libraryLink = <IconButton as="a" href="/?view=library" aria-label="返回资料空间" title="返回资料空间"
+    icon={<ArrowLeft size={18}/>} size="sm" variant="ghost" borderRadius="full" flexShrink={0}/>;
+
   if (!current?.filename) {
     const loginUrl = `/login?${new URLSearchParams({ lastRoute: `/share/file/${encodeURIComponent(id)}` })}`;
     return <Flex h="100dvh" direction="column" gap={4} align="center" justify="center" px={4}>
@@ -58,6 +61,7 @@ export default function SharedArtifactPage() {
         setResult(undefined);
         setLoadAttempt(value=>value+1);
       }}>重新加载</Button>}
+      {current?.error && !current.needsLogin && libraryLink}
       {current?.needsLogin && <Button as="a" href={loginUrl} size="sm">登录</Button>}
     </Flex>;
   }
@@ -67,9 +71,10 @@ export default function SharedArtifactPage() {
   const isSpreadsheet = isSpreadsheetFile(previewName);
   const retry = () => setAttempt((value) => value + 1);
   if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
-    onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:markdownFilename(name)})}/>;
+    onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:markdownFilename(name),previewName:markdownFilename(name)})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
+      {libraryLink}
       <LibraryItemIcon item={{name:previewName}} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
       {current.editablePageId && <Button size="sm" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} onClick={()=>setEditing(true)}>编辑页面</Button>}
