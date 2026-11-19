@@ -75,19 +75,19 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   return (
     <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
-      <ModalContent mx={3} maxW={page ? "512px" : undefined} borderRadius={page ? "16px" : "20px"}>
+      <ModalContent mx={3} maxW={page ? "512px" : undefined} minH={page ? "376px" : undefined} borderRadius={page ? "16px" : "20px"}>
         <ModalHeader display="flex" alignItems="center" gap={2} pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}
           {page && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
         </ModalHeader>
-        <ModalCloseButton isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
+        <ModalCloseButton {...(page && {boxSize:"36px", top:"12px", right:"16px", borderRadius:"full"})} isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
         <ModalBody>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}
           {share && <>
             <Flex as="form" gap={2} align="end" onSubmit={(event) => { event.preventDefault(); void updateMember(username); }}>
               <FormControl>
-                <FormLabel fontSize="sm">添加成员</FormLabel>
-                <Input placeholder={spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
+                {!page && <FormLabel fontSize="sm">添加成员</FormLabel>}
+                <Input {...(page && {"aria-label":"添加成员", h:"36px", px:"14px", fontSize:"16px", borderRadius:"6px"})} placeholder={page ? "添加成员" : spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
               </FormControl>
               {(!page || username.trim()) && <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>}
             </Flex>
@@ -132,7 +132,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
             {!share && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
           </Flex>}
         </ModalBody>
-        <ModalFooter gap={2} justifyContent="space-between">
+        <ModalFooter {...(page && {px:"20px", py:"16px", sx:{"& button":{height:"36px", minWidth:"60px"}, "& button:first-of-type:not(:last-child)":{minWidth:"112px"}}})} gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
             try {
               await navigator.clipboard.writeText(new URL(spaceId ? "/share/space/"+spaceId : siteId ? sitePreviewPath(siteId,share.slug) : `/share/file/${share.id}`, window.location.origin).href);
