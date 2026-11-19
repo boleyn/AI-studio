@@ -647,6 +647,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       parentId = parent.folderId;
     }
   }
+  function openFileInContainingFolder(file:LibraryFile) {
+    if (isContainer(file) || file.siteId) return openItem(file);
+    setQuery("");
+    setSelected([]);
+    navigateList("全部","推荐",containingFolderId(file),file.id,true);
+  }
   function pageUrl(file:LibraryFile) {
     const url = new URL("/",window.location.origin);
     url.searchParams.set("view","library");
@@ -823,12 +829,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
       </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder ? undefined : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
-      onFile={file => {
-        if (isContainer(file) || file.siteId) return openItem(file);
-        setQuery("");
-        setSelected([]);
-        navigateList("全部","推荐",containingFolderId(file),file.id,true);
-      }} onSearch={() => setGlobalSearch(true)} onCollapse={onCollapseSidebar} /></Box>}
+      onFile={openFileInContainingFolder} onSearch={() => setGlobalSearch(true)} onCollapse={onCollapseSidebar} /></Box>}
     <SkipNavContent id="library-content" w={0} flexShrink={0}/>
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
@@ -1262,7 +1263,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         void router.replace({pathname:router.pathname,query},undefined,{shallow:true});
       }
     }}/>}
-    {globalSearch && <LibraryGlobalSearch projects={projects} files={files} error={failed} retry={()=>setAttempt(value=>value+1)} onProject={onProject} onChat={onOpen} onFile={openItem} close={() => setGlobalSearch(false)} />}
+    {globalSearch && <LibraryGlobalSearch projects={projects} files={files} error={failed} retry={()=>setAttempt(value=>value+1)} onProject={onProject} onChat={onOpen} onFile={openFileInContainingFolder} close={() => setGlobalSearch(false)} />}
     {galleryOpen && <TemplateGallery onEditWorkbook={async (file, name) => {
       await onChat([file], `帮我自定义一份 ${name} 的个人副本`);
       setGalleryOpen(false);
