@@ -78,12 +78,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const recorded = msg.time ? new Date(msg.time) : undefined;
       const time = recorded && Number.isFinite(recorded.getTime()) ? recorded.toISOString() : "";
       const firstSeenAt = time && (!previous?.firstSeenAt || time < previous.firstSeenAt) ? time : previous?.firstSeenAt;
+      const fallbackName = path.split("/").pop() || path;
+      const filename = typeof label === "string" && label.trim() ? label : undefined;
       const row: LibraryFile = { id, kind, path, version, size:typeof size === "number" ? size : previous?.size, token: msg.token, project: chatNames.get(msg.token) || "",
         chatId: msg.chatId, conversation: chat.deleteTime ? "" : chat.customTitle || chat.title || "未命名会话",
-        name: typeof label === "string" && label ? label : path.split("/").pop() || path,
+        name: filename || previous?.name || fallbackName,
         time, firstSeenAt };
       if (!previous || previous.time <= time) rows.set(key, row);
       else {
+        if (filename && previous.name === fallbackName) previous.name = filename;
         previous.firstSeenAt = firstSeenAt;
         previous.size ??= row.size;
       }
