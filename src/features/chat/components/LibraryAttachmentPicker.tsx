@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import type { LibraryFile } from "@/types/library";
-import { CircleAlert, Search } from "lucide-react";
+import { CircleAlert, Search, X } from "lucide-react";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
@@ -76,6 +76,8 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
       onClose();
     }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
       <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
+      {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
+        onClick={()=>{setQuery("");searchRef.current?.focus();}}/>}
     </Flex><ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
       {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
       {error && <Flex role="alert" mx={2} my={2} p={3} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
