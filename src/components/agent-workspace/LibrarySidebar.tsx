@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text, useBreakpointValue } from "@chakra-ui/react";
 import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
@@ -27,6 +27,7 @@ type Props = {
   onCollapse: () => void;
 };
 export default function LibrarySidebar({ width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
+  const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [driveConnected,setDriveConnected] = useState(false);
   useEffect(()=>{
@@ -87,7 +88,7 @@ export default function LibrarySidebar({ width, setWidth, createMenu, spaceActio
     </Box>
     <Button variant="ghost" justifyContent="start" size="sm" flexShrink={0} h="35px" mb="9px" px="8px" iconSpacing="6px" fontWeight="normal" borderRadius="8px" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={20} strokeWidth={1.6}/>} onClick={() => onSection("回收站")}>回收站</Button>
     <Box role="separator" aria-label="调整资料空间侧栏宽度" aria-orientation="vertical" tabIndex={0}
-      aria-valuemin={220} aria-valuemax={420} aria-valuenow={width} position="absolute" right="-4px" insetY={0}
+      aria-valuemin={220} aria-valuemax={420} aria-valuenow={width ?? defaultWidth} aria-valuetext={(width ?? defaultWidth) + " 像素"} position="absolute" right="-4px" insetY={0}
       w="8px" zIndex={1} cursor="col-resize" style={{touchAction:"none"}} userSelect="none"
       _hover={{bg:"blackAlpha.100"}} _focusVisible={{outline:"2px solid currentColor"}}
       onPointerDown={event => { if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId); }}
