@@ -1,3 +1,4 @@
+import Link, { type LinkProps } from "next/link";
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text, useBreakpointValue } from "@chakra-ui/react";
 import { Bell, Plus, Files, Users, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, LayoutDashboard, Search, Trash2 } from "lucide-react";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
@@ -21,12 +22,14 @@ type Props = {
   section?: string;
   activeSpaceId?: string;
   files: LibraryFile[];
+  sectionHref: (section: string) => LinkProps["href"];
+  onSectionNavigate: () => void;
   onSection: (section: string) => void;
   onFile: (file: LibraryFile) => void;
   onSearch: () => void;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, onCollapse }: Props) {
+export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, sectionHref, onSectionNavigate, onSection, onFile, onSearch, onCollapse }: Props) {
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [expanded, setExpanded] = useState(false);
@@ -60,9 +63,9 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
       <IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={20} strokeWidth={1.6}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
-    <Flex direction="column" mt="17px" gap="1px" sx={{"& > button":{height:"35px",paddingInline:"8px",borderRadius:"8px"},"& .chakra-button__icon":{marginInlineEnd:"6px"}}}>
-    {categories.map(({name, icon: Icon}) => <Button key={name} variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
-      aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={20} strokeWidth={1.6}/>} onClick={() => onSection(name)}>{name}</Button>)}
+    <Flex direction="column" mt="17px" gap="1px" sx={{"& > :is(button,a)":{height:"35px",paddingInline:"8px",borderRadius:"8px"},"& .chakra-button__icon":{marginInlineEnd:"6px"}}}>
+    {categories.map(({name, icon: Icon}) => <Link key={name} href={sectionHref(name)} shallow scroll={false} prefetch={false} legacyBehavior passHref onNavigate={onSectionNavigate}><Button as="a" variant="ghost" justifyContent="start" size="sm" fontWeight="normal"
+      aria-current={section === name ? "page" : undefined} bg={section === name ? "#eee" : undefined} leftIcon={<Icon size={20} strokeWidth={1.6}/>}>{name}</Button></Link>)}
     {driveConnected && <Button variant="ghost" size="sm" justifyContent="start" aria-current={section === "Google Drive" ? "page" : undefined} bg={section === "Google Drive" ? "#eee" : undefined} leftIcon={<Flex boxSize="20px" align="center" justify="center"><Box as="img" src="/icons/google-drive.png" alt="" boxSize="16px"/></Flex>} onClick={()=>onSection("Google Drive")}>Google Drive</Button>}
     </Flex>
     <Box overflowY="auto" mt="17px" flex="1">

@@ -339,9 +339,10 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const moveFocus = useRef<HTMLButtonElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  const sectionTab = (name: string) => name === "与你共享" || name === "你的条目" ? "全部" : "推荐";
   const changeSection = (next: string) => {
     setSelected([]);
-    navigateList(next, next === "与你共享" || next === "你的条目" ? "全部" : "推荐", undefined, undefined, true);
+    navigateList(next, sectionTab(next), undefined, undefined, true);
     setQuery("");
   };
   const requestedTypes = [router.query.libraryType].flat();
@@ -869,7 +870,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
-      </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder || opened ? undefined : allHome && (tab === "你的条目" || tab === "与你共享") ? tab : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
+      </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder || opened ? undefined : allHome && (tab === "你的条目" || tab === "与你共享") ? tab : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} sectionHref={name=>listUrl(name,sectionTab(name),undefined,undefined,true)} onSectionNavigate={()=>{setQuery("");setSelected([]);}} onSection={changeSection}
       onFile={openFileInContainingFolder} onSearch={() => setGlobalSearch(true)} onCollapse={onCollapseSidebar} /></Box>}
     <SkipNavContent id="library-content" w={0} flexShrink={0}/>
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
