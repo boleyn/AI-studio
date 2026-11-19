@@ -149,6 +149,7 @@ const ChatItem = ({
         const location = sharedSpacePageLocation(preview.libraryItemId);
         if (location) {
           const original = await fetch(location.api,{headers:withAuthHeaders(),signal});
+          if (redirectedToLogin(original)) throw new LibraryReadError(401,preview.name);
           if (!original.ok) throw new LibraryReadError(original.status,preview.name);
           showContent(await original.text(), true);
           return;

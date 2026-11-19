@@ -3,7 +3,7 @@ import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
-import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE } from "./files";
+import { buildDownloadUrl, MAX_UPLOAD_FILE_SIZE, redirectedToLogin } from "./files";
 
 export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 
@@ -66,7 +66,7 @@ async function readLibraryJson<T>(response: Response, message: string): Promise<
 
 export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile[]> {
   const response = await fetch("/api/library", {headers:withAuthHeaders(), signal});
-  if (response.status === 401) throw new Error("请先登录，再打开资料空间。");
+  if (response.status === 401 || redirectedToLogin(response)) throw new Error("请先登录，再打开资料空间。");
   if (response.status === 403) throw new Error("当前账号没有访问资料空间的权限。");
   if (!response.ok) throw new Error("资料空间暂时不可用，请稍后重试。");
   const message = "资料列表未能加载，请重试。";
@@ -79,7 +79,7 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   if (!space.shareId) return [];
   const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}),
     {headers:withAuthHeaders(), signal});
-  if (response.status === 401) throw new Error("请重新登录后打开共享空间。");
+  if (response.status === 401 || redirectedToLogin(response)) throw new Error("请重新登录后打开共享空间。");
   if (response.status === 403 || response.status === 404) throw new Error("共享空间已不可访问，请联系所有者确认。");
   if (!response.ok) throw new Error("共享空间暂时无法加载，请稍后重试。");
   const message = "共享空间的页面列表未能加载，请重试。";
@@ -141,6 +141,7 @@ export function libraryReadMessage(reason: unknown) {
 
 export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSignal, maxBytes?:number):Promise<File> {
   const response = await fetch(libraryAttachmentUrl(item),{headers:withAuthHeaders(),signal});
+  if (redirectedToLogin(response)) throw new LibraryReadError(401,item.name);
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
     const page = await response.json().catch(error => {
