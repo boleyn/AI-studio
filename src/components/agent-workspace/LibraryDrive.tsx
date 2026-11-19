@@ -1,9 +1,10 @@
 import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { CircleAlert, Folder, MoreHorizontal } from "lucide-react";
+import { CircleAlert, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import { redirectedToLogin, responseFilename } from "@/features/chat/services/files";
+import LibraryItemIcon from "./LibraryItemIcon";
 import { formatRelativeTime } from "./relativeTime";
 
 interface DriveFile {id:string; name:string; mimeType:string; webViewLink?:string; modifiedTime?:string; viewedByMeTime?:string; size?:string}
@@ -106,8 +107,10 @@ export default function LibraryDrive({connect,onAttach,onBusyChange,onBackToLibr
       <thead><tr>{sortHeader("name","名称")}{sortHeader("modified",recent ? "最近活动时间" : "修改日期")}
         {!recent && sortHeader("size","大小")}<th scope="col" aria-label="文件操作"/></tr></thead>
       <tbody>{result.files.map(file=><tr key={file.id}>
-        <td>{file.mimeType==="application/vnd.google-apps.folder" ? <Button variant="ghost" leftIcon={<Folder size={16}/>} onClick={()=>{setPath([...path,file]);setPages([""]);setSearch("");setQuery("");}}>{file.name}</Button> :
-          <Link href={file.webViewLink || "https://drive.google.com/open?id="+encodeURIComponent(file.id)} isExternal>{file.name}</Link>}</td>
+        <td><Flex align="center" gap={3}>
+          <LibraryItemIcon item={{name:file.name,kind:file.mimeType === "application/vnd.google-apps.folder" ? "文件夹" : undefined}}/>
+          {file.mimeType==="application/vnd.google-apps.folder" ? <Button variant="link" fontSize="inherit" fontWeight="normal" color="inherit" textAlign="left" whiteSpace="normal" onClick={()=>{setPath([...path,file]);setPages([""]);setSearch("");setQuery("");}}>{file.name}</Button> :
+          <Link href={file.webViewLink || "https://drive.google.com/open?id="+encodeURIComponent(file.id)} isExternal>{file.name}</Link>}</Flex></td>
         <td>{recent && file.viewedByMeTime && file.viewedByMeTime >= (file.modifiedTime || "") ? formatRelativeTime(file.viewedByMeTime)+"打开" : formatRelativeTime(file.modifiedTime) || "—"}</td>
         {!recent && <td>{file.size ? new Intl.NumberFormat("zh-CN",{style:"unit",unit:"byte"}).format(Number(file.size)) : "—"}</td>}
         <td>{file.mimeType!=="application/vnd.google-apps.folder" && <Button size="xs" variant="ghost" isLoading={attaching===file.id} isDisabled={Boolean(attaching)} onClick={()=>attach(file)}>添加到聊天</Button>}
