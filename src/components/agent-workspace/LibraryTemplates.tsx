@@ -121,13 +121,12 @@ function TemplateActions({label, onUse, onEdit, onUninstall}: {label:string; onU
 </Menu>;
 }
 
-export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEditWorkbook, onUpload, onSlides, onImage }: {
+export function TemplateGallery({ onClose, onPick, onWorkbook, onEditWorkbook, onUpload, onSlides, onImage }: {
   onSlides: (name?: SlideTemplateName) => void;
   onImage: (name: string) => void;
   onUpload: () => void;
   onWorkbook: (file: File) => void;
   onEditWorkbook: (file: File, name: string) => Promise<void>;
-  triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
   onPick: (name: string, body: string) => void;
 }) {
@@ -250,7 +249,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
   const cards = Array.from({length: Math.max(...groups.map(group => group.length))},
     (_, index) => groups.flatMap(group => group[index] ? [group[index]] : [])).flat();
 
-  return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
+  return <Modal initialFocusRef={firstCategory} returnFocusOnClose={false} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
       <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px" pb={{base:4, md:6}}>Templates</ModalHeader>

@@ -149,7 +149,6 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     }
   }
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const galleryTrigger = useRef<HTMLButtonElement | null>(null);
 
   const [appearance,setAppearance] = useState({icon:"",color:"默认"});
   const [inviteQuery,setInviteQuery] = useState("");
@@ -734,7 +733,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     const pageItem = <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>;
     const sheetItem = <MenuItem icon={<Sheet size={20} aria-hidden/>} isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>;
     const slidesItem = <MenuItem icon={<Presentation size={20} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>;
-    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} onFocus={(event: React.FocusEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : !rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
+    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : !rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
         <Flex as="span" width="max-content" mx={rail ? 0 : "auto"} align="center" gap={rail ? "6px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
         {rail && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
@@ -1181,7 +1180,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     {galleryOpen && <TemplateGallery onEditWorkbook={async (file, name) => {
       await onChat([file], `帮我自定义一份 ${name} 的个人副本`);
       setGalleryOpen(false);
-    }} onImage={name => { setGalleryOpen(false); void startCreativeChat("图像", "帮我创建" + name + "，"); }} onSlides={name => { setGalleryOpen(false); void createSlides(name); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true, undefined, folder?.id,true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
+    }} onImage={name => { setGalleryOpen(false); void startCreativeChat("图像", "帮我创建" + name + "，"); }} onSlides={name => { setGalleryOpen(false); void createSlides(name); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true, undefined, folder?.id,true); }} onClose={() => setGalleryOpen(false)} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
     {sharing && <ArtifactShareDialog page={sharing.kind === "页面"} spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
