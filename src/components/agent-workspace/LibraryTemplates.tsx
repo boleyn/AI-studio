@@ -140,6 +140,11 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   const [buildError,setBuildError] = useState("");
   const firstCategory = useRef<HTMLButtonElement>(null);
   const [category, setCategory] = useState(galleryCategories[0]);
+  function selectCategory(label: string) {
+    setCategory(label);
+    setQuery("");
+    setSearching(false);
+  }
   const pages = templates.slice(1).filter(template =>
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
@@ -231,7 +236,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
             <Button key={label} ref={index === 0 ? firstCategory : undefined} id={`gallery-tab-${index}`}
               role="tab" aria-selected={category === label} aria-controls="gallery-results"
               tabIndex={category === label ? 0 : -1} size="sm" h="38px" px="16px" py="9px" borderRadius="full" flexShrink={0}
-              variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}
+              variant={category === label ? "solid" : "ghost"} onClick={() => selectCategory(label)}
               onKeyDown={event => {
                 const count = galleryCategories.length;
                 const targets: Record<string, number> = {
@@ -241,7 +246,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
                 const next = targets[event.key];
                 if (next === undefined) return;
                 event.preventDefault();
-                setCategory(galleryCategories[next]);
+                selectCategory(galleryCategories[next]);
                 document.getElementById(`gallery-tab-${next}`)?.focus();
               }}>{label}</Button>
           )}
