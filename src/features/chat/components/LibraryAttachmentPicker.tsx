@@ -7,7 +7,7 @@ import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, expandLibrarySelection, isContainer, loadLibraryFiles } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, isContainer, loadSharedSpacePages, loadLibraryFiles } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -48,19 +48,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     const controller = new AbortController();
     setError("");
     setItems(undefined);
-    async function loadItems() {
-      if (!space?.shareId) return loadLibraryFiles(controller.signal);
-      const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}), {
-        headers:withAuthHeaders(), signal:controller.signal,
-      });
-      if (!response.ok) throw new Error("无法读取共享空间，请检查访问权限后重试。");
-      const data: {pages:{id:string;name:string}[]} = await response.json();
-      return data.pages.map((page): LibraryFile => ({
-        ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传",
-        path:page.name, sharedPage:true, project:space.name,
-      }));
-    }
-    loadItems().then(data => {
+    const request = space?.shareId ? loadSharedSpacePages(space,controller.signal) : loadLibraryFiles(controller.signal);
+    request.then(data => {
       if (controller.signal.aborted) return;
       const loaded = data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
       if (!space) rootItems.current = loaded;

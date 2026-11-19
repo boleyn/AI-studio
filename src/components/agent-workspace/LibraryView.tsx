@@ -11,7 +11,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadSharedSpacePages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -414,8 +414,20 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     } catch(error) {toast({status:"error",title:error instanceof Error ? error.message : "操作失败"});}
     finally {setBatchBusy(false);}
   }
-  function startSelectionChat(selection: LibraryFile[]) {
+  async function startSelectionChat(selection: LibraryFile[]) {
     const attachments = expandLibrarySelection(selection, files || []);
+    const shared = selection.filter(item => isContainer(item) && item.shareId);
+    if (shared.length) {
+      setBatchBusy(true);
+      try {
+        for (const space of shared) attachments.push(...await loadSharedSpacePages(space));
+      } catch {
+        toast({status:"error", title:"无法读取共享空间，请检查访问权限后重试。"});
+        return;
+      } finally {
+        setBatchBusy(false);
+      }
+    }
     if (!attachments.length) {
       toast({status:"info", title:"所选位置中没有可添加的文件或页面。", isClosable:true});
       return;
@@ -834,7 +846,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
-        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted || (isContainer(item) && item.shareId))} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
+        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
         <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>{section==="回收站" ? "恢复" : "删除"}</Button>
         <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>

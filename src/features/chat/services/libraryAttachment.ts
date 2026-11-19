@@ -40,6 +40,18 @@ export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile
   return response.json();
 }
 
+export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSignal): Promise<LibraryFile[]> {
+  if (!space.shareId) return [];
+  const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}),
+    {headers:withAuthHeaders(), signal});
+  if (!response.ok) throw new Error("无法读取共享空间，请检查访问权限后重试。");
+  const data: {pages:{id:string;name:string}[]} = await response.json();
+  return data.pages.map(page => ({
+    ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传",
+    path:page.name, sharedPage:true, project:space.name,
+  }));
+}
+
 export function sharedSpacePageLocation(origin: string) {
   const match = /^space-([a-f0-9]{24})-([a-f0-9]{24})$/.exec(origin);
   if (!match) return;
