@@ -78,7 +78,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
       <ModalOverlay />
       <ModalContent borderWidth={fileOrPage ? 0 : undefined} mx={3} maxW={fileOrPage ? "512px" : undefined} minH={fileOrPage ? "376px" : undefined} borderRadius={fileOrPage ? "16px" : "20px"}>
         <ModalHeader display="flex" alignItems="center" gap={2} pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}
-          {fileOrPage && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
+          {fileOrPage && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} boxSize="32px" minW="32px" variant="ghost" borderRadius="full" flexShrink={0}/>}
         </ModalHeader>
         <ModalCloseButton {...(fileOrPage && {boxSize:"36px", top:"12px", right:"16px", borderRadius:"full"})} isDisabled={busy} aria-label={fileOrPage ? "关闭对话框" : "关闭分享对话框"} />
         <ModalBody pt={fileOrPage ? 0 : undefined}>
