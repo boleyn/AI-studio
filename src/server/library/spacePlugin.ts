@@ -136,15 +136,16 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           return {content:JSON.stringify({name,url:"/?view=library&libraryItem="+input.pageId})};
         },
       });
-      context.registerTool<{name:string; body:string; spaceName?:string; spaceId?:string}>({
+      context.registerTool<{name:string; body:string; spaceName?:string; spaceId?:string; parentPageId?:string}>({
         name:"CreateLibraryPage",
         toolset:"library-spaces",
-        description:"将当前讨论整理成可编辑的资料空间页面。Save a Markdown page in the user's library, optionally in a named space or one identified by its ID.",
+        description:"将当前讨论整理成可编辑的资料空间页面。可按名称或编号保存到空间，或用 parentPageId 在已有个人页面下创建子页面。",
         parameters:{
           type:"object", additionalProperties:false, required:["name","body"],
           properties:{
             name:{type:"string",minLength:1,maxLength:255},
             body:{type:"string",maxLength:500000},
+            parentPageId:{type:"string",pattern:"^[a-f0-9]{24}$"},
             spaceName:{type:"string",minLength:1,maxLength:255},
             spaceId:{type:"string",pattern:"^[a-f0-9]{24}$"},
           },
@@ -155,7 +156,14 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             return {isError:true,content:"请在主对话中提供有效的页面名称和正文。"};
           const pages = (await getMongoDb()).collection("library_pages");
           let folderId: string | null = null;
-          if (input.spaceId !== undefined || input.spaceName !== undefined) {
+          if (input.parentPageId !== undefined) {
+            if (!/^[a-f0-9]{24}$/.test(input.parentPageId) || input.spaceId !== undefined || input.spaceName !== undefined)
+              return {isError:true,content:"创建子页面时请只指定父页面编号。"};
+            const parent = await pages.findOne({_id:new ObjectId(input.parentPageId),owner,kind:{$in:["页面",null]},
+              deleted:{$ne:true},purging:{$ne:true}},{projection:{_id:1}});
+            if (!parent) return {isError:true,content:"找不到可添加子页面的父页面。"};
+            folderId = parent._id.toHexString();
+          } else if (input.spaceId !== undefined || input.spaceName !== undefined) {
             if (input.spaceId !== undefined && !/^[a-f0-9]{24}$/.test(input.spaceId))
               return {isError:true,content:"资料空间编号无效。"};
             const spaces = await pages.find({owner,kind:"资料空间",deleted:{$ne:true},purging:{$ne:true},
@@ -172,7 +180,8 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           }},{upsert:true,returnDocument:"after",projection:{name:1,folderId:1,deleted:1,purging:1}});
           if (!saved || saved.deleted || saved.purging) return {isError:true,content:"此页面已不可用。"};
           const query = new URLSearchParams({view:"library",libraryItem:id.toHexString()});
-          if (saved.folderId) query.set("libraryFolder",saved.folderId);
+          if (saved.folderId && await pages.findOne({_id:new ObjectId(saved.folderId),owner,kind:{$in:["文件夹","资料空间"]}},{projection:{_id:1}}))
+            query.set("libraryFolder",saved.folderId);
           return {content:JSON.stringify({id:id.toHexString(),name:saved.name,url:"/?"+query})};
         },
       });
