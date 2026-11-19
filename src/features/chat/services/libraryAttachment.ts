@@ -159,7 +159,18 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     throw new LibraryReadError(413,item.name);
   }
   const blob = await readAttachmentBlob(response, item.name, maxBytes);
-  if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(item.name),{type:"text/markdown"}),item.id);
+  if (item.sharedPage) {
+    let filename = markdownFilename(item.name);
+    const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    if (encoded) {
+      try {
+        filename = markdownFilename(decodeURIComponent(encoded));
+      } catch {
+        // Older responses may contain a malformed filename. Keep the listed title.
+      }
+    }
+    return fromLibrary(new File([blob],filename,{type:"text/markdown"}),item.id);
+  }
   const inferred = inferAttachmentMimeType(libraryTypeName(item), item.name);
   const mediaType = blob.type.split(";")[0].trim().toLowerCase();
   const type = !mediaType || mediaType === "application/octet-stream" || (mediaType === "text/plain" && inferred === "text/markdown")
