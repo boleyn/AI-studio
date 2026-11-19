@@ -46,8 +46,14 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true},
             name:{$regex:title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),$options:"i"},
           },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).skip(offset).limit(21).toArray();
-          return {content:JSON.stringify({hasMore:matches.length > 20,nextOffset:matches.length > 20 ? offset+20 : null,pages:matches.slice(0,20).map(page=>({
-            id:page._id.toHexString(),name:page.name,modifiedAt:page.time,parentId:page.folderId,
+          const results = matches.slice(0,20);
+          const parentIds = [...new Set(results.map(page=>page.folderId).filter((id): id is string =>
+            typeof id === "string" && /^[a-f0-9]{24}$/.test(id)))];
+          const parents = parentIds.length ? await pages.find({owner,_id:{$in:parentIds.map(id=>new ObjectId(id))},
+            deleted:{$ne:true},purging:{$ne:true}},{projection:{name:1}}).toArray() : [];
+          const parentNames = new Map(parents.map(parent=>[parent._id.toHexString(),parent.name]));
+          return {content:JSON.stringify({hasMore:matches.length > 20,nextOffset:matches.length > 20 ? offset+20 : null,pages:results.map(page=>({
+            id:page._id.toHexString(),name:page.name,modifiedAt:page.time,parentId:page.folderId,parentName:parentNames.get(page.folderId),
             url:"/?view=library&libraryItem="+page._id.toHexString(),
           }))})};
         },
