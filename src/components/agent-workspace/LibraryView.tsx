@@ -727,7 +727,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"8px"},
-          "& td:nth-child(2) a, & td:nth-child(2) span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+          "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:"calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
@@ -746,7 +746,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             cursor={file.deleted ? undefined : "pointer"}
             sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? new Date(file.deletedAt).toLocaleDateString("zh-CN") : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
