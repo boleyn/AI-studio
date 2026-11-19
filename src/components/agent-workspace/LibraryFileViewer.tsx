@@ -15,6 +15,7 @@ interface Props extends FileChatSizing {
   item: LibraryFile;
   versions: LibraryFile[];
   openVersion: (file: LibraryFile) => void;
+  restoreVersion: (file: LibraryFile, head: LibraryFile) => Promise<void>;
   download: () => void;
   downloading: boolean;
   share?:()=>void;
@@ -40,12 +41,13 @@ export default function LibraryFileViewer(props: Props) {
   return <FilePreview key={props.item.id} {...props} panel={panel} setPanel={setPanel}/>;
 }
 
-function FilePreview({item,versions,openVersion,download,downloading,share,fileChatWidth,setFileChatWidth,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
+function FilePreview({item,versions,openVersion,restoreVersion,download,downloading,share,fileChatWidth,setFileChatWidth,fileChatOpen,resumeFileChat,askAboutFile,close,openLibrary,openSource,toggleFavorite,panel,setPanel}:Props & {
   panel?: ViewerPanel;
   setPanel: (panel?: ViewerPanel) => void;
 }) {
   const [question,setQuestion] = useState("");
   const [draftMinimized,setDraftMinimized] = useState(false);
+  const [restoring,setRestoring] = useState(false);
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const [imageUrl,setImageUrl] = useState<string>();
@@ -142,6 +144,9 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
           {[50,75,100,125,150,200].map(percent=><MenuItem key={percent} onClick={()=>setScale(percent/100)}>{percent}%</MenuItem>)}
         </MenuList>
       </Menu>}
+      {panel === "history" && <Button size="sm" borderRadius="full" isLoading={restoring}
+        isDisabled={!item.version || !versions[0]?.version || versions[0].id === item.id}
+        onClick={async()=>{setRestoring(true);try {await restoreVersion(item,versions[0]);} finally {setRestoring(false);}}}>恢复此版本</Button>}
       <Flex role="group" aria-label="文件操作" align="center" gap="2px" flexShrink={0}>
         <IconButton aria-label="下载" title="下载" size="sm" borderRadius="full" variant="ghost" icon={<Download size={16}/>} isLoading={downloading} onClick={download}/>
         {share && <Button size="sm" minW="80px" borderRadius="full" leftIcon={<Share2 size={16}/>} onClick={share}>分享</Button>}

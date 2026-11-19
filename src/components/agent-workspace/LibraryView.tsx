@@ -651,7 +651,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
         !file.deleted && file.kind === "生成" && file.token === detail.token &&
         file.chatId === detail.chatId && file.path === detail.path
-      ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem}
+      ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem} restoreVersion={async (file,head)=>{
+        try {
+          const response = await fetch("/api/library?action=restore-version",{method:"POST",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:file.id,head:head.id})});
+          if (!response.ok) throw new Error(response.status === 409 ? "文件已发生变化，请刷新后重试。" : "恢复失败，请稍后重试。");
+          const restored: LibraryFile = await response.json();
+          setFiles(previous=>[restored,...(previous || []).filter(entry=>entry.id!==restored.id)]);
+          openItem(restored);
+        } catch (error) { toast({status:"error",title:"无法恢复版本",description:error instanceof Error ? error.message : undefined}); }
+      }}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={()=>usePicked("download",[detail])} downloading={batchBusy} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
       toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
       subpages={!editor.shareId && <Flex as="nav" aria-label="子页面" direction="column" align="start" gap={1} mt={4}>

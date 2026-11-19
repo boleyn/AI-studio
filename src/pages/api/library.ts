@@ -9,7 +9,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
 import { canAccessArtifactSource } from "@server/chat/tokenAccess";
-import { listProjectOverviewItems } from "@server/projects/projectStorage";
+import { listProjectOverviewItems, readProjectArtifactVersion, readProjectFile, updateBinaryFile } from "@server/projects/projectStorage";
 import type { LibraryFile } from "@/types/library";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -26,7 +26,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const status = await purgeLibraryItem(db, owner, id);
     return status === 409 ? res.status(status).json({error:"请先恢复此条目并移出其中的资料，或先永久删除已在回收站中的子项。"}) : res.status(status).end();
   }
-  if (req.method === "POST") {
+  const restoring = req.method === "POST" && req.query.action === "restore-version";
+  if (req.method === "POST" && !restoring) {
     const itemId = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
     const operation = z.union([z.object({openedId:itemId}),z.object({openedIds:z.array(itemId).min(1).max(100)})]).safeParse(req.body);
     if (!operation.success) return res.status(400).end();
@@ -151,9 +152,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     rows.set(id,{id,siteId:site.id,kind:"站点",name:site.name,path:"",token:"",project:"",chatId:"",conversation:"",
       ...(site.shared ? {shareId:site.id} : {}),time:site.time ? new Date(site.time).toISOString() : ""});
   }
+  const restores = db.collection<LibraryFile & {_id:string; owner:string; pending?:boolean}>("library_restored_versions");
+  for await (const {_id,owner:recordOwner,...file} of restores.find({owner,pending:{$ne:true},token:{$in:[...names.keys()]}})) {
+    rows.set(file.id,file);
+  }
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
-  res.json([...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
+  const listed = [...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
     const entry = preferences.get(owner + "/" + file.id);
     return entry ? { ...file, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
-  }).sort((a, b) => b.time.localeCompare(a.time)));
+  }).sort((a, b) => b.time.localeCompare(a.time));
+  if (!restoring) return res.json(listed);
+  const request = z.object({id:z.string().regex(/^[a-f0-9]{64}$/),head:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);
+  if (!request.success) return res.status(400).end();
+  const source = listed.find(file => file.id === request.data.id && file.kind === "生成" && !file.deleted);
+  if (!source?.version || !names.has(source.token)) return res.status(404).end();
+  const head = listed.find(file => file.kind === "生成" && !file.deleted && file.token === source.token && file.chatId === source.chatId && file.path === source.path);
+  const id = createHash("sha256").update(JSON.stringify(["restore",request.data.head])).digest("hex");
+  if (head?.id === id) return head.version === source.version ? res.json(head) : res.status(409).end();
+  if (!head?.version || head.id !== request.data.head || head.id === source.id) return res.status(409).end();
+  const [live, current, previous] = await Promise.all([
+    readProjectFile(source.token,source.path),
+    readProjectArtifactVersion(head.token,head.version,head.path),
+    readProjectArtifactVersion(source.token,source.version,source.path),
+  ]);
+  if (!live.buffer.equals(current.buffer) && !live.buffer.equals(previous.buffer)) return res.status(409).end();
+  const restored: LibraryFile = {...head,id,version:source.version,size:previous.buffer.length,time:new Date().toISOString()};
+  const record = await restores.findOneAndUpdate({_id:id,owner},{$setOnInsert:{...restored,owner,pending:true}},{upsert:true,returnDocument:"after"});
+  if (!record || record.version !== source.version) return res.status(409).end();
+  if (record.pending) {
+    await updateBinaryFile(source.token,source.path,previous.buffer,live.contentType);
+    await restores.updateOne({_id:id,owner},{$unset:{pending:""}});
+  }
+  return res.json({...restored,time:record.time});
 }
