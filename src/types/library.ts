@@ -33,3 +33,7 @@ export interface LibraryFile {
   openedAt?: string;
   time: string;
 }
+
+export function libraryTypeName(item: {path?:string; name:string}) {
+  return item.path && /\.[^./\\]+$/.test(item.path) ? item.path : item.name;
+}

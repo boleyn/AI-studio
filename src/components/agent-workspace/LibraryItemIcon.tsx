@@ -1,3 +1,4 @@
+import { libraryTypeName } from "@/types/library";
 import { SpaceIcon } from "./SpaceIconPicker";
 import { Box } from "@chakra-ui/react";
 import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation, Sheet } from "lucide-react";
@@ -11,7 +12,7 @@ function appearance(item: IconItem) {
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };
-  const path = item.path || item.name;
+  const path = libraryTypeName(item);
   if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return { Icon: Sheet, color: "#18a851" };
   if (/\.(pptx?|odp)$/i.test(path)) return { Icon: Presentation, color: "#d86a32" };
   if (/\.pdf$/i.test(path)) return { Icon: FileText, color: "#d54540" };

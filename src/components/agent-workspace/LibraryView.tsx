@@ -1,3 +1,4 @@
+import { libraryTypeName } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
@@ -44,7 +45,7 @@ function fileType(file: LibraryFile) {
   if (isContainer(file)) return file.kind;
   if (file.kind === "页面" || file.sharedPage) return "页面";
   if (file.siteId) return "站点";
-  const path = file.path || file.name;
+  const path = libraryTypeName(file);
   if (isArtifactImage(path)) return "图像";
   if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return "电子表格";
   if (/\.(pptx?|odp)$/i.test(path)) return "演示文稿";
@@ -411,7 +412,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return usePicked("chat",attachments);
   }
   const key = (file: LibraryFile) => file.id;
-  const download = (file: LibraryFile) => isArtifactImage(file.path || file.name) ?
+  const download = (file: LibraryFile) => isArtifactImage(libraryTypeName(file)) ?
     <IconButton size="sm" variant="ghost" borderRadius="full" aria-label="下载文件" title="下载文件"
       icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> :
     <Button size="xs" variant="ghost" isLoading={batchBusy} onClick={()=>usePicked("download",[file])}>下载</Button>;
