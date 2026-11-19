@@ -15,7 +15,7 @@ import { fileType, matchesLibraryType } from "./libraryFileType";
 import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, includeSharedPages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
-import { formatRelativeTime } from "./relativeTime";
+import { formatDeletionDate, formatRelativeTime } from "./relativeTime";
 import LibraryDrive from "./LibraryDrive";
 import LibraryConnectors from "./LibraryConnectors";
 import LibrarySites from "./LibrarySites";
@@ -285,7 +285,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
   const [listTime, setListTime] = useState(Date.now);
-  const showRelativeTimes = !grid && !opened && !imageSection && section !== "回收站";
+  const showRelativeTimes = !grid && !opened && !imageSection;
   useEffect(() => {
     if (!showRelativeTimes) return;
     const refresh = () => {
@@ -919,7 +919,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
-            <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{new Date(file.deletedAt).toLocaleDateString("zh-CN")}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
+            <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{formatDeletionDate(file.deletedAt,listTime)}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked}

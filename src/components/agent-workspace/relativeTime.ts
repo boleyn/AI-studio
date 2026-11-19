@@ -15,3 +15,19 @@ export function formatRelativeTime(isoString?: string, now = Date.now()): string
   const diffMonth = Math.floor(diffDay / 30);
   return `${Math.max(1, diffMonth)} 个月前`;
 }
+
+export function formatDeletionDate(value: string, now: number): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  const today = new Date(now);
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (date.toDateString() === start.toDateString()) return "今天";
+  start.setDate(start.getDate() - 1);
+  if (date.toDateString() === start.toDateString()) return "昨天";
+  start.setDate(start.getDate() + 1 - (today.getDay() + 6) % 7);
+  if (date >= start && date <= today) return date.toLocaleDateString("zh-CN", {weekday:"long"});
+  return date.toLocaleDateString("zh-CN", {
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    month:"long", day:"numeric",
+  });
+}
