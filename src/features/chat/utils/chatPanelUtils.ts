@@ -1,3 +1,4 @@
+import { libraryOrigin } from "../services/libraryFileOrigin";
 import { inferAttachmentMimeType } from "./attachmentMimeType";
 import { extractText } from "@shared/chat/messages";
 import type { ChatInputFile } from "../types/chatInput";
@@ -301,6 +302,7 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
   files.map((item) => ({
     id: item.id,
     name: item.file.name,
+    libraryItemId: libraryOrigin(item.file),
     size: item.file.size,
     type: item.file.type,
     lastModified: item.file.lastModified,
