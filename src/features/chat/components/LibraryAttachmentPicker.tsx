@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
-import { withAuthHeaders } from "@features/auth/client/authClient";
+import useDriveConnected from "@/components/agent-workspace/useDriveConnected";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { CircleAlert, Search, X } from "lucide-react";
 import AttachmentFilename from "./AttachmentFilename";
@@ -26,17 +26,9 @@ function sourceLabel(item:LibraryFile) {
 
 export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:{initialQuery?:string;onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const searchRef = useRef<HTMLInputElement>(null);
-  const [driveAvailable,setDriveAvailable] = useState(false);
-  const [showDrive,setShowDrive] = useState(false);
-  useEffect(()=>{
-    const controller = new AbortController();
-    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!controller.signal.aborted) setDriveAvailable(data.connected);
-    }).catch(()=>{});
-    return ()=>controller.abort();
-  },[]);
+  const driveAvailable = useDriveConnected();
+  const [driveSelected,setShowDrive] = useState(false);
+  const showDrive = driveSelected && driveAvailable;
   const [items,setItems] = useState<LibraryFile[]>();
   const [space,setSpace] = useState<LibraryFile>();
   const [query,setQuery] = useState(initialQuery);
