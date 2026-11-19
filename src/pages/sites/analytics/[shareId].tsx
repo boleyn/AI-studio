@@ -2,6 +2,7 @@ import type { GetServerSideProps } from "next";
 import { Box, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
 import { getMongoDb } from "@server/db/mongo";
+import { getSiteSettings } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { getShareLink } from "@server/shares/shareStorage";
 
@@ -22,7 +23,10 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
   const shareId = String(context.params?.shareId || "");
   const share = await getShareLink(shareId);
   if (!share || share.mode !== "preview" || share.ownerUserId !== user.sub) return {notFound:true};
-  const project = await getProject(share.projectToken);
+  const [project, settings] = await Promise.all([
+    getProject(share.projectToken),
+    getSiteSettings(share.ownerUserId, share.projectToken),
+  ]);
   if (!project || project.userId !== user.sub) return {notFound:true};
   context.res.setHeader("Cache-Control","private, no-store");
   const days = context.query.days === "7" ? 7 : 30;
@@ -52,7 +56,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
     const row = report?.daily.find((entry:{_id:string}) => entry._id === day);
     return {day,visitors:Number(row?.visitors || 0),views:Number(row?.views || 0)};
   });
-  return {props:{shareId,name:project.name,days,daily,pages:report?.pages || [],requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
+  return {props:{shareId,name:settings?.name || project.name,days,daily,pages:report?.pages || [],requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
 };
 
 function TrafficTrend({daily}: Pick<Props,"daily">) {
