@@ -60,9 +60,9 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
       </Flex>
       <ModalCloseButton aria-label="关闭全局搜索"/>
       <ModalBody py={3} id={listId} role="listbox" aria-label="搜索结果">
-        {groups.map(group => group.rows.length > 0 && <Box key={group.title} mb={3}>
+        {groups.map(group => group.rows.length > 0 && <Box key={group.title} role="group" aria-label={group.title} mb={3}>
           <Text fontSize="xs" fontWeight="600" color="gray.600" mb={1}>{group.title}</Text>
-          {group.rows.map(row => <Button key={row.id} id={listId + group.title + row.id} role="option" aria-selected={activeId === listId + group.title + row.id}
+          {group.rows.map(row => <Button key={row.id} id={listId + group.title + row.id} role="option" tabIndex={-1} aria-selected={activeId === listId + group.title + row.id}
             bg={activeId === listId + group.title + row.id ? "gray.100" : undefined} size="sm" variant="ghost" w="full" justifyContent="start"
             leftIcon={row.icon} onClick={() => { close(); row.open(); }}><Text isTruncated title={row.label}>{row.label}</Text>
               {"source" in row && typeof row.source === "string" && row.source && <Text ml={2} minW={0} isTruncated fontSize="xs" color="gray.600" fontWeight="normal">{row.source}</Text>}
