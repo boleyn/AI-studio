@@ -417,6 +417,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   function matchesSearch(file: LibraryFile) {
     if (!searchTerm) return true;
+    if (personalSection) return file.name.normalize("NFC").toLowerCase().includes(searchTerm);
     if (matchesExportedPageName(file, searchTerm)) return true;
     return matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation]
       .some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm));
@@ -974,7 +975,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           </Flex> : folder && !filterCount ? <Flex role="status" direction="column" align="center" textAlign="center" py={16} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">{folder.kind === "资料空间" ? "资料空间为空" : "文件夹为空"}</Heading>
             <Text fontSize="sm" color="gray.600">通过「新建」添加页面，或将文件拖到这里。</Text>
-          </Flex> : slidesSection || pagesSection ? <Text role="status" textAlign="center" py={16} color="gray.500">未找到任何项目</Text> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
+          </Flex> : slidesSection || pagesSection ? <Text role="status" textAlign="center" py={16} color="gray.500">{personalSection && searchTerm ? "没有匹配的页面" : "未找到任何项目"}</Text> : <Text>{section === "回收站" ? "回收站为空" : filterCount || files?.length ? "没有符合条件的文件" : "会话中生成或上传的文件会显示在这里"}</Text>) :
         imageSection ? <Box sx={{containerType:"inline-size"}}>
           <Box sx={{
             columnCount:1, columnGap:"16px",
