@@ -62,6 +62,14 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
 }) => {
   const rehypePlugins = useMemo(() => resolveWorkspaceImage ? [
     defaultRehypePlugins.raw,
+    () => (tree: Root) => {
+      visit(tree, "element", (node) => {
+        const src = node.properties.src;
+        if (node.tagName !== "img" || typeof src !== "string" || !src.startsWith("sandbox:/")) return;
+        const path = src.slice("sandbox:".length);
+        if (resolveWorkspaceImage(path)) node.properties.src = path;
+      });
+    },
     defaultRehypePlugins.sanitize,
     () => (tree: Root) => {
       visit(tree, "element", (node) => {
