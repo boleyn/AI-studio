@@ -65,16 +65,17 @@ export async function getArtifactShare(id: string) {
   return (await collection()).findOne({ _id: id });
 }
 
-export async function updateArtifactShareMember(id: string, ownerId: string, member: ArtifactShareMember, remove: boolean) {
+export async function updateArtifactShareMember(id: string, ownerId: string, member: ArtifactShareMember, action: "invite" | "edit" | "remove") {
   const shares = await collection();
   const filter = { _id: id, ownerId };
-  if (remove) {
+  if (action === "remove") {
     return shares.findOneAndUpdate(filter, { $pull: { members: { userId: member.userId } } }, { returnDocument: "after" });
+  }
+  if (action === "invite") {
+    await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
   }
   if (member.canEdit !== undefined) {
     await shares.updateOne({...filter,"members.userId":member.userId}, {$set:{"members.$.canEdit":member.canEdit}});
-  } else {
-    await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
   }
   return shares.findOne(filter);
 }

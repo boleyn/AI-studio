@@ -95,7 +95,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? await findUserByUsername(username).then((user) => user ? { userId: String(user._id), username: user.username } : undefined)
           : undefined;
       if (!member || member.userId === userId) return res.status(400).json({ error: "请选择有效的 Hermes 账号" });
-      const updated = await updateArtifactShareMember(id, userId, {...member, ...(share.livePage && typeof body.canEdit === "boolean" ? {canEdit:body.canEdit} : {})}, body.remove === true);
+      const action = body.remove === true ? "remove" : body.userId !== undefined ? "edit" : "invite";
+      const updated = await updateArtifactShareMember(id, userId, {...member, ...(share.livePage && typeof body.canEdit === "boolean" ? {canEdit:body.canEdit} : {})}, action);
       return res.status(200).json({ members: updated?.members ?? [] });
     }
 
