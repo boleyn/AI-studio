@@ -709,7 +709,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={slidesSection || allHome ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
+        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : "资料库分区"}>
           {section !== "回收站" && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
