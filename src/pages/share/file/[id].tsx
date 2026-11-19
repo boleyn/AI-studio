@@ -1,7 +1,7 @@
 import { recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import { markdownFilename } from "@/types/library";
 import { Box, Button, Flex, IconButton, Spinner, Text, useToast } from "@chakra-ui/react";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, CircleAlert, Download } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
@@ -66,13 +66,21 @@ function SharedFilePreview({id,drafts}:{id:string;drafts:Map<string,PageDraft>})
   if (!current?.filename) {
     const loginUrl = `/login?${new URLSearchParams({ lastRoute: `/share/file/${encodeURIComponent(id)}` })}`;
     return <Flex h="100dvh" direction="column" gap={4} align="center" justify="center" px={4}>
-      {current?.error ? <Text role="status">{current.error}</Text> : <Spinner aria-label="正在读取共享文件" />}
-      {current?.error && !current.needsLogin && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
-        setResult(undefined);
-        setLoadAttempt(value=>value+1);
-      }}>重新加载</Button>}
-      {current?.error && !current.needsLogin && libraryLink}
-      {current?.needsLogin && <Button as="a" href={loginUrl} size="sm">登录</Button>}
+      {current?.error ? <Flex direction="column" align="center" gap={3} maxW="26rem" textAlign="center">
+        <CircleAlert size={24} color="#777" aria-hidden/>
+        <Box role="alert">
+          <Text as="h1" fontWeight="600">无法打开共享文件</Text>
+          <Text mt={1} fontSize="sm" color="gray.600" overflowWrap="anywhere">{current.error}</Text>
+        </Box>
+        <Flex gap={2} wrap="wrap" justify="center">
+          {current.needsLogin ? <Button as="a" href={loginUrl} size="sm" borderRadius="full">登录</Button> :
+            <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
+              setResult(undefined);
+              setLoadAttempt(value=>value+1);
+            }}>重新加载</Button>}
+          <Button as="a" href="/?view=library" size="sm" variant="ghost" borderRadius="full">返回资料空间</Button>
+        </Flex>
+      </Flex> : <Spinner aria-label="正在读取共享文件"/>}
     </Flex>;
   }
 
