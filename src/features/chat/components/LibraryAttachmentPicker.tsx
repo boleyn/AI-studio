@@ -6,7 +6,7 @@ import { CircleAlert, Search, X } from "lucide-react";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, loadLibraryFiles } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, isContainer, loadLibraryFiles } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -51,7 +51,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     return () => controller.abort();
   },[attempt]);
   const namesById = new Map(items?.map(item=>[item.id,item.name]));
-  const attachable = items?.filter(item=>!item.siteId && item.kind !== "文件夹" && item.kind !== "资料空间");
+  const attachable = items?.filter(item=>!item.siteId && !(isContainer(item) && item.shareId));
   const locationLabel = (item:LibraryFile) => [
     item.folderId && namesById.get(item.folderId),
     sourceLabel(item),
@@ -68,11 +68,16 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setError("");
     try {
       const itemsById = new Map(items.map(item => [item.id, item]));
-      const picked = selected.map(id => itemsById.get(id)).filter((item): item is LibraryFile => Boolean(item));
+      const selection = selected.map(id => itemsById.get(id)).filter((item): item is LibraryFile => Boolean(item));
+      const picked = expandLibrarySelection(selection, items);
+      if (!picked.length) {
+        setError("所选位置中没有可添加的文件或页面。");
+        return;
+      }
       const errors = await addLibraryAttachments(picked, onAdd);
       setFileErrors(errors);
       if (errors.size) {
-        setSelected(selected.filter(id => errors.has(id)));
+        setSelected([...errors.keys()]);
         setQuery("");
         const added = picked.length - errors.size;
         setError(added
@@ -102,7 +107,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       if (errors[0]) throw new Error(errors[0]);
       onClose();
     }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
-      <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
+      <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件、页面或文件夹" value={query} onChange={event=>setQuery(event.target.value)}/>
       {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
         onClick={()=>{setQuery("");searchRef.current?.focus();}}/>}
     </Flex>

@@ -11,7 +11,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -27,7 +27,6 @@ import type { ProjectWithConversations } from "../AgentWorkspace";
 import type { FileChatSizing } from "./FileChatDivider";
 import LibrarySidebar from "./LibrarySidebar";
 
-const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
 const isNative = (file:LibraryFile) => !file.shareId && (file.kind === "页面" || isContainer(file));
 function renameSuffix(file?: LibraryFile) {
   if (!file || file.siteId || file.sharedPage || isNative(file)) return "";
@@ -415,23 +414,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     finally {setBatchBusy(false);}
   }
   function startSelectionChat(selection: LibraryFile[]) {
-    const folders = new Set(selection.filter(isContainer).map(item => item.id));
-    if (!folders.size) return usePicked("chat", selection);
-    const children = new Map<string,LibraryFile[]>();
-    for (const file of files || []) {
-      if (file.deleted || !file.folderId) continue;
-      const siblings = children.get(file.folderId);
-      if (siblings) siblings.push(file);
-      else children.set(file.folderId,[file]);
-    }
-    const attachments = new Map(selection.filter(item => !isContainer(item)).map(item => [item.id, item]));
-    for (const folderId of folders) {
-      for (const file of children.get(folderId) || []) {
-        if (isContainer(file) || file.kind === "页面") folders.add(file.id);
-        if (!isContainer(file) && !file.siteId) attachments.set(file.id, file);
-      }
-    }
-    return usePicked("chat", [...attachments.values()]);
+    return usePicked("chat", expandLibrarySelection(selection, files || []));
   }
   const key = (file: LibraryFile) => file.id;
   const download = (file: LibraryFile) => isArtifactImage(libraryTypeName(file)) ?

@@ -5,6 +5,28 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { libraryTypeName, type LibraryFile } from "@/types/library";
 import { buildDownloadUrl } from "./files";
 
+export const isContainer = (file:LibraryFile) => file.kind === "文件夹" || file.kind === "资料空间";
+
+export function expandLibrarySelection(selection: LibraryFile[], files: LibraryFile[]) {
+    const folders = new Set(selection.filter(isContainer).map(item => item.id));
+    if (!folders.size) return selection;
+    const children = new Map<string,LibraryFile[]>();
+    for (const file of files) {
+      if (file.deleted || !file.folderId) continue;
+      const siblings = children.get(file.folderId);
+      if (siblings) siblings.push(file);
+      else children.set(file.folderId,[file]);
+    }
+    const attachments = new Map(selection.filter(item => !isContainer(item)).map(item => [item.id, item]));
+    for (const folderId of folders) {
+      for (const file of children.get(folderId) || []) {
+        if (isContainer(file) || file.kind === "页面") folders.add(file.id);
+        if (!isContainer(file) && !file.siteId) attachments.set(file.id, file);
+      }
+    }
+    return [...attachments.values()];
+  }
+
 export function recordLibraryOpen(id: string) {
   void fetch("/api/library", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
     body:JSON.stringify({openedId:id})}).catch(() => undefined);
