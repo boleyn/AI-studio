@@ -8,7 +8,8 @@ export const getServerSideProps: typeof previewProps = async context => {
   const settings = await db.collection("library_file_settings").findOne({siteSlug:slug});
   if (!settings) return {notFound:true};
   const link = await db.collection("share_links").findOne(
-    {projectToken:settings.siteProjectToken,ownerUserId:settings.owner,mode:"preview"},
+    {projectToken:settings.siteProjectToken,ownerUserId:settings.owner,mode:"preview",
+      ...(settings.siteShareId ? {shareId:settings.siteShareId} : {})},
     {sort:{createdAt:-1,_id:-1},projection:{shareId:1}}
   );
   if (!link) return {notFound:true};

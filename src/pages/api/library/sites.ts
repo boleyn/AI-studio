@@ -17,10 +17,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = await getMongoDb();
     const link = await db.collection("share_links").findOne({shareId:id,ownerUserId:owner,mode:"preview"});
     if (!link) return res.status(404).end();
-    const settings = db.collection<{_id:string;owner:string;siteSlug:string;siteProjectToken:string}>("library_file_settings");
+    const settings = db.collection<{_id:string;owner:string;siteSlug:string;siteProjectToken:string;siteShareId:string}>("library_file_settings");
     await settings.createIndex({siteSlug:1},{unique:true,partialFilterExpression:{siteSlug:{$type:"string"}}});
     try {
-      await settings.updateOne({_id:owner+"/"+siteLibraryId(link.projectToken)},{$set:{owner,siteSlug:slug,siteProjectToken:link.projectToken}},{upsert:true});
+      await settings.updateOne({_id:owner+"/"+siteLibraryId(link.projectToken)},{$set:{owner,siteSlug:slug,siteProjectToken:link.projectToken,siteShareId:id}},{upsert:true});
     } catch (error) {
       if ((error as {code?:number}).code === 11000) return res.status(409).end();
       throw error;
@@ -30,9 +30,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "DELETE") {
     const id = req.query.id;
     if (typeof id !== "string" || !id) return res.status(400).end();
-    const links = (await getMongoDb()).collection("share_links");
+    const db = await getMongoDb();
+    const links = db.collection("share_links");
     const link = await links.findOne({shareId:id, ownerUserId:owner, mode:"preview"},{projection:{projectToken:1}});
     if (!link || typeof link.projectToken !== "string") return res.status(404).end();
+    await db.collection<{_id:string;owner:string}>("library_file_settings").updateOne(
+      {_id:owner+"/"+siteLibraryId(link.projectToken),owner},
+      {$unset:{siteSlug:"",siteProjectToken:"",siteShareId:""}}
+    );
     await links.deleteMany({projectToken:link.projectToken, ownerUserId:owner, mode:"preview"});
     return res.status(204).end();
   }
