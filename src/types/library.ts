@@ -11,6 +11,7 @@ export interface LibraryFile {
   pageExcerpt?: string;
   sharedPage?: boolean;
   sharedPageUpdatedAt?: string;
+  localPageName?: string;
   sharedSpaceName?: string;
   fileOrigin?: "上传" | "生成";
   reference?: ImageReference;

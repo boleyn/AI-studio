@@ -163,8 +163,7 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   }
   const blob = await readAttachmentBlob(response, item.name, maxBytes);
   let filename = item.sharedPage ? markdownFilename(item.name) : sharedPreviewFilename(item.name, libraryTypeName(item));
-  const renamedSharedPage = item.sharedPage && !sharedSpacePageLocation(item.id) && markdownFilename(item.name) !== item.path;
-  if (item.directUpload || (item.sharedPage && !renamedSharedPage)) {
+  if (item.directUpload || (item.sharedPage && !item.localPageName)) {
     filename = responseFilename(response, filename);
   }
   if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(filename),{type:"text/markdown"}),item.id);

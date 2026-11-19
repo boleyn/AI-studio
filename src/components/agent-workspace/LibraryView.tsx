@@ -570,6 +570,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       const time = typeof saved?.time === "string" ? saved.time : undefined;
       setFiles(previous => previous?.map(item => item.id === file.id ? {
         ...item, ...changes,
+        ...(item.sharedPage && changes.name !== undefined && {localPageName:changes.name}),
         ...(time && {time}),
         ...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? time ?? new Date().toISOString() : null}),
       } : item));
@@ -861,7 +862,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Flex>)}
         <Button size="sm" variant="ghost" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
-      onSaved={(name,time,pageExcerpt) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,pageExcerpt,...(item.sharedPage ? {sharedPageUpdatedAt:time,path:markdownFilename(name)} : {time})} : item))}/> :
+      onSaved={(name,time,pageExcerpt) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name:item.localPageName || name,pageExcerpt,...(item.sharedPage ? {sharedPageUpdatedAt:time,path:markdownFilename(name)} : {time})} : item))}/> :
     files && !failed && ((router.query.libraryItem && !opened) || (router.query.libraryFolder && !folder)) ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
       <CircleAlert size={22} color="#777" aria-hidden/>
       <Box role="alert"><Heading as="h2" fontSize="md">无法打开此条目</Heading>

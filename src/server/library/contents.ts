@@ -146,7 +146,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
   const preferences = new Map((await settings.find({ owner }).toArray()).map(entry => [entry._id, entry]));
   const listed = [...rows.values()].filter(file => !preferences.get(owner + "/" + file.id)?.purged).map(file => {
     const entry = preferences.get(owner + "/" + file.id);
-    return entry ? { ...file, siteSlug:file.shareId ? file.siteSlug : entry.siteSlug ?? file.siteSlug, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
+    return entry ? { ...file, siteSlug:file.shareId ? file.siteSlug : entry.siteSlug ?? file.siteSlug, openedAt:entry.openedAt, deletedAt:entry.deletedAt ?? file.deletedAt, folderId:entry.folderId === undefined ? file.folderId : entry.folderId, name: entry.name || file.name, localPageName:file.sharedPage ? entry.name : undefined, favorite: entry.favorite ?? file.favorite, pinned:entry.pinned ?? file.pinned, deleted: entry.deleted ?? file.deleted } : file;
   }).sort((a, b) => b.time.localeCompare(a.time));
   return {listed,names,preferences,chats,restores};
 }
