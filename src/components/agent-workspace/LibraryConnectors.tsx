@@ -1,4 +1,5 @@
-import { Button, Flex, Image, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { Button, Flex, Image, ModalCloseButton, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -6,6 +7,7 @@ const providerIcons: Record<string,string> = { "Google Drive":"google-drive.png"
 
 const endpoint = "/api/library/connectors/google";
 export default function LibraryConnectors({ close, callbackStatus, siteId }: { siteId?: string; close: () => void; callbackStatus?: string }) {
+  const [provider, setProvider] = useState<string>();
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean }>();
   const [error, setError] = useState(callbackStatus === "invalid-session" ? "此次授权请求已失效，请重新连接 Google Drive。" : callbackStatus === "error" ? "连接失败，请重试" : "");
   const [attempt, setAttempt] = useState(0);
@@ -31,6 +33,22 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
   }
   const services = siteId ? ["Google Drive"] : ["Google Drive","Box","Dropbox","SharePoint"];
   const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
+  if (provider) {
+    const available = provider === "Google Drive" && status?.configured;
+    const developer = { Box: "Box inc.", Dropbox: "Dropbox", SharePoint: "Microsoft", "Google Drive": "Google" }[provider];
+    const back = () => { if (!busy) setProvider(undefined); };
+    return <Modal isOpen onClose={back} isCentered><ModalOverlay/>
+      <ModalContent mx={3} maxW="480px" minH="264px" borderRadius="24px" borderWidth={0} p={6}>
+        <Image src={"/icons/"+providerIcons[provider]} boxSize="48px" objectFit="contain" alt={provider+" 徽标"}/>
+        <ModalHeader px={0} pb={0} as="h2">连接 {provider}</ModalHeader>
+        <ModalBody px={0}><Text fontSize="sm">开发者：{developer}</Text>
+          {!available && <Text mt={2} fontSize="sm" color="gray.600">{provider === "Google Drive" ? "当前服务尚未配置 Google Drive 授权。" : "当前服务暂未提供此连接。"}</Text>}
+          {error && <Text role="alert">{error}</Text>}
+        </ModalBody>
+        <Button h="36px" borderRadius="full" isDisabled={!available} isLoading={busy} onClick={connect}>继续连接到 {provider}</Button>
+        <ModalCloseButton boxSize="24px" top={4} right={4} aria-label="关闭对话框" isDisabled={busy}/>
+      </ModalContent></Modal>;
+  }
   return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} borderWidth={siteId ? undefined : 0} maxW={siteId ? undefined : "464px"} h={siteId ? undefined : "min(640px, calc(100dvh - 32px))"} my={4} borderRadius="16px">
     <ModalHeader as="h2" textAlign={siteId ? undefined : "center"} pt={siteId ? undefined : "36px"} pb={siteId ? undefined : 0} fontSize={siteId ? undefined : "24px"} lineHeight={siteId ? undefined : "32px"}>{heading}</ModalHeader><ModalBody overflowY="auto">
       <Text color="gray.600" fontSize={siteId ? "sm" : "md"} maxW={siteId ? undefined : "296px"} mx="auto" textAlign={siteId ? undefined : "center"}>{siteId ? "选择你的 Google 账号，授权读取云端硬盘中的文件。" : "无需离开伯仁，即可搜索你的文件、提问并使用工具"}</Text>
@@ -49,6 +67,8 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
             <Button size="sm" variant="outline" borderRadius="full" isDisabled={!status.configured} isLoading={busy}
               aria-label="重新连接 Google Drive" onClick={connect}>重新连接</Button>
           </Flex> :
+          !siteId ? <Button aria-label={"连接 " + name} boxSize="32px" minW="32px" p={0} variant="ghost" borderRadius="full"
+            onClick={()=>setProvider(name)}><Plus size={16} aria-hidden/></Button> :
           <Button size="sm" aria-label={"连接 " + name} borderRadius="full" isDisabled={name !== "Google Drive" || !status?.configured}
             isLoading={name === "Google Drive" && busy} onClick={connect}>{name === "Google Drive" && status?.configured ? "连接" : "暂不可用"}</Button>}
         </Flex>)}
