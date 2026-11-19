@@ -4,8 +4,15 @@ import { getMongoDb } from "@server/db/mongo";
 import { requireAuth } from "@server/auth/session";
 import { sendConnectorDownload } from "@server/library/sendConnectorDownload";
 
-type Hit = { resource?: { id?: string; name?: string; file?: object; parentReference?: { driveId?: string } } };
+type Hit = { resource?: { id?: string; name?: string; file?: object; parentReference?: { driveId?: string; siteId?: string; sharepointIds?: { listId?: string; listItemId?: string } } } };
 const graph = "https://graph.microsoft.com/v1.0";
+
+function documentPath(id: string) {
+  const drive = /^([\w!-]+):([\w!-]+)$/.exec(id);
+  if (drive) return "/drives/" + drive[1] + "/items/" + drive[2];
+  const list = /^list:([\w.,-]+):([\w-]+):(\d+)$/.exec(id);
+  return list ? "/sites/" + list[1] + "/lists/" + list[2] + "/items/" + list[3] + "/driveItem" : null;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const auth = await requireAuth(req,res);
@@ -14,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "GET") return res.setHeader("Allow","GET").status(405).end();
   const { query = "", cursor = "0", file } = req.query;
   if (typeof query !== "string" || query.length > 500 || typeof cursor !== "string" || !/^\d{1,7}$/.test(cursor)) return res.status(400).end();
-  const item = file === undefined ? null : typeof file === "string" && /^([\w!-]+):([\w!-]+)$/.exec(file);
+  const item = file === undefined ? null : typeof file === "string" && documentPath(file);
   if (file !== undefined && !item) return res.status(400).end();
   const owner = String(auth.user._id);
   const connections = (await getMongoDb()).collection<{_id:string;token:string}>("library_sharepoint_connections");
@@ -43,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const headers = {Authorization:"Bearer " + tokens.access_token};
     if (item) {
-      const path = graph + "/drives/" + item[1] + "/items/" + item[2];
+      const path = graph + item;
       const info = await fetch(path + "?$select=name,size,file",{headers});
       if (!info.ok) return res.status(info.status === 404 ? 404 : 502).json({error:"无法读取 SharePoint 文件。"});
       const data = await info.json();
@@ -55,12 +62,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const from = Number(cursor);
     const result = await fetch(graph + "/search/query",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({
-      requests:[{entityTypes:["driveItem"],query:{queryString:"(" + query.trim() + ") AND IsDocument:true"},from,size:50}],
+      requests:[{entityTypes:["driveItem"],query:{queryString:"(" + query.trim() + ") AND IsDocument:true"},from,size:50,fields:["id","name","parentReference","folder"]}],
     })});
     if (!result.ok) return res.status(result.status === 429 ? 429 : 502).json({error:"SharePoint 搜索暂时不可用，请重试。"});
     const page = (await result.json()).value[0].hitsContainers[0];
-    const files = (page.hits as Hit[]).flatMap(({resource:r}) => r?.parentReference?.driveId && r.id && r.name && !('folder' in r)
-      ? [{id:r.parentReference.driveId + ":" + r.id,name:r.name,folder:false}] : []);
+    const hits: Hit[] = page.hits ?? (page.total === 0 ? [] : null);
+    if (!Array.isArray(hits)) return res.status(502).json({error:"SharePoint 返回了无法读取的搜索结果。"});
+    const files = hits.flatMap(({resource}) => {
+      if (!resource?.name || "folder" in resource) return [];
+      const parent = resource.parentReference;
+      const list = parent?.sharepointIds;
+      let id: string;
+      if (parent?.driveId && resource.id) id = parent.driveId + ":" + resource.id;
+      else if (parent?.siteId && list?.listId && list.listItemId) id = ["list",parent.siteId,list.listId,list.listItemId].join(":");
+      else return [];
+      return documentPath(id) ? [{id,name:resource.name,folder:false}] : [];
+    });
     return res.json({files,nextCursor:page.moreResultsAvailable ? String(from + 50) : undefined});
   } catch {
     return res.status(502).json({error:"SharePoint 文件服务暂时不可用。"});
