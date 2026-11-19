@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import SiteDetailHeader from "./SiteDetailHeader";
 import SiteDatabase from "./SiteDatabase";
 import SitePlugins from "./SitePlugins";
 import SiteSchedules from "./SiteSchedules";
@@ -133,15 +134,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
     </AlertDialog>
   </>;
   if (settings) return <Box maxW="720px">
-    <Flex align="center" gap={2}>
-      <Button variant="ghost" size="sm" mr="auto" isDisabled={saving} onClick={()=>navigateSettings()}>返回站点</Button>
-      <Button as="a" size="sm" href={siteUrl(settings)} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
-      {settings.editUrl && <Button as="a" size="sm" href={settings.editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>}
-    </Flex>
-    <Box as="section" aria-label={settings.name} mt={6} mb={4}>
-      <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{settings.name}</Heading>
-      <Link href={siteUrl(settings)} fontSize="sm" color="gray.600" overflowWrap="anywhere">{siteUrl(settings)}</Link>
-    </Box>
+    <SiteDetailHeader name={settings.name} previewPath={siteUrl(settings)} editUrl={settings.editUrl} onBack={()=>navigateSettings()} saving={saving}/>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" borderBottomWidth="1px">
       <Button variant="link" aria-current={scheduled || plugins || database ? undefined : "page"} onClick={()=>navigateSettings(settings.id)}>设置</Button>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>

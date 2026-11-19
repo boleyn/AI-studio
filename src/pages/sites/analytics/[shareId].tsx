@@ -1,6 +1,6 @@
 import { sitePreviewPath } from "@/types/library";
 import type { GetServerSideProps } from "next";
-import { ExternalLink, Pencil } from "lucide-react";
+import SiteDetailHeader from "@/components/agent-workspace/SiteDetailHeader";
 import { useState } from "react";
 import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
@@ -93,15 +93,7 @@ export default function SiteAnalytics({name,shareId,previewPath,editUrl,days,dai
     return "/?" + params;
   };
   return <Box as="main" maxW="960px" mx="auto" p={6}>
-    <Flex align="center" gap={2}>
-      <Button as="a" variant="ghost" size="sm" mr="auto" href="/?view=library&librarySection=站点">返回站点</Button>
-      <Button as="a" size="sm" href={previewPath} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
-      <Button as="a" size="sm" href={editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>
-    </Flex>
-    <Box as="section" aria-label={name} mt={6} mb={4}>
-      <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{name}</Heading>
-      <Link href={previewPath} fontSize="sm" color="gray.600" overflowWrap="anywhere">{previewPath}</Link>
-    </Box>
+    <SiteDetailHeader name={name} previewPath={previewPath} editUrl={editUrl}/>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" mb={4} borderBottomWidth="1px">
       <Link href={detailPath()}>设置</Link>
       <Text aria-current="page" fontWeight="semibold">分析</Text>
