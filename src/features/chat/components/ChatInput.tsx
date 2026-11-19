@@ -509,7 +509,12 @@ const ChatInput = ({
         uploadState: "uploading" as const,
       }));
       setFiles((prev) => [...prev, ...next]);
-      const errors = await Promise.all(next.map(uploadSingleFile));
+      const errors: (string | undefined)[] = [];
+      const batchSize = 6;
+      for (let start = 0; start < next.length; start += batchSize) {
+        const batch = next.slice(start, start + batchSize);
+        errors.push(...await Promise.all(batch.map(uploadSingleFile)));
+      }
       if (fromLibrary && errors.some(Boolean)) {
         const failedIds = new Set(next.filter((_, index) => errors[index]).map(item => item.id));
         setFiles(previous => previous.filter(item => !failedIds.has(item.id)));
