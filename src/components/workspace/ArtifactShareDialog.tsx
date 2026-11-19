@@ -72,11 +72,11 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   };
 
   return (
-    <Modal isOpen onClose={onClose} isCentered size="md">
+    <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
       <ModalContent mx={3} borderRadius="20px">
         <ModalHeader pr={10} overflowWrap="anywhere">共享 {displayName || path.split("/").pop()}</ModalHeader>
-        <ModalCloseButton aria-label="关闭分享对话框" />
+        <ModalCloseButton isDisabled={busy} aria-label="关闭分享对话框" />
         <ModalBody>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}
@@ -137,7 +137,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               setError("无法复制链接");
             }
           }}>{copied ? "已复制" : "复制链接"}</Button>}
-          <Button size="sm" borderRadius="full" bg="#171717" color="white" _hover={{bg:"#333"}} onClick={onClose}>完成</Button>
+          <Button size="sm" borderRadius="full" bg="#171717" color="white" _hover={{bg:"#333"}} isDisabled={busy} onClick={onClose}>完成</Button>
         </ModalFooter>
       </ModalContent>
     </Modal>
