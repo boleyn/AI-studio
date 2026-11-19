@@ -42,13 +42,15 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
   for await (const msg of messages) {
     const chat = chats.get(JSON.stringify([msg.token, msg.chatId]));
     if (!chat) continue;
+    const recorded = msg.time != null ? new Date(msg.time) : undefined;
+    const timestamp = recorded && Number.isFinite(recorded.getTime()) ? recorded :
+      msg._id instanceof ObjectId ? msg._id.getTimestamp() : undefined;
+    const time = timestamp?.toISOString() || "";
     const add = (kind: LibraryFile["kind"], path: unknown, label?: unknown, version?: string, size?: unknown) => {
       if (typeof path !== "string" || !path) return;
       const key = JSON.stringify([msg.token, msg.chatId, kind, path, version]);
       const id = createHash("sha256").update(key).digest("hex");
       const previous = rows.get(key);
-      const recorded = msg.time ? new Date(msg.time) : undefined;
-      const time = recorded && Number.isFinite(recorded.getTime()) ? recorded.toISOString() : "";
       const firstSeenAt = time && (!previous?.firstSeenAt || time < previous.firstSeenAt) ? time : previous?.firstSeenAt;
       const fallbackName = path.split("/").pop() || path;
       const filename = typeof label === "string" && label.trim() ? label : undefined;
