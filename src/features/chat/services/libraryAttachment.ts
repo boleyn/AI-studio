@@ -1,4 +1,4 @@
-import { markdownFilename } from "@/types/library";
+import { markdownFilename, sharedPreviewFilename } from "@/types/library";
 import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -152,7 +152,8 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   const type = !mediaType || mediaType === "application/octet-stream" || (mediaType === "text/plain" && inferred === "text/markdown")
     ? inferred
     : blob.type;
-  return fromLibrary(new File([blob],item.name,{type}),item.id);
+  const filename = sharedPreviewFilename(item.name, libraryTypeName(item));
+  return fromLibrary(new File([blob],filename,{type}),item.id);
 }
 
 export async function readLibraryAttachments(items: LibraryFile[], purpose: "chat" | "download") {

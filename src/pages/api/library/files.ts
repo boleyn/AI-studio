@@ -1,3 +1,4 @@
+import { sharedPreviewFilename } from "@/types/library";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
@@ -27,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingStorageObject(error)) return res.status(404).json({ error: "文件不存在" });
       throw error;
     }
-    res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(item.name));
+    res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(sharedPreviewFilename(item.name,item.originalName)).replace(/['()*]/g, char => "%" + char.charCodeAt(0).toString(16)));
     res.setHeader("Content-Type","application/octet-stream");
     res.setHeader("X-Content-Type-Options","nosniff");
     return res.send(buffer);
