@@ -1,6 +1,6 @@
-import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
+import { AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
 import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
@@ -9,6 +9,8 @@ interface Site { id: string; name: string; shared: boolean; publishedAt?: string
 
 export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
   const toast = useToast();
+  const [pendingDelete,setPendingDelete] = useState<Site>();
+  const cancelDelete = useRef<HTMLButtonElement>(null);
   const [settings,setSettings] = useState<Site>();
   const [title,setTitle] = useState("");
   const [saving,setSaving] = useState(false);
@@ -47,11 +49,12 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
   };
   const shareButton = (site: Site) => !site.shared && <Button size="xs" variant="ghost" onClick={() => setSharing(site)}>共享</Button>;
   async function deleteSite(site: Site) {
-    if (saving || site.shared || !window.confirm("删除「"+site.name+"」？此站点的所有预览链接将失效，项目源文件会保留。")) return;
+    if (saving || site.shared) return;
     setSaving(true);
     try {
       const response = await fetch("/api/library/sites?id="+encodeURIComponent(site.id),{method:"DELETE",headers:withAuthHeaders()});
       if (!response.ok && response.status !== 404) throw new Error();
+      setPendingDelete(undefined);
       setSites(rows=>rows?.filter(row=>row.id!==site.id));
       setSettings(undefined);
       toast({status:"success",title:"站点已删除"});
@@ -72,10 +75,22 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
       {!site.shared && <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
       {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>{setTitle(site.name);setSettings(site);}}>设置</MenuItem>}
-      {!site.shared && <MenuItem color="red.600" isDisabled={saving} onClick={()=>deleteSite(site)}>删除站点</MenuItem>}
+      {!site.shared && <MenuItem color="red.600" isDisabled={saving} onClick={()=>setPendingDelete(site)}>删除站点</MenuItem>}
     </MenuList></Portal>
   </Menu>;
-  const dialog = sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>;
+  const dialog = <>
+    {sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>}
+    <AlertDialog isOpen={Boolean(pendingDelete)} isCentered leastDestructiveRef={cancelDelete} onClose={()=>{if (!saving) setPendingDelete(undefined);}}>
+      <AlertDialogOverlay><AlertDialogContent mx={4} borderRadius="20px">
+        <AlertDialogHeader>删除站点</AlertDialogHeader>
+        <AlertDialogBody>删除「{pendingDelete?.name}」后，此站点的所有预览链接都会失效。项目源文件会保留。</AlertDialogBody>
+        <AlertDialogFooter gap={2}>
+          <Button ref={cancelDelete} borderRadius="full" isDisabled={saving} onClick={()=>setPendingDelete(undefined)}>取消</Button>
+          <Button colorScheme="red" borderRadius="full" isLoading={saving} onClick={()=>pendingDelete && deleteSite(pendingDelete)}>删除站点</Button>
+        </AlertDialogFooter>
+      </AlertDialogContent></AlertDialogOverlay>
+    </AlertDialog>
+  </>;
   if (settings) return <Box maxW="720px">
     <Button variant="link" isDisabled={saving} onClick={()=>setSettings(undefined)}>返回站点</Button>
     <Heading as="h2" size="md" my={4}>{settings.name}</Heading>
@@ -100,7 +115,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
     </Box>
     <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
     <Flex mt={4} gap={3} align="center"><Text>拥有链接的人可以查看</Text>{shareButton(settings)}</Flex>
-    <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>deleteSite(settings)}>删除站点</Button>
+    <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
     {dialog}
   </Box>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
