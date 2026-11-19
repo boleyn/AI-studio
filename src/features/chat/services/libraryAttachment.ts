@@ -161,24 +161,23 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     throw new LibraryReadError(413,item.name);
   }
   const blob = await readAttachmentBlob(response, item.name, maxBytes);
-  if (item.sharedPage) {
-    let filename = markdownFilename(item.name);
+  let filename = item.sharedPage ? markdownFilename(item.name) : sharedPreviewFilename(item.name, libraryTypeName(item));
+  if (item.sharedPage || item.directUpload) {
     const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
     if (encoded) {
       try {
-        filename = markdownFilename(decodeURIComponent(encoded));
+        filename = decodeURIComponent(encoded) || filename;
       } catch {
         // Older responses may contain a malformed filename. Keep the listed title.
       }
     }
-    return fromLibrary(new File([blob],filename,{type:"text/markdown"}),item.id);
   }
+  if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(filename),{type:"text/markdown"}),item.id);
   const inferred = inferAttachmentMimeType(libraryTypeName(item), item.name);
   const mediaType = blob.type.split(";")[0].trim().toLowerCase();
   const type = !mediaType || mediaType === "application/octet-stream" || (mediaType === "text/plain" && inferred === "text/markdown")
     ? inferred
     : blob.type;
-  const filename = sharedPreviewFilename(item.name, libraryTypeName(item));
   return fromLibrary(new File([blob],filename,{type}),item.id);
 }
 
