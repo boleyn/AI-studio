@@ -102,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   for await (const page of pages) {
     const id = page._id.toHexString();
     const source = page.sourceChat && chats.get(JSON.stringify([page.sourceChat.token,page.sourceChat.chatId]));
-    rows.set(id,{id,kind:page.kind || "页面",folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",fromTemplate:page.fromTemplate,path:page.originalName || id,
+    rows.set(id,{id,kind:page.kind || "页面",fileOrigin:page.sourceChat ? "生成" : undefined,folderId:page.folderId,name:page.name,time:page.time,directUpload:page.kind === "上传",fromTemplate:page.fromTemplate,path:page.originalName || id,
       token:source?.token || "",project:names.get(source?.token) || "",chatId:source?.chatId || "",conversation:source && !source.deleteTime ? source.customTitle || source.title || "未命名会话" : "",
       ...(page.kind === "上传" ? {createdAt:page.createdAt || page._id.getTimestamp().toISOString(),createdBy:auth.user.displayName || auth.user.username} : {}),
       permission:"所有者",appearance:page.appearance,reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
@@ -119,14 +119,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
   const sharedPages = new Map((sharedPageIds.length ? await db.collection("library_pages").find(
     {_id:{$in:sharedPageIds},deleted:{$ne:true},purging:{$ne:true}},
-    {projection:{owner:1,name:1,kind:1,fromTemplate:1}}
+    {projection:{owner:1,name:1,kind:1,fromTemplate:1,sourceChat:1}}
   ).toArray() : []).map(page => [page._id.toHexString(), page]));
   for (const share of received) {
     const page = share.libraryItemId ? sharedPages.get(share.libraryItemId) : undefined;
     if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
     const id = share._id;
     const filename = share.livePage && page ? page.name + ".md" : share.filename;
-    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin:share.fileOrigin ?? (page?.kind === "上传" ? (page.fromTemplate ? "生成" : "上传") : undefined),editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
+    rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin:share.fileOrigin ?? (page?.sourceChat ? "生成" : page?.kind === "上传" ? (page.fromTemplate ? "生成" : "上传") : undefined),editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   for (const site of await listLibrarySites(owner,names)) {
     const id = siteLibraryId(site.token);

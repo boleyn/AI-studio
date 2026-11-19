@@ -346,7 +346,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return sort.column === "name" ? file.name : rowTime(file);
   }
   function sourceFilter(file: LibraryFile) {
-    const origin = file.shareId ? file.fileOrigin : file.fromTemplate ? "生成" : file.kind;
+    const origin = file.fileOrigin ?? (file.shareId ? undefined : file.fromTemplate ? "生成" : file.kind);
     if (origin === "上传") return "已上传";
     if (origin === "生成") return "生成的文件";
     return "";
