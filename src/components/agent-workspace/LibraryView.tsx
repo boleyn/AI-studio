@@ -716,10 +716,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
-        <Flex align="center" gap={2}><Heading as="h1" display="flex" alignItems="center" gap={2} fontSize="24px" lineHeight="36px" fontWeight="500">
+        <Flex align="center" gap={2} minW={0} maxW="full"><Heading as="h1" display="flex" alignItems="center" flexWrap={folder ? "wrap" : undefined} minW={0} gap={2} fontSize="24px" lineHeight="36px" fontWeight="500">
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
-            {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center"><ChevronRight size={16}/>
-              {item.id===folder.id ? item.name : <Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}>{item.name}</Button>}</Flex>)}</> : section}</Heading></Flex>
+            {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center" maxW="full" minW={0}><ChevronRight size={16} style={{flexShrink:0}}/>
+              {item.id===folder.id ? <Text as="span" isTruncated title={item.name}>{item.name}</Text> : <Button variant="link" minW={0} fontSize="inherit" title={item.name} onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}><Text as="span" isTruncated>{item.name}</Text></Button>}</Flex>)}</> : section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={allHome ? "241px" : "240px"} sx={allHome ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
             <InputLeftElement pointerEvents="none" w={allHome ? "44px" : undefined} color="gray.500"><Search size={allHome ? 20 : 16} aria-hidden/></InputLeftElement>
             <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
