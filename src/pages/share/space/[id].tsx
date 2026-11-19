@@ -1,5 +1,5 @@
 import { Box, Button, Heading, Link, Stack, Text, useToast } from "@chakra-ui/react";
-import { recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { LibraryReadError, libraryReadMessage, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
 import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
@@ -28,18 +28,22 @@ export default function SharedSpace() {
         if (!controller.signal.aborted) setError({message:"请登录受邀账号后查看。",login:true});
         return;
       }
-      if (!response.ok) throw new Error(response.status >= 500 ? "共享服务暂时不可用，请稍后重试。" : "无法访问这份共享内容。");
+      if (!response.ok) throw new LibraryReadError(response.status,"共享内容");
       const value = await response.json();
       if (controller.signal.aborted) return;
-      if (value.owner === true) {
+      if (value?.owner === true) {
         await router.replace({pathname:"/",query:{view:"library",libraryFolder:id,...(typeof page === "string" ? {libraryItem:page} : {})}});
         return;
+      }
+      if (typeof value?.name !== "string" || (page ? typeof value.body !== "string" :
+        !Array.isArray(value.pages) || !value.pages.every((entry: NonNullable<Contents["pages"]>[number]) => entry && typeof entry.id === "string" && typeof entry.name === "string"))) {
+        throw new Error("共享内容未能加载，请重试。");
       }
       setData(value);
       const opened = typeof page === "string" ? [`space-${id}-${page}`] : [];
       if (value.viewerSpaceId) opened.push(value.viewerSpaceId);
       recordLibraryOpen(opened);
-    }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message});});
+    }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof SyntaxError ? "共享内容未能加载，请重试。" : reason instanceof LibraryReadError || reason instanceof TypeError ? libraryReadMessage(reason) : "共享内容未能加载，请重试。"});});
     return ()=>controller.abort();
   },[id,page,router,attempt]);
   return <Box as="main" maxW="780px" mx="auto" p={6}>
