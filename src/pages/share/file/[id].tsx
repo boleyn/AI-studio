@@ -19,7 +19,7 @@ export default function SharedArtifactPage() {
   const [downloading,setDownloading] = useState(false);
   const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
-  const [result, setResult] = useState<{ id: string; received?: boolean; filename?: string; previewName?: string; livePage?: boolean; editablePageId?: string; error?: string; needsLogin?: boolean }>();
+  const [result, setResult] = useState<{ id: string; received?: boolean; viewerLibraryId?: string; filename?: string; previewName?: string; livePage?: boolean; editablePageId?: string; error?: string; needsLogin?: boolean }>();
   const [loadAttempt,setLoadAttempt] = useState(0);
   const pageDrafts = useRef(new Map<string,PageDraft>());
   const [editing,setEditing] = useState(false);
@@ -45,7 +45,7 @@ export default function SharedArtifactPage() {
           throw new Error("共享文件信息不完整，请重新加载。");
         }
         if (controller.signal.aborted) return;
-        setResult({ id, received:data.viewerLibraryId === id, filename: data.filename, previewName:data.previewName, livePage:data.livePage, editablePageId:data.editablePageId });
+        setResult({ id, viewerLibraryId:data.viewerLibraryId, received:data.viewerLibraryId === id, filename: data.filename, previewName:data.previewName, livePage:data.livePage, editablePageId:data.editablePageId });
         if (data.viewerLibraryId) recordLibraryOpen(data.viewerLibraryId);
       })
       .catch((reason) => {
@@ -83,6 +83,9 @@ export default function SharedArtifactPage() {
       {libraryLink}
       <LibraryItemIcon item={{name:previewName,sharedPage:current.livePage}} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
+      {current.viewerLibraryId && <Button as="a" size="sm" variant="ghost" href={"/?" + new URLSearchParams({
+        view:"library", libraryItem:current.viewerLibraryId, ...(current.received ? {libraryTab:"与你共享"} : {})
+      })}>在资料空间打开</Button>}
       {current.editablePageId && <Button size="sm" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} onClick={()=>setEditing(true)}>编辑页面</Button>}
       {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
       <Button leftIcon={<Download size={16} />} size="sm" variant="ghost" isLoading={downloading} onClick={async ()=>{
