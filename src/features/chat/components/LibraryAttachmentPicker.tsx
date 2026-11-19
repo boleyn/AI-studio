@@ -114,25 +114,37 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       });
     }
   }
-  const picked = expandLibrarySelection(selected, rootItems.current);
+  const sharedSpaces = new Map<string, LibraryFile>();
+  const picked = expandLibrarySelection(selected, rootItems.current, sharedSpaces);
+  const canAdd = picked.length > 0 || sharedSpaces.size > 0;
   async function add() {
-    if (busy || !items || !picked.length) return;
+    if (busy || !items || !canAdd) return;
     setBusy(true);
     setError("");
     try {
-      const errors = await addLibraryAttachments(picked, onAdd);
+      const uniqueFiles = new Map(picked.map(file => [file.id, file]));
+      for (const sharedSpace of sharedSpaces.values()) {
+        const pages = await loadSharedSpacePages(sharedSpace);
+        for (const page of pages) uniqueFiles.set(page.id, page);
+      }
+      const files = [...uniqueFiles.values()];
+      if (!files.length) {
+        setError("所选位置中没有可添加的文件或页面。");
+        return;
+      }
+      const errors = await addLibraryAttachments(files, onAdd);
       setFileErrors(errors);
       if (errors.size) {
-        setSelected(picked.filter(item => errors.has(item.id)));
+        setSelected(files.filter(item => errors.has(item.id)));
         setQuery("");
-        const added = picked.length - errors.size;
+        const added = files.length - errors.size;
         setError(added
           ? `已添加 ${added} 项。${errors.size} 项未能添加，已列在最前面。`
           : `${errors.size} 项未能添加，请查看文件旁的提示后重试。`);
       } else {
         onClose();
       }
-    } catch (err) {setError(err instanceof Error ? err.message : "添加失败");}
+    } catch (err) {setError(err instanceof TypeError ? "连接失败，请检查网络后重试。" : err instanceof Error ? err.message : "添加失败");}
     finally {setBusy(false);}
   }
   return <Modal isOpen initialFocusRef={searchRef} onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
@@ -188,8 +200,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         </Flex>;
       })}
     </ModalBody>
-    {items && selected.length > 0 && !picked.length && <Text role="status" px={5} py={2} fontSize="sm" color="gray.600">所选位置中没有可添加的文件或页面。</Text>}
+    {items && selected.length > 0 && !canAdd && <Text role="status" px={5} py={2} fontSize="sm" color="gray.600">所选位置中没有可添加的文件或页面。</Text>}
     <ModalFooter px={5} py={3} mt={2} borderTop="1px solid #eee" gap={2}><Button size="sm" variant="ghost" borderRadius="full" isDisabled={busy} onClick={onClose}>取消</Button>
-      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!items || !picked.length} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length ? "（"+picked.length+"）" : ""}</Button>
+      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!items || !canAdd} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length && !sharedSpaces.size ? "（"+picked.length+"）" : ""}</Button>
     </ModalFooter></>}</ModalContent></Modal>;
 }
