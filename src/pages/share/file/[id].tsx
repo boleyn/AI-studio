@@ -1,8 +1,9 @@
 import { markdownFilename } from "@/types/library";
-import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Spinner, Text, useToast } from "@chakra-ui/react";
 import { Download } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import { downloadAuthenticatedFile } from "@features/chat/services/files";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
@@ -13,6 +14,8 @@ import LibraryPageEditor, { mobilePageReaderQuery } from "@/components/agent-wor
 
 export default function SharedArtifactPage() {
   const { query } = useRouter();
+  const toast = useToast();
+  const [downloading,setDownloading] = useState(false);
   const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
   const [result, setResult] = useState<{ id: string; filename?: string; editablePageId?: string; error?: string; needsLogin?: boolean }>();
@@ -29,7 +32,7 @@ export default function SharedArtifactPage() {
       .then(async (response) => {
         if (response.status === 401) {
           if (!controller.signal.aborted) {
-            setResult({ id, needsLogin: true, error: "登录 Hermes 后即可查看受邀文件。" });
+            setResult({ id, needsLogin: true, error: "请登录受邀账号后查看文件。" });
           }
           return;
         }
@@ -67,7 +70,16 @@ export default function SharedArtifactPage() {
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
       {current.editablePageId && <Button size="sm" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} onClick={()=>setEditing(true)}>编辑页面</Button>}
       {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
-      <Button as="a" href={url} download={current.filename} leftIcon={<Download size={16} />} size="sm" variant="ghost">下载</Button>
+      <Button leftIcon={<Download size={16} />} size="sm" variant="ghost" isLoading={downloading} onClick={async ()=>{
+        setDownloading(true);
+        try {
+          await downloadAuthenticatedFile(url, current.filename!);
+        } catch {
+          toast({status:"error",title:"下载失败，请确认网络连接和文件访问权限后重试。"});
+        } finally {
+          setDownloading(false);
+        }
+      }}>下载</Button>
     </Flex>
     <Box flex={1} minH={0}>
       {isSpreadsheet ? (
