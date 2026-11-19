@@ -1,7 +1,7 @@
 import { libraryTypeName } from "@/types/library";
 import { SpaceIcon } from "./SpaceIconPicker";
 import { Box } from "@chakra-ui/react";
-import { File, FileArchive, FileText, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation, Sheet } from "lucide-react";
+import { File, FileArchive, FileSpreadsheet, FileText, FileType, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
@@ -13,10 +13,10 @@ function appearance(item: IconItem) {
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };
   const path = libraryTypeName(item);
-  if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return { Icon: Sheet, color: "#18a851" };
+  if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return { Icon: FileSpreadsheet, color: "#18a851" };
   if (/\.(pptx?|odp)$/i.test(path)) return { Icon: Presentation, color: "#d86a32" };
   if (/\.pdf$/i.test(path)) return { Icon: FileText, color: "#d54540" };
-  if (/\.(docx?|odt)$/i.test(path)) return { Icon: FileText, color: "#168aff" };
+  if (/\.(docx?|odt)$/i.test(path)) return { Icon: FileType, color: "#168aff" };
   if (/\.(zip|rar|7z|tar|gz)$/i.test(path)) return { Icon: FileArchive };
   if (isArtifactImage(path)) return { Icon: Image };
   if (/\.(txt|md|markdown|rtf)$/i.test(path)) return { Icon: FileText };
