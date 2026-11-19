@@ -28,7 +28,6 @@ export async function listLibrarySites(owner:string, names:Map<string,string>) {
     { $sort: { createdAt: -1, _id: -1 } },
     { $group: { _id: "$projectToken", id: { $first: "$shareId" }, memberGroups: {$push:{$ifNull:["$members.userId",[]]}}, time: { $first: "$createdAt" } } },
     { $set: {memberCount: {$size: {$reduce: {input:"$memberGroups",initialValue:[],in:{$setUnion:["$$value","$$this"]}}}}} },
-    { $sort: { time: -1 } },
   ]).toArray();
   const received = await db.collection("share_links").aggregate([
       { $match: { mode: "preview", "members.userId": owner } },
@@ -47,5 +46,6 @@ export async function listLibrarySites(owner:string, names:Map<string,string>) {
     .toArray() : [];
   const sharedSettings = new Map(settings.map(entry => [entry._id, entry]));
   return [...links.map(link => ({token:String(link._id),id:String(link.id),name:names.get(link._id) || "站点",time:link.time,ownerName:undefined,restricted:false,memberCount:link.memberCount,shared:false})),
-    ...received.map(link=>({token:String(link._id),id:String(link.id),name:sharedSettings.get(settingsKey(link))?.name || String(link.name),time:link.time,restricted:sharedSettings.get(settingsKey(link))?.restricted === true,memberCount:link.memberCount,ownerName:link.ownerName as string | undefined,shared:true}))];
+    ...received.map(link=>({token:String(link._id),id:String(link.id),name:sharedSettings.get(settingsKey(link))?.name || String(link.name),time:link.time,restricted:sharedSettings.get(settingsKey(link))?.restricted === true,memberCount:link.memberCount,ownerName:link.ownerName as string | undefined,shared:true}))]
+    .sort((a,b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0) || a.id.localeCompare(b.id));
 }
