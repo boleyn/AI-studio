@@ -1,3 +1,4 @@
+import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { Box, Flex } from "@chakra-ui/react";
@@ -6,7 +7,7 @@ import { githubLight } from "@codesandbox/sandpack-themes";
 
 import type { SandpackFiles } from "../../../components/StudioShell";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
-import { canViewRestrictedSite, siteVisibility } from "@server/library/sites";
+import { canViewRestrictedSite, getSiteSettings } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { recordSiteVisit } from "@server/shares/siteVisits";
 import { getShareLink } from "@server/shares/shareStorage";
@@ -123,6 +124,8 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
             ...payload.project,
             files: normalizeFiles(payload.project.files),
           });
+        } else if (payload.project.name !== project.name) {
+          setProject(current => ({...current, name:payload.project.name}));
         }
       } catch {
         // ignore polling errors in preview mode
@@ -132,7 +135,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
     return () => {
       window.clearInterval(timer);
     };
-  }, [shareId, project.updatedAt]);
+  }, [shareId, project.updatedAt, project.name]);
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(project.dependencies);
@@ -168,6 +171,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
 
   return (
     <Flex direction="column" h="100vh" bg="gray.50" overflow="hidden">
+      <Head><title>{project.name}</title></Head>
       <Box flex="1" minH="0" position="relative">
         <SandpackProvider
           key={sandpackRuntimeId}
@@ -214,7 +218,8 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   }
 
   context.res.setHeader("Cache-Control", "private, no-store");
-  if (await siteVisibility(share.ownerUserId, share.projectToken)) {
+  const settings = await getSiteSettings(share.ownerUserId, share.projectToken);
+  if (settings?.restricted) {
     const userId = getAuthUserFromRequest(context.req)?.sub;
     if (!userId) return {redirect:{destination:"/login?lastRoute="+encodeURIComponent("/share/preview/"+shareId),permanent:false}};
     if (!await canViewRestrictedSite(share.ownerUserId, share.projectToken, userId)) return {notFound:true};
@@ -234,7 +239,7 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
       shareId,
       initialProject: {
         token: project.token,
-        name: project.name,
+        name: settings?.name || project.name,
         template: project.template as SandpackPredefinedTemplate,
         files: project.files,
         dependencies: project.dependencies || {},

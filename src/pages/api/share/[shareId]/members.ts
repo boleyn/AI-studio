@@ -4,7 +4,7 @@ import { findUserByUsername } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 import { getProjectAccessState } from "@server/projects/projectStorage";
 
-import { siteLibraryId, siteVisibility } from "@server/library/sites";
+import { siteLibraryId, getSiteSettings } from "@server/library/sites";
 
 interface SiteLink {
   shareId: string;
@@ -52,5 +52,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     {$group:{_id:"$members.userId",username:{$first:"$members.username"}}},
     {$sort:{username:1}}, {$project:{_id:0,username:1}}
   ]).toArray();
-  return res.json({ id: shareId, owner: auth.user.username, restricted:await siteVisibility(ownerUserId,link.projectToken), members });
+  return res.json({ id: shareId, owner: auth.user.username, restricted:(await getSiteSettings(ownerUserId,link.projectToken))?.restricted === true, members });
 }

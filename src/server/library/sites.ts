@@ -5,11 +5,10 @@ export function siteLibraryId(projectToken:string) {
   return createHash("sha256").update(JSON.stringify(["site",projectToken])).digest("hex");
 }
 
-export async function siteVisibility(owner: string, token: string) {
+export async function getSiteSettings(owner: string, token: string) {
   const db = await getMongoDb();
-  const entry = await db.collection<{_id:string; restricted?:boolean}>("library_file_settings")
-    .findOne({_id:owner + "/" + siteLibraryId(token)}, {projection:{restricted:1}});
-  return entry?.restricted === true;
+  return db.collection<{_id:string; restricted?:boolean; name?:string}>("library_file_settings")
+    .findOne({_id:owner + "/" + siteLibraryId(token)}, {projection:{restricted:1,name:1}});
 }
 
 export async function canViewRestrictedSite(owner: string, token: string, viewer: string) {

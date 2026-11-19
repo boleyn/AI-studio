@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { requireAuth } from "@server/auth/session";
-import { canViewRestrictedSite, siteVisibility } from "@server/library/sites";
+import { canViewRestrictedSite, getSiteSettings } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { getShareLink } from "@server/shares/shareStorage";
 
@@ -27,7 +27,8 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   res.setHeader("Cache-Control", "private, no-store");
-  if (share.mode === "preview" && await siteVisibility(share.ownerUserId, share.projectToken)) {
+  const settings = share.mode === "preview" ? await getSiteSettings(share.ownerUserId, share.projectToken) : null;
+  if (settings?.restricted) {
     const auth = await requireAuth(req,res);
     if (!auth) return;
     const userId = String(auth.user._id);
@@ -51,7 +52,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     mode: share.mode,
     project: {
       token: project.token,
-      name: project.name,
+      name: settings?.name || project.name,
       template: project.template,
       files: project.files,
       dependencies: project.dependencies || {},
