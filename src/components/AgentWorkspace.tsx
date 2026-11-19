@@ -882,7 +882,6 @@ export default function AgentWorkspace({
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
       {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode) => {
         let token = activeProject?.token || projects[0]?.token;
-        const refreshAfterSelection = !token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
           token = existing[0]?.token;
@@ -893,14 +892,15 @@ export default function AgentWorkspace({
             token = created.token;
           }
         }
-        const chat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? {id:fileChat.chatId} : await createConversation(token,[]);
+        const existingChat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? fileChat : undefined;
+        const chat = existingChat ? {id:existingChat.chatId} : await createConversation(token,[]);
         if (!chat) throw new Error("创建对话失败");
         setLibraryDraft({chatId:chat.id,files,text,imageMode});
         if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
         else setFileChat(undefined);
         await setActiveNav(itemId ? "library" : "chat", chat.id);
         handleSelectConversation(token,chat.id);
-        if (refreshAfterSelection) await fetchProjects();
+        if (!existingChat) await fetchProjects();
       }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
