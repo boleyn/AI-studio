@@ -417,12 +417,23 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const blocks = Array.isArray(nestedContent) && nestedContent.some(block => block?.type === "attachment")
     ? nestedContent
     : message.content;
+  const originsByPath = new Map<string,string>();
+  for (const content of [message.content, nestedContent]) {
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type !== "attachment" || typeof block.library_item_id !== "string") continue;
+      for (const path of [block.source_storage_path, block.storage_path]) {
+        if (typeof path === "string" && path) originsByPath.set(path.replace(/^\/+/, ""), block.library_item_id);
+      }
+    }
+  }
   const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
     if (!block || block.type !== "attachment") return [];
     const storagePath = [block.source_storage_path,block.storage_path].find(path=>typeof path === "string" && path);
     const name = typeof block.name === "string" && block.name ? block.name : storagePath?.split("/").pop();
     if (!name) return [];
-    return [{...(typeof block.library_item_id === "string" ? {libraryItemId:block.library_item_id} : {}), name,type:block.mime_type,storagePath,
+    const origin = block.library_item_id || originsByPath.get(storagePath?.replace(/^\/+/, "") || "");
+    return [{...(typeof origin === "string" ? {libraryItemId:origin} : {}), name,type:block.mime_type,storagePath,
       downloadUrl:block.download_url,previewUrl:block.preview_url}];
   }) : [];
   if (!Array.isArray(files) || !files.length) return attachments;
