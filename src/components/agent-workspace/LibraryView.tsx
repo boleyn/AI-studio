@@ -502,7 +502,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={()=>{void copyPage(file,index === 1);closeActions();}}>{label}</Button>)}
         </Box>}
       </Box>}
-      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<Folder size={16}/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
+      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
         <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
       {!pagesSection && <>
         <MenuDivider my={2}/>
@@ -832,7 +832,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         {destination ? <Button ref={moveFocus} size="sm" h={6} variant="link" onClick={()=>setDestination("")}>资料库</Button> : <Text lineHeight="24px">资料库</Text>}
         {destinationPath.map(item=><Flex align="center" key={item.id}><ChevronRight size={14}/>{item.id===destination ? <Text aria-current="location">{item.name}</Text> : <Button size="sm" variant="link" onClick={()=>setDestination(item.id)}>{item.name}</Button>}</Flex>)}
       </Flex><Box as="ul" listStyleType="none" mt={2} mb={0} maxH="36vh" overflowY="auto">
-        {childFolders.map((item,index)=><Box as="li" key={item.id}><Button ref={!destination && index===0 ? moveFocus : undefined} w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<Folder size={18}/>} onClick={()=>setDestination(item.id)}>{item.name}</Button></Box>)}
+        {childFolders.map((item,index)=><Box as="li" key={item.id}><Button ref={!destination && index===0 ? moveFocus : undefined} w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<LibraryItemIcon item={item} compact/>} title={item.name} onClick={()=>setDestination(item.id)}><Text isTruncated>{item.name}</Text></Button></Box>)}
         {!childFolders.length && <Box as="li" py={5} textAlign="center" color="gray.500">此文件夹为空</Box>}
       </Box></ModalBody>
       <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button ref={!destination && !childFolders.length ? moveFocus : undefined} isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
