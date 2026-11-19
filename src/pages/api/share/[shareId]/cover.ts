@@ -47,6 +47,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         width: 720, height: 480, fit: "inside", withoutEnlargement: true,
       }).webp({quality:82}).toBuffer().catch(() => null);
       if (!thumbnail) continue;
+      // Let Next validate the image ETag after checking access on every request.
+      res.setHeader("Cache-Control", "private, no-cache");
+      res.setHeader("Vary", "Cookie, Authorization");
       res.setHeader("Content-Type", "image/webp");
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.status(200).send(thumbnail);
