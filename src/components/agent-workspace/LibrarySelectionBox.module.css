@@ -1,4 +1,10 @@
-.control { vertical-align: middle; }
+.control { position: relative; vertical-align: middle; }
+
+.control::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+}
 
 .cardControl {
   position: absolute;
