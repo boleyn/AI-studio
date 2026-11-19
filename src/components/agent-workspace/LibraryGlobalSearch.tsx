@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalOverlay, Text } from "@chakra-ui/react";
-import { Search } from "lucide-react";
+import LibraryItemIcon from "./LibraryItemIcon";
+import { Folder, MessageSquare, Search } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import type { ProjectWithConversations } from "../AgentWorkspace";
 
@@ -21,16 +22,16 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
   const needle = query.trim().toLocaleLowerCase();
   const matches = (name: string) => name.toLocaleLowerCase().includes(needle);
   const chats = projects.flatMap(project => project.conversations.map(chat => ({
-    id: JSON.stringify([project.token,chat.id]), time:chat.updatedAt, label: chat.title, open: () => onChat(project.token, chat.id)
+    id: JSON.stringify([project.token,chat.id]), time:chat.updatedAt, label: chat.title, icon:<MessageSquare size={16} aria-hidden/>, open: () => onChat(project.token, chat.id)
   }))).filter(chat => matches(chat.label));
   const items = files.filter(file => !file.deleted && [file.name,file.conversation,file.project].some(matches)).map(file => ({
-    id: file.id, time:file.openedAt, label: file.name, source: file.conversation || file.project, open: () => onFile(file)
+    id: file.id, time:file.openedAt, label: file.name, icon:<LibraryItemIcon item={file} compact/>, source: file.conversation || file.project, open: () => onFile(file)
   }));
   const groups = [
     {title: needle ? "资料空间" : "最近打开", rows: needle ? items : items.filter(item => item.time).sort((a,b) => (b.time || "").localeCompare(a.time || "")).slice(0, 5)},
     {title: needle ? "聊天" : "最近聊天", rows: needle ? chats : chats.sort((a,b) => (b.time || "").localeCompare(a.time || "")).slice(0, 5)},
     {title: "项目", rows: needle ? projects.filter(project => matches(project.name)).map(project => ({
-      id: project.token, label: project.name, open: () => onProject(project.token)
+      id: project.token, label: project.name, icon:<Folder size={16} aria-hidden/>, open: () => onProject(project.token)
     })) : []}
   ];
   const options = groups.flatMap(group => group.rows.map(row => ({...row, optionId: listId + group.title + row.id})));
@@ -63,7 +64,7 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
           <Text fontSize="xs" fontWeight="600" color="gray.600" mb={1}>{group.title}</Text>
           {group.rows.map(row => <Button key={row.id} id={listId + group.title + row.id} role="option" aria-selected={activeId === listId + group.title + row.id}
             bg={activeId === listId + group.title + row.id ? "gray.100" : undefined} size="sm" variant="ghost" w="full" justifyContent="start"
-            onClick={() => { close(); row.open(); }}><Text isTruncated>{row.label}</Text>
+            leftIcon={row.icon} onClick={() => { close(); row.open(); }}><Text isTruncated title={row.label}>{row.label}</Text>
               {"source" in row && typeof row.source === "string" && row.source && <Text ml={2} minW={0} isTruncated fontSize="xs" color="gray.600" fontWeight="normal">{row.source}</Text>}
             </Button>)}
         </Box>)}
