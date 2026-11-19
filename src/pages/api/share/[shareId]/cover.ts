@@ -9,8 +9,13 @@ import { isMissingStorageObject } from "@server/storage/s3";
 const coverExtensions = [
   "png", "jpg", "jpeg", "webp", "avif",
 ] as const;
-const covers = coverExtensions.flatMap(extension =>
-  ["public/og-image", "og-image"].map(base => base+"."+extension),
+const coverBases = [
+  "public/og-image", "og-image",
+  "app/opengraph-image", "src/app/opengraph-image",
+  "app/twitter-image", "src/app/twitter-image",
+];
+const covers = coverBases.flatMap(base =>
+  coverExtensions.map(extension => base + "." + extension),
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -28,8 +33,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let files: Set<string>;
   try {
-    const matches = await Promise.all(["public/og-image.", "og-image."].map(prefix =>
-      listProjectFilesByPrefix(share.projectToken, prefix)));
+    const matches = await Promise.all(coverBases.map(base =>
+      listProjectFilesByPrefix(share.projectToken, base + ".")));
     files = new Set(matches.flat().map(path => path.replace(/^\/+/,"")));
   } catch {
     return res.status(503).end();
