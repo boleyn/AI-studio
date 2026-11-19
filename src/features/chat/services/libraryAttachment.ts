@@ -156,7 +156,12 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
     });
     if (typeof page?.body !== "string") throw new LibraryReadError(422, item.name);
     const name = typeof page.name === "string" && page.name.trim() ? page.name : item.name;
-    return fromLibrary(new File(["# " + name + "\n\n" + page.body],markdownFilename(name),{type:"text/markdown"}),item.id);
+    if (maxBytes !== undefined && page.body.length + name.length + 4 > maxBytes) {
+      throw new LibraryReadError(413,item.name);
+    }
+    const file = new File(["# ",name,"\n\n",page.body],markdownFilename(name),{type:"text/markdown"});
+    if (maxBytes !== undefined && file.size > maxBytes) throw new LibraryReadError(413,item.name);
+    return fromLibrary(file,item.id);
   }
   // Pages are converted to Markdown above. For raw files the response length is a lower bound only when unencoded.
   if (maxBytes !== undefined && !response.headers.has("Content-Encoding") &&
