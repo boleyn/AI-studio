@@ -1,3 +1,5 @@
+import { useToast } from "@chakra-ui/react";
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
 import { extractText } from "@shared/chat/messages";
@@ -220,7 +222,7 @@ const toUserMessageContentBlocks = ({
     if (normalized.startsWith(".files/")) return `/${normalized}`;
     if (normalized.startsWith("/.files/")) return normalized;
     if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
-      return `/.files/${toSafeFileName(file.name || normalized)}`;
+      return chatAttachmentMirrorPath(normalized, toSafeFileName(file.name || normalized));
     }
     return normalized.startsWith("/") ? normalized : `/${normalized}`;
   };
@@ -239,6 +241,8 @@ const toUserMessageContentBlocks = ({
       type: "attachment",
       name: file.name || "",
       mime_type: file.type || "application/octet-stream",
+      size: file.size,
+      ...(file.libraryItemId ? {library_item_id:file.libraryItemId} : {}),
       storage_path: storagePath,
       ...(typeof file.storagePath === "string" && file.storagePath.trim()
         ? { source_storage_path: file.storagePath.trim() }
@@ -588,6 +592,7 @@ const ChatPanel = ({
   hideHeader?: boolean;
   workspaceComposer?: WorkspaceComposerConfig;
 }) => {
+  const libraryToast = useToast();
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
@@ -1057,6 +1062,7 @@ const ChatPanel = ({
     async (
       payload: ChatInputSubmitPayload,
       options?: {
+        onAccepted?: () => void;
         echoUserMessage?: boolean;
         persistIncomingMessages?: boolean;
         continueAssistantMessageId?: string;
@@ -1193,6 +1199,7 @@ const ChatPanel = ({
           })
         );
       }
+      options?.onAccepted?.();
       setIsSending(true);
       setContextStatus("pending");
 
@@ -1864,6 +1871,13 @@ const ChatPanel = ({
                 text?: unknown;
                 tokenBudget?: unknown;
               };
+              if (payload.phase === "library_save_failed") {
+                const failed = (item as {failed?:unknown}).failed;
+                const names = Array.isArray(failed) ? failed.filter((name): name is string => typeof name === "string") : [];
+                libraryToast({status:"warning", title:names.length ? `${names.length} 个文件未能保存到资料空间` : "文件未能保存到资料空间",
+                  description:names.length ? names.slice(0,3).join("、") + (names.length > 3 ? " 等。" : "。") + "回复已保存。" : "回复已保存在当前对话中。",
+                  isClosable:true});
+              }
               if (payload.phase === "mode_changed") setChatMode("default");
               if (payload.phase === "goal_status") {
                 const update = item as { status?: string; objective?: string };

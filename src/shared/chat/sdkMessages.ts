@@ -40,8 +40,10 @@ export type SdkContentBlock =
       type: "attachment";
       name?: string;
       mime_type?: string;
+      size?: number;
       storage_path?: string;
       source_storage_path?: string;
+      library_item_id?: string;
       preview_url?: string;
       download_url?: string;
     };

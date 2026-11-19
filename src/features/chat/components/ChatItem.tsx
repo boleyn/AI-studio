@@ -1,10 +1,16 @@
-import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
-import { getFileIcon } from "@fastgpt/global/common/file/icon";
+import AttachmentFilename from "./AttachmentFilename";
+import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
+import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
+import type { LibraryFile } from "@/types/library";
+import { LibraryReadError, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
+import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
-import { ArtifactFileIcon, artifactFileType } from "@/components/workspace/ArtifactFileIcon";
+import { artifactFileType } from "@/components/workspace/ArtifactFileIcon";
 import Markdown from "@/components/Markdown";
 import StreamdownMarkdown from "@/components/Markdown/StreamdownMarkdown";
 import { ChevronDownIcon } from "@/components/common/Icon";
@@ -45,7 +51,7 @@ function ReplyArtifact({ path, version, onOpen }: {
     >
       <Button size="sm" h="auto" py={2} px={2} variant="ghost" minW={0} justifyContent="flex-start"
         _hover={{ bg: "transparent" }}
-        leftIcon={<ArtifactFileIcon name={name} />}
+        leftIcon={<LibraryItemIcon item={{name}}/>}
         title={path} aria-label={`打开 ${name} 的预览`} onClick={onOpen}>
         <Box minW={0} textAlign="left">
           <Text fontSize="13.5px" fontWeight="500" color="#18181b" isTruncated>{name}</Text>
@@ -98,10 +104,77 @@ const ChatItem = ({
   hideInteractiveCards?: boolean;
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
+  const {token,activeConversationId} = useChatPanelViewContext();
+  const [preview,setPreview] = React.useState<{name:string;url:string;libraryItemId?:string}>();
+  const [previewText,setPreviewText] = React.useState<string>();
+  const [showLibrarySource,setShowLibrarySource] = React.useState(false);
+  const [previewError,setPreviewError] = React.useState("");
+  React.useEffect(() => {
+    if (!preview) return;
+    setPreviewText(undefined);
+    setShowLibrarySource(false);
+    if (!preview.url && !preview.libraryItemId) {
+      setPreviewError("这条历史消息缺少附件地址，请从资料空间重新添加文件。");
+      return;
+    }
+    const controller = new AbortController();
+    setPreviewError("");
+    void (async () => {
+      const signal = controller.signal;
+      function showContent(value: string, fromLibrary: boolean) {
+        if (signal.aborted) return;
+        setPreviewText(value);
+        setShowLibrarySource(fromLibrary);
+        if (preview?.libraryItemId) recordLibraryOpen(preview.libraryItemId);
+      }
+      let response: Response | undefined;
+      if (preview.url) {
+        try {
+          const url = new URL(preview.url,window.location.href);
+          const externalAttachment = url.origin !== window.location.origin;
+          response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
+          if (response.ok) {
+            const value = await response.text();
+            showContent(value, false);
+            return;
+          }
+        } catch (error) {
+          if (signal.aborted || !preview.libraryItemId) throw error;
+        }
+      }
+      // The conversation copy and the library original have independent access checks.
+      if (preview.libraryItemId) {
+        const location = sharedSpacePageLocation(preview.libraryItemId);
+        if (location) {
+          const original = await fetch(location.api,{headers:withAuthHeaders(),signal});
+          if (!original.ok) throw new LibraryReadError(original.status,preview.name);
+          showContent(await original.text(), true);
+          return;
+        }
+        const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
+        if (!library.ok) throw new LibraryReadError(library.status,preview.name);
+        const items: LibraryFile[] = await library.json();
+        const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
+        if (item) {
+          const value = await (await readLibraryAttachment(item,signal)).text();
+          showContent(value, true);
+          return;
+        }
+      }
+      throw new LibraryReadError(response?.ok ? 404 : response?.status ?? 404,preview.name);
+    })().catch(error => {
+      if (controller.signal.aborted) return;
+      const status = error instanceof LibraryReadError ? error.status : undefined;
+      setPreviewError(status === 401 ? "请重新登录后打开附件。" :
+        status === 403 ? "当前账号没有读取该附件的权限。" :
+        status === 404 || status === 410 ? "找不到这份附件，请检查原文件是否仍可打开。" :
+        status ? "暂时无法读取附件，请稍后重试。" : "连接失败，请检查网络后重试。");
+    });
+    return () => controller.abort();
+  },[preview]);
   const [activityOpen, setActivityOpen] = React.useState<boolean>();
   const activityExpanded = activityOpen ?? Boolean(isStreaming);
   const { copyData } = useCopyData();
-  const { token } = useChatPanelViewContext();
   const {
     content,
     isUser,
@@ -136,6 +209,27 @@ const ChatItem = ({
     messageId,
   });
 
+  const toast = useToast();
+  const [creatingPage,setCreatingPage] = React.useState(false);
+  const [savedPage,setSavedPage] = React.useState<string>();
+  const pageBody = timelineHasAnswer
+    ? timelineItems.flatMap(item => item.type === "answer" && item.text?.trim() ? [item.text] : []).join("\n\n")
+    : content;
+  async function saveAnswerPage() {
+    if (!pageBody.trim() || creatingPage || savedPage) return;
+    setCreatingPage(true);
+    try {
+      const name = pageBody.trim().split("\n")[0].replace(/^#{1,6}\s+/, "").slice(0, 100) || "无标题页";
+      const response = await fetch("/api/library/pages", {method:"POST",
+        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:pageBody,kind:"页面",sourceChat:token && activeConversationId ? {token,chatId:activeConversationId} : undefined})});
+      if (!response.ok) throw new Error();
+      const page: LibraryFile = await response.json();
+      setSavedPage(page.id);
+    } catch {
+      toast({status:"error",title:"未能将回复保存为页面",description:"请稍后重试。"});
+    } finally {setCreatingPage(false);}
+  }
+
   const artifactVersion = message.additional_kwargs?.workspaceArtifactVersion;
   const artifactPaths = message.additional_kwargs?.workspaceArtifactPaths;
   const workspaceArtifacts = React.useMemo(() => Array.isArray(artifactPaths)
@@ -152,9 +246,10 @@ const ChatItem = ({
     const candidates = [path, decodedPath];
     for (const candidate of [path, decodedPath]) {
       const normalized = `/${candidate.replace(/^\/+/, "")}`;
-      candidates.push(normalized);
+      candidates.push(normalized, normalized.slice(1));
       if (normalized.startsWith("/mnt/data/")) {
-        candidates.push(normalized.slice("/mnt/data".length));
+        const relative = normalized.slice("/mnt/data/".length);
+        candidates.push("/" + relative, relative);
       }
     }
     return candidates.find((candidate) => workspaceArtifacts.includes(candidate));
@@ -162,12 +257,12 @@ const ChatItem = ({
 
   const openReplyArtifact = React.useCallback((path: string) => {
     if (!onOpenWorkspaceFile) return false;
-    if (typeof artifactVersion === "string") {
+    if (workspaceArtifacts.length) {
       const artifact = findReplyArtifact(path);
-      if (artifact) return onOpenWorkspaceFile(artifact, artifactVersion);
+      if (artifact) return onOpenWorkspaceFile(artifact, typeof artifactVersion === "string" ? artifactVersion : undefined);
     }
     return onOpenWorkspaceFile(path);
-  }, [artifactVersion, findReplyArtifact, onOpenWorkspaceFile]);
+  }, [artifactVersion, findReplyArtifact, onOpenWorkspaceFile, workspaceArtifacts.length]);
 
   const resolveWorkspaceImage = React.useCallback((source: string) => {
     if (!token || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(source)) return;
@@ -219,6 +314,21 @@ const ChatItem = ({
 
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
+      <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
+        <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md">{preview?.name}</ModalHeader>
+          <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} minW={0}>
+            {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
+              <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
+                <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
+              {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
+            </Flex> :
+              previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
+              <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
+                {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
+                <Link href={sharedSpacePageLocation(preview.libraryItemId)?.href ?? "/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
+                  isExternal textDecoration="underline">在资料空间打开</Link>
+              </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
+          </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
         border={!isWorkspaceChat && isAssistant ? "1px solid" : "none"}
@@ -247,11 +357,17 @@ const ChatItem = ({
         {isUser ? (
           <Flex direction="column" gap={2}>
             {sortedFiles.length > 0 ? (
-              <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }}>
+              <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: sortedFiles.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" }}>
                 {sortedFiles.map((file, index) => {
-                  const image = isImageFile(file);
-                  const icon = getFileIcon(file.name || "");
-                  const fileUrl = file.previewUrl || file.downloadUrl || "";
+                  const name = file.name || file.storagePath?.split("/").pop() || `文件 ${index + 1}`;
+                  const image = isImageFile({...file,name});
+                  const storagePath = file.storagePath?.replace(/^\/+/,"");
+                  const fileUrl = storagePath?.startsWith("chat_uploads/")
+                    ? (file.previewUrl?.startsWith("/api/core/chat/files/view?") ? file.previewUrl : toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""}))
+                    : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
+                      ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
+                  const isMarkdown = /\.(md|markdown)$/i.test(name) ||
+                    /^text\/markdown(?:;|$)/i.test(file.type || "");
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
@@ -263,23 +379,22 @@ const ChatItem = ({
                     >
                       {image ? (
                         fileUrl ? (
-                          <Box as="img" src={fileUrl} alt={file.name || `文件 ${index + 1}`} maxH="220px" objectFit="contain" w="100%" />
+                          <Box as="img" src={fileUrl} alt={name} maxH="220px" objectFit="contain" w="100%" />
                         ) : null
                       ) : (
                         <Flex
-                          alignItems="center"
-                          cursor={fileUrl ? "pointer" : "default"}
+                          alignItems="center" gap={2}
+                          as="button" type="button" aria-label={`打开 ${name}`}
+                          cursor={fileUrl || isMarkdown ? "pointer" : "default"}
                           onClick={() => {
-                            if (!fileUrl) return;
-                            window.open(fileUrl);
+                            if (isMarkdown) setPreview({name,url:fileUrl,libraryItemId:file.libraryItemId});
+                            else if (fileUrl) window.open(fileUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
                           w="100%"
                         >
-                          <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />
-                          <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
-                            {file.name || fileUrl || `文件 ${index + 1}`}
-                          </Text>
+                          <LibraryItemIcon item={{name}}/>
+                          <AttachmentFilename name={name}/>
                         </Flex>
                       )}
                     </Box>
@@ -554,6 +669,10 @@ const ChatItem = ({
               )
             ) : null}
 
+            {isWorkspaceChat && isAssistant && !isStreaming && pageBody.trim() && <Box>
+              {savedPage ? <Link fontSize="sm" href={"/?" + new URLSearchParams({view:"library",libraryItem:savedPage})}>打开已保存的页面</Link> :
+                <Button size="xs" variant="ghost" isLoading={creatingPage} onClick={saveAnswerPage}>保存为资料空间页面</Button>}
+            </Box>}
             {isWorkspaceChat && isStreaming && !hasActivity && (
               <Flex role="status" align="center" gap={2} py={2} color="gray.600">
                 <Spinner size="xs" aria-hidden="true" />

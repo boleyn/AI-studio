@@ -1,3 +1,5 @@
+import { libraryOrigin } from "../services/libraryFileOrigin";
+import { inferAttachmentMimeType } from "./attachmentMimeType";
 import { extractText } from "@shared/chat/messages";
 import type { ChatInputFile } from "../types/chatInput";
 import type { ContextWindowUsage } from "../types/contextWindow";
@@ -207,7 +209,7 @@ export const toStableChatFileViewUrl = ({
   return `/api/core/chat/files/view?${params.toString()}`;
 };
 
-const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
+export const toProjectFileViewUrl = ({ storagePath, token }: { storagePath?: string; token: string }) => {
   if (!storagePath || !token) return "";
   const params = new URLSearchParams({
     token,
@@ -237,11 +239,12 @@ export const hydrateHistoryUserMessage = ({
   if (files.length === 0) return message;
 
   const hydratedFiles = files.map((file) => {
-    if (!isImageArtifact(file)) return file;
+    const isChatUpload = /^\/?chat_uploads\//.test(file.storagePath || "");
+    if (!isChatUpload && !isImageArtifact(file)) return file;
     const stablePreviewUrl =
-      file.publicUrl ||
-      toProjectFileViewUrl({ storagePath: file.storagePath, token }) ||
-      toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) ||
+      (isChatUpload
+        ? toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId })
+        : file.publicUrl || toProjectFileViewUrl({ storagePath: file.storagePath, token })) ||
       file.previewUrl;
     if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
     return {
@@ -300,6 +303,7 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
   files.map((item) => ({
     id: item.id,
     name: item.file.name,
+    libraryItemId: libraryOrigin(item.file),
     size: item.file.size,
     type: item.file.type,
     lastModified: item.file.lastModified,
@@ -313,25 +317,11 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
 export const toSelectedPathArtifacts = ({
   paths,
   token,
-  chatId,
 }: {
   paths: string[];
   token: string;
   chatId?: string;
 }): UploadedFileArtifact[] => {
-  const inferMimeType = (inputPath: string): string => {
-    const lower = inputPath.toLowerCase();
-    if (lower.endsWith(".pdf")) return "application/pdf";
-    if (lower.endsWith(".txt")) return "text/plain";
-    if (lower.endsWith(".md")) return "text/markdown";
-    if (lower.endsWith(".json")) return "application/json";
-    if (lower.endsWith(".csv")) return "text/csv";
-    if (lower.endsWith(".png")) return "image/png";
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    if (lower.endsWith(".webp")) return "image/webp";
-    return "application/octet-stream";
-  };
-
   const normalized = Array.isArray(paths)
     ? paths
         .filter((item): item is string => typeof item === "string")
@@ -343,15 +333,11 @@ export const toSelectedPathArtifacts = ({
     id: `selected-file-${index + 1}`,
     name: toFileTagLabel(path),
     size: 0,
-    type: inferMimeType(path),
+    type: inferAttachmentMimeType(path),
     storagePath: path,
     publicUrl: toProjectFileViewUrl({ storagePath: path, token }),
     previewUrl: toProjectFileViewUrl({ storagePath: path, token }),
-    downloadUrl: toStableChatFileViewUrl({
-      storagePath: path,
-      token,
-      chatId: chatId || "",
-    }),
+    downloadUrl: toProjectFileViewUrl({ storagePath: path, token }),
     lastModified: 0,
   }));
 };

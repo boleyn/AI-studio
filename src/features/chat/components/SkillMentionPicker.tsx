@@ -6,6 +6,7 @@ import { PickerPanel } from "./SlashFilePicker";
 
 type SkillOption = {
   name: string;
+  label?: string;
   description?: string;
 };
 
@@ -21,7 +22,7 @@ const SkillMentionPicker = ({ options, activeIndex, pickerRef, onPick }: SkillMe
     <PickerPanel
       icon={<Box as={AgentSkillsIcon} color="myGray.500" h="14px" w="14px" />}
       pickerRef={pickerRef}
-      title="选择技能"
+      title="引用文件或选择技能"
       zIndex={30}
     >
       <Flex direction="column" gap={1} p={1.5}>
@@ -43,7 +44,7 @@ const SkillMentionPicker = ({ options, activeIndex, pickerRef, onPick }: SkillMe
           const isActive = index === activeIndex;
           return (
             <Flex
-              key={item.name}
+              key={item.label || item.name}
               data-skill-option-index={index}
               align="center"
               gap={2}
@@ -68,7 +69,7 @@ const SkillMentionPicker = ({ options, activeIndex, pickerRef, onPick }: SkillMe
               <Box as={AgentSkillsIcon} color={isActive ? "primary.600" : "myGray.500"} h="13px" w="13px" flexShrink={0} />
               <Box minW={0}>
                 <Text color="myGray.600" fontSize="13px" fontWeight={600} noOfLines={1}>
-                  {item.name}
+                  {item.label || item.name}
                 </Text>
                 <Text color="myGray.500" fontSize="10px" mt="1px" noOfLines={1}>
                   {item.description || "无描述"}

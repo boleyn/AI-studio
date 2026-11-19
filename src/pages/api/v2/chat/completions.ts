@@ -1,3 +1,5 @@
+import { saveLinkedSkillFiles } from "@server/library/skillDeliverables";
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { z } from "zod";
 import { loadConversationGoal, saveConversationGoal, loadAgentContext, saveAgentContext } from "@server/conversations/agentContextStorage";
 import { randomBytes } from "node:crypto";
@@ -107,7 +109,8 @@ const isImageInputPart = (value: unknown): value is ImageInputPart => {
 const extractImageInputParts = (messages: unknown): ImageInputPart[] => {
   if (!Array.isArray(messages)) return [];
   const output: ImageInputPart[] = [];
-  for (const item of messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const item = messages[index];
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const msg = item as RequestBodyMessage;
     const role = (msg.type || msg.role || msg.message?.role || "").trim();
@@ -116,13 +119,14 @@ const extractImageInputParts = (messages: unknown): ImageInputPart[] => {
       msg.additional_kwargs && typeof msg.additional_kwargs === "object" && !Array.isArray(msg.additional_kwargs)
         ? (msg.additional_kwargs as Record<string, unknown>)
         : null;
-    if (!kwargs) continue;
+    if (!kwargs) break;
     const raw = kwargs.imageInputParts;
-    if (!Array.isArray(raw)) continue;
+    if (!Array.isArray(raw)) break;
     for (const candidate of raw) {
       if (!isImageInputPart(candidate)) continue;
       output.push(candidate);
     }
+    break;
   }
   return output;
 };
@@ -396,7 +400,7 @@ const normalizeAttachmentRuntimePath = (rawPath: string, name: string): string =
   if (normalized.startsWith(".files/")) return `/${normalized}`;
   if (normalized.startsWith("/.files/")) return normalized;
   if (normalized.startsWith("chat_uploads/") || normalized.startsWith("/chat_uploads/")) {
-    return `/.files/${toSafeFileName(name || normalized)}`;
+    return chatAttachmentMirrorPath(normalized, toSafeFileName(name || normalized));
   }
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 };
@@ -792,6 +796,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           )),
     };
 
+    const artifactSizes = new Map<string,number>();
     const artifactVersion = isProjectToken && conversationId && Object.keys(updatedFiles).length > 0
       ? randomBytes(16).toString("hex")
       : undefined;
@@ -811,6 +816,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           Object.entries(updatedFiles).map(async ([filePath, file]) => {
             const encoded = /^data:application\/octet-stream;base64,([A-Za-z0-9+/=]+)$/.exec(file.code);
             const bytes = encoded ? Buffer.from(encoded[1], "base64") : null;
+            artifactSizes.set(filePath, bytes?.byteLength ?? Buffer.byteLength(file.code));
             if (artifactVersion) await saveProjectArtifactVersion(token, artifactVersion, filePath, bytes ?? file.code);
             if (bytes) return updateBinaryFile(token, filePath, bytes);
             return updateFile(token, filePath, file.code);
@@ -864,6 +870,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         assistantStored.additional_kwargs = {
           ...assistantStored.additional_kwargs,
           workspaceArtifactPaths: Object.keys(updatedFiles).sort(),
+          workspaceArtifactSizes: [...artifactSizes].map(([path,size]) => ({path,size})),
           workspaceArtifactVersion: artifactVersion,
         };
       }
@@ -871,6 +878,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ...incomingMessages,
         assistantStored,
       ]);
+      if (!isProjectToken && Object.keys(updatedFiles).length) {
+        const reply = runResult.assistantMessage.message?.content;
+        try {
+          const failed = await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantStored.uuid || createDataId(),
+            typeof reply === "string" ? reply : sdkContentToText(reply ?? []), toPublicSkillRuntimeFiles(updatedFiles));
+          if (failed.length) streamEvent(res, SdkStreamEventEnum.status, {phase:"library_save_failed", failed});
+        } catch (error) {
+          console.warn("[library] skill file save failed", error instanceof Error ? error.name : "unknown");
+          streamEvent(res, SdkStreamEventEnum.status, {phase:"library_save_failed"});
+        }
+      }
       if (runResult.checkpoint) {
         const committed = await getConversation(token, conversationId);
         if (committed) await saveAgentContext(token, conversationId, committed.messages, runResult.checkpoint).catch(error => {

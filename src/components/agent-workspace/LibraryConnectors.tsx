@@ -1,0 +1,40 @@
+import { Button, Flex, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+
+const endpoint = "/api/library/connectors/google";
+export default function LibraryConnectors({ close, callbackError }: { close: () => void; callbackError: boolean }) {
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean }>();
+  const [error, setError] = useState(callbackError ? "连接失败，请重试" : "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(endpoint + "?status=1", { headers: withAuthHeaders(), signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error();
+        const result = await response.json();
+        if (!controller.signal.aborted) setStatus(result);
+      }).catch(() => { if (!controller.signal.aborted) setError("无法读取连接状态"); });
+    return () => controller.abort();
+  }, []);
+  async function connect() {
+    setBusy(true);
+    try {
+      const response = await fetch(endpoint, { method: "POST", headers: withAuthHeaders() });
+      if (!response.ok) throw new Error();
+      window.location.assign((await response.json()).url);
+    } catch { setBusy(false); setError("无法启动连接，请重试"); }
+  }
+  return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
+    <ModalHeader>连接你的文件</ModalHeader><ModalBody>
+      <Text color="gray.600" fontSize="sm">连接文件服务，在资料空间中使用你的文件。</Text>
+      <Flex as="ul" aria-label="连接你的文件" direction="column" listStyleType="none" mt={4}>
+        {["Google Drive","Box","Dropbox","SharePoint"].map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
+          <Text>{name}</Text>{name === "Google Drive" && status?.connected ? <Text fontSize="sm">已连接</Text> :
+          <Button size="sm" aria-label={"连接 " + name} borderRadius="full" isDisabled={name !== "Google Drive" || !status?.configured}
+            isLoading={name === "Google Drive" && busy} onClick={connect}>{name === "Google Drive" && status?.configured ? "连接" : "暂不可用"}</Button>}
+        </Flex>)}
+      </Flex>{error && <Text role="alert" color="red.600">{error}</Text>}
+    </ModalBody><ModalFooter><Button borderRadius="full" onClick={close}>完成</Button></ModalFooter>
+  </ModalContent></Modal>;
+}

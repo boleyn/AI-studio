@@ -1,4 +1,5 @@
-import { Button, Flex, Spinner, Text } from "@chakra-ui/react";
+import LibraryMarkdown from "../agent-workspace/LibraryMarkdown";
+import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -47,7 +48,8 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   viewerRef?: ViewerProps["viewerRef"];
   onStateChange?: FileViewerProps["onStateChange"];
 }) {
-  const [result, setResult] = useState<{ file: File } | { error: true }>();
+  const standalone = !viewerRef && !onStateChange;
+  const [result, setResult] = useState<{ file: File } | { markdown: string } | { error: true }>();
 
   const handleViewerState = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
     onStateChange?.(state);
@@ -62,6 +64,11 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
         return response.blob();
       })
       .then(async (blob) => {
+        if (standalone && (/\.(md|markdown)$/i.test(name) || /^text\/markdown(?:;|$)/i.test(blob.type))) {
+          const markdown = await blob.text();
+          if (!controller.signal.aborted) setResult({markdown});
+          return;
+        }
         await validateOfficePackage(blob, name);
         if (!controller.signal.aborted) setResult({ file: new File([blob], name, { type: blob.type }) });
       })
@@ -70,7 +77,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
       });
 
     return () => controller.abort();
-  }, [url, name]);
+  }, [url, name, standalone]);
 
   if (!result || "error" in result) {
     return <Flex h="full" direction="column" align="center" justify="center" gap={3} role="status">
@@ -80,6 +87,8 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
       </>}
     </Flex>;
   }
+
+  if ("markdown" in result) return <Box h="full" overflowY="auto" px={4} py={6}><Box maxW="760px" mx="auto"><LibraryMarkdown>{result.markdown}</LibraryMarkdown></Box></Box>;
 
   return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={handleViewerState}
     options={isArtifactImage(name) ? imageOptions : viewerRef ? documentOptions : options} style={{ width: "100%", height: "100%" }} />;

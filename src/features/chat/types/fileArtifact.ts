@@ -2,6 +2,7 @@ export type ParseStatus = "pending" | "success" | "error" | "skipped";
 
 export interface UploadedFileArtifact {
   id?: string;
+  libraryItemId?: string;
   name: string;
   size: number;
   type: string;

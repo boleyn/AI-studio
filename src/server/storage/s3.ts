@@ -12,6 +12,24 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+const transientStorageCodes = new Set([
+  "TimeoutError", "NetworkingError", "ECONNRESET", "ETIMEDOUT",
+  "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN",
+]);
+
+export function isMissingStorageObject(error: unknown) {
+  const failure = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+  return failure?.name === "NoSuchKey" || failure?.name === "NotFound" ||
+    (failure?.$metadata?.httpStatusCode === 404 && failure.name !== "NoSuchBucket");
+}
+
+export function isStorageUnavailable(error: unknown) {
+  const failure = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } } | null;
+  const status = failure?.$metadata?.httpStatusCode ?? 0;
+  return status === 429 || status >= 500 ||
+    transientStorageCodes.has(failure?.name ?? "") || transientStorageCodes.has(failure?.code ?? "");
+}
+
 export type StorageBucketType = "public" | "private";
 
 const parseBoolean = (value: string | undefined, fallback: boolean) => {
@@ -223,7 +241,7 @@ export const deleteStorageObjects = async ({
 
   for (let i = 0; i < normalizedKeys.length; i += 1000) {
     const batch = normalizedKeys.slice(i, i + 1000);
-    await client.send(
+    const result = await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
         Delete: {
@@ -232,6 +250,7 @@ export const deleteStorageObjects = async ({
         },
       })
     );
+    if (result.Errors?.length) throw new Error("Storage could not delete all requested objects");
   }
 };
 

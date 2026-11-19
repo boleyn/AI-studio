@@ -1,0 +1,196 @@
+import { useEffect, useRef, useState } from "react";
+import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { withAuthHeaders } from "@features/auth/client/authClient";
+import { libraryActivityTime, type LibraryFile } from "@/types/library";
+import { CircleAlert, Search, X } from "lucide-react";
+import AttachmentFilename from "./AttachmentFilename";
+import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
+import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
+import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
+import { addLibraryAttachments, expandLibrarySelection, isContainer, loadLibraryFiles } from "../services/libraryAttachment";
+
+function sourceLabel(item:LibraryFile) {
+  if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
+  if (item.conversation) return "来自会话「" + item.conversation + "」";
+  if (item.fromTemplate) return "在资料空间中创建";
+  if (item.fileOrigin === "生成") return "会话生成的文件";
+  if (item.directUpload) return "上传到资料空间";
+  return item.kind === "生成" ? "会话生成的文件" : item.kind;
+}
+
+export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:{initialQuery?:string;onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [driveAvailable,setDriveAvailable] = useState(false);
+  const [showDrive,setShowDrive] = useState(false);
+  useEffect(()=>{
+    const controller = new AbortController();
+    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!controller.signal.aborted) setDriveAvailable(data.connected);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
+  const [items,setItems] = useState<LibraryFile[]>();
+  const [space,setSpace] = useState<LibraryFile>();
+  const [query,setQuery] = useState(initialQuery);
+  const [selected,setSelected] = useState<LibraryFile[]>([]);
+  const rootItems = useRef<LibraryFile[]>([]);
+  const [error,setError] = useState("");
+  const [fileErrors,setFileErrors] = useState(new Map<string,string>());
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (fileErrors.size) listRef.current?.scrollTo({top:0});
+  }, [fileErrors]);
+  const [busy,setBusy] = useState(false);
+  const [attempt,setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError("");
+    setItems(undefined);
+    async function loadItems() {
+      if (!space?.shareId) return loadLibraryFiles(controller.signal);
+      const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}), {
+        headers:withAuthHeaders(), signal:controller.signal,
+      });
+      if (!response.ok) throw new Error("无法读取共享空间，请检查访问权限后重试。");
+      const data: {pages:{id:string;name:string}[]} = await response.json();
+      return data.pages.map((page): LibraryFile => ({
+        ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传",
+        path:page.name, sharedPage:true, project:space.name,
+      }));
+    }
+    loadItems().then(data => {
+      if (controller.signal.aborted) return;
+      const loaded = data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
+      if (!space) rootItems.current = loaded;
+      setItems(loaded);
+    }).catch(reason => {
+      if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
+    });
+    return () => controller.abort();
+  },[attempt,space]);
+  const itemsById = new Map(items?.map(item => [item.id, item]));
+  function folderPath(item: LibraryFile) {
+    const names: string[] = [];
+    const visited = new Set([item.id]);
+    let parent = item.folderId && itemsById.get(item.folderId);
+    while (parent && !visited.has(parent.id)) {
+      names.push(parent.name);
+      visited.add(parent.id);
+      parent = parent.folderId && itemsById.get(parent.folderId);
+    }
+    return names.reverse().join(" / ");
+  }
+  const selectedElsewhere = selected.filter(item => !itemsById.has(item.id));
+  const attachable = items && [...selectedElsewhere, ...items.filter(item=>!item.siteId)];
+  const locationLabel = (item:LibraryFile) => [
+    folderPath(item),
+    sourceLabel(item),
+    item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
+  ].filter(Boolean).join(" · ");
+  const searchTerm = query.trim().normalize("NFC").toLowerCase();
+  const visible = attachable?.filter(item => [item.name,item.path,item.project,locationLabel(item)].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm)));
+  if (fileErrors.size) {
+    visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
+  }
+  function browseSpace(next?: LibraryFile) {
+    setSpace(next);
+    setItems(undefined);
+    setQuery("");
+    setError("");
+  }
+  function toggleItem(item: LibraryFile) {
+    setSelected(previous => previous.some(entry => entry.id === item.id)
+      ? previous.filter(entry => entry.id !== item.id)
+      : [...previous, item]);
+    setError("");
+    if (fileErrors.has(item.id)) {
+      setFileErrors(previous => {
+        const next = new Map(previous);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }
+  async function add() {
+    if (busy || !items) return;
+    setBusy(true);
+    setError("");
+    try {
+      const picked = expandLibrarySelection(selected, rootItems.current);
+      if (!picked.length) {
+        setError("所选位置中没有可添加的文件或页面。");
+        return;
+      }
+      const errors = await addLibraryAttachments(picked, onAdd);
+      setFileErrors(errors);
+      if (errors.size) {
+        setSelected(picked.filter(item => errors.has(item.id)));
+        setQuery("");
+        const added = picked.length - errors.size;
+        setError(added
+          ? `已添加 ${added} 项。${errors.size} 项未能添加，已列在最前面。`
+          : `${errors.size} 项未能添加，请查看文件旁的提示后重试。`);
+      } else {
+        onClose();
+      }
+    } catch (err) {setError(err instanceof Error ? err.message : "添加失败");}
+    finally {setBusy(false);}
+  }
+  return <Modal isOpen initialFocusRef={searchRef} onClose={() => {if (!busy) onClose();}} isCentered scrollBehavior="inside">
+    <ModalOverlay bg="blackAlpha.400"/><ModalContent mx={3} maxW="540px" borderRadius="20px" overflow="hidden">
+    <ModalHeader px={5} pt={5} pb={3} fontSize="18px" fontWeight="600">从资料空间添加</ModalHeader>
+    <ModalCloseButton aria-label="关闭" isDisabled={busy} borderRadius="full" top={4} right={4}/>
+    {driveAvailable && <Flex px={5} pb={3} gap={1} aria-label="附件来源" role="group">
+      {(["资料空间","Google Drive"] as const).map(source => {
+        const drive = source === "Google Drive";
+        const active = showDrive === drive;
+        return <Button key={source} size="sm" variant="ghost" borderRadius="full" aria-pressed={active}
+          bg={active ? "#ededed" : "transparent"} color={active ? "#171717" : "#666"} isDisabled={busy}
+          onClick={()=>setShowDrive(drive)}>{source}</Button>;
+      })}
+    </Flex>}
+    {space && !showDrive && <Button mx={5} mb={2} alignSelf="start" size="sm" variant="ghost" isDisabled={busy} onClick={()=>browseSpace()}>‹ 资料空间 / {space.name}</Button>}
+    {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
+      const errors = await onAdd(files);
+      if (errors[0]) throw new Error(errors[0]);
+      if (selected.length) setShowDrive(false);
+      else onClose();
+    }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
+      <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件、页面或文件夹" value={query} onChange={event=>setQuery(event.target.value)}/>
+      {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
+        onClick={()=>{setQuery("");searchRef.current?.focus();}}/>}
+    </Flex>
+      {error && <Flex role="alert" mx={5} mb={2} p={3} flexShrink={0} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
+        <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/><Text flex="1" minW={0} overflowWrap="anywhere" fontSize="sm">{error}</Text>
+        {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
+      </Flex>}
+    <ModalBody ref={listRef} px={3} py={0} maxH="min(48dvh, 360px)">
+      {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
+      {visible?.length === 0 && <Box role="status" px={4} py={8} textAlign="center">
+        <Text fontSize="sm" fontWeight="medium">{attachable?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
+        <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
+      </Box>}
+      {visible?.map(item=>{
+        if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
+          justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
+          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
+        </Button>;
+        const checked=selected.some(entry => entry.id === item.id);
+        return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
+          width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
+          _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
+          onClick={()=>toggleItem(item)}>
+          <LibrarySelectionIndicator checked={checked}/>
+          <LibraryItemIcon item={item}/><Box flex="1" minW={0}><AttachmentFilename name={item.name} fontSize="sm"/>
+            <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
+            {fileErrors.has(item.id) && <Text id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
+          </Box>
+
+        </Flex>;
+      })}
+    </ModalBody><ModalFooter px={5} py={3} mt={2} borderTop="1px solid #eee" gap={2}><Button size="sm" variant="ghost" borderRadius="full" isDisabled={busy} onClick={onClose}>取消</Button>
+      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!items || !selected.length} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length ? "（"+selected.length+"）" : ""}</Button>
+    </ModalFooter></>}</ModalContent></Modal>;
+}

@@ -1,3 +1,4 @@
+import { libraryOrigin } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import type { ChatInputFile } from "../types/chatInput";
@@ -58,6 +59,7 @@ const requestPresignedUploads = async ({
         type: item.file.type || "application/octet-stream",
         size: item.file.size,
         lastModified: item.file.lastModified,
+        libraryItemId: libraryOrigin(item.file),
         storagePath: data.key,
         publicUrl: "",
         upload: {
@@ -145,7 +147,8 @@ const finalizeUploadedFiles = async ({
     throw new Error(typeof data.error === "string" ? data.error : "上传确认失败");
   }
 
-  return Array.isArray(data.files) ? data.files : [];
+  const origins = new Map(files.map(file => [file.storagePath,file.libraryItemId]));
+  return (data.files ?? []).map(file => ({...file,libraryItemId:file.storagePath ? origins.get(file.storagePath) : undefined}));
 };
 
 export const uploadChatFiles = async ({
@@ -159,21 +162,21 @@ export const uploadChatFiles = async ({
   files: ChatInputFile[];
   onProgress?: (phase: UploadPhase, progress: number) => void;
 }): Promise<UploadedFileArtifact[]> => {
-  const uploadable = files.filter((item) => item.file.size <= MAX_UPLOAD_FILE_SIZE);
-  if (uploadable.length === 0) return [];
+  if (!files.length) return [];
+  const oversized = files.find(item => item.file.size > MAX_UPLOAD_FILE_SIZE);
+  if (oversized) throw new Error(`“${oversized.file.name}”超过单个附件 10 MB 的上限`);
 
   const presignedFiles = await requestPresignedUploads({
     token,
     chatId,
-    files: uploadable,
+    files,
   });
 
-  const totalBytes = uploadable.reduce((sum, item) => sum + item.file.size, 0);
+  const totalBytes = files.reduce((sum, item) => sum + item.file.size, 0);
   let finishedBytes = 0;
 
-  for (const uploadItem of presignedFiles) {
-    const matched = uploadable.find((item) => (item.id && item.id === uploadItem.id) || item.file.name === uploadItem.name);
-    if (!matched) continue;
+  for (const [index, uploadItem] of presignedFiles.entries()) {
+    const matched = files[index];
 
     await uploadFileByPresignedUrl({
       file: matched.file,
@@ -251,11 +254,19 @@ export async function fetchWorkspaceArtifact(token: string, path: string, versio
   return response.blob();
 }
 
-export async function downloadWorkspaceArtifact(token: string, path: string, version?: string) {
-  const url = URL.createObjectURL(await fetchWorkspaceArtifact(token, path, version));
+export async function downloadWorkspaceArtifact(token: string, path: string, version?: string, filename?: string) {
+  const query = new URLSearchParams({ token, action: "view", path });
+  if (version) query.set("version", version);
+  return downloadAuthenticatedFile(`/api/code?${query}`, filename || path.split("/").pop() || "file");
+}
+
+export async function downloadAuthenticatedFile(endpoint: string, filename: string) {
+  const response = await fetch(endpoint, { headers: withAuthHeaders() });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = path.split("/").pop() || "file";
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

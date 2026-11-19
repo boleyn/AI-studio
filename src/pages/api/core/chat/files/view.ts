@@ -1,6 +1,6 @@
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
-import { assertChatStoragePath, getObjectFromStorage, getStorageFileName } from "@server/storage/s3";
+import { assertChatStoragePath, getObjectFromStorage, isMissingStorageObject, isStorageUnavailable, getStorageFileName } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { assertChatScopedStoragePath } from "./shared";
 
@@ -60,12 +60,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
     const chatId = getChatId(req) || undefined;
-    const scopedPath = assertChatScopedStoragePath({
-      storagePath,
-      token: token.trim(),
-      chatId: chatId?.trim() || undefined,
-    });
-    const normalizedPath = assertChatStoragePath(scopedPath);
+    let normalizedPath: string;
+    try {
+      normalizedPath = assertChatStoragePath(assertChatScopedStoragePath({
+        storagePath,
+        token: token.trim(),
+        chatId: chatId?.trim() || undefined,
+      }));
+    } catch {
+      return res.status(404).json({ error: "文件不存在" });
+    }
     const { buffer, contentType, contentLength } = await getObjectFromStorage({
       key: normalizedPath,
       bucketType: "private",
@@ -79,7 +83,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Content-Disposition", `${dispositionType}; filename*=UTF-8''${encodeURIComponent(fileName)}`);
     res.setHeader("Cache-Control", "private, max-age=300");
     res.status(200).send(buffer);
-  } catch {
-    res.status(404).json({ error: "文件不存在或读取失败" });
+  } catch (error) {
+    if (isStorageUnavailable(error)) return res.status(503).json({ error: "文件存储暂时不可用，请稍后重试。" });
+    if (isMissingStorageObject(error)) return res.status(404).json({ error: "文件不存在" });
+    res.status(500).json({ error: "暂时无法读取附件，请稍后重试。" });
   }
 }

@@ -1,8 +1,9 @@
+import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import path from "node:path";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
 import { updateBinaryFile } from "@server/projects/projectStorage";
-import { buildChatFileViewUrl, getObjectFromStorage } from "@server/storage/s3";
+import { buildChatFileViewUrl, getObjectFromStorage, isMissingStorageObject, isStorageUnavailable } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import {
@@ -40,10 +41,10 @@ const buildMirrorRawFilePath = ({
 }) => {
   const fromOriginalName = toSafeFileName(originalName || "");
   if (fromOriginalName && fromOriginalName !== "file") {
-    return `/.files/${fromOriginalName}`;
+    return chatAttachmentMirrorPath(storagePath, fromOriginalName);
   }
   const base = toSafeFileName(path.posix.basename(storagePath));
-  return `/.files/${base}`;
+  return chatAttachmentMirrorPath(storagePath, base);
 };
 
 const syncAttachmentRawToProject = async ({
@@ -147,7 +148,7 @@ export default async function handler(
       chatId,
     });
 
-    let buffer: Buffer | null = null;
+    let buffer: Buffer;
     try {
       const object = await getObjectFromStorage({
         key: storagePath,
@@ -160,13 +161,21 @@ export default async function handler(
         storagePath,
         error: error instanceof Error ? error.message : String(error ?? ""),
       });
+      if (isMissingStorageObject(error)) {
+        return res.status(404).json({ error: "未找到已上传的附件，请重新添加。" });
+      }
+      const status = isStorageUnavailable(error) ? 503 : 500;
+      return res.status(status).json({ error: "暂时无法确认附件已保存，请稍后重试。" });
+    }
+    if (buffer.byteLength > MAX_FILE_SIZE) {
+      return res.status(400).json({ error: `文件 ${file.name} 超过 ${MAX_FILE_SIZE / (1024 * 1024)}MB 限制` });
     }
 
     results.push({
       id: typeof file.id === "string" ? file.id : undefined,
       name: file.name,
       type,
-      size,
+      size: buffer.byteLength,
       lastModified: Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : now,
       storagePath,
       publicUrl,
@@ -174,7 +183,7 @@ export default async function handler(
     });
 
     try {
-      if (buffer && access === "ok_project") {
+      if (access === "ok_project") {
         await syncAttachmentRawToProject({
           token,
           file,

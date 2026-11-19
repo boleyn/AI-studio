@@ -45,6 +45,7 @@ import {
   HardDrive,
   Home,
   LayoutGrid,
+  Library,
   Laptop,
   MessageSquare,
   MoreHorizontal,
@@ -58,6 +59,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { AppDialog } from "./ui";
+import { createConversation } from "@features/chat/services/conversations";
+import FileChatDivider from "./agent-workspace/FileChatDivider";
+import LibraryView from "./agent-workspace/LibraryView";
 import WorkspaceFilesPanel from "./agent-workspace/WorkspaceFilesPanel";
 import ProjectWorkspaceSelect from "./agent-workspace/ProjectWorkspaceSelect";
 import DeviceManagementModal from "./agent-workspace/DeviceManagementModal";
@@ -127,10 +131,12 @@ export default function AgentWorkspace({
 
   const [activeToken, setActiveToken] = useState<string>(initialProjectToken || "");
   const [activeChatId, setActiveChatId] = useState<string | undefined>(undefined);
-  const { query } = useRouter();
+  const router = useRouter();
+  const { query } = router;
   const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
+  const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[];text?:string;imageMode?:boolean}>();
   const [newConvSignal, setNewConvSignal] = useState(0);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -182,7 +188,36 @@ export default function AgentWorkspace({
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const [activeNav, setActiveNav] = useState<"chat" | "schedules" | "projects">("chat");
+  type WorkspaceView = "chat" | "schedules" | "projects" | "library";
+  const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
+    ? query.view : "chat";
+  const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;minimized:boolean}>();
+  const [fileChatWidth, setFileChatWidth] = useState(38);
+  const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
+    fileChat.chatId === visibleChatId ? fileChat : undefined;
+  const fileChatOpen = currentFileChat?.minimized === false;
+  const [chatWasOpened, setChatWasOpened] = useState(false);
+  useEffect(() => {
+    if (router.isReady && (activeNav === "chat" || fileChatOpen)) setChatWasOpened(true);
+  }, [router.isReady, activeNav, fileChatOpen]);
+  function setActiveNav(view: WorkspaceView, conversation?:string) {
+    if (view === activeNav && !conversation) return;
+    const nextQuery = {...router.query};
+    if (conversation) nextQuery.conversation = conversation;
+    if (view !== "library") {
+      delete nextQuery.libraryItem;
+      delete nextQuery.libraryFolder;
+      delete nextQuery.librarySection;
+      delete nextQuery.libraryTab;
+      delete nextQuery.librarySource;
+      delete nextQuery.libraryType;
+      delete nextQuery.libraryLayout;
+    }
+    if (view === "chat") delete nextQuery.view;
+    else nextQuery.view = view;
+    return router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});
+  }
+
   const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
   const selectScheduleConversation = useCallback((task: typeof scheduleConversation) => {
     setScheduleConversation(task);
@@ -560,7 +595,8 @@ export default function AgentWorkspace({
 
   const conversationPane = (
       <Flex flex="1" direction="column" minW={0} bg="#ffffff">
-        {activeNav !== "schedules" && (
+        {fileChatOpen && <Flex align="center" justify="space-between" px={4} h="52px"><Text fontWeight="600">聊天</Text><Button size="sm" variant="ghost" onClick={()=>setFileChat(prev=>prev && {...prev,minimized:true})}>最小化聊天窗口</Button></Flex>}
+        {activeNav !== "schedules" && !fileChatOpen && (
         <Flex
           minH="52px"
           flexWrap="wrap"
@@ -717,6 +753,8 @@ export default function AgentWorkspace({
                 fileOptions={fileKeys}
                 height="100%"
                 workspaceComposer={{
+                  libraryDraft,
+                  onLibraryDraftConsumed: () => setLibraryDraft(undefined),
                   deviceAccessKind: activeDeviceAccess?.kind,
                   deviceAccessLabel: activeDeviceAccess?.kind === "connector"
                     ? pairedDevices.find(device => device.deviceId === activeDeviceAccess.deviceId)?.name || "本地电脑"
@@ -804,6 +842,10 @@ export default function AgentWorkspace({
               }}
             />
           </Tooltip>
+          <Tooltip label="资料空间" placement="right">
+            <IconButton aria-label="资料空间" icon={<Library size={17} />} size="sm" variant="ghost"
+              bg={activeNav === "library" ? "surface.active" : "transparent"} onClick={() => setActiveNav("library")} />
+          </Tooltip>
           <Tooltip label="项目" placement="right">
             <IconButton
               aria-label="项目列表"
@@ -838,6 +880,28 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
+      {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode) => {
+        let token = activeProject?.token || projects[0]?.token;
+        const refreshAfterSelection = !token;
+        if (!token) {
+          const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");
+          token = existing[0]?.token;
+          if (!token) {
+            const created = await apiJson<{token:string}>("/projects", {
+              method:"POST", body:JSON.stringify({name:"个人工作区", files:{}, dependencies:{}})
+            });
+            token = created.token;
+          }
+        }
+        const chat = itemId && fileChat?.itemId === itemId && fileChat.chatId === activeChatId ? {id:fileChat.chatId} : await createConversation(token,[]);
+        if (!chat) throw new Error("创建对话失败");
+        setLibraryDraft({chatId:chat.id,files,text,imageMode});
+        if (itemId) setFileChat({itemId,chatId:chat.id,minimized:false});
+        else setFileChat(undefined);
+        await setActiveNav(itemId ? "library" : "chat", chat.id);
+        handleSelectConversation(token,chat.id);
+        if (refreshAfterSelection) await fetchProjects();
+      }} onBack={() => setActiveNav("chat")} onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }} />}
       {activeNav === "projects" && (
         <ProjectsDirectoryView
           projects={projects}
@@ -866,18 +930,20 @@ export default function AgentWorkspace({
           })))}
           onSelectConversation={selectScheduleConversation}
           conversation={scheduleConversation && activeProject?.token === scheduleConversation.token ? conversationPane : null}
-          onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat"); }}
+          onOpen={(token, chatId) => { handleSelectConversation(token, chatId); setActiveNav("chat", chatId); }}
         />
       )}
       <Flex
-        flex="1"
+        flex={fileChatOpen ? {base:"1",md:`0 0 ${fileChatWidth}%`} : "1"}
         minW={0}
         minH={0}
-        position="relative"
-        display={activeNav === "chat" ? "flex" : "none"}
+        position={fileChatOpen ? {base:"absolute",md:"relative"} : "relative"}
+        display={activeNav === "chat" || fileChatOpen ? "flex" : "none"}
+        {...(fileChatOpen ? {role:"region", "aria-label":"聊天", inset:{base:0,md:"auto"},zIndex:4,bg:"white",borderLeftWidth:"1px"} : {})}
       >
+        {fileChatOpen && <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth}/>}
         {/* 次级侧边栏（1:1 对齐 ChatGPT 左侧栏） */}
-          {sidebarOpen ? (
+          {sidebarOpen && !fileChatOpen ? (
         <Flex
           position={{ base: "absolute", md: "relative" }}
           insetY={0}
@@ -1208,12 +1274,13 @@ export default function AgentWorkspace({
             borderTop="1px solid"
             borderColor="stroke.light"
           >
+            <Button variant="ghost" size="sm" leftIcon={<Library size={16} />} onClick={() => { closeMobileSidebar(); setActiveNav("library"); }}>资料空间</Button>
             <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings />
           </Box>
         </Flex>
       ) : null}
 
-      {activeNav !== "schedules" && conversationPane}
+      {activeNav !== "schedules" && router.isReady && (chatWasOpened || activeNav === "chat" || fileChatOpen) && conversationPane}
       </Flex>
 
       {/* 新建项目弹窗 */}

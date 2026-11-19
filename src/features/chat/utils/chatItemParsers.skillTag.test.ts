@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ConversationMessage } from "@/types/conversation";
 import {
   composeTimelineItems,
+  getMessageFiles,
   getTimelineItems,
   type TimelineItem,
   type ToolDetail,
@@ -239,4 +240,28 @@ test("composeTimelineItems does not append duplicate root tool for existing agen
   assert.equal(items.length, 1);
   assert.equal(items[0]?.type, "agent");
   assert.equal(items.some((item) => item.type === "tool"), false);
+});
+
+test("a legacy attachment cannot take a same-name attachment's exact upload path", () => {
+  const name = "资料.md";
+  const message = {
+    artifact: { files: [{ name }, { name, storagePath: "chat_uploads/b.md" }] },
+    content: ["b", "a"].map(id => ({
+      type: "attachment", name, source_storage_path: `chat_uploads/${id}.md`,
+    })),
+  } as unknown as ConversationMessage;
+  assert.deepEqual(getMessageFiles(message).map(file => file.storagePath), [
+    "chat_uploads/a.md", "chat_uploads/b.md",
+  ]);
+});
+
+test("history restores a Markdown attachment title and specific MIME type from its content block", () => {
+  const path = "chat_uploads/record";
+  const message = {
+    artifact: { files: [{ storagePath: path, type: "application/octet-stream" }] },
+    content: [{ type: "attachment", name: "交接记录", source_storage_path: path, mime_type: "text/markdown" }],
+  } as unknown as ConversationMessage;
+  const [file] = getMessageFiles(message);
+  assert.equal(file.name, "交接记录");
+  assert.equal(file.type, "text/markdown");
 });

@@ -5,11 +5,13 @@ import {
 } from "@shared/chat/planInteraction";
 
 export interface MessageFile {
+  libraryItemId?: string;
   id?: string;
   name?: string;
   size?: number;
   type?: string;
   storagePath?: string;
+  publicUrl?: string;
   previewUrl?: string;
   downloadUrl?: string;
   parse?: {
@@ -410,10 +412,63 @@ const parseAgentResponseParts = (rawResponse: string) => {
 };
 
 export const getMessageFiles = (message: ConversationMessage): MessageFile[] => {
-  if (!message.artifact || typeof message.artifact !== "object") return [];
-  const files = (message.artifact as { files?: unknown }).files;
-  if (!Array.isArray(files)) return [];
-  return files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
+  const files = (message.artifact as {files?:unknown} | null)?.files;
+  const nestedContent = message.message?.content;
+  const blocks = Array.isArray(nestedContent) && nestedContent.some(block => block?.type === "attachment")
+    ? nestedContent
+    : message.content;
+  const originsByPath = new Map<string,string>();
+  for (const content of [message.content, nestedContent]) {
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type !== "attachment" || typeof block.library_item_id !== "string") continue;
+      for (const path of [block.source_storage_path, block.storage_path]) {
+        if (typeof path === "string" && path) originsByPath.set(path.replace(/^\/+/, ""), block.library_item_id);
+      }
+    }
+  }
+  const attachments:MessageFile[] = Array.isArray(blocks) ? blocks.flatMap(block => {
+    if (!block || block.type !== "attachment") return [];
+    const storagePath = [block.source_storage_path,block.storage_path].find(path=>typeof path === "string" && path);
+    const name = typeof block.name === "string" && block.name ? block.name : storagePath?.split("/").pop();
+    if (!name) return [];
+    const origin = block.library_item_id || originsByPath.get(storagePath?.replace(/^\/+/, "") || "");
+    return [{...(typeof origin === "string" ? {libraryItemId:origin} : {}), name,type:block.mime_type,storagePath,
+      downloadUrl:block.download_url,previewUrl:block.preview_url}];
+  }) : [];
+  if (!Array.isArray(files) || !files.length) return attachments;
+  const remaining = [...attachments];
+  const artifactFiles = files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
+  const reservedPaths = new Set(artifactFiles.map(file => file.storagePath?.replace(/^\/+/, ""))
+    .filter(path => path?.startsWith("chat_uploads/")));
+  const reservedOrigins = new Set(artifactFiles.map(file => file.libraryItemId).filter(Boolean));
+  const merged = artifactFiles.map(file => {
+    const path = file.storagePath?.replace(/^\/+/, "");
+    let index: number;
+    if (path?.startsWith("chat_uploads/")) {
+      index = remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path);
+    } else {
+      const eligible = (item:MessageFile) => !reservedPaths.has(item.storagePath?.replace(/^\/+/, ""));
+      index = file.libraryItemId ? remaining.findIndex(item => eligible(item) && item.libraryItemId === file.libraryItemId) : -1;
+      if (index < 0) {
+        index = remaining.findIndex(item => eligible(item) && item.name === file.name &&
+          (!item.libraryItemId || (!file.libraryItemId && !reservedOrigins.has(item.libraryItemId))));
+      }
+    }
+    if (index < 0) return file;
+    const [block] = remaining.splice(index, 1);
+    const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type));
+    return {
+      ...file,
+      ...(useBlockType ? { type: block.type } : {}),
+      ...(!file.name && block.name ? { name: block.name } : {}),
+      ...(block.libraryItemId && !file.libraryItemId ? {libraryItemId:block.libraryItemId} : {}),
+      storagePath: path?.startsWith("chat_uploads/") ? path : block.storagePath || file.storagePath,
+      previewUrl: file.previewUrl || block.previewUrl,
+      downloadUrl: file.downloadUrl || block.downloadUrl,
+    };
+  });
+  return [...merged, ...remaining.filter(item => !merged.some(file => file.name === item.name && (!item.libraryItemId || file.libraryItemId === item.libraryItemId) && !item.storagePath?.replace(/^\/+/, "").startsWith("chat_uploads/")))];
 };
 
 export const isImageFile = (file: MessageFile) => {

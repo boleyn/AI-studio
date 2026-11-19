@@ -17,3 +17,9 @@ export const getChatTokenAccessState = async (
   return "not_found";
 };
 
+
+export async function canAccessArtifactSource(token: string, userId: string, chatUpload: boolean) {
+  if (!chatUpload) return (await getProjectAccessState(token, userId)) === "ok";
+  const access = await getChatTokenAccessState(token, userId);
+  return access === "ok_project" || access === "ok_skill";
+}

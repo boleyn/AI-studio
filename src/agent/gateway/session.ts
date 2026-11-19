@@ -302,6 +302,7 @@ export async function runAgentSession(
       if (!turnContext) return messages;
       const lastUser = [...messages].reverse().find(message => message.role === "user");
       if (lastUser && typeof lastUser.content === "string") lastUser.content += `\n\n${turnContext}`;
+      else if (lastUser && Array.isArray(lastUser.content)) lastUser.content.push({type:"text",text:turnContext});
       return messages;
     };
     openAIMessages = replayCheckpoint(input.checkpoint, identity, appendContext(current), appendContext(openAIMessages));

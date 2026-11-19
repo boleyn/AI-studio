@@ -223,6 +223,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuEmail: email.trim().toLowerCase(),
       feishuOpenId: feishuOpenId || undefined,
       feishuUnionId: feishuUnionId || undefined,
     });
@@ -234,12 +235,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contact: nextContact,
       avatar: nextAvatar,
       provider: "feishu",
+      feishuEmail: email.trim().toLowerCase(),
       feishuOpenId: feishuOpenId || undefined,
       feishuUnionId: feishuUnionId || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
   } else {
+    if (user.provider === "feishu" && user.feishuEmail !== email.trim().toLowerCase() &&
+        ((feishuOpenId && user.feishuOpenId === feishuOpenId) || (feishuUnionId && user.feishuUnionId === feishuUnionId))) {
+      await updateUserProfile(String(user._id), {feishuEmail:email.trim().toLowerCase()});
+    }
     const shouldPatchDisplayName = !user.displayName && Boolean(nextDisplayName);
     const shouldPatchContact = !user.contact && Boolean(nextContact);
     const shouldPatchAvatar = !user.avatar && Boolean(nextAvatar);
