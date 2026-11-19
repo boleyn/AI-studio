@@ -15,13 +15,17 @@ import LibraryPageEditor, { mobilePageReaderQuery, type PageDraft } from "@/comp
 
 export default function SharedArtifactPage() {
   const { query } = useRouter();
+  const id = typeof query.id === "string" ? query.id : "";
+  const drafts = useRef(new Map<string,PageDraft>());
+  return <SharedFilePreview key={id} id={id} drafts={drafts.current}/>;
+}
+
+function SharedFilePreview({id,drafts}:{id:string;drafts:Map<string,PageDraft>}) {
   const toast = useToast();
   const [downloading,setDownloading] = useState(false);
-  const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
   const [result, setResult] = useState<{ id: string; received?: boolean; viewerLibraryId?: string; filename?: string; previewName?: string; livePage?: boolean; editablePageId?: string; error?: string; needsLogin?: boolean }>();
   const [loadAttempt,setLoadAttempt] = useState(0);
-  const pageDrafts = useRef(new Map<string,PageDraft>());
   const [editing,setEditing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
@@ -76,7 +80,7 @@ export default function SharedArtifactPage() {
   const previewName = current.previewName || current.filename;
   const isSpreadsheet = isSpreadsheetFile(previewName);
   const retry = () => setAttempt((value) => value + 1);
-  if (editing && current.editablePageId) return <LibraryPageEditor drafts={pageDrafts.current} key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
+  if (editing && current.editablePageId) return <LibraryPageEditor drafts={drafts} key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
     onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:markdownFilename(name),previewName:markdownFilename(name)})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
