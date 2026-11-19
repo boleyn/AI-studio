@@ -705,7 +705,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <Box role="alert"><Heading as="h2" fontSize="md">无法打开此条目</Heading>
         <Text mt={1} fontSize="sm" color="gray.600">条目可能已删除，或当前账号没有访问权限。</Text></Box>
       <Button size="sm" variant="outline" borderRadius="full" onClick={()=>navigateList("全部","推荐",undefined,undefined,true)}>返回资料空间</Button>
-    </Flex> : section === "Google Drive" ? <LibraryDrive onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
+    </Flex> : section === "Google Drive" ? <LibraryDrive onBackToLibrary={()=>changeSection("全部")} onAttach={onChat} connect={()=>setConnectors(true)}/> : <Box flex="1" minW={0} overflowY="auto" pt="16px" pb={8}
       outline={dropActive ? "2px dashed #777" : undefined} outlineOffset="-4px"
       onDragOver={event=>{
         if (!event.dataTransfer.types.includes("Files")) return;

@@ -6,7 +6,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { formatRelativeTime } from "./relativeTime";
 
 interface DriveFile {id:string; name:string; mimeType:string; webViewLink?:string; modifiedTime?:string; viewedByMeTime?:string; size?:string}
-export default function LibraryDrive({connect,onAttach,onBusyChange}:{connect?:()=>void;onBusyChange?:(busy:boolean)=>void;onAttach:(files:File[])=>Promise<void>}) {
+export default function LibraryDrive({connect,onAttach,onBusyChange,onBackToLibrary}:{onBackToLibrary?:()=>void;connect?:()=>void;onBusyChange?:(busy:boolean)=>void;onAttach:(files:File[])=>Promise<void>}) {
   const [scope,setScope] = useState("recent");
   const [sort,setSort] = useState({key:"name",descending:false});
   const [search,setSearch] = useState("");
@@ -85,7 +85,9 @@ export default function LibraryDrive({connect,onAttach,onBusyChange}:{connect?:(
       }}>{label}</Button>
     </th>;
   }
-  return <Box flex="1" p={6} overflow="auto"><Flex justify="space-between" align="center" wrap="wrap" gap={3}><Heading size="md">Google Drive</Heading>
+  return <Box flex="1" p={6} overflow="auto">
+    {onBackToLibrary && <Button display={{base:"inline-flex",md:"none"}} size="sm" variant="ghost" mb={3} onClick={onBackToLibrary}>‹ 返回资料空间</Button>}
+    <Flex justify="space-between" align="center" wrap="wrap" gap={3}><Heading size="md">Google Drive</Heading>
       <Input type="search" aria-label="搜索" placeholder="搜索" size="sm" borderRadius="full" maxW="240px" value={search} onChange={event=>setSearch(event.target.value)}/></Flex>
     <Flex aria-label="Drive 文件范围" gap={1} my={3} wrap="wrap">{[["recent","最近"],["mine","我的云端硬盘"],["shared","与我共享"]].map(([value,label])=>
       <Button key={value} size="sm" borderRadius="full" aria-pressed={scope===value} variant={scope===value ? "solid" : "ghost"} onClick={()=>{
