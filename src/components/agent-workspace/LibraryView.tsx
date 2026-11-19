@@ -671,7 +671,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={()=>updateListOptions(types.filter(type=>type!==filter),grid,sources.filter(source=>source!==filter))}>{filter}</Button>)}
         </Flex>}
         {!imageSection && <>{!sitesSection && !pagesSection && <Menu closeOnSelect={false}>
-          <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" variant={filterCount ? "solid" : "ghost"} />
+          <MenuButton as={IconButton} aria-label={filterCount ? "打开筛选器，" + filterCount + " 个筛选器已开启" : "打开筛选器"} icon={<ListFilter size={17}/>} size="sm" borderRadius="full" variant={filterCount ? "solid" : "ghost"} />
           <MenuList aria-label="打开筛选器" w="240px" p="10px" borderRadius="16px" borderWidth={0}
             sx={{"& [role=menuitemcheckbox]":{height:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},
               "& [role=group] > p":{height:"28px",m:0,px:"10px",lineHeight:"28px",fontSize:"13px"},
@@ -682,6 +682,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             {fileSources.map(source => <MenuItemOption key={source} value={source}><Flex align="center" gap={2}>{source === "已上传" ? <Upload size={20} aria-hidden/> : <Pencil size={20} aria-hidden/>}{source}</Flex></MenuItemOption>)}
           </MenuOptionGroup>}</MenuList>
         </Menu>}
+        {!sitesSection && !pagesSection && <Box aria-hidden="true" w="1px" h="16px" mx={1} flexShrink={0} bg="blackAlpha.100"/>}
         <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
         <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
