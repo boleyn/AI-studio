@@ -191,14 +191,14 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
         <Heading as="h2" fontSize="sm">新聊天</Heading>
         <IconButton size="sm" variant="ghost" aria-label="最小化聊天窗口" icon={<Minus size={16}/>} onClick={()=>setDraftMinimized(true)}/>
       </Flex>
-      <Flex as="form" aria-label="询问此文件" align="center" gap={2} w="min(100%, 640px)" mx="auto" mt="auto" p={3}
+      <Flex as="form" aria-label="询问此文件" aria-busy={openingChat} align="center" gap={2} w="min(100%, 640px)" mx="auto" mt="auto" p={3}
       onSubmit={async event=>{
         event.preventDefault();
         if (openingChat) return;
         setOpeningChat(true);
         try {await askAboutFile(question.trim());} finally {setOpeningChat(false);}
       }}>
-      <Input aria-label="询问此文件" placeholder="询问此文件" value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
+      <Input aria-label="询问此文件" placeholder="询问此文件" isReadOnly={openingChat} value={question} onChange={event=>setQuestion(event.target.value)} borderRadius="full"/>
       <IconButton type="submit" aria-label="带入聊天" title="带入聊天" isLoading={openingChat} icon={<MessageSquare size={18}/>} borderRadius="full"/>
       </Flex>
     </Flex>}
