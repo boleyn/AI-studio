@@ -8,10 +8,10 @@ export function fileType(file: LibraryFile) {
   if (file.siteId) return "站点";
   const path = libraryTypeName(file);
   if (isArtifactImage(path)) return "图像";
-  if (/\.(xlsx?|csv|tsv|ods)$/i.test(path)) return "电子表格";
-  if (/\.(pptx?|odp)$/i.test(path)) return "演示文稿";
+  if (/\.(xls[xm]?|csv|tsv|ods)$/i.test(path)) return "电子表格";
+  if (/\.(ppt[xm]?|odp)$/i.test(path)) return "演示文稿";
   if (/\.pdf$/i.test(path)) return "PDF 文件";
-  if (/\.(docx?|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
+  if (/\.(doc[xm]?|txt|md|markdown|rtf|odt)$/i.test(path)) return "文档";
   return "其他";
 }
 

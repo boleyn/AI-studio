@@ -9,10 +9,10 @@ export function isArtifactImage(name: string) {
 
 export function artifactFileType(name: string) {
   const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : undefined;
-  if (extension === "xlsx" || extension === "xls") return { label: "Excel" };
+  if (extension === "xlsx" || extension === "xls" || extension === "xlsm") return { label: "Excel" };
   if (extension === "csv" || extension === "tsv") return { label: extension.toUpperCase() };
-  if (extension === "docx" || extension === "doc") return { label: "Word" };
-  if (extension === "pptx" || extension === "ppt") return { label: "PowerPoint" };
+  if (extension === "docx" || extension === "doc" || extension === "docm") return { label: "Word" };
+  if (extension === "pptx" || extension === "ppt" || extension === "pptm") return { label: "PowerPoint" };
   if (extension && isArtifactImage(name)) return { label: extension.toUpperCase() };
   if (extension === "md" || extension === "markdown") return { label: "Markdown" };
   if (extension === "pdf") return { label: "PDF" };
