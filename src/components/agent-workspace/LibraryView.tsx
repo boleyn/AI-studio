@@ -427,12 +427,28 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
     } finally { setBatchBusy(false); }
   }
+  function pageUrl(file:LibraryFile) {
+    const url = new URL("/",window.location.origin);
+    url.searchParams.set("view","library");
+    url.searchParams.set("libraryItem",file.id);
+    const visited = new Set<string>();
+    let parentId = file.folderId;
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = files?.find(item=>item.id === parentId && !item.deleted);
+      if (!parent) break;
+      if (isContainer(parent)) {
+        url.searchParams.set("libraryFolder",parent.id);
+        break;
+      }
+      parentId = parent.folderId;
+    }
+    return url.href;
+  }
   async function copyPage(file:LibraryFile, markdown:boolean) {
     try {
       const value = markdown ? await (await readLibraryAttachment(file)).text()
-        : new URL((router.asPath.split("?")[0] || "/") + "?" + new URLSearchParams({
-            view:"library", libraryItem:file.id, ...(file.folderId ? {libraryFolder:file.folderId} : {})
-          }), window.location.origin).href;
+        : pageUrl(file);
       await navigator.clipboard.writeText(value);
       toast({status:"success",title:markdown ? "已复制 Markdown" : "已复制链接"});
     } catch {toast({status:"error",title:"复制失败，请重试"});}
