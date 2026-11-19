@@ -16,7 +16,7 @@ function TemplatePreview({body}: {body: string}) {
 }
 
 export const templates = [
-  { name:"页面使用指南", pageTitle:"页面入门指南", body:"在页面中，你可以写作、创作，并与团队协作。把这个页面当作你的练习场，学习基础操作。\n\n## 开始使用\n\n- [ ] 添加标题、图片、检查清单或表格。\n- [ ] 选中一段文字，在聊天中引用。", icon:GraduationCap, color:"#008cff" },
+  { name:"页面使用指南", pageTitle:"页面入门指南", body:"试着把这页变成一份旅行计划，边写边熟悉资料空间。\n\n## 开始使用\n\n- [ ] 把页面标题改成目的地，在正文里写下出发日期。\n- [ ] 在桌面端点击「保存」，再点击「创建子页面」，用它记录住宿备选。\n- [ ] 用右上角的「分享」邀请同行的人查看行程。\n\n## 在聊天中使用页面\n\n点击「在聊天中引用」，把整页带进对话。如果只想讨论某一天的安排，先选中那段文字，再点击「引用选中文字」。\n\n## 试着问问 ChatGPT\n\n- 根据这份行程，列出出发前需要确认的三件事。\n- 把每天的计划整理成表格，标出仍然缺少的信息。", icon:GraduationCap, color:"#008cff" },
   { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料箱\n\n### 如果时间允许\n\n- [ ] 检查辐射防护罩\n- [ ] 测试通信系统\n- [ ] 撰写状态报告", icon:ClipboardList, color:"#14b95d" },
   { name:"项目跟踪表", body:"## 🔴 需要立即处理\n\n- 发布前通信系统测试\n\n## ⛰️ 里程碑\n\n| 里程碑 | 状态 |\n| --- | --- |\n| ☐ 项目简介 | 已完成 |\n| ☐ 原型评审 | 处理中 |\n| ☐ 发布准备 | 即将开始 |", icon:ChartNoAxesColumn, color:"#168cff" },
   { name:"Trip planner", body:"Travelers: Maya and Sam\nPace: One main activity a day\n\n🧭 The plan\n\nPlan two nights near a mountain observatory.", icon:Plane, color:"#168cff" },
