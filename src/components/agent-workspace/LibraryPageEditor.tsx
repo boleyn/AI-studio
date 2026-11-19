@@ -29,7 +29,23 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const [attempt,setAttempt] = useState(0);
   const [busy,setBusy] = useState(false);
   const [selection,setSelection] = useState({start:0,end:0});
-  const selectedText = content?.body.slice(selection.start,selection.end);
+  const readerBody = useRef<HTMLDivElement>(null);
+  const [readerQuote,setReaderQuote] = useState("");
+  const readerVisible = Boolean(mobileReader || reading);
+  const canQuote = Boolean(onChat);
+  useEffect(()=>{
+    setReaderQuote("");
+    if (!readerVisible || !canQuote) return;
+    const updateQuote = () => {
+      const range = window.getSelection();
+      const inside = readerBody.current && range && !range.isCollapsed &&
+        readerBody.current.contains(range.anchorNode) && readerBody.current.contains(range.focusNode);
+      setReaderQuote(inside ? range.toString() : "");
+    };
+    document.addEventListener("selectionchange",updateQuote);
+    return ()=>document.removeEventListener("selectionchange",updateQuote);
+  },[readerVisible,content?.body,canQuote]);
+  const selectedText = readerVisible ? readerQuote : content?.body.slice(selection.start,selection.end);
   const currentBody = content?.body ?? "";
   const lineStart = currentBody.slice(0, selection.start).lastIndexOf("\n") + 1;
   const commandPrefix = currentBody.slice(lineStart, selection.start);
@@ -141,9 +157,10 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     }
   }}><Flex align="center" justify="space-between" wrap="wrap" gap={2}>
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
-    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
+    <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onMouseDown={event=>{if (readerQuote) event.preventDefault();}} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
       {!mobileReader && content && <Button size="sm" variant="ghost" isDisabled={busy} onClick={()=>{
         if (!reading) setAttempt(value=>value+1);
+        setSelection({start:0,end:0});
         setReading(value=>!value);
       }}>{reading ? "继续编辑" : "预览页面"}</Button>}
       {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
@@ -159,7 +176,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Box maxH="50vh" overflowY="auto" my={2}><LibraryMarkdown interactivePages>{conflict.body}</LibraryMarkdown></Box>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
-      {mobileReader || reading ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown interactivePages>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
+      {mobileReader || reading ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5} ref={readerBody}><LibraryMarkdown interactivePages>{content.body}</LibraryMarkdown></Box></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>{locationNav}
       {(suggestSubpage || suggestVisualize || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
