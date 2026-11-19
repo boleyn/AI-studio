@@ -451,9 +451,20 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (batchBusy || !picked.length) return;
     const restoring = section === "回收站";
     const failed: LibraryFile[] = [];
+    const parents = new Map(files?.filter(item => item.kind === "页面").map(item => [item.id, item.folderId]));
+    function pageDepth(file: LibraryFile) {
+      const seen = new Set<string>();
+      let parent = file.folderId;
+      while (parent && parents.has(parent) && !seen.has(parent)) {
+        seen.add(parent);
+        parent = parents.get(parent);
+      }
+      return seen.size;
+    }
+    const ordered = picked.map(file => ({file, depth:pageDepth(file)})).sort((a,b) => a.depth - b.depth);
     setBatchBusy(true);
     try {
-      for (const file of picked) {
+      for (const {file} of ordered) {
         if (!await update(file, {deleted:!restoring}, false)) failed.push(file);
       }
       if (failed.length) {
