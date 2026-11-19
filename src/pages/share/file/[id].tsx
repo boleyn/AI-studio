@@ -81,7 +81,7 @@ export default function SharedArtifactPage() {
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
       {libraryLink}
-      <LibraryItemIcon item={{name:previewName}} compact />
+      <LibraryItemIcon item={{name:previewName,sharedPage:current.livePage}} compact />
       <Text isTruncated flex={1} fontSize="sm" fontWeight="semibold">{current.filename}</Text>
       {current.editablePageId && <Button size="sm" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} onClick={()=>setEditing(true)}>编辑页面</Button>}
       {isSpreadsheet && <PreviewZoomMenu label="表格缩放" zoom={spreadsheetZoom} onChange={setSpreadsheetZoom} />}
