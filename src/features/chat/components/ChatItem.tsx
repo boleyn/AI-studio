@@ -321,13 +321,13 @@ const ChatItem = ({
   return (
     <Flex justify={isUser ? "flex-end" : "flex-start"} w="100%">
       <Modal isOpen={Boolean(preview)} onClose={()=>setPreview(undefined)} size="2xl" scrollBehavior="inside" isCentered>
-        <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md">{preview?.name}</ModalHeader>
+        <ModalOverlay/><ModalContent mx={4} borderRadius="18px"><ModalHeader pr={12} fontSize="md" overflowWrap="anywhere">{preview?.name}</ModalHeader>
           <ModalCloseButton aria-label="关闭附件预览"/><ModalBody pb={6} minW={0}>
             {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
-              {previewSourceLink ? <Text fontSize="sm">{previewSourceLink}</Text> : !preview?.url && (
+              {previewSourceLink ? <Text fontSize="sm">{previewSourceLink}</Text> : (
                 <Link href="/?view=library" isExternal fontSize="sm" textDecoration="underline">前往资料空间查找文件</Link>
               )}
             </Flex> :
