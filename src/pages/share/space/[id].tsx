@@ -3,12 +3,19 @@ import { LibraryReadError, libraryReadMessage, recordLibraryOpen } from "@featur
 import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
 import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
+import NextLink from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 type Contents = {name:string;body?:string;pages?:{id:string;name:string;path?:string}[]};
 export default function SharedSpace() {
+  const router = useRouter();
+  const {id,page} = router.query;
+  return <SharedSpaceContents key={JSON.stringify([id,page])} />;
+}
+
+function SharedSpaceContents() {
   const router = useRouter();
   const {id,page} = router.query;
   const toast = useToast();
@@ -55,7 +62,7 @@ export default function SharedSpace() {
       {error.login ? <Button as="a" href={"/login?" + new URLSearchParams({lastRoute:router.asPath})} size="sm" borderRadius="full">登录</Button> :
         <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
-      {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
+      {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link as={NextLink} key={item.id} href={"?"+new URLSearchParams({page:item.id})} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown interactivePages>{data.body || ""}</LibraryMarkdown>
           {typeof id === "string" && typeof page === "string" && <Button size="sm" variant="outline" mt={6} isLoading={downloading} onClick={async () => {
             setDownloading(true);
