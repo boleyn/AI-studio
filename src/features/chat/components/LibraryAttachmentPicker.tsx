@@ -155,7 +155,11 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
           onClick={()=>setShowDrive(drive)}>{source}</Button>;
       })}
     </Flex>}
-    {space && !showDrive && <Button mx={5} mb={2} alignSelf="start" size="sm" variant="ghost" isDisabled={busy} onClick={()=>browseSpace()}>‹ 资料空间 / {space.name}</Button>}
+    {space && !showDrive && <Flex mx={5} mb={2} align="center" gap={2} minW={0}>
+      <Button size="sm" variant="ghost" flexShrink={0} aria-label="返回资料空间" isDisabled={busy} onClick={()=>browseSpace()}>‹ 资料空间</Button>
+      <Text as="span" color="gray.500" aria-hidden>/</Text>
+      <Text fontSize="sm" minW={0} isTruncated title={space.name}>{space.name}</Text>
+    </Flex>}
     {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
       const errors = await onAdd(files);
       if (errors[0]) throw new Error(errors[0]);
