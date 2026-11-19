@@ -41,6 +41,7 @@ const slideTemplates = [
   "Market Trends Report",
   "Project Kickoff",
 ] as const;
+const galleryCategories = ["为你推荐", "页面", "幻灯片", "电子表格", "图像"];
 const imageTemplates = [
   {name: "海报", cover: "poster"},
   {name: "室内设计", cover: "interior-design"},
@@ -131,7 +132,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   const [query, setQuery] = useState("");
   const [building,setBuilding] = useState<string>();
   const [buildError,setBuildError] = useState("");
-  const [category, setCategory] = useState("为你推荐");
+  const firstCategory = useRef<HTMLButtonElement>(null);
+  const [category, setCategory] = useState(galleryCategories[0]);
   const pages = templates.slice(1).filter(template =>
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
@@ -167,16 +169,32 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
     }
   }
 
-  return <Modal finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
+  return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="20px">
       <ModalHeader>Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
       <Flex px={6} pb={4} gap={2} align="center" wrap="wrap">
-        {["为你推荐", "页面", "幻灯片", "电子表格", "图像"].map(label =>
-          <Button key={label} size="sm" borderRadius="full" aria-pressed={category === label}
-            variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}>{label}</Button>
-        )}
+        <Flex role="tablist" aria-label="模板分类" gap={2} maxW="full" overflowX="auto">
+          {galleryCategories.map((label, index) =>
+            <Button key={label} ref={index === 0 ? firstCategory : undefined} id={`gallery-tab-${index}`}
+              role="tab" aria-selected={category === label} aria-controls="gallery-results"
+              tabIndex={category === label ? 0 : -1} size="sm" borderRadius="full" flexShrink={0}
+              variant={category === label ? "solid" : "ghost"} onClick={() => setCategory(label)}
+              onKeyDown={event => {
+                const count = galleryCategories.length;
+                const targets: Record<string, number> = {
+                  ArrowRight: (index + 1) % count, ArrowLeft: (index + count - 1) % count,
+                  Home: 0, End: count - 1
+                };
+                const next = targets[event.key];
+                if (next === undefined) return;
+                event.preventDefault();
+                setCategory(galleryCategories[next]);
+                document.getElementById(`gallery-tab-${next}`)?.focus();
+              }}>{label}</Button>
+          )}
+        </Flex>
         <Box flex={1} />
         {searching && <Input autoFocus aria-label="搜索模板" size="sm" w="min(200px, 30vw)" placeholder="搜索模板"
           value={query} onChange={event => setQuery(event.target.value)} />}
@@ -191,7 +209,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           </MenuList>
         </Menu>
       </Flex>
-      <ModalBody>
+      <ModalBody id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
         {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
         <SimpleGrid columns={{base:2, md:4}} gap={4}>
           {shows("页面") && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
