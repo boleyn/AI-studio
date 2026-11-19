@@ -412,6 +412,8 @@ const ChatItem = ({
               isWorkspaceChat ? (
                 <StreamdownMarkdown
                   onOpenWorkspaceFile={openReplyArtifact}
+                  resolveWorkspaceFile={workspaceArtifacts.length ? findReplyArtifact : undefined}
+                  resolveWorkspaceImage={workspaceArtifacts.length ? resolveWorkspaceImage : undefined}
                   showAnimation={showAssistantAnimation && latestAnswerIndex === 0}
                   source={openingAnswer.text || ""}
                 />
