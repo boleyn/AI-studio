@@ -8,7 +8,7 @@ import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibraryS
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import { matchesLibraryType } from "@/components/agent-workspace/libraryFileType";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, expandLibrarySelection, isContainer, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -63,7 +63,10 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       else rootItems.current = loaded;
       setItems(loaded);
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
+      if (controller.signal.aborted) return;
+      if (reason instanceof TypeError) setError("连接失败，请检查网络后重试。");
+      else if (reason instanceof SyntaxError) setError("资料列表未能加载，请重试。");
+      else setError(reason instanceof Error ? reason.message : "暂时无法加载资料，请稍后重试。");
     });
     return () => controller.abort();
   },[attempt,space]);
