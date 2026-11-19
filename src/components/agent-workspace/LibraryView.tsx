@@ -729,9 +729,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     setCopyMenuId(open ? spaceId : undefined);
     requestAnimationFrame(()=>menu?.querySelector<HTMLElement>(open ? "[data-copy-link]" : "[data-copy-trigger]")?.focus());
   }
-  const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
+  const actions = (file: LibraryFile, sidebarPage = false) => <Menu placement={sidebarPage ? "right-start" : "bottom-end"} onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
     <MenuButton as={IconButton} variant="ghost" size="xs" isDisabled={selectionLocked} aria-label={fileType(file) === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
-    <Portal><MenuList w={personalSection ? "220px" : "240px"} minW="0" p="10px" borderWidth={0} boxShadow="0 0 0 0.5px rgb(0 0 0 / 10%), 0 0 0 0.5px rgb(0 0 0 / 10%), 0 8px 16px -4px rgb(0 0 0 / 12%)" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
+    <Portal><MenuList w={personalSection || sidebarPage ? "220px" : "240px"} minW="0" p="10px" borderWidth={0} boxShadow="0 0 0 0.5px rgb(0 0 0 / 10%), 0 0 0 0.5px rgb(0 0 0 / 10%), 0 8px 16px -4px rgb(0 0 0 / 12%)" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
       {file.kind === "资料空间" && <MenuItem icon={<Copy size={20}/>} onClick={()=>copySpace(file,"链接")}>复制资料空间链接</MenuItem>}
@@ -759,7 +759,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           }}}>
           <Flex align="center" justify="space-between">复制<ChevronRight size={14}/></Flex>
         </MenuItem>
-        {copyMenuId === file.id && <Box role="menu" aria-label="复制" position="absolute" right="calc(100% + 15px)" top="-10px"
+        {copyMenuId === file.id && <Box role="menu" aria-label="复制" position="absolute" {...(sidebarPage ? {left:"calc(100% + 15px)"} : {right:"calc(100% + 15px)"})} top="-10px"
           w="180px" p="10px" bg="chakra-body-bg" borderWidth="1px" borderRadius="14px" shadow="md" zIndex={1}
           sx={{"@media (max-width: 440px)":{position:"static",width:"auto",minWidth:0,marginInlineStart:"20px",border:0,boxShadow:"none",paddingBlock:0}}}
           onKeyDown={event=>{
@@ -845,7 +845,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar recentPageActions={page=><>{actions(page)}{!page.shareId && <IconButton size="xs" variant="ghost"
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar recentPageActions={page=><>{actions(page,true)}{!page.shareId && <IconButton size="xs" variant="ghost"
       aria-label={`在 ${page.name} 下添加子页面`} icon={<Plus size={16}/>} isDisabled={creating}
       onClick={()=>createPage("无标题页","","页面",undefined,page.id)}/>}</>} driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=>space.shareId ? actions(space) : <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
@@ -941,7 +941,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <Button variant="ghost" onClick={onBack}>返回聊天</Button>
         </Flex>
         <Flex align="center" gap={2} minW={0} maxW="full"><Heading as="h1" display="flex" alignItems="center" flexWrap={folder ? "wrap" : undefined} minW={0} gap={2} fontSize="24px" lineHeight={allHome ? "1.2" : "36px"} fontWeight="500">
-          {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
+          {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("你的条目","全部",undefined,undefined,true)}>全部</Button>
             {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center" maxW="full" minW={0}><ChevronRight size={16} style={{flexShrink:0}}/>
               {item.id===folder.id ? <Text as="span" isTruncated title={item.name}>{item.name}</Text> : <Button variant="link" minW={0} fontSize="inherit" title={item.name} onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}><Text as="span" isTruncated>{item.name}</Text></Button>}</Flex>)}</> : section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}>{!personalSection && librarySearchField}
