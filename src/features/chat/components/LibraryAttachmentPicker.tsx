@@ -80,8 +80,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     }
     return names.reverse().join(" / ");
   }
-  const failedElsewhere = selected.filter(item => fileErrors.has(item.id) && !items?.some(row => row.id === item.id));
-  const attachable = items && [...failedElsewhere, ...items.filter(item=>!item.siteId)];
+  const selectedElsewhere = selected.filter(item => !itemsById.has(item.id));
+  const attachable = items && [...selectedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
     folderPath(item),
     sourceLabel(item),
@@ -96,7 +96,6 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setSpace(next);
     setItems(undefined);
     setQuery("");
-    setFileErrors(new Map());
     setError("");
   }
   function toggleItem(item: LibraryFile) {
@@ -154,7 +153,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
       const errors = await onAdd(files);
       if (errors[0]) throw new Error(errors[0]);
-      onClose();
+      if (selected.length) setShowDrive(false);
+      else onClose();
     }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
       <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件、页面或文件夹" value={query} onChange={event=>setQuery(event.target.value)}/>
       {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
