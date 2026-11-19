@@ -77,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const native = share.libraryItemId ? await (await getMongoDb()).collection("library_pages").findOne(
       {_id:new ObjectId(share.libraryItemId),owner:share.ownerId,deleted:{$ne:true},purging:{$ne:true}},
-      {projection:share.livePage ? {name:1,body:1} : {_id:1}}
+      {projection:share.livePage ? {name:1,body:1} : {originalName:1}}
     ) : null;
     if (share.libraryItemId ? !native : !await canAccessArtifactSource(share.projectToken,share.ownerId,share.fileOrigin === "上传")) {
       return res.status(404).json({ error: "共享文件不可用" });
@@ -101,7 +101,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const buffer = share.livePage && native
         ? Buffer.from("# " + native.name + "\n\n" + native.body)
         : (await readArtifactShareSnapshot(id)).buffer;
-      res.setHeader("Content-Type", share.livePage && native ? "text/markdown; charset=utf-8" : "application/octet-stream");
+      const markdown = share.livePage || /\.(md|markdown)$/i.test(native?.originalName || filename);
+      res.setHeader("Content-Type", markdown ? "text/markdown; charset=utf-8" : "application/octet-stream");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16))}`);
       return res.status(200).send(buffer);
