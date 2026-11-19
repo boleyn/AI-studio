@@ -710,8 +710,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           </MenuOptionGroup>}</MenuList>
         </Menu>}
         {!sitesSection && !pagesSection && <Box aria-hidden="true" w="1px" h="16px" mx={1} flexShrink={0} bg="blackAlpha.100"/>}
-        <IconButton aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
-        <IconButton aria-label="列表视图" aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
+        <IconButton role="checkbox" aria-label="网格视图" aria-checked={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
+        <IconButton role="checkbox" aria-label="列表视图" aria-checked={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
       </Box>
       {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
@@ -803,7 +803,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" onClick={() => onOpen(file.token,file.chatId)}>{file.conversation}</Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{new Date(file.deletedAt).toLocaleDateString("zh-CN")}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
               {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
-                aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
+                role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>}
               {actions(file)}</Flex></td>
