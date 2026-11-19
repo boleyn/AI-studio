@@ -274,7 +274,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   }
   const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
-    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !router.query.librarySiteSettings && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
+    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && router.query.librarySearch === undefined && !router.query.librarySiteSettings && !router.query.siteDetail && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
     void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
   }
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
