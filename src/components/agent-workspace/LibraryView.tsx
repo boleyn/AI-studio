@@ -782,8 +782,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={personalSection ? "搜索个人页面" : allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
               placeholder={personalSection ? "搜索个人页面" : sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "37px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
               value={query} onChange={event => setQuery(event.target.value)}/>
-            {query && <InputRightElement><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
-              icon={<X size={14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
+            {query && <InputRightElement w={allHome ? "40px" : undefined}><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
+              boxSize={allHome ? "16px" : undefined} minW={allHome ? "16px" : undefined}
+              icon={<X size={allHome ? 16 : 14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
           </InputGroup>;
   return <Flex flex="1" minW={0} minH={0}>
     <SkipNavLink id="library-content" zIndex="skipLink">跳转到内容</SkipNavLink>
@@ -1141,7 +1142,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
+              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection || Boolean(allHome && searchTerm && column === "name")} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody style={{userSelect:"none"}}
             onPointerDown={event=>{
