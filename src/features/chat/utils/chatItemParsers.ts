@@ -457,7 +457,8 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
     }
     if (index < 0) return file;
     const [block] = remaining.splice(index, 1);
-    const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type));
+    const useBlockType = block.type && (!file.type || /^application\/octet-stream(?:;|$)/i.test(file.type) ||
+      (/^text\/plain(?:;|$)/i.test(file.type) && /^text\/(?:x-)?markdown(?:;|$)/i.test(block.type)));
     return {
       ...file,
       ...(useBlockType ? { type: block.type } : {}),

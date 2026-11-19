@@ -372,7 +372,7 @@ const ChatItem = ({
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
                   const isMarkdown = /\.(md|markdown)$/i.test(name) ||
-                    /^text\/markdown(?:;|$)/i.test(file.type || "");
+                    /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
                   const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
                     "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
                   const imageFailed = image && failedImages.has(fileUrl);
