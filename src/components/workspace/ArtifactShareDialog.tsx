@@ -10,7 +10,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 type Member = { userId?: string; username: string; canEdit?: boolean };
 type Share = { slug?:string; restricted?:boolean; id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
 
-export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, spaceId, displayName, onClose }: {
+export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, spaceId, displayName, page = false, onClose }: {
   token: string;
   path: string;
   version?: string;
@@ -19,6 +19,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   siteId?: string;
   spaceId?: string;
   displayName?: string;
+  page?: boolean;
   onClose: () => void;
 }) {
   const [share, setShare] = useState<Share>();
@@ -74,9 +75,9 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   return (
     <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
-      <ModalContent mx={3} borderRadius="20px">
-        <ModalHeader pr={10} overflowWrap="anywhere">共享 {displayName || path.split("/").pop()}</ModalHeader>
-        <ModalCloseButton isDisabled={busy} aria-label="关闭分享对话框" />
+      <ModalContent mx={3} maxW={page ? "512px" : undefined} borderRadius={page ? "16px" : "20px"}>
+        <ModalHeader pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}</ModalHeader>
+        <ModalCloseButton isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
         <ModalBody>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}

@@ -1176,7 +1176,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       await onChat([file], `帮我自定义一份 ${name} 的个人副本`);
       setGalleryOpen(false);
     }} onImage={name => { setGalleryOpen(false); void startCreativeChat("图像", "帮我创建" + name + "，"); }} onSlides={name => { setGalleryOpen(false); void createSlides(name); }} onUpload={() => { setGalleryOpen(false); fileInput.current?.click(); }} onWorkbook={file => { setGalleryOpen(false); void uploadFiles([file], true, undefined, folder?.id,true); }} triggerRef={galleryTrigger} onClose={() => { setGalleryOpen(false); requestAnimationFrame(() => galleryTrigger.current?.focus()); }} onPick={(name, body) => { setGalleryOpen(false); void createPage(name, body); }} />}
-    {sharing && <ArtifactShareDialog spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
+    {sharing && <ArtifactShareDialog page={sharing.kind === "页面"} spaceId={sharing.kind==="资料空间" ? sharing.id : undefined} siteId={sharing.siteId} token={sharing.token} path={sharing.siteId ? sharing.name : sharing.path} displayName={sharing.name} version={sharing.version}
       libraryItemId={sharing.directUpload || sharing.kind==="页面" ? sharing.id : undefined}
       chatId={sharing.kind==="上传" && !sharing.directUpload ? sharing.chatId : undefined} onClose={()=>setSharing(undefined)}/>}
     <Modal isOpen={newKind === "资料空间"} onClose={closeSpaceDialog} isCentered>
