@@ -205,7 +205,7 @@ const ChatItem = ({
     try {
       const name = content.trim().split("\n")[0].replace(/^#{1,6}\s+/, "").slice(0, 100) || "无标题页";
       const response = await fetch("/api/library/pages", {method:"POST",
-        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:content,kind:"页面"})});
+        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:content,kind:"页面",sourceChat:token && activeConversationId ? {token,chatId:activeConversationId} : undefined})});
       if (!response.ok) throw new Error();
       const page: LibraryFile = await response.json();
       setSavedPage(page.id);

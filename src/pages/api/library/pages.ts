@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!source) return res.status(404).end();
       input = {name:source.name.slice(0,252)+" 副本",body:source.body,folderId:source.folderId,kind:"页面"};
     }
-    const parsed = fields.extend({appearance:z.object({icon:z.string().max(20),color:z.string().max(10)}).optional(),kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
+    const parsed = fields.extend({sourceChat:z.object({token:z.string().min(1).max(256),chatId:z.string().min(1).max(256)}).optional(),appearance:z.object({icon:z.string().max(20),color:z.string().max(10)}).optional(),kind:z.enum(["页面","文件夹","资料空间"]).default("页面"),folderId:z.string().regex(/^[a-f0-9]{24}$/).nullable().optional()}).safeParse(input);
     if (!parsed.success) return res.status(400).end();
     const time = new Date().toISOString();
     if (parsed.data.folderId && !await pages.findOne({owner,_id:new ObjectId(parsed.data.folderId),kind:{$in:parsed.data.kind === "页面" ? ["文件夹","资料空间","页面",null] : ["文件夹","资料空间"]},deleted:{$ne:true},purging:{$ne:true}})) return res.status(400).end();
