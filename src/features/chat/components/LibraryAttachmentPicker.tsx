@@ -211,8 +211,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
           <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box as="span" flex="1" minW={0}><AttachmentFilename name={item.name} fontSize="sm"/>
             <Text as="span" display="block" id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={source}>{source}</Text>
+            {fileErrors.has(item.id) && <Text as="span" display="block" mt={1} id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
           </Box></Flex>
-            {fileErrors.has(item.id) && <Text as="span" id={"library-error-"+item.id} color="#944525" fontSize="xs" overflowWrap="anywhere">{fileErrors.get(item.id)}</Text>}
         </Flex>;
       })}
     </ModalBody>
