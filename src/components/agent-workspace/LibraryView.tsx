@@ -616,6 +616,9 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         ...(time && {time}),
         ...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? time ?? new Date().toISOString() : null}),
       } : item));
+      if (changes.deleted && isContainer(file) && folder?.id === file.id && window.location.search === new URL(router.asPath, window.location.origin).search) {
+        navigateList("你的条目", "全部", file.folderId || undefined, undefined, true);
+      }
       if (file.kind === "页面" && changes.deleted !== undefined) setAttempt(value => value + 1);
       if (changes.name !== undefined) setRename(undefined);
       return true;
