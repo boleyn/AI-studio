@@ -5,7 +5,6 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
-import { buildDownloadUrl, downloadWorkspaceArtifact } from "@features/chat/services/files";
 import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
@@ -393,13 +392,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return usePicked("chat",attachments);
   }
   const key = (file: LibraryFile) => file.id;
-  const downloadUrl = (file:LibraryFile) => file.shareId ? "/api/artifact-share?id="+file.shareId+"&file=1" : file.directUpload ? "/api/library/files?id=" + file.id : buildDownloadUrl({storagePath:file.path,token:file.token,chatId:file.chatId});
   const download = (file: LibraryFile) => isArtifactImage(file.path || file.name) ?
     <IconButton size="sm" variant="ghost" borderRadius="full" aria-label="下载文件" title="下载文件"
-      icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> : file.kind === "上传" ?
-    <Button as="a" size="xs" variant="ghost" href={downloadUrl(file)}>下载</Button> :
-    <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version,file.name)
-      .catch(() => toast({ status:"error", title:"无法下载此文件" }))}>下载</Button>;
+      icon={<Download size={16}/>} isLoading={batchBusy} onClick={()=>usePicked("download",[file])}/> :
+    <Button size="xs" variant="ghost" isLoading={batchBusy} onClick={()=>usePicked("download",[file])}>下载</Button>;
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
     try {
@@ -507,8 +503,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={()=>{void copyPage(file,index === 1);closeActions();}}>{label}</Button>)}
         </Box>}
       </Box>}
-      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : file.kind === "页面" ? <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> : file.kind === "上传" ? <MenuItem icon={<Download size={16}/>} as="a" href={downloadUrl(file)}>下载</MenuItem> :
-        <MenuItem icon={<Download size={16}/>} onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version,file.name).catch(() => toast({status:"error",title:"下载失败"}))}>下载</MenuItem>}
+      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
+        <MenuItem icon={<Download size={16}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
       {!pagesSection && <>
         <MenuDivider my={2}/>
         <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
