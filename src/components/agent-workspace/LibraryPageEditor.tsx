@@ -21,6 +21,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const [busy,setBusy] = useState(false);
   const [selection,setSelection] = useState({start:0,end:0});
   const selectedText = content?.body.slice(selection.start,selection.end);
+  const currentBody = content?.body ?? "";
+  const lineStart = currentBody.slice(0, selection.start).lastIndexOf("\n") + 1;
+  const commandPrefix = currentBody.slice(lineStart, selection.start);
+  const suggestSubpage = onCreateSubpage && !busy && !conflict && selection.start === selection.end &&
+    (!currentBody[selection.end] || currentBody[selection.end] === "\n") &&
+    commandPrefix.startsWith("/") && "/page".startsWith(commandPrefix);
   const hasSelection = Boolean(selectedText?.trim());
   const [openingChat,setOpeningChat] = useState(false);
   const [status,setStatus] = useState("");
@@ -57,6 +63,11 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     setContent(next);
     drafts?.set(url,{...next,revision});
     setStatus("尚未保存");
+  }
+  function createSubpageFromLine(start:number, end:number) {
+    if (!content || !onCreateSubpage) return;
+    edit({...content, body:content.body.slice(0, start) + content.body.slice(end)});
+    onCreateSubpage();
   }
   function acknowledgeConflict() {
     if (!content || !conflict) return;
@@ -117,6 +128,9 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       </Box>}
       {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
+      {suggestSubpage && <Button size="sm" variant="outline" mt={3} onClick={()=>createSubpageFromLine(lineStart, selection.end)}>
+        创建子页面 · /page
+      </Button>}
       <Textarea onKeyDown={event => {
         if (busy || openingChat || conflict || event.key !== "Enter" || event.shiftKey || event.ctrlKey ||
           event.metaKey || event.altKey || event.nativeEvent.isComposing || event.repeat) return;
@@ -133,13 +147,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         }
         if (line !== "/page" || !onCreateSubpage) return;
         event.preventDefault();
-        edit({...content, body:value.slice(0, lineStart) + value.slice(selectionStart)});
-        onCreateSubpage();
+        createSubpageFromLine(lineStart, selectionStart);
       }} onSelect={event=>{
         const {selectionStart,selectionEnd} = event.currentTarget;
         setSelection({start:selectionStart,end:selectionEnd});
       }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
-        onChange={event => {edit({...content,body:event.target.value});}}/></>}
+        onChange={event => {const {value,selectionStart,selectionEnd} = event.currentTarget; setSelection({start:selectionStart,end:selectionEnd}); edit({...content,body:value});}}/></>}
       {subpages}
     </Box>}</Box>;
 }
