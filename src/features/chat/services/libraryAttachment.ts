@@ -122,7 +122,8 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
     const page = await response.json();
-    return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],markdownFilename(page.name),{type:"text/markdown"}),item.id);
+    const name = page.name || item.name;
+    return fromLibrary(new File(["# " + name + "\n\n" + (page.body ?? "")],markdownFilename(name),{type:"text/markdown"}),item.id);
   }
   const blob = await response.blob();
   if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(item.name),{type:"text/markdown"}),item.id);
