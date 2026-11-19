@@ -32,8 +32,8 @@ type Props = {
 export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, sectionHref, onSectionNavigate, onSection, onFile, onSearch, onCollapse }: Props) {
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
-  const [expanded, setExpanded] = useState(false);
-  const focusNewRecent = useRef(false);
+  const [recentLimit, setRecentLimit] = useState(5);
+  const focusNewRecent = useRef<number>();
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
@@ -75,9 +75,9 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
         aria-current={activeSpaceId === item.id ? "page" : undefined} title={item.name} leftIcon={<LibraryItemIcon item={item} compact/>} onClick={() => onFile(item)}><Text isTruncated>{item.name}</Text></Button>{spaceActions(item)}</Flex>)}
       <Button mt="17px" variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.length > 0 && <Flex direction="column" gap="1px" mt="4px">
-      {recentItems.slice(0,expanded ? undefined : 5).map((file,index) => <Button key={file.id} ref={index === 5 ? node => {
-        if (node && focusNewRecent.current) {
-          focusNewRecent.current = false;
+      {recentItems.slice(0,recentLimit).map((file,index) => <Button key={file.id} ref={index === focusNewRecent.current ? node => {
+        if (node) {
+          focusNewRecent.current = undefined;
           node.focus();
         }
       } : undefined} variant="ghost" size="sm" w="full"
@@ -86,7 +86,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
             ? <AttachmentFilename name={file.name} fontSize="inherit"/>
             : <Text isTruncated>{file.name}</Text>}
         </Button>)}
-      {recentItems.length > 5 && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" aria-expanded={expanded} onClick={event => { focusNewRecent.current = !expanded && event.detail === 0; setExpanded(!expanded); }}>{expanded ? "收起" : "展开显示"}</Button>}
+      {recentItems.length > recentLimit && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" onClick={event => { focusNewRecent.current = event.detail === 0 ? recentLimit : undefined; setRecentLimit(limit => limit + 5); }}>展开显示</Button>}
       </Flex>}
     </Box>
     <Button variant="ghost" justifyContent="start" size="sm" flexShrink={0} h="35px" mb="9px" px="8px" iconSpacing="6px" fontWeight="normal" borderRadius="8px" aria-current={section === "回收站" ? "page" : undefined} bg={section === "回收站" ? "#eee" : undefined} leftIcon={<Trash2 size={20} strokeWidth={1.6}/>} onClick={() => onSection("回收站")}>回收站</Button>
