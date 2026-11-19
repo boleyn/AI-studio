@@ -264,7 +264,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   const search = useRef<HTMLInputElement>(null);
   const [sharing,setSharing] = useState<LibraryFile>();
-  const [purge,setPurge] = useState<{scope:"all" | "selection"; items:LibraryFile[]}>();
+  const [purge,setPurge] = useState<{scope:"all" | "selection"; items:LibraryFile[]; error?:string}>();
   const [rename, setRename] = useState<LibraryFile>();
   const [title, setTitle] = useState("");
   const [renameError, setRenameError] = useState("");
@@ -1045,11 +1045,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     </Modal>
     <Modal isOpen={Boolean(purge)} onClose={() => {if (!saving) setPurge(undefined);}} isCentered>
       <ModalOverlay/><ModalContent borderRadius="16px"><ModalHeader>{purge?.scope === "all" ? "清空回收站？" : purge && purge.items.length > 1 ? "永久删除这些项目？" : "永久删除项目？"}</ModalHeader>
-        <ModalBody>{purge?.items.length === 1 ? "“" + purge.items[0].name + "”" : (purge?.items.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。</ModalBody>
+        <ModalBody>{purge?.items.length === 1 ? "“" + purge.items[0].name + "”" : (purge?.items.length || 0) + " 个项目"}将被永久删除，此操作无法撤销。
+          {purge?.error && <Text role="alert" mt={3} fontSize="sm" color="red.700" overflowWrap="anywhere">{purge.error}</Text>}
+        </ModalBody>
         <ModalFooter gap={2}><Button isDisabled={saving} onClick={() => setPurge(undefined)}>取消</Button>
           <Button colorScheme="red" isLoading={saving} onClick={async () => {
             if (!purge || saving) return;
             setSaving(true);
+            setPurge({...purge,error:undefined});
+            let currentName = "";
             try {
               const byId = new Map(purge.items.map(item => [item.id, item]));
               const depth = (item: LibraryFile) => {
@@ -1064,6 +1068,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               const pending = purge.items.map(item => ({item, depth:depth(item)}))
                 .sort((left,right) => right.depth - left.depth);
               for (const {item} of pending) {
+                currentName = item.name;
                 const response = await fetch("/api/library?id=" + encodeURIComponent(item.id), {method:"DELETE", headers:withAuthHeaders({})});
                 if (response.status === 404) {
                   // Another tab may already have restored or removed this item.
@@ -1076,7 +1081,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
                 setSelected(ids => ids.filter(id => id !== item.id));
               }
               setPurge(undefined);
-            } catch (error) { toast({status:"error", title:error instanceof TypeError ? "网络连接中断，请重试" : error instanceof Error ? error.message : "删除失败，请重试"}); }
+            } catch (error) {
+              const reason = error instanceof TypeError ? "网络连接中断，请重试。" : error instanceof Error ? error.message : "删除失败，请重试。";
+              setPurge(current => current && {...current,error:currentName ? `「${currentName}」：${reason}` : reason});
+            }
             finally { setSaving(false); }
           }}>永久删除</Button></ModalFooter>
       </ModalContent></Modal>
