@@ -14,7 +14,7 @@ export function siteConnectionsPlugin(owner?: string, projectToken?: string): Ag
       context.registerTool<{id: string}>({
         name: "ConnectSitePlugin",
         toolset: "site-connections",
-        description: "Register Google Drive for the current published site when the owner asks to connect it. Visitors must authorize their own accounts.",
+        description: "站点插件：在站点所有者要求添加或连接 Google Drive 时，为当前已发布的站点登记插件。Register a site plugin connection. Visitor authorization is separate.",
         parameters: {
           type: "object",
           additionalProperties: false,
