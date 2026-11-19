@@ -10,7 +10,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();
-  const [failed,setFailed] = useState(false);
+  const [loadError,setLoadError] = useState("");
   const [attempt,setAttempt] = useState(0);
   const [busy,setBusy] = useState(false);
   const [selection,setSelection] = useState({start:0,end:0});
@@ -20,9 +20,13 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   const url = "/api/library/pages?id=" + encodeURIComponent(page.id) + (shareId ? "&share=" + encodeURIComponent(shareId) : "");
   useEffect(() => {
     const abort = new AbortController();
-    setFailed(false);
+    setLoadError("");
     fetch(url,{headers:withAuthHeaders(),signal:abort.signal}).then(async response => {
-      if (!response.ok) throw new Error();
+      if (!response.ok) {
+        if (!abort.signal.aborted) setLoadError(response.status === 401 ? "登录已过期，请重新登录。" :
+          response.status === 403 ? "当前账号没有访问权限。" : response.status === 404 ? "页面可能已删除，或共享权限已变更。" : "暂时无法加载，请稍后重试。");
+        return;
+      }
       const data = await response.json();
       if (abort.signal.aborted) return;
       const draft = drafts?.get(url);
@@ -32,7 +36,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       const changed = draft && currentRevision !== draft.revision;
       setConflict(changed ? data : undefined);
       setStatus(changed ? "页面已有新版本，你的草稿已保留" : draft ? "尚未保存" : "");
-    }).catch(() => { if(!abort.signal.aborted) setFailed(true); });
+    }).catch(() => { if (!abort.signal.aborted) setLoadError("请检查网络连接后重试。"); });
     return () => abort.abort();
   },[url,attempt,drafts]);
   function edit(next:{name:string;body:string}) {
@@ -82,7 +86,10 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{selectedText ? "引用选中文字" : "在聊天中引用"}</Button>}
       <Button size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
-    </Flex>{failed ? <Button onClick={() => setAttempt(attempt+1)}>加载失败，重试</Button> :
+    </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
+      <Box flex={1}><Text fontWeight="medium">无法打开页面</Text><Text fontSize="sm">{loadError}</Text></Box>
+      <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>
+    </Flex> :
     content && <Box maxW="760px" mx="auto" mt="8vh">
       {conflict && <Box as="section" aria-label="最新版本" borderWidth="1px" borderRadius="12px" p={4} mb={5}>
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
