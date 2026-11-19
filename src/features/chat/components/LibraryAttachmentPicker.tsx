@@ -16,7 +16,7 @@ function sourceLabel(item:LibraryFile) {
   return item.kind === "生成" ? "会话生成的文件" : item.kind;
 }
 
-export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
+export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:{initialQuery?:string;onClose:()=>void;onAdd:(files:File[])=>Promise<(string | undefined)[]>}) {
   const searchRef = useRef<HTMLInputElement>(null);
   const [driveAvailable,setDriveAvailable] = useState(false);
   const [showDrive,setShowDrive] = useState(false);
@@ -30,7 +30,7 @@ export default function LibraryAttachmentPicker({onClose,onAdd}:{onClose:()=>voi
     return ()=>controller.abort();
   },[]);
   const [items,setItems] = useState<LibraryFile[]>();
-  const [query,setQuery] = useState("");
+  const [query,setQuery] = useState(initialQuery);
   const [selected,setSelected] = useState<string[]>([]);
   const [error,setError] = useState("");
   const [fileErrors,setFileErrors] = useState(new Map<string,string>());

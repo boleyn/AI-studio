@@ -102,7 +102,7 @@ const ChatInput = ({
   const theme = useTheme() as Record<string, any>;
   const chatInputTheme = theme?.workspace?.chatInput || {};
   const skillTheme = chatInputTheme?.skillMention || {};
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState<string>();
   const [imageModeKey,setImageModeKey] = useState<string>();
   const imageMode = Boolean(draftStorageKey && imageModeKey === draftStorageKey);
   const [text, setText] = useState("");
@@ -249,7 +249,7 @@ const ChatInput = ({
       return a.name.localeCompare(b.name);
     });
     const library = {name:"/library", label:"从资料空间添加", description:"搜索文件或页面"};
-    const includeLibrary = !keyword || "资料空间 文件 页面 library google drive".includes(keyword);
+
     if (!keyword) return [...ranked.slice(0, 8), library];
     const matches = ranked
       .filter((item) => {
@@ -258,7 +258,7 @@ const ChatInput = ({
         return name.includes(keyword) || description.includes(keyword);
       })
       .slice(0, 8);
-    return includeLibrary ? [...matches, library] : matches;
+    return [...matches, library];
   }, [selectedSkillList, skillOptions, skillQuery]);
   const showSkillPicker =
     Boolean(mentionRange) &&
@@ -366,7 +366,8 @@ const ChatInput = ({
         setText(text.slice(0,mentionRange.start) + text.slice(mentionRange.end));
         setMentionRange(null);
         setSkillQuery("");
-        setLibraryOpen(true);
+        const query = text.slice(mentionRange.start + 1, mentionRange.end);
+        setLibraryQuery(/^(资料空间|文件|页面|library|drive|google)$/i.test(query) ? "" : query);
         return;
       }
       const next = selectedSkillList.includes(skillName)
@@ -933,10 +934,10 @@ const ChatInput = ({
                 isDisabled={isSending || isSubmitting} size="sm" variant="ghost" borderRadius="full"/>
               <Portal><MenuList>
                 <MenuItem onClick={() => fileInputRef.current?.click()}>从本机上传</MenuItem>
-                <MenuItem onClick={() => setLibraryOpen(true)}>从资料空间添加</MenuItem>
+                <MenuItem onClick={() => setLibraryQuery("")}>从资料空间添加</MenuItem>
               </MenuList></Portal>
             </Menu>
-            {libraryOpen && <LibraryAttachmentPicker onClose={() => setLibraryOpen(false)} onAdd={picked => onPickFiles(picked, true)}/>}
+            {libraryQuery !== undefined && <LibraryAttachmentPicker initialQuery={libraryQuery} onClose={() => setLibraryQuery(undefined)} onAdd={picked => onPickFiles(picked, true)}/>}
             {workspaceLayout ? (
               <>
                 <Box w="1px" h="16px" bg="rgba(0,0,0,0.1)" mx={1} flexShrink={0} />
