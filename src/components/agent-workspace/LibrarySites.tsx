@@ -26,8 +26,9 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
   }, [attempt]);
   if (failed) return <Button onClick={() => setAttempt(value => value + 1)}>重新加载站点</Button>;
   if (!sites) return <Text role="status">正在加载站点…</Text>;
-  const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.toLowerCase().includes(query.trim().toLowerCase()));
-  const empty = query.trim() ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
+  const searchTerm = query.trim().normalize("NFC").toLowerCase();
+  const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
+  const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
   const siteLink = (site: Site) => <Link href={"/share/preview/" + encodeURIComponent(site.id)}>
     <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Text as="span">{site.name}</Text></Flex>
   </Link>;
