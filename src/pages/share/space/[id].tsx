@@ -41,7 +41,10 @@ export default function SharedSpace() {
     return ()=>controller.abort();
   },[id,page,router,attempt]);
   return <Box as="main" maxW="780px" mx="auto" p={6}>
-    {page && <Button as="a" href={"/share/space/"+id} variant="ghost" mb={4}>返回资料空间</Button>}
+    {typeof id === "string" && <Button as="a" variant="ghost" mb={4}
+      href={page ? "/share/space/"+id : "/?"+new URLSearchParams({view:"library",libraryTab:"与你共享"})}>
+      {page ? "返回共享空间" : "返回「与你共享」"}
+    </Button>}
     {error ? <Stack role="alert" align="start" spacing={3}><Text>{error.message}</Text>
       {error.login ? <Button as="a" href={"/login?" + new URLSearchParams({lastRoute:router.asPath})} size="sm" borderRadius="full">登录</Button> :
         <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
