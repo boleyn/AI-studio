@@ -408,7 +408,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     matchesSearch(file)).sort(compareRows);
-  const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
+  const hasPageActions = visible?.some(file => fileType(file) === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   useEffect(() => {
     if (visible && selected.length !== picked.length) {
@@ -636,7 +636,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     requestAnimationFrame(()=>menu?.querySelector<HTMLElement>(open ? "[data-copy-link]" : "[data-copy-trigger]")?.focus());
   }
   const actions = (file: LibraryFile) => <Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>{({onClose:closeActions}) => <>
-    <MenuButton as={IconButton} variant="ghost" size="xs" isDisabled={selectionLocked} aria-label={file.kind === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
+    <MenuButton as={IconButton} variant="ghost" size="xs" isDisabled={selectionLocked} aria-label={fileType(file) === "页面" ? `页面“${file.name}”的操作` : `打开 ${file.name} 的操作菜单`} icon={<MoreHorizontal size={16}/>}/>
     <Portal><MenuList w="240px" minW="0" p="10px" borderWidth={0} boxShadow="0 0 0 0.5px rgb(0 0 0 / 10%), 0 0 0 0.5px rgb(0 0 0 / 10%), 0 8px 16px -4px rgb(0 0 0 / 12%)" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
@@ -650,7 +650,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <MenuItem as="a" href={sitePreviewPath(file.siteId,file.siteSlug)} target="_blank" rel="noopener noreferrer"
           icon={<ExternalLink size={20}/>} onClick={()=>recordOpen(file)}>在浏览器中打开</MenuItem>
       </>}
-      {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
+      {(["页面","演示文稿"].includes(fileType(file))) && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
       <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRenameError(""); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
       {file.kind === "页面" && <Box position="relative" onBlur={event=>{
@@ -1036,7 +1036,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
             <td>{section === "回收站" ? (file.deletedAt ? <time dateTime={file.deletedAt} title={new Date(file.deletedAt).toLocaleString("zh-CN")}>{formatDeletionDate(file.deletedAt,listTime)}</time> : "—") : <time dateTime={rowTime(file) || undefined} title={rowTime(file) ? new Date(rowTime(file)).toLocaleString("zh-CN") : undefined}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time>}</td></>}<td><Flex align="center" justify="end">
-              {file.kind === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
+              {fileType(file) === "页面" && !file.deleted && <IconButton size="xs" variant="ghost"
                 role="checkbox" aria-label={"置顶 " + file.name} aria-checked={Boolean(file.pinned)}
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>}
