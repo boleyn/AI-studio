@@ -1,5 +1,5 @@
 import { AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
-import { Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
+import { BarChart3, Trash2, Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -83,7 +83,8 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   }
   const siteMenu = (site: Site) => <Menu placement="bottom-end">
     <MenuButton as={IconButton} size="sm" variant="ghost" aria-label={site.name + " 的更多操作"} icon={<MoreHorizontal size={16}/>}/>
-    <Portal><MenuList minW="180px" p={2} borderRadius="16px">
+    <Portal><MenuList w="240px" minW={0} maxW="calc(100vw - 16px)" p="10px" borderRadius="16px"
+      sx={{"& [role=menuitem]":{minHeight:"36px",padding:"6px 10px",fontSize:"14px",borderRadius:"8px"}}}>
       {!site.shared && <MenuItem icon={<Share2 size={16}/>} onClick={()=>setSharing(site)}>共享</MenuItem>}
       <MenuItem icon={<Copy size={16}/>} onClick={async ()=>{
         try {
@@ -93,9 +94,9 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       }}>复制链接</MenuItem>
       <MenuItem as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
-      {!site.shared && <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
+      {!site.shared && <MenuItem as="a" icon={<BarChart3 size={16}/>} href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
       {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>{setTitle(site.name);setSettings(site);}}>设置</MenuItem>}
-      {!site.shared && <MenuItem color="red.600" isDisabled={saving} onClick={()=>setPendingDelete(site)}>删除站点</MenuItem>}
+      {!site.shared && <MenuItem icon={<Trash2 size={16}/>} color="red.600" isDisabled={saving} onClick={()=>setPendingDelete(site)}>删除站点</MenuItem>}
     </MenuList></Portal>
   </Menu>;
   const dialog = <>
