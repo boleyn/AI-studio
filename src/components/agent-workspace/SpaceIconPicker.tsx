@@ -18,7 +18,7 @@ export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;
   const options = Object.entries(icons).filter(([name])=>name.includes(query.trim()));
   const tabStop = options.some(([name])=>name===focused) ? focused : options[0]?.[0];
   return <Popover placement="bottom-start" initialFocusRef={search} onOpen={()=>{setQuery("");setFocused(value.icon);}}>
-    <PopoverTrigger><IconButton aria-label="更换图标" variant="ghost" icon={<SpaceIcon appearance={value} size={26}/>}/></PopoverTrigger>
+    <PopoverTrigger><IconButton aria-label="更换图标" boxSize="26px" minW="26px" ml="12px" flexShrink={0} borderRadius="full" variant="ghost" icon={<SpaceIcon appearance={value} size={26}/>}/></PopoverTrigger>
       <PopoverContent w="min(320px,85vw)"><PopoverBody>
         <Input ref={search} type="search" size="sm" aria-label="搜索图标" placeholder="搜索图标" value={query} onChange={e=>setQuery(e.target.value)}/>
         <Flex role="group" aria-label="图标颜色" gap={1} my={2}>{Object.entries(colors).map(([name,color])=>
