@@ -832,8 +832,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
-          <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox label={allChecked ? "清除选择" : "全选"} checked={allChecked}
-                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(allChecked ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
+          <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
+                mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <Flex as="button" type="button" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
@@ -856,8 +856,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               {actions(file)}</Flex></td>
           </Box>)}</tbody>
         </Box></Box>}
-      {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="sticky" bottom={3} zIndex={3} mx="auto" mt={4}
-        w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
+      {picked.length>0 && <Flex role="toolbar" aria-label="所选项目的操作" position="fixed" left="50%" transform="translateX(-50%)" bottom="24px" zIndex={3} fontSize="14px"
+        w="max-content" maxW="calc(100vw - 24px)" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
         <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
