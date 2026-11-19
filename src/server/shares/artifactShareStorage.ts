@@ -71,8 +71,11 @@ export async function updateArtifactShareMember(id: string, ownerId: string, mem
   if (remove) {
     return shares.findOneAndUpdate(filter, { $pull: { members: { userId: member.userId } } }, { returnDocument: "after" });
   }
-  await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
-  if (member.canEdit !== undefined) await shares.updateOne({...filter,"members.userId":member.userId}, {$set:{"members.$.canEdit":member.canEdit}});
+  if (member.canEdit !== undefined) {
+    await shares.updateOne({...filter,"members.userId":member.userId}, {$set:{"members.$.canEdit":member.canEdit}});
+  } else {
+    await shares.updateOne({ ...filter, "members.userId": { $ne: member.userId } }, { $push: { members: {...member, invitedAt:new Date().toISOString()} } });
+  }
   return shares.findOne(filter);
 }
 

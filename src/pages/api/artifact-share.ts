@@ -89,8 +89,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === "PATCH") {
       if (!owner) return res.status(403).json({ error: "仅所有者可管理访问权限" });
       const username = typeof body.username === "string" ? body.username.trim() : "";
-      const member = body.remove === true
-        ? share.members.find((item) => item.username === username)
+      const member = body.remove === true || body.userId !== undefined
+        ? share.members.find((item) => body.userId !== undefined ? item.userId === body.userId : item.username === username)
         : username && username.length <= 100
           ? await findUserByUsername(username).then((user) => user ? { userId: String(user._id), username: user.username } : undefined)
           : undefined;
