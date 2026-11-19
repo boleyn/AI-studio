@@ -414,8 +414,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     } catch(error) {toast({status:"error",title:error instanceof Error ? error.message : "操作失败"});}
     finally {setBatchBusy(false);}
   }
-  function startSpaceChat(space:LibraryFile) {
-    const folders = new Set([space.id]);
+  function startSelectionChat(selection: LibraryFile[]) {
+    const folders = new Set(selection.filter(isContainer).map(item => item.id));
+    if (!folders.size) return usePicked("chat", selection);
     const children = new Map<string,LibraryFile[]>();
     for (const file of files || []) {
       if (file.deleted || !file.folderId) continue;
@@ -423,14 +424,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       if (siblings) siblings.push(file);
       else children.set(file.folderId,[file]);
     }
-    const attachments:LibraryFile[] = [];
+    const attachments = new Map(selection.filter(item => !isContainer(item)).map(item => [item.id, item]));
     for (const folderId of folders) {
       for (const file of children.get(folderId) || []) {
         if (isContainer(file) || file.kind === "页面") folders.add(file.id);
-        if (!isContainer(file) && !file.siteId) attachments.push(file);
+        if (!isContainer(file) && !file.siteId) attachments.set(file.id, file);
       }
     }
-    return usePicked("chat",attachments);
+    return usePicked("chat", [...attachments.values()]);
   }
   const key = (file: LibraryFile) => file.id;
   const download = (file: LibraryFile) => isArtifactImage(libraryTypeName(file)) ?
@@ -612,7 +613,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               toggleCopyMenu(space.id,event.currentTarget.closest('[role="menu"]'),true);
             }}}>复制<ChevronRight size={14}/></MenuItem>
           <MenuItem onClick={()=>createPage("无标题页","","页面",undefined,space.id)}>创建新页面</MenuItem>
-          <MenuItem isDisabled={batchBusy} onClick={()=>startSpaceChat(space)}>新聊天</MenuItem>
+          <MenuItem isDisabled={batchBusy} onClick={()=>startSelectionChat([space])}>新聊天</MenuItem>
           <MenuItem isDisabled={creating} onClick={()=>createSlides(undefined,space.id)}>新建幻灯片</MenuItem>
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
@@ -814,7 +815,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         w="fit-content" maxW="100%" wrap="wrap" align="center" gap={{base:1,md:3}} px={{base:3,md:6}} py={2} minH="52px" borderRadius="26px" bg="#212121" color="#ededed" shadow="md"
         sx={{"& button":{borderRadius:"9999px"},"& > button, & > .chakra-menu__menu-button":{height:"36px"}}}>
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
-        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
+        <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted || (isContainer(item) && item.shareId))} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
         <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
         <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
