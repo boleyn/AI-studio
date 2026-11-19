@@ -117,13 +117,19 @@ export function libraryReadMessage(reason: unknown) {
   return "暂时无法读取，请稍后重试。";
 }
 
-export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSignal):Promise<File> {
+export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSignal, maxBytes?:number):Promise<File> {
   const response = await fetch(libraryAttachmentUrl(item),{headers:withAuthHeaders(),signal});
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
     const page = await response.json();
     const name = page.name || item.name;
     return fromLibrary(new File(["# " + name + "\n\n" + (page.body ?? "")],markdownFilename(name),{type:"text/markdown"}),item.id);
+  }
+  // Pages are converted to Markdown above. For raw files the response length is a lower bound only when unencoded.
+  if (maxBytes !== undefined && !response.headers.has("Content-Encoding") &&
+      Number(response.headers.get("Content-Length")) > maxBytes) {
+    await response.body?.cancel();
+    throw new LibraryReadError(413,item.name);
   }
   const blob = await response.blob();
   if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(item.name),{type:"text/markdown"}),item.id);
@@ -143,7 +149,7 @@ export async function readLibraryAttachments(items: LibraryFile[], purpose: "cha
       if (purpose === "chat" && item.size !== undefined && item.size > MAX_UPLOAD_FILE_SIZE) {
         throw new LibraryReadError(413,item.name);
       }
-      const file = await readLibraryAttachment(item);
+      const file = await readLibraryAttachment(item, undefined, purpose === "chat" ? MAX_UPLOAD_FILE_SIZE : undefined);
       if (purpose === "chat" && file.size > MAX_UPLOAD_FILE_SIZE) throw new LibraryReadError(413,item.name);
       return file;
     })));
