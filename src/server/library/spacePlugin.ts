@@ -28,6 +28,28 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           return {content:JSON.stringify({id:id.toHexString(),name,url:"/?view=library&libraryFolder="+id.toHexString()})};
         },
       });
+      context.registerTool<{pageId:string; name:string}>({
+        name:"RenameLibraryPage",
+        toolset:"library-spaces",
+        description:"按用户要求重命名自己的资料空间页面。使用页面链接中的 libraryItem 编号。",
+        parameters:{
+          type:"object", additionalProperties:false, required:["pageId","name"],
+          properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},name:{type:"string",minLength:1,maxLength:255}},
+        },
+        async handler(input, ctx) {
+          const name = typeof input.name === "string" ? input.name.trim() : "";
+          if (ctx.isSubagent || !name || name.length > 255 || !/^[a-f0-9]{24}$/.test(input.pageId))
+            return {isError:true,content:"请在主对话中提供有效的页面编号和新名称。"};
+          const pages = (await getMongoDb()).collection("library_pages");
+          const filter = {_id:new ObjectId(input.pageId),owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true}};
+          const result = await pages.updateOne({...filter,name:{$ne:name}},{
+            $set:{name,time:new Date().toISOString()},$inc:{revision:1},
+          });
+          if (!result.matchedCount && !await pages.findOne({...filter,name},{projection:{_id:1}}))
+            return {isError:true,content:"找不到可重命名的页面。"};
+          return {content:JSON.stringify({name,url:"/?view=library&libraryItem="+input.pageId})};
+        },
+      });
       context.registerTool<{name:string; body:string; spaceName?:string; spaceId?:string}>({
         name:"CreateLibraryPage",
         toolset:"library-spaces",
