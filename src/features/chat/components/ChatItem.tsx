@@ -122,8 +122,15 @@ const ChatItem = ({
     void (async () => {
       const signal = controller.signal;
       const url = preview.url ? new URL(preview.url,window.location.href) : undefined;
-      const response = url ? await fetch(url, {signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined}) : undefined;
-      if (preview.libraryItemId && (!response || response.status === 404 || response.status === 410)) {
+      let response: Response | undefined;
+      if (url) {
+        try {
+          response = await fetch(url, {signal,headers:url.origin === window.location.origin ? withAuthHeaders() : undefined});
+        } catch (error) {
+          if (signal.aborted || !preview.libraryItemId) throw error;
+        }
+      }
+      if (preview.libraryItemId && (!response || response.status === 404 || response.status === 410 || response.status >= 500)) {
         const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
         if (!library.ok) throw new LibraryReadError(library.status,preview.name);
         const items: LibraryFile[] = await library.json();
