@@ -35,17 +35,18 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
   const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
   if (provider) {
     const available = provider === "Google Drive" && status?.configured;
+    const displayName = provider === "SharePoint" ? "Microsoft SharePoint" : provider;
     const developer = { Box: "Box inc.", Dropbox: "Dropbox", SharePoint: "Microsoft", "Google Drive": "Google" }[provider];
     const back = () => { if (!busy) setProvider(undefined); };
     return <Modal isOpen onClose={back} isCentered><ModalOverlay/>
       <ModalContent mx={3} maxW="480px" minH="264px" borderRadius="24px" borderWidth={0} p={6}>
-        <Image src={"/icons/"+providerIcons[provider]} boxSize="48px" objectFit="contain" alt={provider+" 徽标"}/>
-        <ModalHeader px={0} pb={0} as="h2">连接 {provider}</ModalHeader>
-        <ModalBody px={0}><Text fontSize="sm">开发者：{developer}</Text>
+        <Image src={"/icons/"+providerIcons[provider]} boxSize="48px" objectFit="contain" alt={displayName+" 徽标"}/>
+        <ModalHeader px={0} pb={0} as="h2">连接 {displayName}</ModalHeader>
+        <ModalBody px={0}><Text fontSize="sm">{provider === "SharePoint" ? "服务提供方" : "开发者"}：{developer}</Text>
           {!available && <Text mt={2} fontSize="sm" color="gray.600">{provider === "Google Drive" ? "当前服务尚未配置 Google Drive 授权。" : "当前服务暂未提供此连接。"}</Text>}
           {error && <Text role="alert">{error}</Text>}
         </ModalBody>
-        <Button h="36px" borderRadius="full" isDisabled={!available} isLoading={busy} onClick={connect}>继续连接到 {provider}</Button>
+        <Button h="36px" borderRadius="full" isDisabled={!available} isLoading={busy} onClick={connect}>继续连接到 {displayName}</Button>
         <ModalCloseButton boxSize="24px" top={4} right={4} aria-label="关闭对话框" isDisabled={busy}/>
       </ModalContent></Modal>;
   }
