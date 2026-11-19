@@ -1169,7 +1169,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           }),
           ...(allHome && { "@media (min-width: 80em)": {
             "& col:nth-child(2)": {width:"auto !important"},
-            "& col:nth-child(3)": {width:"256px !important"},
+            "& col:nth-child(3)": {width:typeList ? "240px !important" : "256px !important"},
             "& col:nth-child(4)": {width:"128px"},
             "& col:nth-child(5)": {width:"96px !important"},
             "& :is(th,td):nth-child(2), & :is(th,td):nth-child(3), & :is(th,td):nth-child(4)":{paddingInlineEnd:"16px"},
@@ -1210,7 +1210,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           "& [data-item-name] > a, & [data-item-name] > span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
           "@media (hover:hover) and (not (any-pointer:coarse))":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
-          <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
+          <colgroup><col style={{width:typeList ? "24px" : "32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
           {!typeList && <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
