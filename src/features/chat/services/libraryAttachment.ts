@@ -88,7 +88,10 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   const message = "共享空间的页面列表未能加载，请重试。";
   type Page = {id:string;name:string;path?:string;time?:string;openedAt?:string};
   const data = await readLibraryJson<{name?: string; pages?: Page[]} | null>(response, message);
-  if (!Array.isArray(data?.pages) || data.pages.some(page => !page || typeof page.id !== "string" || typeof page.name !== "string")) {
+  if (!Array.isArray(data?.pages) || data.pages.some(page =>
+    !page || typeof page.id !== "string" || typeof page.name !== "string" ||
+    [page.path, page.time, page.openedAt].some(value => value != null && typeof value !== "string")
+  )) {
     throw new Error(message);
   }
   const spaceName = typeof data.name === "string" && data.name.trim() ? data.name : space.name;
