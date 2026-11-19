@@ -989,7 +989,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Text fontSize="sm" fontWeight="medium">{moveFailures.length} 项未能移动，可再次点击“移至此处”重试。</Text>
         <Text fontSize="xs" mt={1} overflowWrap="anywhere" maxH="12vh" overflowY="auto">{moveFailures.join("、")}</Text>
       </Box>}</ModalBody>
-      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button ref={destination ? undefined : moveFocus} isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
+      <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button minW={{sm:"114px"}} ref={destination ? undefined : moveFocus} isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button minW={{sm:"66px"}} isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button minW={{sm:"98px"}} isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(move) && newDestinationName !== undefined} onClose={()=>{if (!saving) setNewDestinationName(undefined);}} isCentered>
       <ModalOverlay/><ModalContent mx={3} maxW="520px" p="19px" borderRadius="24px">
