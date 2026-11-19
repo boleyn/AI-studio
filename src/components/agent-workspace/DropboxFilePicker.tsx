@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Flex, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { Folder } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { redirectedToLogin, responseFilename } from "@features/chat/services/files";
@@ -21,6 +21,8 @@ async function readDropbox(params: URLSearchParams, signal?: AbortSignal) {
 
 export default function DropboxFilePicker({ back, onAttach }: { back: () => void; onAttach: (files: File[]) => Promise<void> }) {
   const [path, setPath] = useState([{ id: "", name: "Dropbox" }]);
+  const [input, setInput] = useState("");
+  const [search, setSearch] = useState("");
   const [pages, setPages] = useState([""]);
   const [listing, setListing] = useState<Listing>();
   const [error, setError] = useState("");
@@ -29,10 +31,18 @@ export default function DropboxFilePicker({ back, onAttach }: { back: () => void
   const folder = path[path.length - 1];
   const cursor = pages[pages.length - 1];
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(input.trim());
+      setPages([""]);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [input]);
+  useEffect(() => {
     const controller = new AbortController();
     setListing(undefined);
     setError("");
     const params = new URLSearchParams({ folder: folder.id });
+    if (search) params.set("query", search);
     if (cursor) params.set("cursor", cursor);
     readDropbox(params, controller.signal).then(response => response.json()).then(data => {
       if (!controller.signal.aborted) setListing(data);
@@ -40,7 +50,7 @@ export default function DropboxFilePicker({ back, onAttach }: { back: () => void
       if (!controller.signal.aborted) setError(reason.message);
     });
     return () => controller.abort();
-  }, [folder.id, cursor, attempt]);
+  }, [folder.id, cursor, search, attempt]);
 
   async function attach(entry: Entry) {
     setAttaching(entry.id);
@@ -59,12 +69,14 @@ export default function DropboxFilePicker({ back, onAttach }: { back: () => void
     <ModalOverlay/><ModalContent mx={3} borderRadius="16px">
       <ModalHeader pr={12} overflowWrap="anywhere">{folder.name}</ModalHeader><ModalCloseButton aria-label="关闭" isDisabled={Boolean(attaching)}/>
       <ModalBody>
+        {path.length === 1 && <Input type="search" aria-label="搜索 Dropbox 文件" placeholder="搜索 Dropbox 文件" mb={3}
+          value={input} isDisabled={Boolean(attaching)} onChange={event => setInput(event.target.value)}/>}
         {path.length > 1 && <Button size="sm" variant="ghost" mb={2} isDisabled={Boolean(attaching)} onClick={() => { setPages([""]); setPath(path.slice(0,-1)); }}>返回上级文件夹</Button>}
         {error && <Text role="alert">{error}</Text>}
         {!listing && (error ? <Button size="sm" onClick={() => setAttempt(n => n + 1)}>重新加载</Button> : <Text role="status">正在加载文件…</Text>)}
-        {listing && !listing.files.length && <Text role="status">此文件夹为空</Text>}
+        {listing && !listing.files.length && <Text role="status">{search ? "未找到匹配文件" : "此文件夹为空"}</Text>}
         {listing?.files.map(entry => <Flex key={entry.id} gap={3} minH="44px" align="center">
-          {entry.folder ? <Button variant="ghost" leftIcon={<Folder size={16}/>} isDisabled={Boolean(attaching)} onClick={() => { setPages([""]); setPath([...path,entry]); }}>{entry.name}</Button> :
+          {entry.folder ? <Button variant="ghost" leftIcon={<Folder size={16}/>} isDisabled={Boolean(attaching)} onClick={() => { setInput(""); setSearch(""); setPages([""]); setPath([...path,entry]); }}>{entry.name}</Button> :
             <><Text flex={1} overflowWrap="anywhere">{entry.name}</Text><Button size="sm" flexShrink={0} isLoading={attaching === entry.id} isDisabled={Boolean(attaching)} onClick={() => attach(entry)}>添加到聊天</Button></>}
         </Flex>)}
       </ModalBody><ModalFooter gap={2}>

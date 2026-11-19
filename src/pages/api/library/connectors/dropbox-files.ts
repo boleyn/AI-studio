@@ -15,11 +15,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!auth) return;
   res.setHeader("Cache-Control", "private, no-store");
   if (req.method !== "GET") return res.setHeader("Allow", "GET").status(405).end();
-  const { folder = "", cursor, file } = req.query;
+  const { folder = "", cursor, file, query = "" } = req.query;
   if (typeof folder !== "string" || (folder && !/^id:[\w-]+$/.test(folder)) ||
       (cursor !== undefined && typeof cursor !== "string")) return res.status(400).end();
 
   if (file !== undefined && (typeof file !== "string" || !/^id:[\w-]+$/.test(file))) return res.status(400).end();
+
+  if (typeof query !== "string") return res.status(400).end();
+  const search = query.trim();
 
   const owner = String(auth.user._id);
   const db = await getMongoDb();
@@ -41,13 +44,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const token = await tokenResponse.json();
     if (!tokenResponse.ok || typeof token.access_token !== "string") return res.status(502).json({ error: "无法读取 Dropbox 授权，请重新连接。" });
     if (typeof file === "string") return await sendDropboxAttachment(file, token.access_token, res);
-    const response = await fetch("https://api.dropboxapi.com/2/files/list_folder" + (cursor ? "/continue" : ""), {
+    const route = search ? (cursor ? "search/continue_v2" : "search_v2") : (cursor ? "list_folder/continue" : "list_folder");
+    const initial = search ? { query: search, options: { filename_only: true, max_results: 100 } } : { path: folder, limit: 100 };
+    const response = await fetch("https://api.dropboxapi.com/2/files/" + route, {
       method: "POST", headers: { Authorization: "Bearer " + token.access_token, "Content-Type": "application/json" },
-      body: JSON.stringify(cursor ? { cursor } : { path: folder, limit: 100 }),
+      body: JSON.stringify(cursor ? { cursor } : initial),
     });
     if (!response.ok) return res.status(response.status === 429 ? 429 : 502).json({ error: "暂时无法读取 Dropbox 文件夹，请重试。" });
     const page = await response.json();
-    const files = (page.entries as DropboxEntry[]).filter(item => item[".tag"] === "folder" || item[".tag"] === "file")
+    const entries: DropboxEntry[] = search
+      ? page.matches.flatMap((match: { metadata: { metadata?: DropboxEntry } }) => match.metadata.metadata ?? [])
+      : page.entries;
+    const files = entries.filter(item => item[".tag"] === "folder" || item[".tag"] === "file")
       .map(item => ({ id: item.id, name: item.name, folder: item[".tag"] === "folder" }));
     return res.json({ files, nextCursor: page.has_more ? page.cursor : undefined });
   } catch {
