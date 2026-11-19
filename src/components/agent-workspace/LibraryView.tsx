@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, SkipNavContent, SkipNavLink, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
+import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
 import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, includeSharedPages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
@@ -590,6 +590,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     <Portal><MenuList w="240px" minW="0" p="10px" borderWidth={0} boxShadow="0 0 0 0.5px rgb(0 0 0 / 10%), 0 0 0 0.5px rgb(0 0 0 / 10%), 0 8px 16px -4px rgb(0 0 0 / 12%)" borderRadius="16px" sx={{"& .chakra-menu__icon-wrapper":{marginInlineEnd:"6px"},"& [role=menuitem]":{height:"36px",borderRadius:"12px",fontSize:"14px",padding:"6px 10px"}}}>{file.deleted ? <><MenuItem icon={<RotateCcw size={16}/>} onClick={() => update(file,{deleted:false})}>恢复</MenuItem><MenuItem icon={<Trash2 size={20}/>} color="red.600" onClick={() => setPurge({scope:"selection",items:[file]})}>永久删除</MenuItem></> : <>
       {imageSection && <MenuItem icon={<MessageSquare size={16}/>} isDisabled={batchBusy} onClick={() => usePicked("chat",[file])}>Chat about this</MenuItem>}
       {!file.shareId && !isContainer(file) && <MenuItem icon={<Share2 size={20}/>} onClick={()=>setSharing(file)}>分享</MenuItem>}
+      {file.siteId && <>
+        <MenuItem icon={<Copy size={20}/>} onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(new URL(sitePreviewPath(file.siteId!,file.siteSlug),window.location.origin).href);
+            toast({status:"success",title:"已复制链接"});
+          } catch { toast({status:"error",title:"无法复制链接，请检查剪贴板权限。"}); }
+        }}>复制链接</MenuItem>
+        <MenuItem as="a" href={sitePreviewPath(file.siteId,file.siteSlug)} target="_blank" rel="noopener noreferrer"
+          icon={<ExternalLink size={20}/>} onClick={()=>recordOpen(file)}>在浏览器中打开</MenuItem>
+      </>}
       {(file.kind === "页面" || fileType(file) === "演示文稿") && <MenuItem icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={saving} onClick={()=>update(file,{pinned:!file.pinned})}>{file.pinned ? "取消置顶" : "置顶"}</MenuItem>}
       <MenuItem icon={<Pencil size={20}/>} onClick={() => { setTitle(file.name.slice(0, file.name.length - renameSuffix(file).length)); setRenameError(""); setRename(file); }}>重命名</MenuItem>
       {file.kind === "页面" && <MenuItem icon={<Copy size={16}/>} isDisabled={creating} onClick={()=>createPage(file.name,"","页面",file.id)}>创建页面副本</MenuItem>}
@@ -622,9 +632,15 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={()=>{void copyPage(file,index === 1);closeActions();}}>{label}</Button>)}
         </Box>}
       </Box>}
-      {file.siteId ? <MenuItem onClick={()=>openItem(file)}>打开站点</MenuItem> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
+      {file.siteId ? !file.shareId && <>
+        <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(file.siteId)} icon={<BarChart3 size={20}/>}>分析</MenuItem>
+        <MenuItem icon={<Settings size={20}/>} onClick={()=>{
+          const target = listUrl("站点","你的网站",undefined,undefined,true);
+          void router.push({...target,query:{...target.query,librarySiteSettings:file.siteId}},undefined,{shallow:true,scroll:false});
+        }}>设置</MenuItem>
+      </> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
         <MenuItem icon={<Download size={20}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
-      {!pagesSection && file.kind !== "页面" && !file.sharedPage && <>
+      {!pagesSection && !file.siteId && file.kind !== "页面" && !file.sharedPage && <>
         <MenuDivider my={2}/>
         <MenuItem icon={<Bookmark size={20}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
         {!isContainer(file) && <MenuItem icon={<FolderInput size={20}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMoveFailures([]);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
