@@ -30,7 +30,11 @@ export default function LibraryConnectors({ close, callbackError }: { close: () 
       <Text color="gray.600" fontSize="sm">连接文件服务，在资料空间中使用你的文件。</Text>
       <Flex as="ul" aria-label="连接你的文件" direction="column" listStyleType="none" mt={4}>
         {["Google Drive","Box","Dropbox","SharePoint"].map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
-          <Text>{name}</Text>{name === "Google Drive" && status?.connected ? <Text fontSize="sm">已连接</Text> :
+          <Text>{name}</Text>{name === "Google Drive" && status?.connected ? <Flex align="center" gap={2}>
+            <Text fontSize="sm" color="gray.600">已连接</Text>
+            <Button size="sm" variant="outline" borderRadius="full" isDisabled={!status.configured} isLoading={busy}
+              aria-label="重新连接 Google Drive" onClick={connect}>重新连接</Button>
+          </Flex> :
           <Button size="sm" aria-label={"连接 " + name} borderRadius="full" isDisabled={name !== "Google Drive" || !status?.configured}
             isLoading={name === "Google Drive" && busy} onClick={connect}>{name === "Google Drive" && status?.configured ? "连接" : "暂不可用"}</Button>}
         </Flex>)}
