@@ -230,7 +230,7 @@ export function useConversations(
     if (!token || !router.isReady) return;
     const initKey = token;
     if (initKeyRef.current === initKey) return;
-    initKeyRef.current = initKey;
+    initKeyRef.current = null;
     setIsInitialized(false);
     let active = true;
     (async () => {
@@ -240,13 +240,13 @@ export function useConversations(
       const initialConversationId = queryConversationId || list[0]?.id;
       if (initialConversationId) {
         await loadConversation(initialConversationId);
-        if (active) setIsInitialized(true);
-        return;
-      }
-      if (autoCreateInitialConversation) {
+      } else if (autoCreateInitialConversation) {
         await createNewConversation();
       }
-      if (active) setIsInitialized(true);
+      if (active) {
+        initKeyRef.current = initKey;
+        setIsInitialized(true);
+      }
     })();
     return () => {
       active = false;
