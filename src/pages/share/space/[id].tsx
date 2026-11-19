@@ -14,16 +14,20 @@ export default function SharedSpace() {
   const [downloading,setDownloading] = useState(false);
   const [data,setData] = useState<Contents>();
   const [attempt,setAttempt] = useState(0);
-  const [error,setError] = useState("");
+  const [error,setError] = useState<{message:string;login?:boolean}>();
   useEffect(()=>{
     if (typeof id !== "string") return;
     const controller = new AbortController();
     setData(undefined);
-    setError("");
+    setError(undefined);
     const params = new URLSearchParams({id,contents:"1"});
     if (typeof page === "string") params.set("page",page);
     fetch("/api/library/space-share?"+params,{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) throw new Error(response.status === 401 ? "请登录受邀账号后查看。" : response.status >= 500 ? "共享服务暂时不可用，请稍后重试。" : "无法访问这份共享内容。");
+      if (response.status === 401) {
+        if (!controller.signal.aborted) setError({message:"请登录受邀账号后查看。",login:true});
+        return;
+      }
+      if (!response.ok) throw new Error(response.status >= 500 ? "共享服务暂时不可用，请稍后重试。" : "无法访问这份共享内容。");
       const value = await response.json();
       if (controller.signal.aborted) return;
       if (value.owner === true) {
@@ -31,13 +35,14 @@ export default function SharedSpace() {
         return;
       }
       setData(value);
-    }).catch(reason=>{if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);});
+    }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message});});
     return ()=>controller.abort();
   },[id,page,router,attempt]);
   return <Box as="main" maxW="780px" mx="auto" p={6}>
     {page && <Button as="a" href={"/share/space/"+id} variant="ghost" mb={4}>返回资料空间</Button>}
-    {error ? <Stack role="alert" align="start" spacing={3}><Text>{error}</Text>
-      <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button></Stack> : !data ? <Text role="status">正在加载…</Text> : <>
+    {error ? <Stack role="alert" align="start" spacing={3}><Text>{error.message}</Text>
+      {error.login ? <Button as="a" href={"/login?" + new URLSearchParams({lastRoute:router.asPath})} size="sm" borderRadius="full">登录</Button> :
+        <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
