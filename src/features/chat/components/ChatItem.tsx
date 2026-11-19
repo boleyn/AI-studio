@@ -6,7 +6,7 @@ import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
 import { redirectedToLogin } from "../services/files";
-import { LibraryReadError, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
+import { LibraryReadError, libraryReadMessage, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, resolveChatUploadUrl } from "../utils/chatPanelUtils";
@@ -165,11 +165,9 @@ const ChatItem = ({
       throw copyError ?? new LibraryReadError(404, preview.name);
     })().catch(error => {
       if (controller.signal.aborted) return;
-      const status = error instanceof LibraryReadError ? error.status : undefined;
-      setPreviewError(status === 401 ? "请重新登录后打开附件。" :
-        status === 403 ? "当前账号没有读取该附件的权限。" :
-        status === 404 || status === 410 ? "找不到这份附件，请检查原文件是否仍可打开。" :
-        status ? "暂时无法读取附件，请稍后重试。" : error instanceof TypeError ? "连接失败，请检查网络后重试。" : error instanceof Error ? error.message : "暂时无法读取附件，请稍后重试。");
+      setPreviewError(error instanceof Error && !(error instanceof LibraryReadError) && !(error instanceof TypeError)
+        ? error.message
+        : libraryReadMessage(error));
     });
     return () => controller.abort();
   },[preview]);
