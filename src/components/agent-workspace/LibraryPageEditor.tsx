@@ -1,5 +1,6 @@
 import { markdownFilename } from "@/types/library";
-import { Box, Button, Flex, Input, Text, Textarea, useMediaQuery } from "@chakra-ui/react";
+import { X } from "lucide-react";
+import { Box, Button, IconButton, Flex, Input, Text, Textarea, useMediaQuery } from "@chakra-ui/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { fromLibrary } from "@features/chat/services/libraryFileOrigin";
@@ -17,7 +18,7 @@ const formattingCommands = [
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
@@ -139,7 +140,9 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={()=>void discussPage()}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
       {onShare && <Button size="sm" variant="outline" borderRadius="full" isDisabled={!content} onClick={onShare}>分享</Button>}
-      {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}</Flex>
+      {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}
+      {onCloseViewer && <IconButton aria-label="关闭查看器" title="关闭查看器" variant="ghost" size="sm" borderRadius="full"
+        icon={<X size={18}/>} onClick={onCloseViewer}/>}</Flex>
     </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
       <Box flex={1}><Text fontWeight="medium">无法打开页面</Text><Text fontSize="sm">{loadError}</Text></Box>
       <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>
