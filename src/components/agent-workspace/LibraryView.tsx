@@ -242,19 +242,21 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       void router.replace({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
     }
   }
-  const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
-  const section = [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
+  const sections = ["全部", "你的条目", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
+  const legacyOwnItems = !router.query.librarySection && router.query.libraryTab === "你的条目";
+  const section = legacyOwnItems ? "你的条目" : [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
   const sitesSection = section === "站点";
   const siteDetails = sitesSection && Boolean(router.query.librarySiteSettings);
   const personalSection = section === "个人";
   const pagesSection = section === "页面" || personalSection;
   const slidesSection = section === "幻灯片";
-  const typeNavigation = section === "全部" && !collectionTabs.includes(String(router.query.libraryTab));
-  const tabs = typeNavigation ? homeTypeTabs : personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const ownItems = section === "你的条目";
+  const typeNavigation = ownItems || section === "全部" && !collectionTabs.includes(String(router.query.libraryTab));
+  const tabs = ownItems ? ["全部", ...homeTypeTabs.slice(1), "收藏"] : typeNavigation ? homeTypeTabs : personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
-  const allHome = section === "全部" && !folder;
+  const allHome = (section === "全部" || ownItems) && !folder;
   const typeList = allHome && typeNavigation && tab !== "推荐";
   const canDropFiles = !creating && (router.query.libraryFolder
     ? Boolean(folder && !folder.shareId)
@@ -338,8 +340,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const [saving, setSaving] = useState(false);
   const changeSection = (next: string) => {
     setSelected([]);
-    const collection = next === "你的条目" || next === "与你共享";
-    navigateList(collection ? "全部" : next, collection ? next : "推荐", undefined, undefined, true);
+    const collection = next === "与你共享";
+    navigateList(collection ? "全部" : next, collection ? next : next === "你的条目" ? "全部" : "推荐", undefined, undefined, true);
     setQuery("");
   };
   const requestedTypes = [router.query.libraryType].flat();
@@ -472,10 +474,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     (!folder || file.folderId === folder.id) &&
     (!personalSection || (!file.folderId && !file.shareId)) &&
     (!pagesSection || folder || searchTerm || !file.folderId || !activeParentPages.has(file.folderId)) &&
-    (section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
+    (!ownItems || !file.shareId) &&
+    (ownItems || section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
-    (!typeNavigation || tab === "推荐" || fileType(file) === (tab === "幻灯片" ? "演示文稿" : tab)) &&
+    (!typeNavigation || ["推荐","全部","收藏"].includes(tab) || fileType(file) === (tab === "幻灯片" ? "演示文稿" : tab)) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     matchesSearch(file)).sort(compareRows);
   const hasPageActions = visible?.some(file => fileType(file) === "页面" && !file.deleted);
