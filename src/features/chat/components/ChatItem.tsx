@@ -8,6 +8,7 @@ import type { LibraryFile } from "@/types/library";
 import { redirectedToLogin } from "../services/files";
 import { LibraryReadError, libraryReadMessage, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import InteractiveHtmlPreview from "@/components/workspace/InteractiveHtmlPreview";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, resolveChatUploadUrl } from "../utils/chatPanelUtils";
 import { downloadWorkspaceArtifact } from "../services/files";
@@ -106,7 +107,7 @@ const ChatItem = ({
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
 }) => {
   const {token,activeConversationId} = useChatPanelViewContext();
-  const [preview,setPreview] = React.useState<{name:string;url:string;libraryItemId?:string}>();
+  const [preview,setPreview] = React.useState<{name:string;url:string;html:boolean;libraryItemId?:string}>();
   const [failedImages,setFailedImages] = React.useState<Set<string>>(() => new Set());
   const [previewText,setPreviewText] = React.useState<string>();
   const [showLibrarySource,setShowLibrarySource] = React.useState(false);
@@ -337,8 +338,8 @@ const ChatItem = ({
               <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
                 {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
                 {previewSourceLink}
-              </Flex>}{previewText.trim() ? <LibraryMarkdown>{previewText}</LibraryMarkdown> :
-                <Text textAlign="center" py={6} fontSize="sm" color="gray.600">此 Markdown 附件没有正文。</Text>}</>}
+              </Flex>}{previewText.trim() && preview?.html ? <Box h="min(65dvh, 600px)"><InteractiveHtmlPreview name={preview.name} body={previewText}/></Box> : previewText.trim() ? <LibraryMarkdown>{previewText}</LibraryMarkdown> :
+                <Text textAlign="center" py={6} fontSize="sm" color="gray.600">此附件没有正文。</Text>}</>}
           </ModalBody></ModalContent></Modal>
       <Box
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
@@ -373,6 +374,7 @@ const ChatItem = ({
                   const name = file.name || file.storagePath?.split("/").pop() || `文件 ${index + 1}`;
                   const image = isImageFile({...file,name});
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
+                  const isHtml = [name, storagePath].some(value => value && /\.html?$/i.test(value)) || /^text\/html(?:;|$)/i.test(file.type || "");
                   const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
                     /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
@@ -385,7 +387,7 @@ const ChatItem = ({
                   const imageFailed = image && failedImages.has(fileUrl);
                   const openUrl = imageFailed ? originalUrl : fileUrl || originalUrl;
                   const unavailable = imageFailed ? "图片无法加载" : "缺少附件地址";
-                  const canOpen = isMarkdown || Boolean(openUrl);
+                  const canOpen = isHtml || isMarkdown || Boolean(openUrl);
                   return (
                     <Box
                       key={`${file.name || "file"}-${index}`}
@@ -406,7 +408,7 @@ const ChatItem = ({
                           as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，${unavailable}`}
                           cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown) setPreview({name,url:fileUrl,libraryItemId:file.libraryItemId});
+                            if (isMarkdown || isHtml) setPreview({name,url:fileUrl,html:isHtml,libraryItemId:file.libraryItemId});
                             else if (openUrl) window.open(openUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
