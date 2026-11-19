@@ -126,7 +126,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Button as="a" size="sm" href={siteUrl(settings)} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
       {settings.editUrl && <Button as="a" size="sm" href={settings.editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>}
     </Flex>
-    <Heading as="h2" size="md" my={4}>{settings.name}</Heading>
+    <Heading as="h1" size="lg" my={4}>{settings.name}</Heading>
     <Flex as="nav" aria-label="站点详情" gap={4} pb={3} borderBottomWidth="1px">
       <Text aria-current="page" fontWeight="semibold">设置</Text>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
@@ -158,6 +158,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     <Heading as="h3" size="sm" mt={6}>危险操作区</Heading>
     <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
     {dialog}
+  </Box>;
+  if (router.query.librarySiteSettings) return <Box py={6}>
+    <Heading as="h1" size="md">无法打开站点设置</Heading>
+    <Text role="status" my={3}>站点可能已删除，或当前账号没有管理权限。</Text>
+    <Button size="sm" onClick={()=>navigateSettings()}>返回站点</Button>
   </Box>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
   if (grid) return <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(min(100%,250px),1fr))" gap={6}>

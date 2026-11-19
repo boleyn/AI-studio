@@ -205,6 +205,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const section = sections.find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
   const sitesSection = section === "站点";
+  const siteDetails = sitesSection && Boolean(router.query.librarySiteSettings);
   const pagesSection = section === "页面";
   const slidesSection = section === "幻灯片";
   const tabs = slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
@@ -712,7 +713,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         if (section === "全部" && !creating) void uploadFiles(Array.from(event.dataTransfer.files));
       }}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
-      <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
+      {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Button display={{ base: "inline-flex", md: "none" }} variant="ghost" onClick={onBack}>返回聊天</Button>
         <Flex align="center" gap={2}><Heading as="h1" display="flex" alignItems="center" gap={2} fontSize="24px" lineHeight="36px" fontWeight="500">
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
@@ -771,7 +772,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <IconButton boxSize={slidesSection || allHome ? "36px" : undefined} aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
         <IconButton boxSize={slidesSection || allHome ? "36px" : undefined} aria-label="列表视图" ml={allHome ? "-2px" : undefined} aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
       </Flex>
-      </Box>
+      </Box>}
       {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
         <Heading as="h2" fontSize="md" mb={2}>参考照片</Heading>
         <Flex gap={2} overflowX="auto"><Button aria-label="添加引用" size="sm" h="36px" px={4} borderRadius="full" variant="outline" leftIcon={<Plus size={16}/>} onClick={() => setReferenceDraft({name:""})}>添加</Button>
@@ -788,7 +789,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !query && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
-      {sitesSection ? <Box role="tabpanel" id="library-sites-panel" aria-labelledby={"library-sites-tab-" + tabs.indexOf(tab)}>
+      {sitesSection ? <Box role={siteDetails ? undefined : "tabpanel"} id="library-sites-panel" aria-labelledby={siteDetails ? undefined : "library-sites-tab-" + tabs.indexOf(tab)}>
         <LibrarySites tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
       </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
