@@ -57,6 +57,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const [batchBusy,setBatchBusy] = useState(false);
+  const [moveFailures,setMoveFailures] = useState<string[]>([]);
   const [batchMove,setBatchMove] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -397,7 +398,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     <Button as="a" size="xs" variant="ghost" href={downloadUrl(file)}>下载</Button> :
     <Button size="xs" variant="ghost" onClick={() => downloadWorkspaceArtifact(file.token,file.path,file.version)
       .catch(() => toast({ status:"error", title:"无法下载此文件" }))}>下载</Button>;
-  async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>) {
+  async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
     try {
       const response = await fetch((isNative(file) || file.directUpload) ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
@@ -407,7 +408,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setRename(undefined);
       return true;
     } catch {
-      toast({ status:"error", title:"未能保存更改，请重试" });
+      if (notifyFailure) toast({ status:"error", title:"未能保存更改，请重试" });
       return false;
     } finally { setSaving(false); }
   }
@@ -415,11 +416,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (!move || batchBusy) return;
     const targets = (batchMove ? picked : [move]).filter(item => (item.folderId || "") !== destination);
     const failed: string[] = [];
+    setMoveFailures([]);
     setBatchBusy(true);
     try {
       for (const item of targets) {
-        if (!await update(item, {folderId: destination || null})) failed.push(item.id);
+        if (!await update(item, {folderId: destination || null}, false)) failed.push(item.id);
       }
+      setMoveFailures(targets.filter(item=>failed.includes(item.id)).map(item=>item.name));
       if (batchMove) setSelected(failed);
       if (!failed.length) {
         setMove(undefined);
@@ -507,7 +510,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       {!pagesSection && <>
         <MenuDivider my={2}/>
         <MenuItem icon={<Bookmark size={16}/>} onClick={() => update(file,{favorite:!file.favorite})}>{file.favorite ? "从收藏夹中移除" : "添加到收藏夹"}</MenuItem>
-        {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
+        {!isContainer(file) && <MenuItem icon={<FolderInput size={16}/>} onClick={() => {setBatchMove(false);setNewDestinationName(undefined);setMoveFailures([]);setMove(file);setDestination(file.folderId || "");}}>{folder || imageSection ? "移动" : "移至文件夹"}</MenuItem>}
       </>}
       <MenuDivider my={2}/>
       <MenuItem icon={<Trash2 size={16}/>} color="red.600" onClick={() => update(file,{deleted:true})}>删除</MenuItem>
@@ -764,7 +767,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("chat")}>开始聊天</Button>
         <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
         <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
-        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
+        <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
         <IconButton size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
     </Box>
@@ -834,7 +837,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       </Flex><Box as="ul" listStyleType="none" mt={2} mb={0} maxH="36vh" overflowY="auto">
         {childFolders.map((item,index)=><Box as="li" key={item.id}><Button ref={!destination && index===0 ? moveFocus : undefined} w="full" h="36px" borderRadius="12px" fontSize="sm" variant="ghost" justifyContent="start" leftIcon={<LibraryItemIcon item={item} compact/>} title={item.name} isDisabled={batchBusy} onClick={()=>setDestination(item.id)}><Text isTruncated>{item.name}</Text></Button></Box>)}
         {!childFolders.length && <Box as="li" py={5} textAlign="center" color="gray.500">此文件夹为空</Box>}
-      </Box></ModalBody>
+      </Box>{moveFailures.length > 0 && <Box role="alert" mt={3} p={3} bg="#faf5f2" color="#694332" borderRadius="10px">
+        <Text fontSize="sm" fontWeight="medium">{moveFailures.length} 项未能移动，可再次点击“移至此处”重试。</Text>
+        <Text fontSize="xs" mt={1} overflowWrap="anywhere" maxH="12vh" overflowY="auto">{moveFailures.join("、")}</Text>
+      </Box>}</ModalBody>
       <ModalFooter p={0} mt="14px" gap={3} sx={{"& button":{height:"32px",borderRadius:"9999px"}}}><Button ref={!destination && !childFolders.length ? moveFocus : undefined} isDisabled={batchBusy} mr="auto" variant="ghost" onClick={()=>setNewDestinationName("")}>新建文件夹</Button><Button isDisabled={batchBusy} onClick={() => setMove(undefined)}>取消</Button><Button isLoading={saving || batchBusy} isDisabled={!(batchMove ? picked : move ? [move] : []).some(item=>(item.folderId || "")!==destination)} onClick={moveToDestination}>移至此处</Button></ModalFooter>
     </ModalContent></Modal>
     <Modal isOpen={Boolean(move) && newDestinationName !== undefined} onClose={()=>{if (!saving) setNewDestinationName(undefined);}} isCentered>
