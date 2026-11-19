@@ -84,7 +84,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             const hasMore = offset+20 < files.length;
             return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
               id:file.id,kind,name:file.name,modifiedAt:file.time,parentId:file.folderId,parentName:parents.get(file.folderId || ""),
-              origin:libraryFileOrigin(file),conversation:file.conversation,url:"/?view=library&libraryItem="+file.id,
+              origin:libraryFileOrigin(file),conversation:file.conversation,version:file.version,size:file.size,url:"/?view=library&libraryItem="+file.id,
             }))})};
           }
           const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
