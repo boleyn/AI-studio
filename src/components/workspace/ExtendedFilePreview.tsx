@@ -1,4 +1,5 @@
 import { LibraryReadError, libraryReadMessage } from "@features/chat/services/libraryAttachment";
+import { redirectedToLogin } from "@features/chat/services/files";
 import LibraryMarkdown from "../agent-workspace/LibraryMarkdown";
 import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
@@ -62,6 +63,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
     setResult(undefined);
     fetch(url, { headers: withAuthHeaders(), signal: controller.signal })
       .then((response) => {
+        if (redirectedToLogin(response)) throw new LibraryReadError(401,name);
         if (!response.ok) throw new LibraryReadError(response.status,name);
         return response.blob();
       })
