@@ -38,6 +38,10 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const [error,setError] = useState("");
   const [fileErrors,setFileErrors] = useState(new Map<string,string>());
   const listRef = useRef<HTMLDivElement>(null);
+  const rootScroll = useRef(0);
+  useEffect(() => {
+    if (items) listRef.current?.scrollTo({top:space ? 0 : rootScroll.current});
+  }, [items,space]);
   useEffect(() => {
     if (fileErrors.size) listRef.current?.scrollTo({top:0});
   }, [fileErrors]);
@@ -88,7 +92,11 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
   }
   function browseSpace(next?: LibraryFile) {
-    if (next) rootQuery.current = query;
+    if (next) {
+      rootQuery.current = query;
+      rootScroll.current = listRef.current?.scrollTop ?? 0;
+    }
+    searchRef.current?.focus();
     setSpace(next);
     setItems(undefined);
     setQuery(next ? "" : rootQuery.current);
