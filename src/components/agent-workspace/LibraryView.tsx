@@ -223,6 +223,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     const query = {...router.query};
     delete query.librarySiteSettings;
+    delete query.siteDetail;
     if (clearTypes) {delete query.libraryType;delete query.librarySource;}
     if (folderId) query.libraryFolder = folderId;
     else delete query.libraryFolder;

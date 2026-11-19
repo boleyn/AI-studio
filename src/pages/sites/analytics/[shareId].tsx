@@ -85,6 +85,11 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
 }
 
 export default function SiteAnalytics({name,shareId,previewPath,days,daily,visitors,views,requests}:Props) {
+  const detailPath = (tab?:string) => {
+    const params = new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId});
+    if (tab) params.set("siteDetail",tab);
+    return "/?" + params;
+  };
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={previewPath}>访问</Link></Flex>
     <Box as="section" aria-label={name} mt={6} mb={4}>
@@ -92,8 +97,11 @@ export default function SiteAnalytics({name,shareId,previewPath,days,daily,visit
       <Link href={previewPath} fontSize="sm" color="gray.600" overflowWrap="anywhere">{previewPath}</Link>
     </Box>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" mb={4} borderBottomWidth="1px">
-      <Link href={"/?"+new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId})}>设置</Link>
+      <Link href={detailPath()}>设置</Link>
       <Text aria-current="page" fontWeight="semibold">分析</Text>
+      <Link href={detailPath("database")}>数据库</Link>
+      <Link href={detailPath("plugins")}>插件</Link>
+      <Link href={detailPath("scheduled")}>已安排</Link>
     </Flex>
     <Flex align="center" wrap="wrap" gap={4} my={6}>
       <Flex flex="1" wrap="wrap" columnGap={{base:4,md:12}} rowGap={3}>
