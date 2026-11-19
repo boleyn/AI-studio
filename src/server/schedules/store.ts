@@ -10,6 +10,7 @@ export const specSchema = z
   .object({
     title: z.string().trim().min(1).max(100),
     prompt: z.string().trim().min(1).max(4000),
+    endDate: z.string().date().optional(),
     firstAt: z.string().datetime({ offset: true }),
     timezone: z.string().max(80).refine(IANAZone.isValidZone),
     repeat: z.enum(["once", "daily", "weekly"]),
@@ -43,7 +44,9 @@ export async function schedules() {
 
 export function nextOccurrence(spec: ScheduleSpec, now: number): number | null {
   const first = DateTime.fromISO(spec.firstAt, { zone: spec.timezone });
-  if (first.toMillis() > now) return first.toMillis();
+  const withinEndDate = (candidate: DateTime) =>
+    spec.repeat !== "once" && spec.endDate && candidate.toISODate()! > spec.endDate ? null : candidate.toMillis();
+  if (first.toMillis() > now) return withinEndDate(first);
   if (spec.repeat === "once") return null;
   const step = spec.repeat === "weekly" ? 7 : 1;
   const today = DateTime.fromMillis(now, { zone: spec.timezone }).startOf(
@@ -52,9 +55,7 @@ export function nextOccurrence(spec: ScheduleSpec, now: number): number | null {
   const days =
     Math.floor(today.diff(first.startOf("day"), "days").days / step) * step;
   const candidate = first.plus({ days });
-  return candidate.toMillis() > now
-    ? candidate.toMillis()
-    : first.plus({ days: days + step }).toMillis();
+  return withinEndDate(candidate.toMillis() > now ? candidate : first.plus({ days: days + step }));
 }
 
 export async function checkScope(scope: Scope, requireChat = true) {
@@ -71,7 +72,7 @@ export async function createSchedule(
 ) {
   const spec = specSchema.parse(input);
   const nextAt = nextOccurrence(spec, Date.now());
-  if (!nextAt) throw new Error("单次任务需要未来的执行时间");
+  if (!nextAt) throw new Error("所选日期范围内没有未来的执行时间");
   await checkScope(scope, !draft);
   const task: StoredSchedule = {
     ...scope,

@@ -96,7 +96,7 @@ export default async function handler(
       if (!(await col.deleteOne(filter)).deletedCount)
         return res.status(409).json({ error: "运行中，请稍后操作" });
     } else {
-      const spec = body.action === "edit" ? body.spec : task;
+      const spec = body.action === "edit" ? { ...task, ...body.spec } : task;
       const nextAt = nextOccurrence(spec, Date.now());
       if (body.action !== "pause") {
         await checkScope(task);

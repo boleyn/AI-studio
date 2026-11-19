@@ -2,6 +2,7 @@ export type ScheduleSpec = {
   title: string;
   prompt: string;
   firstAt: string;
+  endDate?: string;
   timezone: string;
   repeat: "once" | "daily" | "weekly";
 };

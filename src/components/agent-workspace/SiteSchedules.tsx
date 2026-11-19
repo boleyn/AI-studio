@@ -10,6 +10,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [tasks, setTasks] = useState<Schedule[]>();
   const [context, setContext] = useState<{token:string; chats:{id:string; title:string}[]}>();
   const [draft, setDraft] = useState<string>();
+  const [endsOnDate, setEndsOnDate] = useState(false);
   const [repeating, setRepeating] = useState(true);
   const [zone, setZone] = useState("UTC");
   const [firstTime, setFirstTime] = useState("");
@@ -18,6 +19,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   function edit(title: string) {
     setSaveError("");
     setRepeating(true);
+    setEndsOnDate(false);
     const now = DateTime.local();
     setZone(now.zoneName || "UTC");
     const morning = now.startOf("day").set({hour:9});
@@ -70,6 +72,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
+            ...(repeating && endsOnDate ? {endDate:form.get("endDate")} : {}),
             firstAt:start.toISO(), timezone:zone,
           }})});
         if (!response.ok) throw new Error((await response.json()).error || "创建任务失败");
@@ -88,6 +91,10 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
         <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
         <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
+        {repeating && <label>结束重复<Select value={endsOnDate ? "date" : "never"} onChange={event=>setEndsOnDate(event.target.value === "date")}>
+          <option value="never">永不</option><option value="date">指定日期</option>
+        </Select></label>}
+        {repeating && endsOnDate && <label>结束日期<Input type="date" name="endDate" required/></label>}
         <details><summary>高级</summary>
           <label>时区<Select value={zone} onChange={event=>setZone(event.target.value)}>
             {[...new Set([Intl.DateTimeFormat().resolvedOptions().timeZone, "UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [])])].map(name=><option key={name} value={name}>{name}</option>)}
