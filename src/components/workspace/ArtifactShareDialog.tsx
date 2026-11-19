@@ -104,8 +104,9 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               }}><option value="invited">仅限受邀者</option><option value="link">拥有链接的人</option></select> : <Menu placement="bottom-start">
               <MenuButton as={Button} variant="ghost" size="sm" mt={1} leftIcon={<LockKeyhole size={15}/>}
                 rightIcon={<ChevronDown size={14}/>}>仅限受邀者</MenuButton>
-              <MenuList borderRadius="12px" shadow="lg" p={1}>
-                <MenuOptionGroup type="radio" value="invited"><MenuItemOption value="invited" borderRadius="8px">
+              <MenuList w={page ? "min(420px, calc(100vw - 40px))" : undefined} minW={page ? 0 : undefined}
+                borderRadius={page ? "20px" : "12px"} shadow="lg" p={page ? "6px" : 1}>
+                <MenuOptionGroup type="radio" value="invited"><MenuItemOption value="invited" minH={page ? "44px" : undefined} py={page ? 1 : undefined} borderRadius={page ? "14px" : "8px"}>
                   <Text fontSize="sm" fontWeight="500">仅限受邀者</Text>
                   <Text fontSize="xs" color="gray.600">已有访问权限的用户可以使用此链接</Text>
                 </MenuItemOption></MenuOptionGroup>
