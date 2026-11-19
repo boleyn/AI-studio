@@ -242,12 +242,14 @@ export const hydrateHistoryUserMessage = ({
     const isChatUpload = /^\/?chat_uploads\//.test(file.storagePath || "");
     if (!isChatUpload && !isImageArtifact(file)) return file;
     // Copied conversations can retain attachments scoped to the original chat.
-    if (isChatUpload && file.previewUrl?.startsWith("/api/core/chat/files/view?")) {
-      const saved = new URLSearchParams(file.previewUrl.slice(file.previewUrl.indexOf("?") + 1));
-      if (saved.get("token") && saved.get("chatId") &&
-          saved.get("storagePath")?.replace(/^\/+/, "") === file.storagePath?.replace(/^\/+/, "")) {
-        return file;
-      }
+    if (isChatUpload) {
+      const originalUrl = [file.previewUrl, file.downloadUrl].find(url => {
+        if (!url?.startsWith("/api/core/chat/files/view?")) return false;
+        const saved = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+        return Boolean(saved.get("token") && saved.get("chatId")) &&
+          saved.get("storagePath")?.replace(/^\/+/, "") === file.storagePath?.replace(/^\/+/, "");
+      });
+      if (originalUrl) return originalUrl === file.previewUrl ? file : {...file, previewUrl:originalUrl};
     }
     const stablePreviewUrl =
       (isChatUpload

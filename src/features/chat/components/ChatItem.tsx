@@ -371,7 +371,7 @@ const ChatItem = ({
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
                   const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
                     /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
-                  const savedChatUrl = [isMarkdown ? file.downloadUrl : undefined, file.previewUrl].find(url => url?.startsWith("/api/core/chat/files/view?"));
+                  const savedChatUrl = [file.previewUrl, file.downloadUrl].find(url => url?.startsWith("/api/core/chat/files/view?"));
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? savedChatUrl || toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
