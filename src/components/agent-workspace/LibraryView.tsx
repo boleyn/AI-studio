@@ -1023,14 +1023,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             "@container (min-width:42rem)":{gridTemplateColumns:"repeat(3,minmax(0,1fr))"}}}>
             {visible.map(file=><Box key={file.id} position="relative" p="12px" borderWidth="1px" borderRadius="16px" shadow="sm">
               <Box as="button" aria-label={file.name} position="absolute" inset={0} borderRadius="inherit" onClick={()=>openItem(file)}/>
-              <Flex align="center" gap={2} pointerEvents="none"><LibraryItemIcon item={file} compact/>
-                <Text flex={1} isTruncated>{file.name}</Text>
-                <Flex position="relative" pointerEvents="auto" align="center">
-                  <IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
+              <Flex align="start" gap={2} pointerEvents="none"><Box mt="4px" display="flex"><LibraryItemIcon item={file} compact/></Box>
+                <Text flex={1} fontSize="16px" lineHeight="24px" isTruncated>{file.name}</Text>
+                <Flex position="relative" pointerEvents="auto" align="center" gap="4px" sx={{"& > button[aria-haspopup=menu]":{boxSize:"28px",minW:"28px"}}}>
+                  <IconButton size="xs" boxSize="32px" minW="32px" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)}
                     icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} isDisabled={selectionLocked} onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}
                 </Flex>
               </Flex>
-              <Flex mt={2} align="center" justify="space-between" fontSize="sm" color="#5d5d5d" pointerEvents="none">
+              <Flex mt="4px" align="center" justify="space-between" fontSize="14px" lineHeight="22px" color="#5d5d5d" pointerEvents="none">
                 <Text>个人</Text><time dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</time>
               </Flex>
             </Box>)}
