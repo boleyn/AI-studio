@@ -374,9 +374,11 @@ const ChatItem = ({
                   const name = file.name || file.storagePath?.split("/").pop() || `文件 ${index + 1}`;
                   const image = isImageFile({...file,name});
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
-                  const isHtml = [name, storagePath].some(value => value && /\.html?$/i.test(value)) || /^text\/html(?:;|$)/i.test(file.type || "");
-                  const isMarkdown = [name, storagePath].some(value => value && /\.(md|markdown)$/i.test(value)) ||
-                    /^text\/(?:x-)?markdown(?:;|$)/i.test(file.type || "");
+                  const mediaType = file.type?.split(";")[0].trim().toLowerCase();
+                  const previewName = [storagePath, name].find(value => value && /\.(html?|md|markdown)$/i.test(value)) || "";
+                  const isMarkdown = mediaType === "text/markdown" || mediaType === "text/x-markdown" ||
+                    (mediaType !== "text/html" && /\.(md|markdown)$/i.test(previewName));
+                  const isHtml = !isMarkdown && (mediaType === "text/html" || /\.html?$/i.test(previewName));
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? resolveChatUploadUrl(file,token,activeConversationId || "")
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
