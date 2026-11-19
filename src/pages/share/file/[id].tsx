@@ -15,6 +15,7 @@ export default function SharedArtifactPage() {
   const id = typeof query.id === "string" ? query.id : "";
   const endpoint = `/api/artifact-share?${new URLSearchParams({ id })}`;
   const [result, setResult] = useState<{ id: string; filename?: string; editablePageId?: string; error?: string; needsLogin?: boolean }>();
+  const [loadAttempt,setLoadAttempt] = useState(0);
   const [editing,setEditing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [spreadsheetZoom, setSpreadsheetZoom] = useState(100);
@@ -31,20 +32,25 @@ export default function SharedArtifactPage() {
           }
           return;
         }
-        if (!response.ok) throw new Error("共享文件不可用或未向你开放。");
+        if (!response.ok) throw new Error(response.status === 403 ? "当前账号没有访问权限。" :
+          response.status === 404 ? "共享文件不存在或共享已结束。" : "暂时无法读取共享文件，请稍后重试。");
         const data = await response.json() as { filename: string; editablePageId?: string };
         if (!controller.signal.aborted) setResult({ id, filename: data.filename, editablePageId:data.editablePageId });
       })
       .catch((reason) => {
-        if (!controller.signal.aborted) setResult({ id, error: reason.message || "共享文件不可用。" });
+        if (!controller.signal.aborted) setResult({ id, error: reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message || "共享文件不可用。" });
       });
     return () => controller.abort();
-  }, [id, endpoint]);
+  }, [id, endpoint, loadAttempt]);
 
   if (!current?.filename) {
     const loginUrl = `/login?${new URLSearchParams({ lastRoute: `/share/file/${encodeURIComponent(id)}` })}`;
     return <Flex h="100dvh" direction="column" gap={4} align="center" justify="center" px={4}>
       {current?.error ? <Text role="status">{current.error}</Text> : <Spinner aria-label="正在读取共享文件" />}
+      {current?.error && !current.needsLogin && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
+        setResult(undefined);
+        setLoadAttempt(value=>value+1);
+      }}>重新加载</Button>}
       {current?.needsLogin && <Button as="a" href={loginUrl} size="sm">登录</Button>}
     </Flex>;
   }
