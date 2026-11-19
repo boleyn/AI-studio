@@ -764,6 +764,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <MenuItem icon={<Upload size={20} aria-hidden/>} onClick={() => fileInput.current?.click()}>上传文件</MenuItem>{!folderMenu && <MenuItem icon={<Plug size={20} aria-hidden/>} onClick={()=>setConnectors(true)}>连接插件</MenuItem>}</>}</MenuList>
           </Menu>;
   };
+  const librarySearchField = <InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={personalSection ? "none" : allHome ? "241px" : "240px"} sx={allHome || personalSection ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
+            <InputLeftElement pointerEvents="none" w={allHome ? "44px" : undefined} color="gray.500"><Search size={allHome ? 20 : 16} aria-hidden/></InputLeftElement>
+            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={personalSection ? "搜索个人页面" : allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
+              placeholder={personalSection ? "搜索个人页面" : sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "40px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
+              value={query} onChange={event => setQuery(event.target.value)}/>
+            {query && <InputRightElement><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
+              icon={<X size={14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
+          </InputGroup>;
   return <Flex flex="1" minW={0} minH={0}>
     <SkipNavLink id="library-content" zIndex="skipLink">跳转到内容</SkipNavLink>
     <input ref={fileInput} type="file" multiple hidden aria-label="上传文件" onChange={event => {
@@ -853,7 +861,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         setDropActive(false);
         if (canDropFiles) void uploadFiles(Array.from(event.dataTransfer.files));
       }}>
-    <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
+    <Box maxW={personalSection ? "1060px" : "1440px"} px={{base:4,md:8,xl:"48px"}} mx="auto">
       {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Flex display={{base:"flex", md:"none"}} align="center" gap={1}>
           <Menu placement="bottom-start">
@@ -869,19 +877,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("全部","你的条目",undefined,undefined,true)}>全部</Button>
             {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center" maxW="full" minW={0}><ChevronRight size={16} style={{flexShrink:0}}/>
               {item.id===folder.id ? <Text as="span" isTruncated title={item.name}>{item.name}</Text> : <Button variant="link" minW={0} fontSize="inherit" title={item.name} onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}><Text as="span" isTruncated>{item.name}</Text></Button>}</Flex>)}</> : section}</Heading></Flex>
-        {section !== "回收站" && <Flex align="center" gap={3}><InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={allHome ? "241px" : "240px"} sx={allHome ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
-            <InputLeftElement pointerEvents="none" w={allHome ? "44px" : undefined} color="gray.500"><Search size={allHome ? 20 : 16} aria-hidden/></InputLeftElement>
-            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={personalSection ? "搜索个人页面" : allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
-              placeholder={personalSection ? "搜索个人页面" : sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "40px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
-              value={query} onChange={event => setQuery(event.target.value)}/>
-            {query && <InputRightElement><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
-              icon={<X size={14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
-          </InputGroup>
+        {section !== "回收站" && <Flex align="center" gap={3}>{!personalSection && librarySearchField}
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : personalSection ? createMenu(false) : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
-      <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
+      <Flex gap={personalSection ? 4 : 1} mt={personalSection ? "38px" : "4px"} pb={personalSection ? "8px" : "20px"} mb="17px" minH={personalSection ? "44px" : "56px"} align="center" justify="flex-end">
         <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
+          {personalSection && librarySearchField}
           {section !== "回收站" && !personalSection && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" id={sitesSection ? "library-sites-tab-" + index : undefined}
               aria-controls={sitesSection && tab === name ? "library-sites-panel" : undefined} aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
