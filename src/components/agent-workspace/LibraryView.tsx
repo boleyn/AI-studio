@@ -32,6 +32,16 @@ import type { FileChatSizing } from "./FileChatDivider";
 import LibrarySidebar from "./LibrarySidebar";
 
 const isNative = (file:LibraryFile) => !file.shareId && (file.kind === "页面" || isContainer(file));
+function LibraryImageThumbnail({file,src}:{file:LibraryFile;src:string}) {
+  const [failed,setFailed] = useState(false);
+  if (failed) return <Flex direction="column" align="center" justify="center" w="full" minH="140px" px={4} py={10} gap={2}>
+    <LibraryItemIcon item={file}/>
+    <Text maxW="full" isTruncated fontSize="sm">{file.name}</Text>
+    <Text fontSize="xs" color="gray.600">预览加载失败</Text>
+  </Flex>;
+  return <Box as="img" src={src} alt="" loading="lazy" display="block" w="full" h="auto" onError={()=>setFailed(true)}/>;
+}
+
 function renameSuffix(file?: LibraryFile) {
   if (!file || file.siteId || file.sharedPage || isNative(file)) return "";
   const dot = file.name.lastIndexOf(".");
@@ -997,7 +1007,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             }}>
               <Box as="button" display="block" w="full" overflow="hidden" borderRadius="16px" borderWidth="1px"
                 onClick={() => picked.length ? checkItem(file.id) : openItem(file)} aria-label={picked.length ? (selected.includes(file.id) ? "取消选择" : "选择") + "图像 " + file.name : file.name}>
-                <Box as="img" src={libraryAttachmentUrl(file)} alt="" loading="lazy" w="full" h="auto"/>
+                <LibraryImageThumbnail key={libraryAttachmentUrl(file)} file={file} src={libraryAttachmentUrl(file)}/>
               </Box>
               <Box className="image-actions" position="absolute" top="13px" insetInlineEnd="13px"
                 sx={{"& > button":{width:"36px",height:"36px",borderRadius:"full",color:"white",background:"rgba(0,0,0,.28)",backdropFilter:"blur(8px)"},
@@ -1085,10 +1095,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               </Flex>
               <Flex position="relative" overflow="hidden" borderBottomRadius="inherit" flex={widePreview ? undefined : "1"}
                 aspectRatio={widePreview ? "16/9" : undefined} align="center" justify="center">
-                {imageCard ? <Box as="img" key={libraryAttachmentUrl(file)} src={libraryAttachmentUrl(file)} alt="" loading="lazy"
-                  display="block" w="full" h="auto" onError={event=>{event.currentTarget.hidden = true;}}
-                  sx={{"&[hidden]":{display:"none"},"&:not([hidden]) + svg":{display:"none"}}}/> : null}
-                <Icon color={color} size={56} aria-hidden/>
+                {imageCard ? <LibraryImageThumbnail key={libraryAttachmentUrl(file)} file={file} src={libraryAttachmentUrl(file)}/>
+                  : <Icon color={color} size={56} aria-hidden/>}
                 {file.siteId && <SiteCoverImage siteId={file.siteId}/>}
               </Flex>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
