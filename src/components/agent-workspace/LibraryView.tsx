@@ -1,6 +1,6 @@
 import useDriveConnected from "./useDriveConnected";
 import { markdownFilename } from "@/types/library";
-import { libraryActivityTime } from "@/types/library";
+import { libraryActivityTime, libraryFileOrigin } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
 import Link from "next/link";
@@ -387,7 +387,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return direction * rowTime(a).localeCompare(rowTime(b));
   }
   function sourceFilter(file: LibraryFile) {
-    const origin = file.fileOrigin ?? (file.shareId ? undefined : file.fromTemplate ? "生成" : file.kind);
+    const origin = libraryFileOrigin(file);
     if (origin === "上传") return "已上传";
     if (origin === "生成") return "生成的文件";
     return "";

@@ -1,3 +1,4 @@
+import { libraryFileOrigin } from "@/types/library";
 import { listLibraryContents } from "./contents";
 import { createHash } from "node:crypto";
 import { ObjectId } from "mongodb";
@@ -29,34 +30,37 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           return {content:JSON.stringify({id:id.toHexString(),name,url:"/?view=library&libraryFolder="+id.toHexString()})};
         },
       });
-      context.registerTool<{title?:string; parentId?:string; kind?:"页面"|"资料空间"|"文件夹"|"文件"; offset?:number}>({
+      context.registerTool<{title?:string; parentId?:string; kind?:"页面"|"资料空间"|"文件夹"|"文件"; origin?:"上传"|"生成"; offset?:number}>({
         name:"FindLibraryPages",
         toolset:"library-spaces",
         description:"默认按标题查找个人页面。可指定 kind 查找个人资料空间中的上传文件和对话生成文件，也可按名称查找资料空间或文件夹，再用其编号作为 parentId 查找直接子项。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
         parameters:{
           type:"object", additionalProperties:false,
-          properties:{kind:{type:"string",enum:["页面","资料空间","文件夹","文件"]},title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
+          properties:{origin:{type:"string",enum:["上传","生成"],description:"按文件来源筛选"},kind:{type:"string",enum:["页面","资料空间","文件夹","文件"]},title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
         },
         async handler(input, ctx) {
           const title = typeof input.title === "string" ? input.title.trim() : "";
-          if (ctx.isSubagent || (!title && !input.parentId) || title.length > 255 ||
+          if (ctx.isSubagent || (!title && !input.parentId && !input.origin) || title.length > 255 ||
               (input.parentId !== undefined && !/^[a-f0-9]{24}$/.test(input.parentId)))
             return {isError:true,content:"请在主对话中提供页面标题关键词或有效的父条目编号。"};
           const pages = (await getMongoDb()).collection("library_pages");
           const offset = input.offset ?? 0;
           if (!Number.isSafeInteger(offset) || offset < 0) return {isError:true,content:"搜索起始位置无效。"};
-          const kind = input.kind ?? "页面";
+          const kind = input.kind ?? (input.origin ? "文件" : "页面");
+          if (input.origin !== undefined && (kind !== "文件" || !["上传","生成"].includes(input.origin)))
+            return {isError:true,content:"文件来源筛选仅适用于上传或生成的文件。"};
           if (!["页面","资料空间","文件夹","文件"].includes(kind)) return {isError:true,content:"条目类型无效。"};
           if (kind === "文件") {
             const {listed} = await listLibraryContents(owner);
             const needle = title.normalize("NFC").toLowerCase();
             const files = listed.filter(file => !file.deleted && !file.shareId && (file.kind === "上传" || file.kind === "生成") &&
+              (!input.origin || libraryFileOrigin(file) === input.origin) &&
               (!input.parentId || file.folderId === input.parentId) && file.name.normalize("NFC").toLowerCase().includes(needle));
             const parents = new Map(listed.filter(item=>!item.deleted).map(item=>[item.id,item.name]));
             const hasMore = offset+20 < files.length;
             return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
               id:file.id,kind,name:file.name,modifiedAt:file.time,parentId:file.folderId,parentName:parents.get(file.folderId || ""),
-              conversation:file.conversation,url:"/?view=library&libraryItem="+file.id,
+              origin:libraryFileOrigin(file),conversation:file.conversation,url:"/?view=library&libraryItem="+file.id,
             }))})};
           }
           const matches = await pages.find({

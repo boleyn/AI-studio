@@ -40,6 +40,10 @@ export function libraryTypeName(item: {path?:string; name:string}) {
   return item.path && /\.[^./\\]+$/.test(item.path) ? item.path : item.name;
 }
 
+export function libraryFileOrigin(file: LibraryFile) {
+  return file.fileOrigin ?? (file.shareId ? undefined : file.fromTemplate ? "生成" : file.kind);
+}
+
 export function libraryActivityTime(file: LibraryFile) {
   return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
 }
