@@ -47,6 +47,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
   const [draftMinimized,setDraftMinimized] = useState(false);
   const [openingChat,setOpeningChat] = useState(false);
   const [attempt,setAttempt] = useState(0);
+  const [imageUrl,setImageUrl] = useState<string>();
   const [body,setBody] = useState<string>();
   const [previewSize,setPreviewSize] = useState<number>();
   const size = item.size ?? previewSize;
@@ -76,20 +77,32 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
     target?.focus();
   },[]);
   useEffect(() => {
-    if (!markdown && !plain) return;
+    if (!markdown && !plain && !image) return;
+    let objectUrl: string | undefined;
+    setImageUrl(undefined);
     const controller = new AbortController();
     setBody(undefined);
     setPreviewSize(undefined);
     setError("");
     readLibraryAttachment(item,controller.signal).then(async file=>{
+      if (controller.signal.aborted) return;
+      if (image) {
+        objectUrl = URL.createObjectURL(file);
+        setImageUrl(objectUrl);
+        setPreviewSize(file.size);
+        return;
+      }
       const text = await file.text();
       if (!controller.signal.aborted) {
         setBody(text);
         setPreviewSize(file.size);
       }
     }).catch(reason=>{if (!controller.signal.aborted) setError(libraryReadMessage(reason));});
-    return () => controller.abort();
-  },[item,markdown,plain,attempt]);
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  },[item,markdown,plain,image,attempt]);
   const previewFailure = <Flex direction="column" align="center" textAlign="center" px={4} py={8} gap={3}>
     <CircleAlert size={22} color="#777" aria-hidden/>
     <Box role="alert"><Text fontWeight="600">无法加载预览</Text>
@@ -140,8 +153,8 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
           markdown ? <LibraryMarkdown>{body}</LibraryMarkdown> :
           <Text as="pre" whiteSpace="pre-wrap">{body}</Text>}
       </Box> : image ? <Flex minH="full" minW="full" w="max-content" align="center" justify="center">
-        {error ? previewFailure :
-          <Box as="img" key={attempt} src={libraryAttachmentUrl(item)} alt={item.name} maxW="none"
+        {error ? previewFailure : !imageUrl ? <Spinner size="sm" aria-label="读取图片"/> :
+          <Box as="img" key={attempt} src={imageUrl} alt={item.name} maxW="none"
             width={dimensions.width ? dimensions.width*(scale ?? fit)+"px" : undefined}
             onLoad={(event:React.SyntheticEvent<HTMLImageElement>)=>setDimensions({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight})}
             onError={()=>setError("图片暂时无法显示，请重新加载。")}/>}
