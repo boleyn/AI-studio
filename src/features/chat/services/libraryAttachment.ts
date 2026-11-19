@@ -34,6 +34,14 @@ export class LibraryReadError extends Error {
   }
 }
 
+export function libraryReadMessage(reason: unknown) {
+  const status = reason instanceof LibraryReadError ? reason.status : undefined;
+  if (status === 401) return "登录已过期，请重新登录。";
+  if (status === 403) return "当前账号没有读取权限，请联系文件所有者。";
+  if (status === 404 || status === 410) return "文件可能已删除或共享已结束，请重新选择。";
+  return "暂时无法读取，请稍后重试。";
+}
+
 export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSignal):Promise<File> {
   const response = await fetch(libraryAttachmentUrl(item),{headers:withAuthHeaders(),signal});
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
@@ -61,12 +69,7 @@ export async function addLibraryAttachments(
   reads.forEach((read, index) => {
     if (read.status === "fulfilled") ready.push(read.value);
     else {
-      const status = read.reason instanceof LibraryReadError ? read.reason.status : undefined;
-      let message = "暂时无法读取，请稍后重试。";
-      if (status === 401) message = "登录已过期，请重新登录。";
-      if (status === 403) message = "当前账号没有读取权限，请联系文件所有者。";
-      if (status === 404 || status === 410) message = "文件可能已删除或共享已结束，请重新选择。";
-      errors.set(items[index].id,message);
+      errors.set(items[index].id, libraryReadMessage(read.reason));
     }
   });
   if (ready.length) {

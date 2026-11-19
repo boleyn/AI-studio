@@ -10,7 +10,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { LibraryReadError, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -368,17 +368,17 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     try {
       const results = await Promise.allSettled(items.map(item => readLibraryAttachment(item)));
       const attachments: File[] = [];
-      const unavailable: LibraryFile[] = [];
+      const unavailable: {file:LibraryFile;message:string}[] = [];
       results.forEach((result,index) => {
         if (result.status === "fulfilled") attachments.push(result.value);
-        else unavailable.push(items[index]);
+        else unavailable.push({file:items[index],message:libraryReadMessage(result.reason)});
       });
       if (unavailable.length) {
         const partialDownload = action === "download" && attachments.length > 0;
         toast({status:partialDownload ? "warning" : "error",isClosable:true,title:action === "chat" ? "无法添加所选资料" : partialDownload ? "部分文件无法下载" : "无法下载所选资料",
-          description:<Box><Text>以下资料读取失败，请重试。</Text>
-            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map(file=>
-              <li key={file.id}>{file.name}</li>)}</Box></Box>});
+          description:<Box><Text>以下资料读取失败。</Text>
+            <Box as="ul" pl={5} maxH="8rem" overflowY="auto">{unavailable.map(({file,message})=>
+              <li key={file.id}><strong>{file.name}</strong> · {message}</li>)}</Box></Box>});
         if (!partialDownload) return;
       }
       if (action === "chat") {await onChat(attachments,question,itemId); return;}
@@ -395,7 +395,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href=url; link.download=name; link.click();
-      if (items === picked && unavailable.length) setSelected(unavailable.map(file=>file.id));
+      if (items === picked && unavailable.length) setSelected(unavailable.map(({file})=>file.id));
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch(error) {toast({status:"error",title:error instanceof Error ? error.message : "操作失败"});}
     finally {setBatchBusy(false);}
