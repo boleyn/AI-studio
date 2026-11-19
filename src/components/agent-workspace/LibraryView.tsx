@@ -369,14 +369,16 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     };
   }, [showRelativeTimes]);
   function updateListOptions(nextTypes: string[], nextGrid: boolean, nextSources = sources) {
-    const query = {...router.query};
-    if (nextTypes.length) query.libraryType = nextTypes;
-    else delete query.libraryType;
-    if (nextSources.length) query.librarySource = nextSources;
-    else delete query.librarySource;
-    if (nextGrid) query.libraryLayout = "grid";
-    else delete query.libraryLayout;
-    void router.push({pathname:router.pathname, query}, undefined, {shallow:true, scroll:false});
+    const routeQuery = {...router.query};
+    if (query.trim()) routeQuery.librarySearch = query;
+    else delete routeQuery.librarySearch;
+    if (nextTypes.length) routeQuery.libraryType = nextTypes;
+    else delete routeQuery.libraryType;
+    if (nextSources.length) routeQuery.librarySource = nextSources;
+    else delete routeQuery.librarySource;
+    if (nextGrid) routeQuery.libraryLayout = "grid";
+    else delete routeQuery.libraryLayout;
+    void router.push({pathname:router.pathname, query:routeQuery}, undefined, {shallow:true, scroll:false});
   }
   const [listSorts, setListSorts] = useState<Record<string, {column: "name" | "time" | "size"; ascending: boolean}>>({});
   const sortKey = allHome ? "全部/" + tab : "list";
