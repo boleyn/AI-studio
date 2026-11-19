@@ -239,7 +239,7 @@ const ChatItem = ({
 
   const openReplyArtifact = (path: string) => {
     if (!onOpenWorkspaceFile) return false;
-    if (typeof artifactVersion === "string") {
+    if (workspaceArtifacts.length) {
       let decodedPath = path;
       try {
         decodedPath = decodeURIComponent(path);
@@ -249,13 +249,14 @@ const ChatItem = ({
       const candidates = [path, decodedPath];
       for (const candidate of [path, decodedPath]) {
         const normalized = `/${candidate.replace(/^\/+/, "")}`;
-        candidates.push(normalized);
+        candidates.push(normalized, normalized.slice(1));
         if (normalized.startsWith("/mnt/data/")) {
-          candidates.push(normalized.slice("/mnt/data".length));
+          const relative = normalized.slice("/mnt/data/".length);
+          candidates.push("/" + relative, relative);
         }
       }
       const artifact = candidates.find((candidate) => workspaceArtifacts.includes(candidate));
-      if (artifact) return onOpenWorkspaceFile(artifact, artifactVersion);
+      if (artifact) return onOpenWorkspaceFile(artifact, typeof artifactVersion === "string" ? artifactVersion : undefined);
     }
     return onOpenWorkspaceFile(path);
   };
