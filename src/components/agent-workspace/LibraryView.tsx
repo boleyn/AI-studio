@@ -1209,11 +1209,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           "@media (hover:hover) and (not (any-pointer:coarse))":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
-          <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
+          {(!typeNavigation || tab === "推荐" || folder) && <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection || searchResults || Boolean(allHome && searchTerm && column === "name")} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : searchResults ? "最近活动时间" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
-            </th>)}<th aria-label="文件操作"/></tr></thead>
+            </th>)}<th aria-label="文件操作"/></tr></thead>}
           <tbody style={{userSelect:"none"}}
             onPointerDown={event=>{
               rowDrag.current = undefined;
