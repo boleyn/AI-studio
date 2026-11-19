@@ -40,7 +40,15 @@ export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile
   if (response.status === 401) throw new Error("请先登录，再打开资料空间。");
   if (response.status === 403) throw new Error("当前账号没有访问资料空间的权限。");
   if (!response.ok) throw new Error("资料空间暂时不可用，请稍后重试。");
-  return response.json();
+  let items: unknown;
+  try {
+    items = await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error("资料列表未能加载，请重试。");
+  }
+  if (!Array.isArray(items)) throw new Error("资料列表未能加载，请重试。");
+  return items;
 }
 
 export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSignal): Promise<LibraryFile[]> {
