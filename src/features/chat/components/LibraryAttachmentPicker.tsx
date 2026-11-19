@@ -8,7 +8,7 @@ import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibraryS
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
 import { matchesLibraryType } from "@/components/agent-workspace/libraryFileType";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { addLibraryAttachments, expandLibrarySelection, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
+import { addLibraryAttachments, expandLibrarySelection, includeSharedPages, loadSharedSpacePages, loadLibraryFiles, recordLibraryOpen } from "../services/libraryAttachment";
 
 function sourceLabel(item:LibraryFile) {
   if (item.shareId) return item.project ? item.project + " 共享" : "与你共享";
@@ -122,12 +122,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setBusy(true);
     setError("");
     try {
-      const uniqueFiles = new Map(picked.map(file => [file.id, file]));
-      for (const sharedSpace of sharedSpaces.values()) {
-        const pages = await loadSharedSpacePages(sharedSpace);
-        for (const page of pages) uniqueFiles.set(page.id, page);
-      }
-      const files = [...uniqueFiles.values()];
+      const files = await includeSharedPages(picked, sharedSpaces.values());
       if (!files.length) {
         setError("所选位置中没有可添加的文件或页面。");
         return;

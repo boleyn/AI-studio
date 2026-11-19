@@ -32,6 +32,15 @@ export function expandLibrarySelection(selection: LibraryFile[], files: LibraryF
     return [...attachments.values()];
   }
 
+export async function includeSharedPages(files: LibraryFile[], spaces: Iterable<LibraryFile>) {
+  const uniqueFiles = new Map(files.map(file => [file.id, file]));
+  for (const space of spaces) {
+    const pages = await loadSharedSpacePages(space);
+    for (const page of pages) uniqueFiles.set(page.id, page);
+  }
+  return [...uniqueFiles.values()];
+}
+
 export function recordLibraryOpen(selection: string | string[]) {
   const ids = typeof selection === "string" ? [selection] : [...new Set(selection)];
   for (let start = 0; start < ids.length; start += 100) {

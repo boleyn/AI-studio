@@ -11,7 +11,7 @@ import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile 
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
-import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, loadSharedSpacePages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
+import { expandLibrarySelection, isContainer, LibraryReadError, libraryReadMessage, libraryAttachmentUrl, includeSharedPages, loadLibraryFiles, readLibraryAttachment, readLibraryAttachments, recordLibraryOpen } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -417,11 +417,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   async function startSelectionChat(selection: LibraryFile[]) {
     const shared = new Map<string, LibraryFile>();
-    const attachments = expandLibrarySelection(selection, files || [], shared);
+    let attachments = expandLibrarySelection(selection, files || [], shared);
     if (shared.size) {
       setBatchBusy(true);
       try {
-        for (const space of shared.values()) attachments.push(...await loadSharedSpacePages(space));
+        attachments = await includeSharedPages(attachments, shared.values());
       } catch (error) {
         toast({status:"error", title:"无法读取共享空间", isClosable:true,
           description:error instanceof TypeError ? "连接失败，请检查网络后重试。" :
