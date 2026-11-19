@@ -105,12 +105,12 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       });
     }
   }
+  const picked = expandLibrarySelection(selected, rootItems.current);
   async function add() {
     if (busy || !items) return;
     setBusy(true);
     setError("");
     try {
-      const picked = expandLibrarySelection(selected, rootItems.current);
       if (!picked.length) {
         setError("所选位置中没有可添加的文件或页面。");
         return;
@@ -183,6 +183,6 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         </Flex>;
       })}
     </ModalBody><ModalFooter px={5} py={3} mt={2} borderTop="1px solid #eee" gap={2}><Button size="sm" variant="ghost" borderRadius="full" isDisabled={busy} onClick={onClose}>取消</Button>
-      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!items || !selected.length} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length ? "（"+selected.length+"）" : ""}</Button>
+      <Button size="sm" bg="#171717" color="white" _hover={{bg:"#333"}} borderRadius="full" px={4} isLoading={busy} isDisabled={!items || !selected.length} onClick={add}>{selected.length > 0 && selected.every(item => fileErrors.has(item.id)) ? "重试" : "添加"}{selected.length ? "（"+picked.length+"）" : ""}</Button>
     </ModalFooter></>}</ModalContent></Modal>;
 }
