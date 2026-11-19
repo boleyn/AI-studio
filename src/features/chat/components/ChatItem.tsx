@@ -1,6 +1,5 @@
 import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
-import { getFileIcon } from "@fastgpt/global/common/file/icon";
 import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
@@ -306,10 +305,9 @@ const ChatItem = ({
         {isUser ? (
           <Flex direction="column" gap={2}>
             {sortedFiles.length > 0 ? (
-              <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }}>
+              <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: sortedFiles.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" }}>
                 {sortedFiles.map((file, index) => {
                   const image = isImageFile(file);
-                  const icon = getFileIcon(file.name || "");
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
@@ -342,7 +340,7 @@ const ChatItem = ({
                           p={2}
                           w="100%"
                         >
-                          {file.libraryItemId ? <LibraryItemIcon item={{name:file.name || ""}}/> : <Box as="img" h="24px" src={`/icons/chat/${icon}.svg`} w="24px" />}
+                          <LibraryItemIcon item={{name:file.name || ""}}/>
                           <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                             {file.name || fileUrl || `文件 ${index + 1}`}
                           </Text>
