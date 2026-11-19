@@ -59,6 +59,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
   const historySelection = useRef<HTMLButtonElement>(null);
   const name = item.sharedPage ? markdownFilename(item.name) : libraryTypeName(item);
   const markdown = /\.(md|markdown)$/i.test(name);
+  const html = /\.html?$/i.test(name);
   const plain = /\.(txt|log|json|ya?ml)$/i.test(name);
   const document = isArtifactImage(name) || /\.(pdf|doc[xm]|xls[xm]?|ppt[xm]|csv|tsv|ods)$/i.test(name);
   const image = isArtifactImage(name);
@@ -83,7 +84,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
     target?.focus();
   },[]);
   useEffect(() => {
-    if (!markdown && !plain && !image) return;
+    if (!markdown && !plain && !image && !html) return;
     let objectUrl: string | undefined;
     setImageUrl(undefined);
     const controller = new AbortController();
@@ -108,7 +109,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  },[item,markdown,plain,image,attempt]);
+  },[item,markdown,plain,image,html,attempt]);
   const previewFailure = <Flex direction="column" align="center" textAlign="center" px={4} py={8} gap={3}>
     <CircleAlert size={22} color="#777" aria-hidden/>
     <Box role="alert"><Text fontWeight="600">无法加载预览</Text>
@@ -159,7 +160,11 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
     <Flex direction="column" flex="1" minW={0} minH={0}>
     <Flex flex="1" minH={0} position="relative">
     <Box ref={viewport} flex="1" minW={0} minH={0} overflow="auto">
-      {markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}>
+      {html ? error ? previewFailure : body === undefined ? <Spinner size="sm" aria-label="读取文件"/> :
+        <iframe title={item.name} sandbox="allow-scripts" referrerPolicy="no-referrer"
+          style={{display:"block", width:"100%", height:"100%", border:0}}
+          srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'">${body}`}/>
+        : markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}>
         {error ? previewFailure : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
           markdown ? <LibraryMarkdown>{body}</LibraryMarkdown> :
           <Text as="pre" whiteSpace="pre-wrap">{body}</Text>}
