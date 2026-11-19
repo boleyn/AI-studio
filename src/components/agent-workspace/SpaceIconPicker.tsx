@@ -20,8 +20,8 @@ export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;
   const tabStop = options.some(([name])=>name===focused) ? focused : options[0]?.[0];
   return <Popover placement="bottom-start" initialFocusRef={search} onOpen={()=>{setQuery("");setFocused(value.icon);}}>
     <PopoverTrigger><IconButton aria-label="更换图标" boxSize="26px" minW="26px" ml="12px" flexShrink={0} borderRadius="full" variant="ghost" icon={<SpaceIcon appearance={value} size={26}/>}/></PopoverTrigger>
-      <PopoverContent w="min(320px,85vw)"><PopoverBody>
-        <Input ref={search} type="search" size="sm" aria-label="搜索图标" placeholder="搜索图标" value={query} onChange={e=>setQuery(e.target.value)}/>
+      <PopoverContent w="min(360px,calc(100vw - 24px))"><PopoverBody px="19px">
+        <Input ref={search} type="search" size="sm" h="28px" px="8px" borderRadius="6px" aria-label="搜索图标" placeholder="搜索图标" value={query} onChange={e=>setQuery(e.target.value)}/>
         <Flex role="group" aria-label="图标颜色" gap={1} my={2}>{Object.entries(colors).map(([name,color])=>
           <Button key={name} aria-label={"使用"+name} aria-pressed={value.color===name} variant="ghost" size="xs" onClick={()=>onChange({...value,color:name})}><Box boxSize="14px" bg={color} borderRadius="full" outline={value.color===name?"1px solid":undefined} outlineOffset="2px"/></Button>)}</Flex>
         <Text role="status" fontSize="xs">{options.length} 个图标</Text>
@@ -37,7 +37,7 @@ export default function SpaceIconPicker({value,onChange}:{value:SpaceAppearance;
         }}>
           <Box role="rowgroup" aria-label="图标">{rows.map(row =>
             <Box key={row[0][0]} role="row" display="grid" gridTemplateColumns="repeat(8,minmax(0,1fr))">
-              {row.map(([name,Icon])=><Box role="gridcell" key={name}><IconButton w="full" minW={0} tabIndex={tabStop===name ? 0 : -1} onFocus={()=>setFocused(name)} size="sm" variant="ghost" aria-label={name} aria-pressed={value.icon===name} bg={value.icon===name ? "#efefef" : undefined} title={name} icon={<Icon size={18} color={colors[value.color as keyof typeof colors]}/>} onClick={()=>onChange({...value,icon:name})}/></Box>)}
+              {row.map(([name,Icon])=><Box role="gridcell" key={name} textAlign="center"><IconButton w="32px" maxW="full" minW={0} tabIndex={tabStop===name ? 0 : -1} onFocus={()=>setFocused(name)} size="sm" variant="ghost" aria-label={name} aria-pressed={value.icon===name} bg={value.icon===name ? "#efefef" : undefined} title={name} icon={<Icon size={18} color={colors[value.color as keyof typeof colors]}/>} onClick={()=>onChange({...value,icon:name})}/></Box>)}
             </Box>)}</Box>
         </Box>
       </PopoverBody></PopoverContent>
