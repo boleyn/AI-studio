@@ -2,7 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalOverlay, Text } from "@chakra-ui/react";
 import LibraryItemIcon from "./LibraryItemIcon";
 import { Folder, MessageSquare, Search } from "lucide-react";
-import type { LibraryFile } from "@/types/library";
+import { matchesExportedPageName, type LibraryFile } from "@/types/library";
 import type { ProjectWithConversations } from "../AgentWorkspace";
 
 type Props = {
@@ -24,7 +24,8 @@ export default function LibraryGlobalSearch({projects, files, onProject, onChat,
   const chats = projects.flatMap(project => project.conversations.map(chat => ({
     id: JSON.stringify([project.token,chat.id]), time:chat.updatedAt, label: chat.title, icon:<MessageSquare size={16} aria-hidden/>, open: () => onChat(project.token, chat.id)
   }))).filter(chat => matches(chat.label));
-  const items = files.filter(file => !file.deleted && [file.name,file.path,file.conversation,file.project].some(matches)).map(file => ({
+  const items = files.filter(file => !file.deleted && (matchesExportedPageName(file, needle) ||
+    [file.name,file.path,file.conversation,file.project].some(matches))).map(file => ({
     id: file.id, time:file.openedAt, label: file.name, icon:<LibraryItemIcon item={file} compact/>, source: file.conversation || file.project, open: () => onFile(file)
   }));
   const groups = [
