@@ -1,3 +1,4 @@
+import { LibraryReadError, libraryReadMessage } from "@features/chat/services/libraryAttachment";
 import LibraryMarkdown from "../agent-workspace/LibraryMarkdown";
 import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import dynamic from "next/dynamic";
@@ -49,11 +50,11 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   onStateChange?: FileViewerProps["onStateChange"];
 }) {
   const standalone = !viewerRef && !onStateChange;
-  const [result, setResult] = useState<{ file: File } | { markdown: string } | { error: true }>();
+  const [result, setResult] = useState<{ file: File } | { markdown: string } | { error: string }>();
 
   const handleViewerState = useCallback<NonNullable<FileViewerProps["onStateChange"]>>((state) => {
     onStateChange?.(state);
-    if (state.error && !state.loading) setResult({ error: true });
+    if (state.error && !state.loading) setResult({ error: "无法预览此文件的内容。" });
   }, [onStateChange]);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
     setResult(undefined);
     fetch(url, { headers: withAuthHeaders(), signal: controller.signal })
       .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw new LibraryReadError(response.status,name);
         return response.blob();
       })
       .then(async (blob) => {
@@ -73,8 +74,9 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
         await validateOfficePackage(blob, name);
         if (!controller.signal.aborted) setResult({ file: new File([blob], name, { type: blob.type }) });
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setResult({ error: true });
+      .catch(reason => {
+        if (!controller.signal.aborted) setResult({ error: reason instanceof LibraryReadError ? libraryReadMessage(reason) :
+          reason instanceof TypeError ? "连接失败，请检查网络后重试。" : "无法预览此文件的内容。" });
       });
 
     return () => controller.abort();
@@ -83,7 +85,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   if (!result || "error" in result) {
     return <Flex h="full" direction="column" align="center" justify="center" gap={3} role="status">
       {!result ? <Spinner size="sm" aria-label="正在加载文件" /> : <>
-        <Text fontSize="sm" color="gray.600">无法加载此文件</Text>
+        <Text fontSize="sm" color="gray.600">{result.error}</Text>
         <Button size="sm" variant="outline" onClick={onRetry}>重试</Button>
       </>}
     </Flex>;
