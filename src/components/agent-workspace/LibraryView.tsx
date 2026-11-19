@@ -932,7 +932,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         if (canDropFiles) void uploadFiles(Array.from(event.dataTransfer.files));
       }}>
     <Box maxW={personalSection ? "1060px" : "1440px"} px={{base:4,md:8,xl:"48px"}} mx="auto">
-      {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
+      {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" py={sharedItems ? {md:"12px"} : undefined} minH="36px" justify="space-between" gap={4} wrap="wrap">
         <Flex display={{base:"flex", md:"none"}} align="center" gap={1}>
           <Menu placement="bottom-start">
             <MenuButton as={IconButton} variant="ghost" size="sm" aria-label="资料空间导航" icon={<PanelLeftOpen size={18}/>}/>
@@ -943,7 +943,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Menu>
           <Button variant="ghost" onClick={onBack}>返回聊天</Button>
         </Flex>
-        <Flex align="center" gap={2} minW={0} maxW="full"><Heading as="h1" display="flex" alignItems="center" flexWrap={folder ? "wrap" : undefined} minW={0} gap={2} fontSize="24px" lineHeight={allHome ? "1.2" : "36px"} fontWeight="500">
+        <Flex align="center" gap={2} minW={0} maxW="full"><Heading as="h1" display="flex" alignItems="center" flexWrap={folder ? "wrap" : undefined} minH={sharedItems ? {md:"36px"} : undefined} minW={0} gap={2} fontSize="24px" lineHeight={allHome ? "1.2" : "36px"} fontWeight="500">
           {folder ? <><Button variant="link" fontSize="inherit" onClick={()=>navigateList("你的条目","全部",undefined,undefined,true)}>全部</Button>
             {folderPath(folder.id).map(item=><Flex as="span" key={item.id} gap={2} align="center" maxW="full" minW={0}><ChevronRight size={16} style={{flexShrink:0}}/>
               {item.id===folder.id ? <Text as="span" isTruncated title={item.name}>{item.name}</Text> : <Button variant="link" minW={0} fontSize="inherit" title={item.name} onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}><Text as="span" isTruncated>{item.name}</Text></Button>}</Flex>)}</> : section}</Heading></Flex>
@@ -951,13 +951,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           {imageSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" isLoading={creating}
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : personalSection ? createMenu(false) : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
-      <Flex gap={personalSection ? 4 : 1} mt={personalSection ? "38px" : "4px"} pb={personalSection ? "8px" : "20px"} mb="17px" minH={personalSection ? "44px" : "56px"} align="center" justify="flex-end">
+      <Flex gap={personalSection ? 4 : 1} mt={personalSection ? "38px" : "4px"} pb={personalSection ? "8px" : "20px"} mb={sharedItems ? {base:"17px",md:"1px"} : "17px"} minH={personalSection ? "44px" : "56px"} align="center" justify="flex-end">
         <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : typeNavigation ? "工件类型" : "资料库分区"}>
           {personalSection && librarySearchField}
           {section !== "回收站" && !personalSection && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" id={sitesSection ? "library-sites-tab-" + index : undefined}
               aria-controls={sitesSection && tab === name ? "library-sites-panel" : undefined} aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
-              size="sm" h="36px" minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
+              size="sm" h="36px" lineHeight={sharedItems ? "20px" : undefined} minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
               sx={slidesSection || allHome ? {border:"1px solid transparent",fontSize:"14px",fontWeight:500,
                 color:tab === name ? "#0d0d0d" : "#5d5d5d",bg:tab === name ? "blackAlpha.50" : "transparent",
                 "&[aria-selected=true]":{bg:"rgba(0,0,0,.05)"}} : undefined}
