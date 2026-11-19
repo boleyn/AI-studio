@@ -21,6 +21,12 @@ export async function recordSiteVisit(share: ShareLinkData, cookie?: string) {
     { $set: { projectToken: share.projectToken, viewer, shareId: share.shareId }, $currentDate: { visitedAt: true } },
     { upsert: true },
   );
+  const day = new Date().toISOString().slice(0, 10);
+  await db.collection<{_id:string;projectToken:string;day:string;views:number;viewer:string}>("site_daily_visits").updateOne(
+    { _id: JSON.stringify([share.projectToken, day, viewer]) },
+    { $setOnInsert: {projectToken:share.projectToken, day, viewer}, $inc: {views:1} },
+    { upsert:true },
+  );
 }
 
 export async function countRecentSiteVisitors(tokens: string[]) {
