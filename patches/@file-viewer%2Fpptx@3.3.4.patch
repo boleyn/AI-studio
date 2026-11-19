@@ -1,0 +1,13 @@
+diff --git a/dist/viewer.js b/dist/viewer.js
+index 60d431f017d35b3c4921c1f804711f3b93de7803..b04148ab3940d90b52f810382bb01424569e2544 100644
+--- a/dist/viewer.js
++++ b/dist/viewer.js
+@@ -232,7 +232,7 @@ export class PptxViewer {
+     async setZoom(percent) {
+         const desiredEffectivePercent = toPercent(percent);
+         this.userZoomPercent = clamp(desiredEffectivePercent / Math.max(this.fitScale, 0.01), 25, 600);
+-        this.scheduleResize();
++        this.resize();
+     }
+     destroy() {
+         var _a, _b, _c, _d, _e;
