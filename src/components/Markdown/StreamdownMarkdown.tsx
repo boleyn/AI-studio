@@ -13,6 +13,7 @@ interface StreamdownMarkdownProps {
   source?: string;
   showAnimation?: boolean;
   onOpenWorkspaceFile?: (path: string) => boolean;
+  resolveWorkspaceFile?: (source: string) => string | undefined;
   resolveWorkspaceImage?: (source: string) => WorkspaceImage | undefined;
 }
 
@@ -59,29 +60,35 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
   showAnimation = false,
   onOpenWorkspaceFile,
   resolveWorkspaceImage,
+  resolveWorkspaceFile,
 }) => {
-  const rehypePlugins = useMemo(() => resolveWorkspaceImage ? [
+  const rehypePlugins = useMemo(() => resolveWorkspaceImage || resolveWorkspaceFile ? [
     defaultRehypePlugins.raw,
     () => (tree: Root) => {
       visit(tree, "element", (node) => {
+        const href = node.properties.href;
+        if (node.tagName === "a" && typeof href === "string" && href.startsWith("sandbox:/")) {
+          const path = href.slice("sandbox:".length);
+          if (/^\/[^/\\]/.test(path) && !path.includes("\\") && resolveWorkspaceFile?.(path)) node.properties.href = path;
+        }
         const src = node.properties.src;
         if (node.tagName !== "img" || typeof src !== "string" || !src.startsWith("sandbox:/")) return;
         const path = src.slice("sandbox:".length);
-        if (resolveWorkspaceImage(path)) node.properties.src = path;
+        if (resolveWorkspaceImage?.(path)) node.properties.src = path;
       });
     },
     defaultRehypePlugins.sanitize,
     () => (tree: Root) => {
       visit(tree, "element", (node) => {
         const { src, alt } = node.properties;
-        if (node.tagName !== "img" || typeof src !== "string" || !resolveWorkspaceImage(src)) return;
+        if (node.tagName !== "img" || typeof src !== "string" || !resolveWorkspaceImage?.(src)) return;
         // Route known reply artifacts through the authenticated renderer before URL hardening.
         node.tagName = "workspace-artifact-image";
         node.properties = { artifactSource: src, alt };
       });
     },
     defaultRehypePlugins.harden,
-  ] : undefined, [resolveWorkspaceImage]);
+  ] : undefined, [resolveWorkspaceFile, resolveWorkspaceImage]);
   const components = useMemo(
     () => ({
       "workspace-artifact-image": ({ artifactSource, alt }: Record<string, unknown>) => {

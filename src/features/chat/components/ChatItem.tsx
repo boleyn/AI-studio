@@ -634,6 +634,7 @@ const ChatItem = ({
                         {isWorkspaceChat ? (
                           <StreamdownMarkdown
                             onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                            resolveWorkspaceFile={workspaceArtifacts.length ? findReplyArtifact : undefined}
                             resolveWorkspaceImage={workspaceArtifacts.length ? resolveWorkspaceImage : undefined}
                             showAnimation={showAssistantAnimation && index === latestAnswerIndex}
                             source={item.text || ""}
@@ -656,6 +657,7 @@ const ChatItem = ({
               isWorkspaceChat ? (
                 <StreamdownMarkdown
                   onOpenWorkspaceFile={onOpenWorkspaceFile ? openReplyArtifact : undefined}
+                  resolveWorkspaceFile={workspaceArtifacts.length ? findReplyArtifact : undefined}
                   resolveWorkspaceImage={workspaceArtifacts.length ? resolveWorkspaceImage : undefined}
                   showAnimation={showAssistantAnimation}
                   source={content}
