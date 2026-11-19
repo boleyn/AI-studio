@@ -346,13 +346,18 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (folder && sort.column === "size") return String(file.size ?? 0);
     return sort.column === "name" ? file.name : rowTime(file);
   }
+  function sourceFilter(file: LibraryFile) {
+    const origin = file.shareId ? file.fileOrigin : file.fromTemplate ? "生成" : file.kind;
+    if (origin === "上传") return "已上传";
+    if (origin === "生成") return "生成的文件";
+    return "";
+  }
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
     (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
-    (!imageSection || (!file.shareId && file.kind === (tab === "已上传" ? "上传" : "生成"))) &&
-    (!sources.length || (file.shareId ? (file.fileOrigin === "上传" && sources.includes("已上传")) || (file.fileOrigin === "生成" && sources.includes("生成的文件")) :
-      (file.kind === "上传" && !file.fromTemplate && sources.includes("已上传")) || ((file.kind === "生成" || file.fromTemplate) && sources.includes("生成的文件")))) &&
+    (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
+    (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     [file.name, file.path, file.project, file.conversation].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
