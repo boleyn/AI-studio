@@ -32,7 +32,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const [items,setItems] = useState<LibraryFile[]>();
   const [space,setSpace] = useState<LibraryFile>();
   const [query,setQuery] = useState(initialQuery);
-  const [selected,setSelected] = useState<string[]>([]);
+  const [selected,setSelected] = useState<LibraryFile[]>([]);
+  const rootItems = useRef<LibraryFile[]>([]);
   const [error,setError] = useState("");
   const [fileErrors,setFileErrors] = useState(new Map<string,string>());
   const listRef = useRef<HTMLDivElement>(null);
@@ -58,14 +59,18 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       }));
     }
     loadItems().then(data => {
-      if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a))));
+      if (controller.signal.aborted) return;
+      const loaded = data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
+      if (!space) rootItems.current = loaded;
+      setItems(loaded);
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
     });
     return () => controller.abort();
   },[attempt,space]);
   const namesById = new Map(items?.map(item=>[item.id,item.name]));
-  const attachable = items?.filter(item=>!item.siteId);
+  const failedElsewhere = selected.filter(item => fileErrors.has(item.id) && !items?.some(row => row.id === item.id));
+  const attachable = items && [...failedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
     item.folderId && namesById.get(item.folderId),
     sourceLabel(item),
@@ -80,7 +85,6 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setSpace(next);
     setItems(undefined);
     setQuery("");
-    setSelected([]);
     setFileErrors(new Map());
     setError("");
   }
@@ -89,9 +93,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setBusy(true);
     setError("");
     try {
-      const itemsById = new Map(items.map(item => [item.id, item]));
-      const selection = selected.map(id => itemsById.get(id)).filter((item): item is LibraryFile => Boolean(item));
-      const picked = expandLibrarySelection(selection, items);
+      const picked = expandLibrarySelection(selected, rootItems.current);
       if (!picked.length) {
         setError("所选位置中没有可添加的文件或页面。");
         return;
@@ -99,7 +101,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       const errors = await addLibraryAttachments(picked, onAdd);
       setFileErrors(errors);
       if (errors.size) {
-        setSelected([...errors.keys()]);
+        setSelected(picked.filter(item => errors.has(item.id)));
         setQuery("");
         const added = picked.length - errors.size;
         setError(added
@@ -146,14 +148,14 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       </Box>}
       {visible?.map(item=>{
         if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" py={2} gap={3}
-          justifyContent="start" isDisabled={busy || selected.length > 0} onClick={()=>browseSpace(item)}>
+          justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
           <LibraryItemIcon item={item}/><Text flex="1" textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
         </Button>;
-        const checked=selected.includes(item.id);
+        const checked=selected.some(entry => entry.id === item.id);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
           _hover={{bg:"#f5f5f5"}} _focusVisible={{outline:"2px solid #555",outlineOffset:"-2px"}}
-          onClick={()=>setSelected(previous=>previous.includes(item.id)?previous.filter(id=>id!==item.id):[...previous,item.id])}>
+          onClick={()=>setSelected(previous=>previous.some(entry=>entry.id===item.id)?previous.filter(entry=>entry.id!==item.id):[...previous,item])}>
           <LibrarySelectionIndicator checked={checked}/>
           <LibraryItemIcon item={item}/><Box flex="1" minW={0}><Text fontSize="sm" isTruncated title={item.name}>{item.name}</Text>
             <Text id={"library-source-"+item.id} color="#707070" fontSize="xs" isTruncated title={locationLabel(item)}>{locationLabel(item)}</Text>
