@@ -4,6 +4,7 @@ import styles from "./LibrarySelectionBox.module.css";
 interface Props {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   mixed?: boolean;
   card?: boolean;
   onChange: () => void;
@@ -16,9 +17,9 @@ export function LibrarySelectionIndicator({checked}:{checked:boolean}) {
   return <span aria-hidden className={styles.indicator} data-checked={checked}><SelectionMark checked={checked}/></span>;
 }
 
-export default function LibrarySelectionBox({label,checked,mixed,card,onChange}:Props) {
+export default function LibrarySelectionBox({label,checked,mixed,card,disabled,onChange}:Props) {
   return <button className={card ? styles.cardControl : styles.control} type="button" role="checkbox" aria-label={label}
-    aria-checked={mixed ? "mixed" : checked} onClick={onChange}>
+    disabled={disabled} aria-checked={mixed ? "mixed" : checked} onClick={onChange}>
     <SelectionMark mixed={mixed} checked={checked}/>
   </button>;
 }

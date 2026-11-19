@@ -360,7 +360,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       setSelected(current => current.filter(id => visibleIds.has(id)));
     }
   }, [visible, selected.length, picked.length]);
-  const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
+  const selectionLocked = batchBusy || saving;
+  const checkItem = (id:string) => {
+    if (!selectionLocked) setSelected(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids,id]);
+  };
   function clickItemSurface(event: React.MouseEvent, file: LibraryFile) {
     const target = event.target;
     if (!(target instanceof Element) || !event.currentTarget.contains(target) ||
@@ -822,13 +825,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <Box className="image-actions" position="absolute" top="13px" insetInlineEnd="13px"
                 sx={{"& > button":{width:"36px",height:"36px",borderRadius:"full",color:"white",background:"rgba(0,0,0,.28)",backdropFilter:"blur(8px)"},
                   "& > button:hover, & > button[aria-expanded=true]":{background:"rgba(0,0,0,.42)"}}}>{actions(file)}</Box>
-              <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
+              <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Box>)}
           </Box>
         </Box> : grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
             bg={selected.includes(file.id) ? "#f3f3f3" : undefined} cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
-            <LibrarySelectionBox card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
+            <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
@@ -850,7 +853,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:section === "全部" && !folder ? "calc(65% - 32px)" : "calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
-          <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox label={picked.length ? "清除选择" : "全选"} checked={allChecked}
+          <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
               {column === "source" ? (section === "回收站" ? "大小" : "来源") : <Flex as="button" type="button" w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
@@ -859,7 +862,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}
             sx={{"&[aria-selected=true], &[aria-selected=true]:hover":{bg:"#f3f3f3"}}} _hover={{bg:"surface.hover"}}>
-            <td><Flex align="center" justify="center"><LibrarySelectionBox label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
+            <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button size="xs" variant="link" title={file.conversation}
