@@ -112,16 +112,19 @@ const ChatItem = ({
   const [previewText,setPreviewText] = React.useState<string>();
   const [showLibrarySource,setShowLibrarySource] = React.useState(false);
   const [previewError,setPreviewError] = React.useState("");
+  function openPreview(next: NonNullable<typeof preview>) {
+    setPreviewText(undefined);
+    setPreviewError("");
+    setShowLibrarySource(false);
+    setPreview({...next});
+  }
   React.useEffect(() => {
     if (!preview) return;
-    setPreviewText(undefined);
-    setShowLibrarySource(false);
     if (!preview.url && !preview.libraryItemId) {
       setPreviewError("这条历史消息缺少附件地址，请从资料空间重新添加文件。");
       return;
     }
     const controller = new AbortController();
-    setPreviewError("");
     void (async () => {
       const signal = controller.signal;
       function showContent(value: string, fromLibrary: boolean) {
@@ -327,7 +330,7 @@ const ChatItem = ({
             {previewError ? <Flex direction="column" align="center" gap={3} py={6}>
               <Box role="alert" textAlign="center"><Text fontWeight="600">无法预览附件</Text>
                 <Text fontSize="sm" color="gray.600" mt={1}>{previewError}</Text></Box>
-              {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
+              {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && openPreview(preview)}>重新加载</Button>}
               <Flex align="center" justify="center" wrap="wrap" gap={3} fontSize="sm">
                 {previewSourceLink}
                 {preview?.name && <Link href={"/?" + new URLSearchParams({view:"library",librarySearch:preview.name})}
@@ -410,7 +413,7 @@ const ChatItem = ({
                           as="button" type="button" disabled={!canOpen} aria-label={canOpen ? `打开 ${name}` : `${name}，${unavailable}`}
                           cursor={canOpen ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown || isHtml) setPreview({name,url:fileUrl,html:isHtml,libraryItemId:file.libraryItemId});
+                            if (isMarkdown || isHtml) openPreview({name,url:fileUrl,html:isHtml,libraryItemId:file.libraryItemId});
                             else if (openUrl) window.open(openUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
