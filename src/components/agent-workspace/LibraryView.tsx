@@ -395,7 +395,11 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <li key={file.id}><strong>{file.name}</strong> · {message}</li>)}</Box></Box>});
         if (!partialDownload) return;
       }
-      if (action === "chat") {await onChat(attachments,question,itemId); return;}
+      if (action === "chat") {
+        await onChat(attachments,question,itemId);
+        for (const file of items) recordLibraryOpen(file.id);
+        return;
+      }
       if (!attachments.length) return;
       let blob:Blob = attachments[0];
       let name = attachments[0].name;
