@@ -5,6 +5,7 @@ import { getAuthUserFromRequest } from "@server/auth/ssr";
 import { getMongoDb } from "@server/db/mongo";
 import { getSiteSettings } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
+import { siteReportDates } from "@server/shares/siteVisits";
 import { getShareLink } from "@server/shares/shareStorage";
 
 interface Props {
@@ -31,8 +32,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
   if (!project || project.userId !== user.sub) return {notFound:true};
   context.res.setHeader("Cache-Control","private, no-store");
   const days = context.query.days === "7" ? 7 : 30;
-  const now = Date.now();
-  const dates = Array.from({length:days}, (_, i) => new Date(now - (days-1-i)*86400000).toISOString().slice(0,10));
+  const dates = siteReportDates(days);
   const db = await getMongoDb();
   const [requestTotal] = await db.collection("site_daily_requests").aggregate<{count:number}>([
     {$match:{projectToken:share.projectToken,day:{$gte:dates[0],$lte:dates[days-1]}}},

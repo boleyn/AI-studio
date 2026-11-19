@@ -40,12 +40,19 @@ export async function recordSiteVisit(share: ShareLinkData, cookie?: string) {
   );
 }
 
+export function siteReportDates(days: number) {
+  const now = Date.now();
+  return Array.from({length:days}, (_, index) =>
+    new Date(now - (days - 1 - index) * 86400000).toISOString().slice(0,10));
+}
+
 export async function countRecentSiteVisitors(tokens: string[]) {
   const db = await getMongoDb();
-  const cutoff = new Date(Date.now() - 30 * 86400000);
-  const totals = await db.collection<SiteVisit>("site_visits").aggregate<{ _id: string; count: number }>([
-    { $match: { projectToken: { $in: tokens }, visitedAt: { $gte: cutoff } } },
-    { $group: { _id: "$projectToken", count: { $sum: 1 } } },
+  const dates = siteReportDates(30);
+  const totals = await db.collection("site_daily_visits").aggregate<{ _id: string; count: number }>([
+    { $match: { projectToken: { $in: tokens }, day: { $gte: dates[0], $lte: dates[29] } } },
+    { $group: { _id: {project:"$projectToken", viewer:"$viewer"} } },
+    { $group: { _id: "$_id.project", count: { $sum: 1 } } },
   ]).toArray();
   return new Map(totals.map(row => [row._id, row.count]));
 }
