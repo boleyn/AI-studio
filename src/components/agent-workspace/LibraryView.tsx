@@ -700,13 +700,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <LibraryItemIcon item={file}/><Text my={2} overflowWrap="anywhere">{itemLink(file)}</Text>
             {actions(file)}
           </Box>)}
-        </Box> : <Box as="table" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={section === "回收站" ? "回收站" : "推荐内容"} sx={{
+        </Box> : <Box as="table" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (section === "全部" ? tab : section)} sx={{
           tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2), & td:nth-of-type(2)":{paddingInlineStart:"8px"},
-          "& td button, & td a":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
-          "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child button":{opacity:0}}
+          "& td:nth-child(2) a, & td:nth-child(2) span, & td:nth-child(3) > button":{maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+          "@media (hover:hover)":{"& tbody tr:not(:hover):not(:focus-within) td:last-child > div > button:not([aria-expanded=true])":{opacity:0}}
         }}>
           <colgroup><col style={{width:"32px"}}/><col style={{width:"calc(62% - 32px)"}}/><col style={{width:"19%"}}/><col/><col style={{width:hasPageActions ? "64px" : "30px"}}/></colgroup>
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox label={allChecked ? "清除选择" : "全选"} checked={allChecked}
