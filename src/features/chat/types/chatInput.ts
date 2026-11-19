@@ -108,6 +108,7 @@ export interface ChatInputProps {
   workspaceLayout?: boolean;
   workspaceComposer?: WorkspaceComposerConfig;
   isSending: boolean;
+  conversationLoading?: boolean;
   model: string;
   modelOptions: ChatInputModelOption[];
   modelGroups?: ChatInputModelGroup[];

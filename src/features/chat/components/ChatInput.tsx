@@ -67,6 +67,7 @@ const ChatInput = ({
   placeholder,
   artifactRevision,
   draftStorageKey,
+  conversationLoading = false,
   workspaceLayout = false,
   workspaceComposer,
   isSending,
@@ -215,12 +216,13 @@ const ChatInput = ({
 
   const canSend = useMemo(
     () =>
+      !conversationLoading &&
       !isSending &&
       !isSubmitting &&
       !hasUploadingFiles &&
       !hasUploadErrors &&
       (text.trim().length > 0 || files.length > 0 || selectedFilePaths.length > 0),
-    [files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, selectedFilePaths.length, text]
+    [conversationLoading, files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, selectedFilePaths.length, text]
   );
   const selectedSkillList = useMemo(() => {
     if (Array.isArray(selectedSkills) && selectedSkills.length > 0) {

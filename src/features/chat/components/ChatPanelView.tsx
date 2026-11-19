@@ -145,6 +145,7 @@ const ChatPanelView = () => {
             : undefined}
           placeholder={context.hideHeader ? "发消息或创建任务... / 使用技能 @ 添加资料" : undefined}
           isSending={context.isSending}
+          conversationLoading={context.showInitialLoading}
           model={context.model}
           modelLoading={context.modelLoading}
           modelOptions={context.modelOptions}
