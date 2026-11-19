@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Box, Button, Flex, Heading, Link } from "@chakra-ui/react";
 import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 
@@ -23,4 +24,14 @@ export default function SiteDetailHeader({name, previewPath, editUrl, onBack, sa
       <Link href={previewPath} fontSize="sm" color="gray.600" overflowWrap="anywhere">{previewPath}</Link>
     </Box>
   </>;
+}
+
+export function SiteDetailNav({children}:{children:ReactNode}) {
+  return <Flex as="nav" aria-label="站点详情" align="stretch" gap={3} overflowX="auto" borderBottomWidth="1px"
+    sx={{
+      "& > *": {display:"inline-flex", alignItems:"center", flexShrink:0, whiteSpace:"nowrap", minHeight:"36px", paddingInline:"4px",
+        fontSize:"sm", fontWeight:"normal", color:"gray.600", borderRadius:0, borderBottom:"2px solid transparent"},
+      '& > [aria-current="page"]': {fontWeight:"semibold", color:"gray.900", borderBottomColor:"currentColor"},
+      "& > :focus-visible": {outlineOffset:"-2px"},
+    }}>{children}</Flex>;
 }

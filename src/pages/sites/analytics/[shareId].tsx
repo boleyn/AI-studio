@@ -1,6 +1,6 @@
 import { sitePreviewPath } from "@/types/library";
 import type { GetServerSideProps } from "next";
-import SiteDetailHeader from "@/components/agent-workspace/SiteDetailHeader";
+import SiteDetailHeader, { SiteDetailNav } from "@/components/agent-workspace/SiteDetailHeader";
 import { useState } from "react";
 import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
@@ -94,13 +94,13 @@ export default function SiteAnalytics({name,shareId,previewPath,editUrl,days,dai
   };
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <SiteDetailHeader name={name} previewPath={previewPath} editUrl={editUrl}/>
-    <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" mb={4} borderBottomWidth="1px">
+    <SiteDetailNav>
       <Link href={detailPath()}>设置</Link>
       <Text aria-current="page" fontWeight="semibold">分析</Text>
       <Link href={detailPath("database")}>数据库</Link>
       <Link href={detailPath("plugins")}>插件</Link>
       <Link href={detailPath("scheduled")}>已安排</Link>
-    </Flex>
+    </SiteDetailNav>
     <Flex align="center" wrap="wrap" gap={4} my={6}>
       <Flex flex="1" wrap="wrap" columnGap={{base:4,md:12}} rowGap={3}>
         <Box>独立访客数<Text fontSize="2xl">{visitors}</Text></Box>

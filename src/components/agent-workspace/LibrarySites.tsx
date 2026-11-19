@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
-import SiteDetailHeader from "./SiteDetailHeader";
+import SiteDetailHeader, { SiteDetailNav } from "./SiteDetailHeader";
 import SiteDatabase from "./SiteDatabase";
 import SitePlugins from "./SitePlugins";
 import SiteSchedules from "./SiteSchedules";
@@ -135,13 +135,13 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
   </>;
   if (settings) return <Box maxW="720px">
     <SiteDetailHeader name={settings.name} previewPath={siteUrl(settings)} editUrl={settings.editUrl} onBack={()=>navigateSettings()} saving={saving}/>
-    <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" borderBottomWidth="1px">
+    <SiteDetailNav>
       <Button variant="link" aria-current={scheduled || plugins || database ? undefined : "page"} onClick={()=>navigateSettings(settings.id)}>设置</Button>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
       <Button variant="link" aria-current={database ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"database")}>数据库</Button>
       <Button variant="link" aria-current={plugins ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"plugins")}>插件</Button>
       <Button variant="link" aria-current={scheduled ? "page" : undefined} onClick={()=>navigateSettings(settings.id,"scheduled")}>已安排</Button>
-    </Flex>
+    </SiteDetailNav>
     {database ? <SiteDatabase key={settings.id} siteId={settings.id}/> : plugins ? <SitePlugins key={settings.id} siteId={settings.id} onAdd={settings.projectToken ? ()=>onPluginChat(settings.projectToken!,settings.name) : undefined}/> : scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
     <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
