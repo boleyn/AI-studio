@@ -40,7 +40,19 @@ export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile
   return response.json();
 }
 
+export function sharedSpacePageLocation(origin: string) {
+  const match = /^space-([a-f0-9]{24})-([a-f0-9]{24})$/.exec(origin);
+  if (!match) return;
+  const [, id, page] = match;
+  return {
+    api: "/api/library/space-share?" + new URLSearchParams({id,page,contents:"1",download:"1"}),
+    href: "/share/space/" + id + "?page=" + page,
+  };
+}
+
 export function libraryAttachmentUrl(item: LibraryFile) {
+  const location = sharedSpacePageLocation(item.id);
+  if (location) return location.api;
   if (item.shareId) return "/api/artifact-share?id=" + item.shareId + "&file=1";
   const query = new URLSearchParams({token:item.token, action:"view", path:item.path});
   if (item.version) query.set("version",item.version);

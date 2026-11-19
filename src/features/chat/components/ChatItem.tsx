@@ -5,7 +5,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
-import { LibraryReadError, readLibraryAttachment, recordLibraryOpen } from "../services/libraryAttachment";
+import { LibraryReadError, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
@@ -139,6 +139,13 @@ const ChatItem = ({
       }
       // The conversation copy and the library original have independent access checks.
       if (preview.libraryItemId && !response?.ok) {
+        const location = sharedSpacePageLocation(preview.libraryItemId);
+        if (location) {
+          const original = await fetch(location.api,{headers:withAuthHeaders(),signal});
+          if (!original.ok) throw new LibraryReadError(original.status,preview.name);
+          showContent(await original.text(), true);
+          return;
+        }
         const library = await fetch("/api/library",{headers:withAuthHeaders(),signal});
         if (!library.ok) throw new LibraryReadError(library.status,preview.name);
         const items: LibraryFile[] = await library.json();
@@ -304,7 +311,7 @@ const ChatItem = ({
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
               <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
                 {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
-                <Link href={"/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
+                <Link href={sharedSpacePageLocation(preview.libraryItemId)?.href ?? "/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
                   isExternal textDecoration="underline">在资料空间打开</Link>
               </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
           </ModalBody></ModalContent></Modal>

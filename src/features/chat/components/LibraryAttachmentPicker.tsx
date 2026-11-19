@@ -30,6 +30,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     return ()=>controller.abort();
   },[]);
   const [items,setItems] = useState<LibraryFile[]>();
+  const [space,setSpace] = useState<LibraryFile>();
   const [query,setQuery] = useState(initialQuery);
   const [selected,setSelected] = useState<string[]>([]);
   const [error,setError] = useState("");
@@ -43,15 +44,28 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    loadLibraryFiles(controller.signal).then(data => {
+    setItems(undefined);
+    async function loadItems() {
+      if (!space?.shareId) return loadLibraryFiles(controller.signal);
+      const response = await fetch("/api/library/space-share?" + new URLSearchParams({id:space.shareId,contents:"1"}), {
+        headers:withAuthHeaders(), signal:controller.signal,
+      });
+      if (!response.ok) throw new Error("无法读取共享空间，请检查访问权限后重试。");
+      const data: {pages:{id:string;name:string}[]} = await response.json();
+      return data.pages.map((page): LibraryFile => ({
+        ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传",
+        path:page.name, sharedPage:true, project:space.name,
+      }));
+    }
+    loadItems().then(data => {
       if (!controller.signal.aborted) setItems(data.filter(item => !item.deleted).sort((a,b) => libraryActivityTime(b).localeCompare(libraryActivityTime(a))));
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
     });
     return () => controller.abort();
-  },[attempt]);
+  },[attempt,space]);
   const namesById = new Map(items?.map(item=>[item.id,item.name]));
-  const attachable = items?.filter(item=>!item.siteId && !(isContainer(item) && item.shareId));
+  const attachable = items?.filter(item=>!item.siteId);
   const locationLabel = (item:LibraryFile) => [
     item.folderId && namesById.get(item.folderId),
     sourceLabel(item),
@@ -61,6 +75,14 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const visible = attachable?.filter(item => [item.name,item.path,item.project,locationLabel(item)].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm)));
   if (fileErrors.size) {
     visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
+  }
+  function browseSpace(next?: LibraryFile) {
+    setSpace(next);
+    setItems(undefined);
+    setQuery("");
+    setSelected([]);
+    setFileErrors(new Map());
+    setError("");
   }
   async function add() {
     if (busy || !items) return;
@@ -102,6 +124,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
           onClick={()=>setShowDrive(drive)}>{source}</Button>;
       })}
     </Flex>}
+    {space && !showDrive && <Button mx={5} mb={2} alignSelf="start" size="sm" variant="ghost" isDisabled={busy} onClick={()=>browseSpace()}>‹ 资料空间 / {space.name}</Button>}
     {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
       const errors = await onAdd(files);
       if (errors[0]) throw new Error(errors[0]);
@@ -122,6 +145,10 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
       </Box>}
       {visible?.map(item=>{
+        if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" py={2} gap={3}
+          justifyContent="start" isDisabled={busy || selected.length > 0} onClick={()=>browseSpace(item)}>
+          <LibraryItemIcon item={item}/><Text flex="1" textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
+        </Button>;
         const checked=selected.includes(item.id);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}
           width="100%" align="center" gap={3} borderRadius="10px" px={2} py={2} textAlign="left" bg={checked?"#f0f0f0":"transparent"}
