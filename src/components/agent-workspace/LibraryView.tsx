@@ -1060,8 +1060,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             return allHome && (spreadsheet || documentCard || archiveCard) ? (
             <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={spreadsheet ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
-              cursor="pointer" onClick={event=>clickItemSurface(event,file)}
-              sx={{"& > [role=checkbox]":{top:"auto",bottom:"18px",right:"18px",boxSize:"20px"}}}>
+              cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
               <Flex align="center" gap="8px" px="12px" h="44px" flexShrink={0} borderBottomWidth="1px">
                 <Icon color={color} size={20} aria-hidden style={{flexShrink:0}}/>
                 <Box minW={0} flex="1" isTruncated>{itemLink(file)}</Box>{actions(file)}

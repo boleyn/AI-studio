@@ -37,5 +37,8 @@ export default function LibraryCardGrid({ masonry, children }: { masonry: boolea
   }, [masonry, children]);
 
   return <Box ref={grid} display="grid" gridTemplateColumns="repeat(auto-fill,minmax(min(180px,100%),1fr))"
+    sx={masonry ? {"& > * > [role=checkbox]": {
+      insetBlockStart: "auto", insetBlockEnd: "18px", insetInlineEnd: "18px", boxSize: "20px",
+    }} : undefined}
     alignItems={masonry ? "start" : undefined} alignContent="start" gap={masonry ? "16px" : 3}>{children}</Box>;
 }
