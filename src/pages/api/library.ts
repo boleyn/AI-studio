@@ -8,7 +8,8 @@ import { z } from "zod";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
-import { getProjectAccessState, listProjectOverviewItems } from "@server/projects/projectStorage";
+import { canAccessArtifactSource } from "@server/chat/tokenAccess";
+import { listProjectOverviewItems } from "@server/projects/projectStorage";
 import type { LibraryFile } from "@/types/library";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -45,7 +46,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const projects = await listProjectOverviewItems(owner);
   const names = new Map(projects.map(project => [project.token, project.name]));
-  const scope = { token: { $in: [...names.keys()] } };
+  const skills = await db.collection("skills").find({userId:owner}, {projection:{token:1,name:1}}).toArray();
+  const chatNames = new Map(names);
+  for (const skill of skills) if (!chatNames.has(skill.token)) chatNames.set(skill.token, skill.name);
+  const scope = { token: { $in: [...chatNames.keys()] } };
   const conversations = await db.collection("conversations").find(scope)
     .project({ token: 1, chatId: 1, customTitle: 1, title: 1, deleteTime: 1 }).toArray();
   const chats = new Map(conversations.map(chat => [JSON.stringify([chat.token, chat.chatId]), chat]));
@@ -69,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const recorded = msg.time ? new Date(msg.time) : undefined;
       const time = recorded && Number.isFinite(recorded.getTime()) ? recorded.toISOString() : "";
       const firstSeenAt = time && (!previous?.firstSeenAt || time < previous.firstSeenAt) ? time : previous?.firstSeenAt;
-      const row: LibraryFile = { id, kind, path, version, size:typeof size === "number" ? size : previous?.size, token: msg.token, project: names.get(msg.token) || "",
+      const row: LibraryFile = { id, kind, path, version, size:typeof size === "number" ? size : previous?.size, token: msg.token, project: chatNames.get(msg.token) || "",
         chatId: msg.chatId, conversation: chat.deleteTime ? "" : chat.customTitle || chat.title || "未命名会话",
         name: typeof label === "string" && label ? label : path.split("/").pop() || path,
         time, firstSeenAt };
@@ -80,7 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
     const meta = msg.additional_kwargs;
-    if (Array.isArray(meta?.workspaceArtifactPaths)) {
+    if (names.has(msg.token) && Array.isArray(meta?.workspaceArtifactPaths)) {
       const sizes = new Map<string,number>();
       if (Array.isArray(meta.workspaceArtifactSizes)) {
         for (const entry of meta.workspaceArtifactSizes) {
@@ -133,7 +137,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ).toArray() : []).map(page => [page._id.toHexString(), page]));
   for (const share of received) {
     const page = share.libraryItemId ? sharedPages.get(share.libraryItemId) : undefined;
-    if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
+    if (share.libraryItemId ? page?.owner !== share.ownerId : !await canAccessArtifactSource(share.projectToken,share.ownerId,share.fileOrigin === "上传")) continue;
     const id = share._id;
     const filename = share.livePage && page ? markdownFilename(page.name) : share.filename;
     rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin:share.fileOrigin ?? (page?.sourceChat ? "生成" : page?.kind === "上传" ? (page.fromTemplate ? "生成" : "上传") : undefined),editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});

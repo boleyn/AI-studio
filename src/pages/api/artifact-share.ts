@@ -6,7 +6,8 @@ import { assertChatScopedStoragePath } from "./core/chat/files/shared";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { findUserByUsername } from "@server/auth/userStore";
-import { getProjectAccessState, readProjectArtifactVersion, readProjectFile } from "@server/projects/projectStorage";
+import { canAccessArtifactSource } from "@server/chat/tokenAccess";
+import { readProjectArtifactVersion, readProjectFile } from "@server/projects/projectStorage";
 import {
   createArtifactShare,
   getArtifactShare,
@@ -44,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         else { livePage = true; bytes = Buffer.alloc(0); filename += ".md"; }
       } else {
         if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
-        if (await getProjectAccessState(token,userId) !== "ok") return res.status(404).end();
+        if (!await canAccessArtifactSource(token,userId,body.chatUpload === true)) return res.status(404).end();
         if (body.chatUpload === true) {
           fileOrigin = "上传";
           if (typeof body.chatId !== "string" || !body.chatId) return res.status(400).end();
@@ -75,7 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       {_id:new ObjectId(share.libraryItemId),owner:share.ownerId,deleted:{$ne:true},purging:{$ne:true}},
       {projection:share.livePage ? {name:1,body:1} : {_id:1}}
     ) : null;
-    if (share.libraryItemId ? !native : await getProjectAccessState(share.projectToken, share.ownerId) !== "ok") {
+    if (share.libraryItemId ? !native : !await canAccessArtifactSource(share.projectToken,share.ownerId,share.fileOrigin === "上传")) {
       return res.status(404).json({ error: "共享文件不可用" });
     }
     const filename = share.livePage && native ? markdownFilename(native.name) : share.filename;
