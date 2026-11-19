@@ -2,6 +2,13 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
+function TemplatePreview({body}: {body: string}) {
+  return <>{body.split("\n\n").map((paragraph,index) => <Text key={index} mb="4px" whiteSpace="pre-line"
+                fontWeight={/^#{1,6} /.test(paragraph) ? "600" : "400"}>
+                {paragraph.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ").replace(/^- /gm, "• ")}
+              </Text>)}</>;
+}
+
 export const templates = [
   { name:"页面使用指南", pageTitle:"页面入门指南", body:"在页面中，你可以写作、创作，并与团队协作。把这个页面当作你的练习场，学习基础操作。\n\n## 开始使用\n\n- [ ] 添加标题、图片、检查清单或表格。\n- [ ] 选中一段文字，在聊天中引用。", icon:GraduationCap, color:"#008cff" },
   { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料剂量\n\n## 本周\n\n- [ ] 回顾进展", icon:ClipboardList, color:"#14b95d" },
@@ -66,10 +73,7 @@ export default function LibraryTemplates({ collection, onPick, onClose, onSlides
         <Box bg="#f5f5f5" border="1px solid #e9e9e9" borderRadius="12px" aspectRatio="16 / 9" px={6} pt={5} overflow="hidden">
           <Box bg="white" borderRadius="4px" p={4} textAlign="left" minH="135px"><Icon size={23} color={color}/>
             <Box mt="15px" fontSize="7px" lineHeight="1.35" aria-hidden="true">
-              {body.split("\n\n").map((paragraph,index) => <Text key={index} mb="4px" whiteSpace="pre-line"
-                fontWeight={/^#{1,6} /.test(paragraph) ? "600" : "400"}>
-                {paragraph.replace(/^#{1,6} /gm, "").replace(/^- \[ \] /gm, "☐ ").replace(/^- /gm, "• ")}
-              </Text>)}
+              <TemplatePreview body={body} />
             </Box></Box>
         </Box><Text mt="10px" lineHeight="20px" fontWeight="500" fontSize="sm">{name}</Text><Text lineHeight="18px" fontSize="12px" fontWeight="400" color="#8f8f8f">{pageTitle ? "从这里开始" : "Page"}</Text>
       </Button>
@@ -173,7 +177,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
               textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
               <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
-                  <Text whiteSpace="pre-line" mt={2} fontSize="8px">{body}</Text></Box>
+                  <Box mt={2} fontSize="8px" aria-hidden="true"><TemplatePreview body={body} /></Box></Box>
               </Box>
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
             </Button>
