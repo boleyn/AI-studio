@@ -142,6 +142,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
     template.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   );
 
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [removed, setRemoved] = useState<string[] | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -150,9 +152,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
         if (!response.ok) throw new Error();
         const names: string[] = await response.json();
         if (!controller.signal.aborted) setRemoved(current => [...new Set([...(current ?? []), ...names])]);
-      }).catch(() => { if (!controller.signal.aborted) setBuildError("无法读取已安装模板，请重新打开模板库。"); });
+      }).catch(() => { if (!controller.signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
-  }, []);
+  }, [loadAttempt]);
   async function uninstall(name: string) {
     try {
       const response = await fetch("/api/library/templates", {method:"DELETE", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name})});
@@ -292,11 +294,18 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
         </Menu>
       </Flex>
       <ModalBody px={{base:4, md:8}} id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
+        {loadFailed && shows("电子表格") && <Flex role="alert" align="center" gap={3} mb={3}>
+          <Text fontSize="sm">无法加载电子表格模板。</Text>
+          <Button size="sm" variant="outline" onClick={() => {
+            setLoadFailed(false);
+            setLoadAttempt(attempt => attempt + 1);
+          }}>重试</Button>
+        </Flex>}
         {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
         <SimpleGrid columns={{base:2, md:3}} columnGap={{base:3, md:6}} rowGap={{base:6, md:10}}>
           {cards}
         </SimpleGrid>
-        {removed === null && shows("电子表格") && !buildError && <Text role="status" textAlign="center" color="gray.500" py={4}>正在加载资料库</Text>}
+        {removed === null && shows("电子表格") && !loadFailed && <Text role="status" textAlign="center" color="gray.500" py={4}>正在加载资料库</Text>}
         {!cards.length && (!shows("电子表格") || removed !== null) && <Text textAlign="center" color="gray.500" py={8}>未找到匹配的模板</Text>}
       </ModalBody>
     </ModalContent>
