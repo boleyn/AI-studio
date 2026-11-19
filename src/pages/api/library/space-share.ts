@@ -65,19 +65,22 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     }
     return res.json({owner,name:page.name,body:page.body});
   }
-  const included: {id:string;name:string}[] = [];
+  const included: {id:string;name:string;path:string}[] = [];
+  const paths = new Map([[id,""]]);
   const visited = new Set([id]);
   let parents = [id];
   while (parents.length) {
     const children = await pages.find({...accessible,folderId:{$in:parents}},
-      {projection:{name:1,kind:1}}).toArray();
+      {projection:{name:1,kind:1,folderId:1}}).toArray();
     parents = [];
     for (const child of children) {
       const childId = String(child._id);
       if (visited.has(childId)) continue;
       visited.add(childId);
+      const path = [paths.get(child.folderId || ""),child.name].filter(Boolean).join(" / ");
+      paths.set(childId,path);
       parents.push(childId);
-      if (child.kind !== "文件夹") included.push({id:childId,name:child.name});
+      if (child.kind !== "文件夹") included.push({id:childId,name:child.name,path});
     }
   }
   return res.json({name:space.name,pages:included});

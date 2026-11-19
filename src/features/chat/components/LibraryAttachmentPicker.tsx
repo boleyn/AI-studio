@@ -74,7 +74,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const selectedElsewhere = selected.filter(item => !itemsById.has(item.id));
   const attachable = items && [...selectedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
-    folderPath(item),
+    item.sharedPage && item.path.endsWith(" / " + item.name) ? item.path.slice(0,-item.name.length - 3) : folderPath(item),
     sourceLabel(item),
     item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
   ].filter(Boolean).join(" · ");
