@@ -15,7 +15,7 @@ function sourceLabel(item:LibraryFile) {
   if (item.conversation) {
     const source = item.fileOrigin ?? item.kind;
     const origin = source === "生成" ? "会话生成" : source === "上传" ? "会话上传" : "来自会话";
-    return origin + " · 「" + item.conversation + "」";
+    return [origin, item.project, "「" + item.conversation + "」"].filter(Boolean).join(" · ");
   }
   if (item.fromTemplate) return "在资料空间中创建";
   if (item.fileOrigin === "生成") return "会话生成的文件";
@@ -85,8 +85,9 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const failedElsewhere = selected.filter(item => fileErrors.has(item.id) && !itemsById.has(item.id));
   const attachable = items && [...failedElsewhere, ...items.filter(item=>!item.siteId)];
   const locationLabel = (item:LibraryFile) => [
-    [item.sharedSpaceName, item.sharedSpaceName && item.path.endsWith(" / " + item.name)
-      ? item.path.slice(0,-item.name.length - 3) : folderPath(item)].filter(Boolean).join(" / "),
+    item.sharedSpaceName
+      ? [item.sharedSpaceName, item.path.endsWith(" / " + item.name) ? item.path.slice(0,-item.name.length - 3) : ""].filter(Boolean).join(" / ")
+      : folderPath(item),
     sourceLabel(item),
     item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
   ].filter(Boolean).join(" · ");
