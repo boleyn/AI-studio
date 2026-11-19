@@ -3,7 +3,7 @@ import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, 
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
-import { type Ref, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
@@ -23,10 +23,9 @@ type Props = {
   onSection: (section: string) => void;
   onFile: (file: LibraryFile) => void;
   onSearch: () => void;
-  toggleRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
+export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, onCollapse }: Props) {
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [expanded, setExpanded] = useState(false);
@@ -56,7 +55,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
         </PopoverContent></Portal>
       </Popover>
       <IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="搜索" aria-haspopup="dialog" icon={<Search size={20} strokeWidth={1.6}/>} onClick={onSearch}/>
-      <IconButton ref={toggleRef} size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={20} strokeWidth={1.6}/>} onClick={onCollapse}/>
+      <IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-expanded={true} aria-label="显示/隐藏侧边栏" icon={<PanelLeft size={20} strokeWidth={1.6}/>} onClick={onCollapse}/>
     </Flex>
     {createMenu}
     <Flex direction="column" mt="17px" gap="1px" sx={{"& > button":{height:"35px",paddingInline:"8px",borderRadius:"8px"},"& .chakra-button__icon":{marginInlineEnd:"6px"}}}>

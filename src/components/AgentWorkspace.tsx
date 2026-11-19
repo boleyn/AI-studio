@@ -200,6 +200,16 @@ export default function AgentWorkspace({
   useEffect(() => {
     if (router.isReady && (activeNav === "chat" || fileChatOpen)) setChatWasOpened(true);
   }, [router.isReady, activeNav, fileChatOpen]);
+  const [librarySidebarOpen,setLibrarySidebarOpen] = useState(true);
+  const libraryNavButton = useRef<HTMLButtonElement>(null);
+  function openLibraryHome() {
+    setLibrarySidebarOpen(true);
+    const nextQuery = {...router.query, view:"library"} as typeof router.query;
+    for (const key of Object.keys(nextQuery)) {
+      if (key.startsWith("library") || key === "siteDetail") delete nextQuery[key];
+    }
+    void router.push({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
+  }
   function setActiveNav(view: WorkspaceView, conversation?:string) {
     if (view === activeNav && !conversation) return;
     const nextQuery = {...router.query};
@@ -843,8 +853,8 @@ export default function AgentWorkspace({
             />
           </Tooltip>
           <Tooltip label="资料空间" placement="right">
-            <IconButton aria-label="资料空间" icon={<Library size={17} />} size="sm" variant="ghost"
-              bg={activeNav === "library" ? "surface.active" : "transparent"} onClick={() => setActiveNav("library")} />
+            <IconButton ref={libraryNavButton} aria-label="资料空间" icon={<Library size={17} />} size="sm" variant="ghost"
+              bg={activeNav === "library" ? "surface.active" : "transparent"} onClick={openLibraryHome} />
           </Tooltip>
           <Tooltip label="项目" placement="right">
             <IconButton
@@ -880,7 +890,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
+      {activeNav === "library" && <LibraryView sidebar={librarySidebarOpen} onCollapseSidebar={()=>{setLibrarySidebarOpen(false);libraryNavButton.current?.focus();}} fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
         let token = projectToken || activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");

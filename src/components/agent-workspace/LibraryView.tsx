@@ -41,7 +41,7 @@ const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 
 
-export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ sidebar, onCollapseSidebar, fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { sidebar:boolean; onCollapseSidebar:()=>void; fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const rowDrag = useRef<{start:number; original:string[]; additive:boolean}>();
@@ -294,12 +294,6 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
   const driveConnected = useDriveConnected();
   const [sidebarWidth, setSidebarWidth] = useState<number>();
-  const [sidebar, setSidebar] = useState(true);
-  const sidebarToggle = useRef<HTMLButtonElement>(null);
-  function toggleSidebar() {
-    setSidebar(open => !open);
-    requestAnimationFrame(() => sidebarToggle.current?.focus());
-  }
   const search = useRef<HTMLInputElement>(null);
   const [sharing,setSharing] = useState<LibraryFile>();
   const [purge,setPurge] = useState<{scope:"all" | "selection"; items:LibraryFile[]; error?:string}>();
@@ -805,8 +799,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <MenuItem color="red.600" onClick={()=>update(space,{deleted:true})}>删除</MenuItem></>}
         </MenuList>
       </Menu>} createMenu={createMenu(true)} onNewSpace={openSpaceDialog} section={folder ? undefined : section} activeSpaceId={folder && folderPath(folder.id).find(item=>item.kind === "资料空间")?.id} files={files || []} onSection={changeSection}
-      onFile={openItem} onSearch={() => setGlobalSearch(true)} toggleRef={sidebarToggle} onCollapse={toggleSidebar} /></Box>}
-    {!sidebar && <IconButton ref={sidebarToggle} display={{base:"none",md:"inline-flex"}} flexShrink={0} alignSelf="flex-start" mt={2} ml={1} aria-expanded={false} aria-label="展开资料空间侧栏" icon={<PanelLeftOpen size={16}/>} size="sm" variant="ghost" onClick={toggleSidebar}/>}
+      onFile={openItem} onSearch={() => setGlobalSearch(true)} onCollapse={onCollapseSidebar} /></Box>}
     <SkipNavContent id="library-content" w={0} flexShrink={0}/>
     {detail ? <LibraryFileViewer key={detail.kind === "生成" ? JSON.stringify([detail.token,detail.chatId,detail.path]) : detail.id} item={files?.find(item=>item.id===detail.id) || detail}
       versions={detail.kind === "生成" ? (files || [detail]).filter(file =>
