@@ -1,3 +1,4 @@
+import { chatUploadSignature } from "@server/storage/chatUploadTicket";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "@server/auth/session";
 import { getChatTokenAccessState } from "@server/chat/tokenAccess";
@@ -67,8 +68,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       expiresIn: 900,
     });
 
+    let url = result.url;
+    if (process.env.STORAGE_S3_CONNECT_IP?.trim()) {
+      const expiry = String(Date.now() + 900_000);
+      const type = contentType || "application/octet-stream";
+      const signature = chatUploadSignature(result.key,type,expiry);
+      url = "/api/core/chat/files/put?" + new URLSearchParams({key:result.key,type,expiry,signature});
+    }
     res.status(200).json({
-      url: result.url,
+      url,
       key: result.key,
       bucket: result.bucket,
       method: result.method,
