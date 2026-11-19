@@ -1,3 +1,4 @@
+import { sitePreviewPath } from "@/types/library";
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
@@ -23,6 +24,7 @@ type PreviewProject = {
 };
 
 type SharePreviewPageProps = {
+  previewPath: string;
   shareId: string;
   initialProject: PreviewProject;
 };
@@ -106,7 +108,7 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles => {
   return output;
 };
 
-const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) => {
+const SharePreviewPage = ({ shareId, previewPath, initialProject }: SharePreviewPageProps) => {
   const [project, setProject] = useState<PreviewProject>({
     ...initialProject,
     files: normalizeFiles(initialProject.files),
@@ -123,7 +125,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
       try {
         const response = await fetch(`/api/share/${encodeURIComponent(shareId)}`, {signal:controller.signal});
         if (response.status === 401) {
-          window.location.replace("/login?lastRoute=" + encodeURIComponent("/share/preview/" + shareId));
+          window.location.replace("/login?lastRoute=" + encodeURIComponent(previewPath));
           return;
         }
         if (response.status === 403 || response.status === 404) {
@@ -152,7 +154,7 @@ const SharePreviewPage = ({ shareId, initialProject }: SharePreviewPageProps) =>
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [shareId, project.updatedAt, project.name, unavailable]);
+  }, [shareId, previewPath, project.updatedAt, project.name, unavailable]);
 
   const customSetup = useMemo(() => {
     return buildSandpackCustomSetup(project.dependencies);
@@ -232,6 +234,7 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
     return { notFound: true };
   }
 
+  const previewPath = sitePreviewPath(shareId, typeof context.params?.slug === "string" ? context.params.slug : undefined);
   const share = await getShareLink(shareId);
   if (!share || share.mode !== "preview") {
     return { notFound: true };
@@ -241,7 +244,7 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   const settings = await getSiteSettings(share.ownerUserId, share.projectToken);
   if (settings?.restricted) {
     const userId = getAuthUserFromRequest(context.req)?.sub;
-    if (!userId) return {redirect:{destination:"/login?lastRoute="+encodeURIComponent("/share/preview/"+shareId),permanent:false}};
+    if (!userId) return {redirect:{destination:"/login?lastRoute="+encodeURIComponent(previewPath),permanent:false}};
     if (!await canViewRestrictedSite(share.ownerUserId, share.projectToken, userId)) return {notFound:true};
   }
 
@@ -257,6 +260,7 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   return {
     props: {
       shareId,
+      previewPath,
       initialProject: {
         token: project.token,
         name: settings?.name || project.name,

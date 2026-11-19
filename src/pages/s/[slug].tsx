@@ -12,7 +12,7 @@ export const getServerSideProps: typeof previewProps = async context => {
     {sort:{createdAt:-1,_id:-1},projection:{shareId:1}}
   );
   if (!link) return {notFound:true};
-  return previewProps({...context,params:{shareId:link.shareId}});
+  return previewProps({...context,params:{slug,shareId:link.shareId}});
 };
 
 export default Preview;
