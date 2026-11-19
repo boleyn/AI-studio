@@ -15,7 +15,7 @@ function FormattedMarkdown({children, showImages}: MarkdownProps) {
     "& th, & td":{border:"1px solid",borderColor:"gray.200",px:3,py:2,textAlign:"start"}
   }}>
     <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
-      img: showImages ? undefined : ({alt}) => <span>{alt}</span>,
+      ...(!showImages && {img: ({alt}: {alt?: string}) => <span>{alt}</span>}),
       table:({children})=><Box overflowX="auto" mb={3}><table>{children}</table></Box>
     }}>{children}</ReactMarkdown>
   </Box>;
