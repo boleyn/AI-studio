@@ -241,9 +241,9 @@ export const hydrateHistoryUserMessage = ({
   const hydratedFiles = files.map((file) => {
     if (!isImageArtifact(file)) return file;
     const stablePreviewUrl =
-      file.publicUrl ||
-      toProjectFileViewUrl({ storagePath: file.storagePath, token }) ||
-      toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId }) ||
+      (/^\/?chat_uploads\//.test(file.storagePath || "")
+        ? toStableChatFileViewUrl({ storagePath: file.storagePath, token, chatId })
+        : file.publicUrl || toProjectFileViewUrl({ storagePath: file.storagePath, token })) ||
       file.previewUrl;
     if (!stablePreviewUrl || stablePreviewUrl === file.previewUrl) return file;
     return {
@@ -316,7 +316,6 @@ export const toFileArtifacts = (files: ChatInputFile[]) =>
 export const toSelectedPathArtifacts = ({
   paths,
   token,
-  chatId,
 }: {
   paths: string[];
   token: string;
@@ -337,11 +336,7 @@ export const toSelectedPathArtifacts = ({
     storagePath: path,
     publicUrl: toProjectFileViewUrl({ storagePath: path, token }),
     previewUrl: toProjectFileViewUrl({ storagePath: path, token }),
-    downloadUrl: toStableChatFileViewUrl({
-      storagePath: path,
-      token,
-      chatId: chatId || "",
-    }),
+    downloadUrl: toProjectFileViewUrl({ storagePath: path, token }),
     lastModified: 0,
   }));
 };
