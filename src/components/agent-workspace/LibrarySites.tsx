@@ -1,14 +1,17 @@
-import { Box, Button, Flex, IconButton, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
-import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Pencil, Share2 } from "lucide-react";
+import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
+import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; visitors?: number }
+interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
 
 export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
   const toast = useToast();
+  const [settings,setSettings] = useState<Site>();
+  const [title,setTitle] = useState("");
+  const [saving,setSaving] = useState(false);
   const [sharing, setSharing] = useState<Site>();
   const [sites, setSites] = useState<Site[]>();
   const [failed, setFailed] = useState(false);
@@ -56,9 +59,36 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
       <MenuItem as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
       {!site.shared && <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
+      {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>{setTitle(site.name);setSettings(site);}}>设置</MenuItem>}
     </MenuList></Portal>
   </Menu>;
   const dialog = sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>;
+  if (settings) return <Box maxW="720px">
+    <Button variant="link" isDisabled={saving} onClick={()=>setSettings(undefined)}>返回站点</Button>
+    <Heading as="h2" size="md" my={4}>{settings.name}</Heading>
+    <Box as="form" onSubmit={async event=>{
+      event.preventDefault();
+      const name = title.trim();
+      if (!name || saving || !settings.libraryId) return;
+      setSaving(true);
+      try {
+        const response = await fetch("/api/library",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:settings.libraryId,changes:{name}})});
+        if (!response.ok) throw new Error();
+        setSites(rows=>rows?.map(row=>row.id===settings.id ? {...row,name} : row));
+        setSettings({...settings,name});
+        setTitle(name);
+        toast({status:"success",title:"已保存站点名称"});
+      } catch { toast({status:"error",title:"站点名称保存失败，请重试"}); }
+      finally {setSaving(false);}
+    }}>
+      <Text as="label" htmlFor="library-site-name">名称</Text>
+      <Flex gap={2} my={2}><Input id="library-site-name" aria-label="站点标题" value={title} maxLength={255} isDisabled={saving} onChange={event=>setTitle(event.target.value)}/>
+        <Button type="submit" isLoading={saving} isDisabled={!title.trim() || title.trim()===settings.name}>保存</Button></Flex>
+    </Box>
+    <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
+    <Flex mt={4} gap={3} align="center"><Text>拥有链接的人可以查看</Text>{shareButton(settings)}</Flex>
+    {dialog}
+  </Box>;
   if (!visible.length) return <Text role="status" textAlign="center" fontSize="18px" lineHeight="24px" color="#0d0d0d">{empty}</Text>;
   if (grid) return <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
     {visible.map(site => <Box key={site.id} p={4} borderWidth="1px" borderRadius="14px">{siteLink(site)}{siteMenu(site)}</Box>)}
