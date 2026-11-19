@@ -7,7 +7,8 @@ export type ScheduleSpec = {
   model?: string;
   reasoningEffort?: "low" | "medium" | "high";
   timezone: string;
-  repeat: "once" | "daily" | "weekdays" | "weekly" | "monthly";
+  repeat: "once" | "daily" | "weekdays" | "weekly" | "monthly" | "hourly" | "yearly";
+  interval?: number;
 };
 export type Schedule = ScheduleSpec & {
   _id: string;

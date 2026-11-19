@@ -28,7 +28,7 @@ export function schedulePlugin(scope?: Scope): AgentPlugin {
               description: "ISO 8601 date and time with UTC offset",
             },
             timezone: { type: "string", description: "IANA zone" },
-            repeat: { type: "string", enum: ["once", "daily", "weekdays", "weekly", "monthly"] },
+            repeat: { type: "string", enum: ["once", "daily", "weekdays", "weekly", "monthly", "hourly", "yearly"] },
           },
         },
         async handler(input, ctx) {

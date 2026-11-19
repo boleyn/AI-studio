@@ -16,7 +16,8 @@ export const specSchema = z
     endDate: z.string().date().optional(),
     firstAt: z.string().datetime({ offset: true }),
     timezone: z.string().max(80).refine(IANAZone.isValidZone),
-    repeat: z.enum(["once", "daily", "weekdays", "weekly", "monthly"]),
+    interval: z.number().int().min(1).max(999).optional(),
+    repeat: z.enum(["once", "daily", "weekdays", "weekly", "monthly", "hourly", "yearly"]),
   })
   .strict();
 
@@ -53,14 +54,22 @@ export function nextOccurrence(spec: ScheduleSpec, now: number): number | null {
   };
   if (first.toMillis() > now) return withinEndDate(first);
   if (spec.repeat === "once") return null;
-  const step = spec.repeat === "weekly" ? 7 : 1;
+  const interval = spec.interval ?? 1;
+  if (spec.repeat === "hourly") {
+    const elapsed = now - first.toMillis();
+    const step = interval * 3600000;
+    return withinEndDate(first.plus({milliseconds:(Math.floor(elapsed / step) + 1) * step}));
+  }
+  const step = (spec.repeat === "weekly" ? 7 : 1) * interval;
   const today = DateTime.fromMillis(now, { zone: spec.timezone }).startOf(
     "day",
   );
-  if (spec.repeat === "monthly") {
+  if (spec.repeat === "monthly" || spec.repeat === "yearly") {
     const months = (today.year - first.year) * 12 + today.month - first.month;
-    const candidate = first.plus({months});
-    return withinEndDate(candidate.toMillis() > now ? candidate : first.plus({months:months + 1}));
+    const stride = interval * (spec.repeat === "yearly" ? 12 : 1);
+    const offset = Math.floor(months / stride) * stride;
+    const candidate = first.plus({months:offset});
+    return withinEndDate(candidate.toMillis() > now ? candidate : first.plus({months:offset + stride}));
   }
   const days =
     Math.floor(today.diff(first.startOf("day"), "days").days / step) * step;

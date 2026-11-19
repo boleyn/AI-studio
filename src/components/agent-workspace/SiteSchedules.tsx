@@ -12,6 +12,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [model, setModel] = useState("");
   const [draft, setDraft] = useState<string>();
   const [endsOnDate, setEndsOnDate] = useState(false);
+  const [frequency, setFrequency] = useState("daily");
   const [repeating, setRepeating] = useState(true);
   const [zone, setZone] = useState("UTC");
   const [firstTime, setFirstTime] = useState("");
@@ -19,6 +20,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
   const [saveError, setSaveError] = useState("");
   function edit(title: string) {
     setSaveError("");
+    setFrequency("daily");
     setRepeating(true);
     setEndsOnDate(false);
     const now = DateTime.local();
@@ -73,7 +75,8 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         }
         const response = await fetch("/api/schedules", {method:"POST", headers:withAuthHeaders({"Content-Type":"application/json"}),
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
-            title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
+            title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? frequency === "custom" ? form.get("unit") : frequency : "once",
+            ...(repeating && frequency === "custom" ? {interval:Number(form.get("interval"))} : {}),
             ...(form.get("model") ? {model:form.get("model")} : {}),
             ...(form.has("effort") ? {reasoningEffort:form.get("effort")} : {}),
             newChatEachRun:form.has("newChatEachRun"),
@@ -93,7 +96,11 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         {!context.chats.length && <Text fontSize="sm">请先在站点项目中保存一段对话。</Text>}
         <Flex align="center" justify="space-between"><label htmlFor="site-task-repeat">重复执行任务</label>
           <Switch id="site-task-repeat" isChecked={repeating} onChange={event=>setRepeating(event.target.checked)}/></Flex>
-        <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekdays">工作日</option><option value="weekly">每周</option><option value="monthly">每月</option></Select></label>
+        <label hidden={!repeating}>频率<Select value={frequency} onChange={event=>setFrequency(event.target.value)}><option value="daily">每天</option><option value="weekdays">工作日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="custom">自定义</option></Select></label>
+        {repeating && frequency === "custom" && <Flex gap={2}>
+          <label>重复<Select name="unit" defaultValue="weekly"><option value="hourly">每小时</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option></Select></label>
+          <label>每隔<Input name="interval" type="number" defaultValue={1} min={1} max={999} step={1} required/></label>
+        </Flex>}
         <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
         <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
         {repeating && <label>结束重复<Select value={endsOnDate ? "date" : "never"} onChange={event=>setEndsOnDate(event.target.value === "date")}>
