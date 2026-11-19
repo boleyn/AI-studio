@@ -86,10 +86,13 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
               origin:libraryFileOrigin(file),conversation:file.conversation,url:"/?view=library&libraryItem="+file.id,
             }))})};
           }
+          const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+          const exportedTitle = kind === "页面" && /.+\.md$/i.test(title) && !/\.(?:markdown|md)\.md$/i.test(title);
+          const titlePattern = exportedTitle ? escapedTitle + "|^" + escapedTitle.slice(0, -4) + "$" : escapedTitle;
           const matches = await pages.find({
             owner,kind:kind === "页面" ? {$in:["页面",null]} : kind,deleted:{$ne:true},purging:{$ne:true},
             ...(input.parentId ? {folderId:input.parentId} : {}),
-            ...(title ? {name:{$regex:title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),$options:"i"}} : {}),
+            ...(title ? {name:{$regex:titlePattern,$options:"i"}} : {}),
           },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).skip(offset).limit(21).toArray();
           const results = matches.slice(0,20);
           const parentIds = [...new Set(results.map(page=>page.folderId).filter((id): id is string =>
