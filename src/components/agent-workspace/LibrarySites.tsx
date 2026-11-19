@@ -1,11 +1,11 @@
 import { Box, Button, Flex, IconButton, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
-import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Share2 } from "lucide-react";
+import { Copy, ExternalLink, MoreHorizontal, PanelsTopLeft, Pencil, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; visitors?: number }
+interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; visitors?: number }
 
 export default function LibrarySites({ tab, query, grid }: { tab: string; query: string; grid: boolean }) {
   const toast = useToast();
@@ -54,6 +54,7 @@ export default function LibrarySites({ tab, query, grid }: { tab: string; query:
         } catch { toast({status:"error",title:"无法复制链接，请检查剪贴板权限。"}); }
       }}>复制链接</MenuItem>
       <MenuItem as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
+      {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
     </MenuList></Portal>
   </Menu>;
   const dialog = sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>;
