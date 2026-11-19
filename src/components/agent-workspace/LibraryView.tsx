@@ -35,7 +35,9 @@ function renameSuffix(file?: LibraryFile) {
   return dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot) : "";
 }
 
-function formatFolderSize(bytes: number) {
+function formatFileSize(bytes?: number) {
+  if (bytes === undefined) return "—";
+  if (bytes < 1024) return bytes + " B";
   const units = ["B","KB","MB","GB","TB"];
   const scale = Math.min(units.length-1,Math.floor(Math.log(bytes)/Math.log(1024)));
   return (bytes / 1024 ** scale).toFixed(2) + " " + units[scale];
@@ -912,7 +914,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>} {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
-              <td>{file.size === undefined ? "—" : file.size < 1024 ? file.size+" B" : formatFolderSize(file.size)}</td></> : <><td>{section === "回收站" ? (file.size === undefined ? "—" : new Intl.NumberFormat("zh-CN", {style:"unit",unit:"byte"}).format(file.size)) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
+              <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
