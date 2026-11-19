@@ -170,7 +170,7 @@ const ChatInput = ({
   const updateTriggerState = useCallback((value: string, cursorPosition: number) => {
     const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
     const prefix = value.slice(0, safeCursor);
-    const skillMatch = prefix.match(/(^|\s)@([a-zA-Z0-9_-]*)$/);
+    const skillMatch = prefix.match(/(^|\s)@([^\s@]*)$/);
     if (skillMatch) {
       const query = skillMatch[2] || "";
       const triggerStart = safeCursor - query.length - 1;
@@ -248,14 +248,17 @@ const ChatInput = ({
       if (aSelected !== bSelected) return aSelected - bSelected;
       return a.name.localeCompare(b.name);
     });
-    if (!keyword) return ranked.slice(0, 8);
-    return ranked
+    const library = {name:"/library", label:"从资料空间添加", description:"搜索文件或页面"};
+    const includeLibrary = !keyword || "资料空间 文件 页面 library google drive".includes(keyword);
+    if (!keyword) return [...ranked.slice(0, 8), library];
+    const matches = ranked
       .filter((item) => {
         const name = item.name.toLowerCase();
         const description = (item.description || "").toLowerCase();
         return name.includes(keyword) || description.includes(keyword);
       })
       .slice(0, 8);
+    return includeLibrary ? [...matches, library] : matches;
   }, [selectedSkillList, skillOptions, skillQuery]);
   const showSkillPicker =
     Boolean(mentionRange) &&
@@ -359,6 +362,13 @@ const ChatInput = ({
 
   const applySelectedSkill = useCallback(
     (skillName: string) => {
+      if (skillName === "/library" && mentionRange) {
+        setText(text.slice(0,mentionRange.start) + text.slice(mentionRange.end));
+        setMentionRange(null);
+        setSkillQuery("");
+        setLibraryOpen(true);
+        return;
+      }
       const next = selectedSkillList.includes(skillName)
         ? selectedSkillList
         : [...selectedSkillList, skillName];
