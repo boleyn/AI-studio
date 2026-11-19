@@ -30,9 +30,18 @@ export async function expireLibraryTrash(db: Db, now = Date.now()) {
   const expired = {deleted:true, deletedAt:{$lte:cutoff}};
   await db.collection("library_file_settings").updateMany({...expired,purged:{$ne:true}}, {$set:{purged:true}});
   const items = db.collection("library_pages").find(expired, {projection:{owner:1}});
-  for await (const item of items) {
-    try { await purgeLibraryItem(db, item.owner, item._id.toHexString(), cutoff); }
-    catch { console.error("[library] trash item cleanup failed"); }
+  let blocked: {owner:string; id:string}[] = [];
+  async function remove(item: {owner:string; id:string}) {
+    try {
+      if (await purgeLibraryItem(db, item.owner, item.id, cutoff) === 409) blocked.push(item);
+    } catch { console.error("[library] trash item cleanup failed"); }
+  }
+  for await (const item of items) await remove({owner:item.owner, id:item._id.toHexString()});
+  while (blocked.length) {
+    const pending = blocked;
+    blocked = [];
+    for (const item of pending) await remove(item);
+    if (blocked.length === pending.length) break;
   }
 }
 
