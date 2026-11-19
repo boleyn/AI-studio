@@ -85,7 +85,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             return {content:JSON.stringify({hasMore,nextOffset:hasMore ? offset+20 : null,pages:files.slice(offset,offset+20).map(file=>({
               id:file.id,kind,name:file.name,modifiedAt:file.time,parentId:file.folderId,parentName:parents.get(file.folderId || ""),
               origin:libraryFileOrigin(file),conversation:file.conversation,
-              conversationUrl:file.chatId && file.token ? "/project/" + encodeURIComponent(file.token) + "?" + new URLSearchParams({conversation:file.chatId}) : undefined,
+              conversationUrl:file.conversation && file.chatId && file.token ? "/project/" + encodeURIComponent(file.token) + "?" + new URLSearchParams({conversation:file.chatId}) : undefined,
               version:file.version,size:file.size,url:"/?view=library&libraryItem="+file.id,
             }))})};
           }
