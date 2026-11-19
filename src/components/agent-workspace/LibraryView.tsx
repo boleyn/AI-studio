@@ -445,8 +445,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
     try {
-      const response = await fetch((isNative(file) || file.directUpload) ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
-        body: JSON.stringify((isNative(file) || file.directUpload) ? changes : {id:file.id, changes}) });
+      const storedInLibrary = isNative(file) || file.directUpload;
+      const response = await fetch(storedInLibrary ? "/api/library/pages?id=" + file.id : "/api/library", { method: "PATCH", headers: withAuthHeaders({"Content-Type":"application/json"}),
+        body: JSON.stringify(storedInLibrary ? changes : {id:file.id, changes}) });
       if (!response.ok) {
         if (changes.name !== undefined) {
           setRenameError(response.status === 401 ? "请重新登录后重命名。" :
@@ -456,7 +457,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         }
         throw new Error();
       }
-      setFiles(previous => previous?.map(item => item.id === file.id ? {...item,...changes,...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? new Date().toISOString() : null})} : item));
+      const saved = storedInLibrary ? await response.json() : undefined;
+      const time = typeof saved?.time === "string" ? saved.time : undefined;
+      setFiles(previous => previous?.map(item => item.id === file.id ? {
+        ...item, ...changes,
+        ...(time && {time}),
+        ...(changes.deleted === undefined ? {} : {deletedAt:changes.deleted ? time ?? new Date().toISOString() : null}),
+      } : item));
       if (file.kind === "页面" && changes.deleted !== undefined) setAttempt(value => value + 1);
       if (changes.name !== undefined) setRename(undefined);
       return true;
