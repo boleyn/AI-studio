@@ -41,3 +41,7 @@ export function libraryTypeName(item: {path?:string; name:string}) {
 export function libraryActivityTime(file: LibraryFile) {
   return file.openedAt && file.openedAt > file.time ? file.openedAt : file.time;
 }
+
+export function markdownFilename(title: string) {
+  return /\.(md|markdown)$/i.test(title) ? title : title + ".md";
+}

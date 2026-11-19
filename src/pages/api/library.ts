@@ -1,3 +1,4 @@
+import { markdownFilename } from "@/types/library";
 import { createHash } from "node:crypto";
 import { listReceivedArtifactShares } from "@server/shares/artifactShareStorage";
 import { listLibrarySites, siteLibraryId } from "@server/library/sites";
@@ -125,7 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const page = share.libraryItemId ? sharedPages.get(share.libraryItemId) : undefined;
     if (share.libraryItemId ? page?.owner !== share.ownerId : await getProjectAccessState(share.projectToken,share.ownerId) !== "ok") continue;
     const id = share._id;
-    const filename = share.livePage && page ? page.name + ".md" : share.filename;
+    const filename = share.livePage && page ? markdownFilename(page.name) : share.filename;
     rows.set(id,{id,shareId:id,permission:share.livePage && share.members[0]?.canEdit ? "可编辑" : "可查看",sharedPage:share.livePage,fileOrigin:share.fileOrigin ?? (page?.sourceChat ? "生成" : page?.kind === "上传" ? (page.fromTemplate ? "生成" : "上传") : undefined),editablePageId:share.livePage && share.members[0]?.canEdit ? share.libraryItemId : undefined,kind:"上传",name:share.livePage && page ? page.name : filename,path:filename,time:share.members?.[0]?.invitedAt || "",token:"",chatId:"",project:share.ownerName,conversation:""});
   }
   for (const site of await listLibrarySites(owner,names)) {

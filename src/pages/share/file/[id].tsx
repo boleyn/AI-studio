@@ -1,3 +1,4 @@
+import { markdownFilename } from "@/types/library";
 import { Box, Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import { Download } from "lucide-react";
 import { useRouter } from "next/router";
@@ -59,7 +60,7 @@ export default function SharedArtifactPage() {
   const isSpreadsheet = isSpreadsheetFile(current.filename);
   const retry = () => setAttempt((value) => value + 1);
   if (editing && current.editablePageId) return <LibraryPageEditor key={id} page={{id:current.editablePageId}} shareId={id} backLabel="返回预览"
-    onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:name+".md"})}/>;
+    onBack={()=>{setEditing(false);retry();}} onSaved={name=>setResult({...current,filename:markdownFilename(name)})}/>;
   return <Flex h="100dvh" direction="column" bg="white">
     <Flex px={4} py={3} gap={3} align="center" borderBottom="1px solid" borderColor="gray.100">
       <LibraryItemIcon item={{name:current.filename}} compact />

@@ -1,3 +1,4 @@
+import { markdownFilename } from "@/types/library";
 import { inferAttachmentMimeType } from "../utils/attachmentMimeType";
 import { fromLibrary } from "./libraryFileOrigin";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -47,10 +48,10 @@ export async function readLibraryAttachment(item: LibraryFile, signal?:AbortSign
   if (!response.ok) throw new LibraryReadError(response.status,item.name);
   if (item.kind === "页面") {
     const page = await response.json();
-    return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],page.name + ".md",{type:"text/markdown"}),item.id);
+    return fromLibrary(new File(["# " + page.name + "\n\n" + page.body],markdownFilename(page.name),{type:"text/markdown"}),item.id);
   }
   const blob = await response.blob();
-  if (item.sharedPage) return fromLibrary(new File([blob],item.name + ".md",{type:"text/markdown"}),item.id);
+  if (item.sharedPage) return fromLibrary(new File([blob],markdownFilename(item.name),{type:"text/markdown"}),item.id);
   const inferred = inferAttachmentMimeType(libraryTypeName(item), item.name);
   const mediaType = blob.type.split(";")[0].trim().toLowerCase();
   const type = !mediaType || mediaType === "application/octet-stream" || (mediaType === "text/plain" && inferred === "text/markdown")

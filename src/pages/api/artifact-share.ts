@@ -1,3 +1,4 @@
+import { markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "@server/db/mongo";
 import { getObjectFromStorage } from "@server/storage/s3";
@@ -77,7 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (share.libraryItemId ? !native : await getProjectAccessState(share.projectToken, share.ownerId) !== "ok") {
       return res.status(404).json({ error: "共享文件不可用" });
     }
-    const filename = share.livePage && native ? native.name + ".md" : share.filename;
+    const filename = share.livePage && native ? markdownFilename(native.name) : share.filename;
 
     if (req.method === "PATCH") {
       if (!owner) return res.status(403).json({ error: "仅所有者可管理访问权限" });
