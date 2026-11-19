@@ -21,7 +21,7 @@ import LibraryFileViewer from "./LibraryFileViewer";
 import { formatDeletionDate, formatRelativeTime } from "./relativeTime";
 import LibraryDrive from "./LibraryDrive";
 import LibraryConnectors from "./LibraryConnectors";
-import LibrarySites from "./LibrarySites";
+import LibrarySites, { SiteCoverImage } from "./LibrarySites";
 import LibraryItemIcon, {libraryIconAppearance} from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor, { mobilePageReaderQuery, type PageDraft } from "./LibraryPageEditor";
@@ -1082,7 +1082,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 <Icon color={color} size={20} aria-hidden style={{flexShrink:0}}/>
                 <Box minW={0} flex="1" isTruncated>{itemLink(file)}</Box>{actions(file)}
               </Flex>
-              <Flex flex={widePreview ? undefined : "1"} aspectRatio={widePreview ? "16/9" : undefined} align="center" justify="center"><Icon color={color} size={56} aria-hidden/></Flex>
+              <Flex position="relative" overflow="hidden" borderBottomRadius="inherit" flex={widePreview ? undefined : "1"}
+                aspectRatio={widePreview ? "16/9" : undefined} align="center" justify="center">
+                <Icon color={color} size={56} aria-hidden/>
+                {file.siteId && <SiteCoverImage siteId={file.siteId}/>}
+              </Flex>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Flex>
           ) : <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"

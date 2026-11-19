@@ -17,6 +17,11 @@ interface Site { projectToken?:string; slug?:string; restricted?:boolean; member
 
 const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
+export function SiteCoverImage({siteId}:{siteId:string}) {
+  return <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(siteId)+"/cover"}
+      position="absolute" inset={0} w="full" h="full" objectFit="cover" onLoad={event=>{event.currentTarget.style.removeProperty("display");}} onError={event=>{event.currentTarget.style.display="none";}}/>;
+}
+
 export default function LibrarySites({ tab, query, grid, onSitesChanged, onPluginChat }: { onPluginChat:(token:string,name:string,connectedNames:string[])=>Promise<void>; tab: string; query: string; grid: boolean; onSitesChanged: () => void }) {
   const toast = useToast();
   const [pendingDelete,setPendingDelete] = useState<Site>();
@@ -75,8 +80,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
     w={grid ? "full" : "80px"} aspectRatio={grid ? "3 / 2" : "8 / 5"} borderRadius={grid ? 0 : "6px"}
     align="center" justify="center" bg="gray.50" color="gray.400">
     <PanelsTopLeft size={grid ? 32 : 19} aria-hidden/>
-    <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(site.id)+"/cover"}
-      position="absolute" inset={0} w="full" h="full" objectFit="cover" onLoad={event=>{event.currentTarget.style.removeProperty("display");}} onError={event=>{event.currentTarget.style.display="none";}}/>
+    <SiteCoverImage siteId={site.id}/>
   </Flex>;
   const siteLink = (site: Site) => {
     const published = site.publishedAt ? new Date(site.publishedAt) : undefined;
