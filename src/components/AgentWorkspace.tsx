@@ -200,9 +200,11 @@ export default function AgentWorkspace({
   useEffect(() => {
     if (router.isReady && (activeNav === "chat" || fileChatOpen)) setChatWasOpened(true);
   }, [router.isReady, activeNav, fileChatOpen]);
+  const [librarySearch,setLibrarySearch] = useState("");
   const [librarySidebarOpen,setLibrarySidebarOpen] = useState(true);
   const libraryNavButton = useRef<HTMLButtonElement>(null);
   function openLibraryHome() {
+    setLibrarySearch("");
     setLibrarySidebarOpen(true);
     const nextQuery = {...router.query, view:"library"} as typeof router.query;
     for (const key of Object.keys(nextQuery)) {
@@ -215,6 +217,8 @@ export default function AgentWorkspace({
     const nextQuery = {...router.query};
     if (conversation) nextQuery.conversation = conversation;
     if (view !== "library") {
+      setLibrarySearch("");
+      delete nextQuery.librarySearch;
       delete nextQuery.libraryItem;
       delete nextQuery.libraryFolder;
       delete nextQuery.librarySection;
@@ -890,7 +894,7 @@ export default function AgentWorkspace({
       </Flex>
 
       {/* 根据最左 Icon Rail 选择渲染对应主视图（对话区始终保活不卸载，避免切换视图中断生成） */}
-      {activeNav === "library" && <LibraryView sidebar={librarySidebarOpen} onCollapseSidebar={()=>{setLibrarySidebarOpen(false);libraryNavButton.current?.focus();}} fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
+      {activeNav === "library" && <LibraryView query={librarySearch} setQuery={setLibrarySearch} sidebar={librarySidebarOpen} onCollapseSidebar={()=>{setLibrarySidebarOpen(false);libraryNavButton.current?.focus();}} fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={currentFileChat?.minimized ? ()=>setFileChat({...currentFileChat,minimized:false}) : undefined} projects={projects} onProject={token => { handleSelectProject(token); setActiveNav("chat"); }} onChat={async (files,text,itemId,imageMode,projectToken) => {
         let token = projectToken || activeProject?.token || projects[0]?.token;
         if (!token) {
           const existing = await apiJson<ProjectWithConversations[]>("/projects?includeConversations=1");

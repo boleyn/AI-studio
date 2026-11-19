@@ -41,7 +41,7 @@ const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 
 
-export default function LibraryView({ sidebar, onCollapseSidebar, fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { sidebar:boolean; onCollapseSidebar:()=>void; fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
+export default function LibraryView({ query, setQuery, sidebar, onCollapseSidebar, fileChatWidth, setFileChatWidth, fileChatOpen, resumeFileChat, projects, onProject, onOpen, onBack, onChat }: FileChatSizing & { query:string; setQuery:(value:string)=>void; sidebar:boolean; onCollapseSidebar:()=>void; fileChatOpen:boolean; resumeFileChat?:()=>void; projects: ProjectWithConversations[]; onProject:(token:string)=>void; onChat:(files:File[],text?:string,itemId?:string,imageMode?:boolean,projectToken?:string)=>Promise<void>; onBack: () => void; onOpen: (token: string, chatId: string) => void }) {
   const [files, setFiles] = useState<LibraryFile[]>();
   const [selected,setSelected] = useState<string[]>([]);
   const rowDrag = useRef<{start:number; original:string[]; additive:boolean}>();
@@ -53,7 +53,6 @@ export default function LibraryView({ sidebar, onCollapseSidebar, fileChatWidth,
   const [attempt, setAttempt] = useState(0);
   const [connectors, setConnectors] = useState(false);
   const [globalSearch,setGlobalSearch] = useState(false);
-  const [query, setQuery] = useState("");
 
   const [showTemplates,setShowTemplates] = useState(true);
   const [creating,setCreating] = useState(false);
@@ -220,7 +219,7 @@ export default function LibraryView({ sidebar, onCollapseSidebar, fileChatWidth,
   const lookupName = router.query.librarySearch;
   useEffect(() => {
     if (typeof lookupName === "string") setQuery(lookupName);
-  }, [lookupName]);
+  }, [lookupName,setQuery]);
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
   const section = [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
