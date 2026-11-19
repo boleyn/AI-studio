@@ -1,3 +1,4 @@
+import { PAGE_EXCERPT_LENGTH } from "@/types/library";
 import { sharedPreviewFilename, markdownFilename } from "@/types/library";
 import { createHash } from "node:crypto";
 import { listReceivedArtifactShares } from "@server/shares/artifactShareStorage";
@@ -86,7 +87,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
           !referencedPaths.has(file.path.replace(/^\/+/, ""))) add("上传", file.path, file.name, undefined, file.size);
     }
   }
-  const pages = db.collection("library_pages").find({owner},{projection:{pageExcerpt:{$cond:[{$eq:[{$ifNull:["$kind","页面"]},"页面"]},{$substrCP:[{$ifNull:["$body",""]},0,360]},"$$REMOVE"]},sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
+  const pages = db.collection("library_pages").find({owner},{projection:{pageExcerpt:{$cond:[{$eq:[{$ifNull:["$kind","页面"]},"页面"]},{$substrCP:[{$ifNull:["$body",""]},0,PAGE_EXCERPT_LENGTH]},"$$REMOVE"]},sourceChat:1,name:1,time:1,createdAt:1,deletedAt:1,size:1,pinned:1,favorite:1,deleted:1,kind:1,folderId:1,originalName:1,fromTemplate:1,reference:1,appearance:1}});
   for await (const page of pages) {
     const id = page._id.toHexString();
     const source = page.sourceChat && chats.get(JSON.stringify([page.sourceChat.token,page.sourceChat.chatId]));

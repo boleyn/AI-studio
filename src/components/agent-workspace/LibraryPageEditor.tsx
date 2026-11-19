@@ -1,3 +1,4 @@
+import { pageExcerpt } from "@/types/library";
 import { markdownFilename } from "@/types/library";
 import { X } from "lucide-react";
 import { Box, Button, IconButton, Flex, Input, Text, Textarea, useMediaQuery } from "@chakra-ui/react";
@@ -19,7 +20,7 @@ const formattingCommands = [
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onCloseViewer,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onCloseViewer?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string,excerpt:string)=>void}) {
   const [reading,setReading] = useState(false);
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
@@ -129,7 +130,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       if (!response.ok) throw new Error();
       const {time,revision:nextRevision} = await response.json();
       setRevision(nextRevision);
-      onSaved(content.name.trim(),time);
+      onSaved(content.name.trim(),time,pageExcerpt(content.body));
       if (drafts && drafts.get(url) === submittedDraft) drafts.delete(url);
       setStatus("已保存");
     } catch { setStatus("保存失败，请重试"); }

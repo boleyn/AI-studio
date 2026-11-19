@@ -4,7 +4,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { findSpaceInviteRecipient } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
-import type { LibraryFile } from "@/types/library";
+import { pageExcerpt, type LibraryFile } from "@/types/library";
 
 import { getArtifactShare } from "@server/shares/artifactShareStorage";
 
@@ -44,6 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...(members.length ? {members,sharedBy:auth.user.displayName || auth.user.username} : {}) });
     const id = insertedId.toHexString();
     const item: LibraryFile = { id, appearance:parsed.data.appearance, kind:parsed.data.kind, folderId:parsed.data.folderId, token:"", project:"", chatId:"", conversation:"", path:id, name:parsed.data.name, time };
+    if (item.kind === "页面") item.pageExcerpt = pageExcerpt(parsed.data.body);
     return res.status(201).json(item);
   }
   if (typeof req.query.id !== "string" || !/^[0-9a-f]{24}$/.test(req.query.id)) return res.status(400).end();

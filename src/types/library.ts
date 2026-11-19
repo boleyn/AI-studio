@@ -37,6 +37,12 @@ export interface LibraryFile {
   time: string;
 }
 
+export const PAGE_EXCERPT_LENGTH = 360;
+
+export function pageExcerpt(body: string) {
+  return Array.from(body.slice(0, PAGE_EXCERPT_LENGTH * 2)).slice(0, PAGE_EXCERPT_LENGTH).join("");
+}
+
 export function libraryTypeName(item: {path?:string; name:string}) {
   return item.path && /\.[^./\\]+$/.test(item.path) ? item.path : item.name;
 }

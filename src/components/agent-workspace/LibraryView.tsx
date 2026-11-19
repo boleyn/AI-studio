@@ -838,7 +838,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Flex>)}
         <Button size="sm" variant="ghost" sx={{[`@media ${mobilePageReaderQuery}`]:{display:"none"}}} leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
-      onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:markdownFilename(name)} : {})} : item))}/> :
+      onSaved={(name,time,pageExcerpt) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,pageExcerpt,...(item.sharedPage ? {path:markdownFilename(name)} : {})} : item))}/> :
     files && !failed && ((router.query.libraryItem && !opened) || (router.query.libraryFolder && !folder)) ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
       <CircleAlert size={22} color="#777" aria-hidden/>
       <Box role="alert"><Heading as="h2" fontSize="md">无法打开此条目</Heading>
