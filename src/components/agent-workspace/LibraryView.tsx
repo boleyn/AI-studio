@@ -815,9 +815,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               {item.reference?.name || item.reference?.type}
             </Button>)}
         </Flex></Box>}
-      {section === "回收站" && <Flex align="center" justifyContent="space-between" gap={4} mb={4}>
-        <Text fontSize="sm" color="gray.600">恢复最近删除的项目。这些项目将在 30 天后被永久删除。</Text>
-        <Button size="sm" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
+      {section === "回收站" && <Flex as="aside" align="center" justifyContent="space-between" gap={4} mb={4} px={4} py={3} minH="60px" borderRadius="12px" bg="#f3f3f3" color="#0d0d0d">
+        <Text fontSize="sm">恢复最近删除的项目。这些项目将在 30 天后被永久删除。</Text>
+        <Button size="sm" h="36px" px={4} flexShrink={0} bg="#fcfcfc" variant="outline" borderRadius="full" isDisabled={!files?.some(item => item.deleted)}
           onClick={() => setPurge({scope:"all",items:files?.filter(item => item.deleted) || []})}>清空回收站</Button>
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
