@@ -22,6 +22,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   page?: boolean;
   onClose: () => void;
 }) {
+  const fileOrPage = !siteId && !spaceId;
   const [share, setShare] = useState<Share>();
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
@@ -75,23 +76,23 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   return (
     <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
-      <ModalContent borderWidth={page ? 0 : undefined} mx={3} maxW={page ? "512px" : undefined} minH={page ? "376px" : undefined} borderRadius={page ? "16px" : "20px"}>
+      <ModalContent borderWidth={fileOrPage ? 0 : undefined} mx={3} maxW={fileOrPage ? "512px" : undefined} minH={fileOrPage ? "376px" : undefined} borderRadius={fileOrPage ? "16px" : "20px"}>
         <ModalHeader display="flex" alignItems="center" gap={2} pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}
-          {page && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
+          {fileOrPage && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
         </ModalHeader>
-        <ModalCloseButton {...(page && {boxSize:"36px", top:"12px", right:"16px", borderRadius:"full"})} isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
-        <ModalBody pt={page ? 0 : undefined}>
+        <ModalCloseButton {...(fileOrPage && {boxSize:"36px", top:"12px", right:"16px", borderRadius:"full"})} isDisabled={busy} aria-label={fileOrPage ? "关闭对话框" : "关闭分享对话框"} />
+        <ModalBody pt={fileOrPage ? 0 : undefined}>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}
           {share && <>
             <Flex as="form" gap={2} align="end" onSubmit={(event) => { event.preventDefault(); void updateMember(username); }}>
               <FormControl>
-                {!page && <FormLabel fontSize="sm">添加成员</FormLabel>}
-                <Input {...(page && {"aria-label":"添加成员", h:"36px", px:"14px", fontSize:"16px", borderRadius:"6px"})} placeholder={page ? "添加成员" : spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
+                {!fileOrPage && <FormLabel fontSize="sm">添加成员</FormLabel>}
+                <Input {...(fileOrPage && {"aria-label":"添加成员", h:"36px", px:"14px", fontSize:"16px", borderRadius:"6px"})} placeholder={fileOrPage ? "添加成员" : spaceId ? "输入飞书邮箱或本地账号" : "输入账号名称"} title={spaceId ? "邮箱形式的本地用户名可写为「账号:用户名」" : undefined} size="sm" value={username} maxLength={100} onChange={(event) => setUsername(event.target.value)} />
               </FormControl>
-              {(!page || username.trim()) && <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>}
+              {(!fileOrPage || username.trim()) && <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>}
             </Flex>
-            <Text mt={page ? "28px" : 5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
+            <Text mt={fileOrPage ? "28px" : 5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
             {siteId ? <select aria-label="站点链接访问权限" disabled={busy} value={share.restricted ? "invited" : "link"}
               onChange={async event=>{
                 const restricted = event.target.value === "invited";
@@ -104,11 +105,11 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
                 } catch { setError("访问权限保存失败，请重试。"); }
                 finally { setBusy(false); }
               }}><option value="invited">仅限受邀者</option><option value="link">拥有链接的人</option></select> : <Menu placement="bottom-start">
-              <MenuButton as={Button} variant="ghost" size="sm" mt={page ? "3px" : 1} {...(page && {ms:"-10px", minW:"151px", h:"36px", borderRadius:"8px"})} leftIcon={<LockKeyhole size={15}/>}
+              <MenuButton as={Button} variant="ghost" size="sm" mt={fileOrPage ? "3px" : 1} {...(fileOrPage && {ms:"-10px", minW:"151px", h:"36px", borderRadius:"8px"})} leftIcon={<LockKeyhole size={15}/>}
                 rightIcon={<ChevronDown size={14}/>}>仅限受邀者</MenuButton>
-              <MenuList w={page ? "min(420px, calc(100vw - 40px))" : undefined} minW={page ? 0 : undefined}
-                borderRadius={page ? "20px" : "12px"} shadow="lg" p={page ? "6px" : 1}>
-                <MenuOptionGroup type="radio" value="invited"><MenuItemOption value="invited" minH={page ? "44px" : undefined} py={page ? 1 : undefined} borderRadius={page ? "14px" : "8px"}>
+              <MenuList w={fileOrPage ? "min(420px, calc(100vw - 40px))" : undefined} minW={fileOrPage ? 0 : undefined}
+                borderRadius={fileOrPage ? "20px" : "12px"} shadow="lg" p={fileOrPage ? "6px" : 1}>
+                <MenuOptionGroup type="radio" value="invited"><MenuItemOption value="invited" minH={fileOrPage ? "44px" : undefined} py={fileOrPage ? 1 : undefined} borderRadius={fileOrPage ? "14px" : "8px"}>
                   <Text fontSize="sm" fontWeight="500">仅限受邀者</Text>
                   <Text fontSize="xs" color="gray.600">已有访问权限的用户可以使用此链接</Text>
                 </MenuItemOption></MenuOptionGroup>
@@ -132,7 +133,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
             {!share && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
           </Flex>}
         </ModalBody>
-        <ModalFooter {...(page && {px:"20px", py:"16px", sx:{"& button":{height:"36px", minWidth:"60px"}, "& button:first-of-type:not(:last-child)":{minWidth:"112px"}}})} gap={2} justifyContent="space-between">
+        <ModalFooter {...(fileOrPage && {px:"20px", py:"16px", sx:{"& button":{height:"36px", minWidth:"60px"}, "& button:first-of-type:not(:last-child)":{minWidth:"112px"}}})} gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
             try {
               await navigator.clipboard.writeText(new URL(spaceId ? "/share/space/"+spaceId : siteId ? sitePreviewPath(siteId,share.slug) : `/share/file/${share.id}`, window.location.origin).href);
