@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import useDriveConnected from "@/components/agent-workspace/useDriveConnected";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
-import { CircleAlert, Search, X } from "lucide-react";
+import { ChevronRight, CircleAlert, Search, X } from "lucide-react";
 import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
 import LibraryDrive from "@/components/agent-workspace/LibraryDrive";
@@ -184,7 +184,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       {visible?.map(item=>{
         if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
           justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
-          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated>{item.name}</Text><span aria-hidden>›</span>
+          <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated>{item.name}</Text><ChevronRight size={16} strokeWidth={1.75} aria-hidden style={{flexShrink:0}}/>
         </Button>;
         const checked=selected.some(entry => entry.id === item.id);
         return <Flex as="button" type="button" key={item.id} role="checkbox" aria-label={item.name} aria-describedby={["library-source-"+item.id, fileErrors.has(item.id) && "library-error-"+item.id].filter(Boolean).join(" ")} aria-checked={checked} disabled={busy}

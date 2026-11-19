@@ -374,7 +374,8 @@ const ChatItem = ({
                     ? resolveChatUploadUrl(file,token,activeConversationId || "")
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
-                  const originalUrl = file.libraryItemId && (sharedSpacePageLocation(file.libraryItemId)?.href ??
+                  const sharedPage = file.libraryItemId ? sharedSpacePageLocation(file.libraryItemId) : undefined;
+                  const originalUrl = file.libraryItemId && (sharedPage?.href ??
                     "/?" + new URLSearchParams({view:"library",libraryItem:file.libraryItemId}));
                   const imageFailed = image && failedImages.has(fileUrl);
                   const openUrl = imageFailed ? originalUrl : fileUrl || originalUrl;
@@ -406,7 +407,7 @@ const ChatItem = ({
                           p={2}
                           w="100%"
                         >
-                          <LibraryItemIcon item={{name,path:storagePath}}/>
+                          <LibraryItemIcon item={{name,path:storagePath,sharedPage:Boolean(sharedPage)}}/>
                           <AttachmentFilename name={name}/>
                           {imageFailed && originalUrl && <Text as="span" fontSize="xs" color="gray.600">查看原件</Text>}
                           {!canOpen && <Text as="span" fontSize="xs" color="gray.600">{unavailable}</Text>}
