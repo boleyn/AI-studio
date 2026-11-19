@@ -20,23 +20,29 @@ async function readFiles(provider: Provider, params: URLSearchParams, signal?: A
 }
 
 export default function ConnectorFilePicker({ provider, back, onAttach }: { provider: Provider; back: () => void; onAttach: (files: File[]) => Promise<void> }) {
-  const [path, setPath] = useState([{ id: "", name: provider as string }]);
+  const [path, setPath] = useState([{ id: "", name: provider as string, pages: [""] }]);
   const [input, setInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [pages, setPages] = useState([""]);
+  const [rootSearch, setSearch] = useState("");
   const [listing, setListing] = useState<Listing>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [attaching, setAttaching] = useState("");
   const folder = path[path.length - 1];
+  const search = path.length === 1 ? rootSearch : "";
+  const pages = folder.pages;
   const cursor = pages[pages.length - 1];
+
+  function setPages(next: string[]) {
+    setPath(current => [...current.slice(0,-1), {...current[current.length - 1], pages:next}]);
+  }
   useEffect(() => {
+    if (input.trim() === rootSearch) return;
     const timer = window.setTimeout(() => {
       setSearch(input.trim());
-      setPages([""]);
+      setPath(current => [{...current[0], pages:[""]}, ...current.slice(1)]);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [input]);
+  }, [input,rootSearch]);
   useEffect(() => {
     const controller = new AbortController();
     setListing(undefined);
@@ -71,12 +77,12 @@ export default function ConnectorFilePicker({ provider, back, onAttach }: { prov
       <ModalBody>
         {path.length === 1 && <Input type="search" aria-label={"搜索 " + provider + " 文件"} placeholder={"搜索 " + provider + " 文件"} mb={3}
           value={input} isDisabled={Boolean(attaching)} onChange={event => setInput(event.target.value)}/>}
-        {path.length > 1 && <Button size="sm" variant="ghost" mb={2} isDisabled={Boolean(attaching)} onClick={() => { setPages([""]); setPath(path.slice(0,-1)); }}>返回上级文件夹</Button>}
+        {path.length > 1 && <Button size="sm" variant="ghost" mb={2} isDisabled={Boolean(attaching)} onClick={() => setPath(path.slice(0,-1))}>{path.length === 2 && rootSearch ? "返回搜索结果" : "返回上级文件夹"}</Button>}
         {error && <Text role="alert">{error}</Text>}
         {!listing && (error ? <Button size="sm" onClick={() => setAttempt(n => n + 1)}>重新加载</Button> : <Text role="status">正在加载文件…</Text>)}
         {listing && !listing.files.length && <Text role="status">{search ? "未找到匹配文件" : provider === "SharePoint" ? "输入关键词以查找文件" : "此文件夹为空"}</Text>}
         {listing?.files.map(entry => <Flex key={entry.id} gap={3} minH="44px" align="center">
-          {entry.folder ? <Button variant="ghost" leftIcon={<Folder size={16}/>} isDisabled={Boolean(attaching)} onClick={() => { setInput(""); setSearch(""); setPages([""]); setPath([...path,entry]); }}>{entry.name}</Button> :
+          {entry.folder ? <Button variant="ghost" leftIcon={<Folder size={16}/>} isDisabled={Boolean(attaching)} onClick={() => setPath([...path,{id:entry.id,name:entry.name,pages:[""]}])}>{entry.name}</Button> :
             <><Text flex={1} overflowWrap="anywhere">{entry.name}</Text><Button size="sm" flexShrink={0} isLoading={attaching === entry.id} isDisabled={Boolean(attaching)} onClick={() => attach(entry)}>添加到聊天</Button></>}
         </Flex>)}
       </ModalBody><ModalFooter gap={2}>
