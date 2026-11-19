@@ -1021,7 +1021,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
                 event.preventDefault();
                 event.stopPropagation();
               }
-            }}>{visible.map(file => <Box as="tr" key={key(file)} aria-selected={selected.includes(file.id)}
+            }}>{visible.map(file => <Box as="tr" key={key(file)} aria-label={file.name} aria-selected={selected.includes(file.id)}
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
