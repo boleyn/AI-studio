@@ -1,14 +1,14 @@
 import { libraryTypeName } from "@/types/library";
 import { SpaceIcon } from "./SpaceIconPicker";
 import { Box } from "@chakra-ui/react";
-import { File, FileArchive, FileSpreadsheet, FileText, FileType, Folder, Image, Layers, NotebookText, PanelsTopLeft, Presentation } from "lucide-react";
+import { File, FileArchive, FileSpreadsheet, FileText, FileType, Folder, Image, Layers, NotebookText, LayoutDashboard, Presentation } from "lucide-react";
 import type { LibraryFile } from "@/types/library";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 type IconItem = {mimeType?: string} & Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
 
 export function libraryIconAppearance(item: IconItem) {
-  if (item.kind === "站点") return { Icon: PanelsTopLeft, color: "#8754ce" };
+  if (item.kind === "站点") return { Icon: LayoutDashboard };
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };

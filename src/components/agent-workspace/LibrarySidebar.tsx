@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Heading, IconButton, Popover, PopoverContent, PopoverTrigger, Portal, Text, useBreakpointValue } from "@chakra-ui/react";
-import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, PanelsTopLeft, Search, Trash2 } from "lucide-react";
+import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, LayoutDashboard, Search, Trash2 } from "lucide-react";
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
@@ -7,7 +7,7 @@ import { type ReactNode, useState } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
-  { name: "幻灯片", icon: GalleryHorizontalEnd }, { name: "站点", icon: PanelsTopLeft },
+  { name: "幻灯片", icon: GalleryHorizontalEnd }, { name: "站点", icon: LayoutDashboard },
   { name: "图像", icon: Image },
 ];
 type Props = {
