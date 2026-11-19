@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { requireAuth } from "@server/auth/session";
-import { siteVisibility } from "@server/library/sites";
+import { canViewRestrictedSite, siteVisibility } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { getShareLink } from "@server/shares/shareStorage";
 
@@ -31,7 +31,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     const auth = await requireAuth(req,res);
     if (!auth) return;
     const userId = String(auth.user._id);
-    if (userId !== share.ownerUserId && !share.members?.some(member => member.userId === userId)) {
+    if (!await canViewRestrictedSite(share.ownerUserId, share.projectToken, userId)) {
       return res.status(403).json({error:"当前账号没有访问此站点的权限"});
     }
   }

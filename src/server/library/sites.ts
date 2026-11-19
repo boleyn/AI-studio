@@ -12,6 +12,16 @@ export async function siteVisibility(owner: string, token: string) {
   return entry?.restricted === true;
 }
 
+export async function canViewRestrictedSite(owner: string, token: string, viewer: string) {
+  if (viewer === owner) return true;
+  const db = await getMongoDb();
+  const invitation = await db.collection("share_links").findOne(
+    {ownerUserId:owner, projectToken:token, mode:"preview", "members.userId":viewer},
+    {projection:{_id:1}}
+  );
+  return Boolean(invitation);
+}
+
 export async function listLibrarySites(owner:string, names:Map<string,string>) {
   const db = await getMongoDb();
   const links = await db.collection("share_links").aggregate([

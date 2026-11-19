@@ -6,7 +6,7 @@ import { githubLight } from "@codesandbox/sandpack-themes";
 
 import type { SandpackFiles } from "../../../components/StudioShell";
 import { getAuthUserFromRequest } from "@server/auth/ssr";
-import { siteVisibility } from "@server/library/sites";
+import { canViewRestrictedSite, siteVisibility } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { recordSiteVisit } from "@server/shares/siteVisits";
 import { getShareLink } from "@server/shares/shareStorage";
@@ -217,7 +217,7 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   if (await siteVisibility(share.ownerUserId, share.projectToken)) {
     const userId = getAuthUserFromRequest(context.req)?.sub;
     if (!userId) return {redirect:{destination:"/login?lastRoute="+encodeURIComponent("/share/preview/"+shareId),permanent:false}};
-    if (userId !== share.ownerUserId && !share.members?.some(member => member.userId === userId)) return {notFound:true};
+    if (!await canViewRestrictedSite(share.ownerUserId, share.projectToken, userId)) return {notFound:true};
   }
 
   const project = await getProject(share.projectToken);
