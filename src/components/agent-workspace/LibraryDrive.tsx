@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { CircleAlert, Folder, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
+import { redirectedToLogin, responseFilename } from "@/features/chat/services/files";
 import { formatRelativeTime } from "./relativeTime";
 
 interface DriveFile {id:string; name:string; mimeType:string; webViewLink?:string; modifiedTime?:string; viewedByMeTime?:string; size?:string}
@@ -54,12 +55,12 @@ export default function LibraryDrive({connect,onAttach,onBusyChange,onBackToLibr
     setAttachmentError(undefined);
     try {
       const response = await fetch("/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id}),{headers:withAuthHeaders()});
+      if (redirectedToLogin(response)) throw new Error("登录已过期，请重新登录后添加文件。");
       if (!response.ok) {
         const detail = await response.json().catch(()=>null);
         throw new Error(detail?.error || "暂时无法读取文件，请重试。");
       }
-      const encoded = response.headers.get("Content-Disposition")?.split("filename*=UTF-8''")[1];
-      const name = encoded ? decodeURIComponent(encoded) : file.name;
+      const name = responseFilename(response,file.name);
       await onAttach([new File([await response.blob()],name,{type:response.headers.get("X-Attachment-Type") || file.mimeType})]);
     } catch (reason) {setAttachmentError({file,message:reason instanceof TypeError ? "请检查网络连接后重试。" : reason instanceof Error ? reason.message : "添加失败"});}
     finally {setAttaching("");onBusyChange?.(false);}
