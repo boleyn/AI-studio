@@ -111,6 +111,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ];
     const referencedPaths = new Set(attachments.filter(file => file.origin && typeof file.path === "string")
       .map(file => file.path.replace(/^\/+/, "")));
+    for (const block of blocks) {
+      if (block.library_item_id && typeof block.storage_path === "string") {
+        referencedPaths.add(block.storage_path.replace(/^\/+/, ""));
+      }
+    }
     for (const file of attachments) {
       if (!file.origin && typeof file.path === "string" && /^\/?chat_uploads\//.test(file.path) &&
           !referencedPaths.has(file.path.replace(/^\/+/, ""))) add("上传", file.path, file.name, undefined, file.size);
