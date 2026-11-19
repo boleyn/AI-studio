@@ -316,6 +316,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const filterCount = types.length + sources.length;
   const grid = router.query.libraryLayout === "grid";
   useEffect(() => {
+    if (personalSection && !grid) setSelected([]);
+  }, [personalSection, grid]);
+  useEffect(() => {
     const reloadOnReturn = () => {
       if (document.visibilityState === "visible") setAttempt(value => value + 1);
     };
@@ -904,8 +907,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           </MenuOptionGroup>}</MenuList>
         </Menu>}
         {!sitesSection && !pagesSection && <Box aria-hidden="true" w="1px" h="16px" mx={1} flexShrink={0} bg="blackAlpha.100"/>}
-        <IconButton boxSize={slidesSection || allHome ? "36px" : undefined} aria-label="网格视图" aria-pressed={grid} onClick={() => updateListOptions(types, true)} icon={<LayoutGrid size={16}/>} variant={grid ? "solid" : "ghost"} size="sm" borderRadius="full"/>
-        <IconButton boxSize={slidesSection || allHome ? "36px" : undefined} aria-label="列表视图" ml={allHome ? "-2px" : undefined} aria-pressed={!grid} onClick={() => updateListOptions(types, false)} icon={<List size={16}/>} variant={!grid ? "solid" : "ghost"} size="sm" borderRadius="full"/></>}
+        <Flex role="group" aria-label="资料空间视图" align="center">
+          {(personalSection ? ["list","grid"] : ["grid","list"]).map(layout=>{
+            const isGrid = layout === "grid";
+            return <IconButton key={layout} boxSize={slidesSection || allHome ? "36px" : undefined}
+              aria-label={isGrid ? "网格视图" : "列表视图"} aria-pressed={grid === isGrid}
+              ml={allHome && !isGrid ? "-2px" : undefined} onClick={()=>updateListOptions(types,isGrid)}
+              icon={isGrid ? <LayoutGrid size={16}/> : <List size={16}/>}
+              variant={grid === isGrid ? "solid" : "ghost"} size="sm" borderRadius="full"/>;
+          })}
+        </Flex></>}
       </Flex>
       </Box>}
       {imageSection && <Box as="section" aria-label="参考照片" mb={5}>
