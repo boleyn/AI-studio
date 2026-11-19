@@ -1,3 +1,4 @@
+import { useToast } from "@chakra-ui/react";
 import { chatAttachmentMirrorPath } from "@shared/chat/attachmentPath";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { createChatId, createDataId } from "@shared/chat/ids";
@@ -590,6 +591,7 @@ const ChatPanel = ({
   hideHeader?: boolean;
   workspaceComposer?: WorkspaceComposerConfig;
 }) => {
+  const libraryToast = useToast();
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
@@ -1868,6 +1870,9 @@ const ChatPanel = ({
                 text?: unknown;
                 tokenBudget?: unknown;
               };
+              if (payload.phase === "library_save_failed") {
+                libraryToast({status:"warning", title:"部分文件未能保存到资料空间", description:"回复已保存在当前对话中。", isClosable:true});
+              }
               if (payload.phase === "mode_changed") setChatMode("default");
               if (payload.phase === "goal_status") {
                 const update = item as { status?: string; objective?: string };

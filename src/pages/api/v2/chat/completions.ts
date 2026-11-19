@@ -838,11 +838,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       }
-      if (!isProjectToken && conversationId) {
-        const reply = runResult.assistantMessage.message?.content;
-        await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantMessageIdForSnapshot,
-          typeof reply === "string" ? reply : sdkContentToText(reply ?? []), toPublicSkillRuntimeFiles(updatedFiles));
-      }
       streamEvent(res, SdkStreamEventEnum.streamEvent, {
         subtype: "files_updated",
         persisted: true,
@@ -883,6 +878,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ...incomingMessages,
         assistantStored,
       ]);
+      if (!isProjectToken && Object.keys(updatedFiles).length) {
+        const reply = runResult.assistantMessage.message?.content;
+        try {
+          await saveLinkedSkillFiles(String(auth.user._id), token, conversationId, assistantStored.uuid || createDataId(),
+            typeof reply === "string" ? reply : sdkContentToText(reply ?? []), toPublicSkillRuntimeFiles(updatedFiles));
+        } catch (error) {
+          console.warn("[library] skill file save failed", error instanceof Error ? error.name : "unknown");
+          streamEvent(res, SdkStreamEventEnum.status, {phase:"library_save_failed"});
+        }
+      }
       if (runResult.checkpoint) {
         const committed = await getConversation(token, conversationId);
         if (committed) await saveAgentContext(token, conversationId, committed.messages, runResult.checkpoint).catch(error => {
