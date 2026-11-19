@@ -310,13 +310,14 @@ const ChatItem = ({
             {sortedFiles.length > 0 ? (
               <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: sortedFiles.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" }}>
                 {sortedFiles.map((file, index) => {
-                  const image = isImageFile(file);
+                  const name = file.name || file.storagePath?.split("/").pop() || `文件 ${index + 1}`;
+                  const image = isImageFile({...file,name});
                   const storagePath = file.storagePath?.replace(/^\/+/,"");
                   const fileUrl = storagePath?.startsWith("chat_uploads/")
                     ? toStableChatFileViewUrl({storagePath,token,chatId:activeConversationId || ""})
                     : file.downloadUrl?.startsWith("/api/") && !file.previewUrl?.startsWith("/api/code?")
                       ? file.downloadUrl : file.previewUrl || file.downloadUrl || file.publicUrl || toProjectFileViewUrl({storagePath:file.storagePath,token});
-                  const isMarkdown = /\.(md|markdown)$/i.test(file.name || "") ||
+                  const isMarkdown = /\.(md|markdown)$/i.test(name) ||
                     /^text\/markdown(?:;|$)/i.test(file.type || "");
                   return (
                     <Box
@@ -329,23 +330,23 @@ const ChatItem = ({
                     >
                       {image ? (
                         fileUrl ? (
-                          <Box as="img" src={fileUrl} alt={file.name || `文件 ${index + 1}`} maxH="220px" objectFit="contain" w="100%" />
+                          <Box as="img" src={fileUrl} alt={name} maxH="220px" objectFit="contain" w="100%" />
                         ) : null
                       ) : (
                         <Flex
                           alignItems="center"
-                          as="button" type="button" aria-label={`打开 ${file.name || "附件"}`}
+                          as="button" type="button" aria-label={`打开 ${name}`}
                           cursor={fileUrl || isMarkdown ? "pointer" : "default"}
                           onClick={() => {
-                            if (isMarkdown) setPreview({name:file.name || "Markdown",url:fileUrl,libraryItemId:file.libraryItemId});
+                            if (isMarkdown) setPreview({name,url:fileUrl,libraryItemId:file.libraryItemId});
                             else if (fileUrl) window.open(fileUrl,"_blank","noopener,noreferrer");
                           }}
                           p={2}
                           w="100%"
                         >
-                          <LibraryItemIcon item={{name:file.name || ""}}/>
+                          <LibraryItemIcon item={{name}}/>
                           <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
-                            {file.name || fileUrl || `文件 ${index + 1}`}
+                            {name}
                           </Text>
                         </Flex>
                       )}
