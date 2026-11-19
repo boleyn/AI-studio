@@ -3,6 +3,7 @@ import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, 
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
+import AttachmentFilename from "@features/chat/components/AttachmentFilename";
 import { type ReactNode, useState } from "react";
 
 const categories = [
@@ -67,7 +68,11 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
       <Button variant="ghost" size="sm" ml="4px" w="calc(100% - 10px)" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={recent} onClick={() => setRecent(!recent)}>最近</Button>
       {recent && recentItems.length > 0 && <Flex direction="column" gap="1px" mt="4px">
       {recentItems.slice(0,expanded ? undefined : 5).map(file => <Button key={file.id} variant="ghost" size="sm" w="full"
-        justifyContent="start" px="10px" iconSpacing="8px" h="36px" borderRadius="8px" fontWeight="normal" title={file.name} onClick={() => onFile(file)} leftIcon={<LibraryItemIcon item={file} compact/>}><Text isTruncated>{file.name}</Text></Button>)}
+        justifyContent="start" px="10px" iconSpacing="8px" h="36px" borderRadius="8px" fontWeight="normal" title={file.name} onClick={() => onFile(file)} leftIcon={<LibraryItemIcon item={file} compact/>}>
+          {(file.kind === "上传" || file.kind === "生成") && !file.sharedPage
+            ? <AttachmentFilename name={file.name} fontSize="inherit"/>
+            : <Text isTruncated>{file.name}</Text>}
+        </Button>)}
       {recentItems.length > 5 && <Button alignSelf="start" h="36px" borderRadius="8px" variant="ghost" size="sm" color="#8f8f8f" fontWeight="normal" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "展开显示"}</Button>}
       </Flex>}
       <Flex mt="17px" align="center" justify="space-between"><Button size="sm" variant="ghost" ml="4px" flex="1" h="36px" px="4px" justifyContent="start" color="#8f8f8f" aria-expanded={spaces} onClick={() => setSpaces(!spaces)}>资料空间</Button>
