@@ -132,6 +132,8 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   onClose: () => void;
   onPick: (name: string, body: string) => void;
 }) {
+  const searchTrigger = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [building,setBuilding] = useState<string>();
@@ -245,10 +247,21 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
           )}
         </Flex>
         <Box flex={1} />
-        {searching && <Input autoFocus aria-label="搜索模板" size="sm" w="min(200px, 30vw)" placeholder="搜索模板"
-          value={query} onChange={event => setQuery(event.target.value)} />}
-        <IconButton size="sm" variant="ghost" aria-label="搜索" aria-expanded={searching} icon={<Search size={18} />}
-          onClick={() => { setSearching(!searching); setQuery(""); }} />
+        {searching ? <Flex align="center">
+          <Input ref={searchInput} type="search" autoFocus aria-label="搜索" size="sm" w="min(200px, 30vw)" placeholder="搜索"
+            value={query} onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setQuery("");
+              setSearching(false);
+              requestAnimationFrame(() => searchTrigger.current?.focus());
+            }} />
+          {query && <IconButton size="sm" variant="ghost" aria-label="清空搜索" icon={<X size={16} />}
+            onClick={() => { setQuery(""); searchInput.current?.focus(); }} />}
+        </Flex> : <IconButton ref={searchTrigger} size="sm" variant="ghost" aria-label="搜索" icon={<Search size={18} />}
+          onClick={() => setSearching(true)} />}
         <Menu>
           <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
           <MenuList aria-label="Template" minW="180px" p="10px" borderWidth={0} borderRadius="16px"
@@ -264,7 +277,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
         <SimpleGrid columns={{base:2, md:3}} columnGap={{base:3, md:6}} rowGap={{base:6, md:10}}>
           {cards}
         </SimpleGrid>
-        {!cards.length && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
+        {!cards.length && <Text textAlign="center" color="gray.500" py={8}>未找到匹配的模板</Text>}
       </ModalBody>
     </ModalContent>
   </Modal>;
