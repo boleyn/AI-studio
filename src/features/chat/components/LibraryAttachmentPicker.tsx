@@ -98,12 +98,13 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件或页面" value={query} onChange={event=>setQuery(event.target.value)}/>
       {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
         onClick={()=>{setQuery("");searchRef.current?.focus();}}/>}
-    </Flex><ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
-      {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
-      {error && <Flex role="alert" mx={2} my={2} p={3} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
+    </Flex>
+      {error && <Flex role="alert" mx={5} mb={2} p={3} flexShrink={0} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
         <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/><Text flex="1" minW={0} overflowWrap="anywhere" fontSize="sm">{error}</Text>
         {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
       </Flex>}
+    <ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
+      {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
       {visible?.length === 0 && <Box role="status" px={4} py={8} textAlign="center">
         <Text fontSize="sm" fontWeight="medium">{attachable?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
         <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
