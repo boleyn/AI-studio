@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
+import { getMongoDb } from "@server/db/mongo";
 import { requireAuth } from "@server/auth/session";
 import {
   checkScope,
@@ -44,8 +45,20 @@ export default async function handler(
   const owner = String(auth.user._id);
   const col = await schedules();
   if (req.method === "GET") {
+    const filter: { owner: string; token?: string } = { owner };
+    const siteId = req.query.siteId;
+    if (siteId !== undefined) {
+      if (!id.safeParse(siteId).success) return res.status(400).json({ error: "站点编号无效" });
+      const db = await getMongoDb();
+      const site = await db.collection("share_links").findOne(
+        { shareId: siteId, ownerUserId: owner, mode: "preview" },
+        { projection: { projectToken: 1 } },
+      );
+      if (typeof site?.projectToken !== "string") return res.status(404).json({ error: "未找到站点" });
+      filter.token = site.projectToken;
+    }
     const tasks = await col
-      .find({ owner }, { projection: { owner: 0, runId: 0, claimedAt: 0 } })
+      .find(filter, { projection: { owner: 0, runId: 0, claimedAt: 0 } })
       .sort({ nextAt: 1 })
       .toArray();
     return res.status(200).json({ tasks });
