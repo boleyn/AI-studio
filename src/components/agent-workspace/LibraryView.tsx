@@ -359,7 +359,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : (tab !== "你的条目" && tab !== "你的项目" && tab !== "我的") || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
-    [file.name, file.path, file.project, file.conversation].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
+    (!searchTerm || [file.name, file.path, file.project, file.conversation, fileType(file), fileType(file) === "演示文稿" ? "幻灯片" : ""].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   useEffect(() => {
