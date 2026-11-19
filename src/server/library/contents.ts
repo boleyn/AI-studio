@@ -1,3 +1,4 @@
+import { sharedSpaceLibraryId } from "@server/library/sharedSpaceId";
 import { PAGE_EXCERPT_LENGTH } from "@/types/library";
 import { sharedPreviewFilename, markdownFilename } from "@/types/library";
 import { createHash } from "node:crypto";
@@ -108,7 +109,7 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
     {projection:{name:1,time:1,sharedBy:1,appearance:1}});
   for await (const space of spaces) {
     const shareId = space._id.toHexString();
-    const id = createHash("sha256").update(JSON.stringify(["shared-space",shareId])).digest("hex");
+    const id = sharedSpaceLibraryId(shareId);
     rows.set(id,{id,shareId,kind:"资料空间",appearance:space.appearance,name:space.name,path:"",token:"",project:space.sharedBy || "",chatId:"",conversation:"",
       time:space.time || "",permission:"可查看"});
   }

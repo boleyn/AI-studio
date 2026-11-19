@@ -36,7 +36,9 @@ export default function SharedSpace() {
         return;
       }
       setData(value);
-      if (typeof page === "string") recordLibraryOpen(`space-${id}-${page}`);
+      const opened = typeof page === "string" ? [`space-${id}-${page}`] : [];
+      if (value.viewerSpaceId) opened.push(value.viewerSpaceId);
+      recordLibraryOpen(opened);
     }).catch(reason=>{if (!controller.signal.aborted) setError({message:reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message});});
     return ()=>controller.abort();
   },[id,page,router,attempt]);

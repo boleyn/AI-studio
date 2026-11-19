@@ -1,3 +1,4 @@
+import { sharedSpaceLibraryId } from "@server/library/sharedSpaceId";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
@@ -71,7 +72,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.send("# " + page.name + "\n\n" + page.body);
     }
-    return res.json({owner,name:page.name,body:page.body});
+    return res.json({owner,name:page.name,body:page.body,viewerSpaceId:owner ? id : sharedSpaceLibraryId(id)});
   }
   const included: {id:string;name:string;path:string;time:string}[] = [];
   const paths = new Map([[id,""]]);
@@ -95,5 +96,5 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
   const activity = await db.collection<{_id:string;owner:string;openedAt?:string}>("library_file_settings")
     .find({owner:userId,_id:{$in:included.map(page=>key(page.id))}},{projection:{openedAt:1}}).toArray();
   const opened = new Map(activity.map(entry => [entry._id,entry.openedAt]));
-  return res.json({name:space.name,pages:included.map(page=>({...page,openedAt:opened.get(key(page.id))}))});
+  return res.json({name:space.name,viewerSpaceId:sharedSpaceLibraryId(id),pages:included.map(page=>({...page,openedAt:opened.get(key(page.id))}))});
 }
