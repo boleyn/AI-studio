@@ -35,19 +35,23 @@ export function recordLibraryOpen(selection: string | string[]) {
   }
 }
 
+async function readLibraryJson<T>(response: Response, message: string): Promise<T> {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error(message);
+  }
+}
+
 export async function loadLibraryFiles(signal: AbortSignal): Promise<LibraryFile[]> {
   const response = await fetch("/api/library", {headers:withAuthHeaders(), signal});
   if (response.status === 401) throw new Error("请先登录，再打开资料空间。");
   if (response.status === 403) throw new Error("当前账号没有访问资料空间的权限。");
   if (!response.ok) throw new Error("资料空间暂时不可用，请稍后重试。");
-  let items: unknown;
-  try {
-    items = await response.json();
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-    throw new Error("资料列表未能加载，请重试。");
-  }
-  if (!Array.isArray(items)) throw new Error("资料列表未能加载，请重试。");
+  const message = "资料列表未能加载，请重试。";
+  const items = await readLibraryJson<unknown>(response, message);
+  if (!Array.isArray(items)) throw new Error(message);
   return items;
 }
 
@@ -58,7 +62,12 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   if (response.status === 401) throw new Error("请重新登录后打开共享空间。");
   if (response.status === 403 || response.status === 404) throw new Error("共享空间已不可访问，请联系所有者确认。");
   if (!response.ok) throw new Error("共享空间暂时无法加载，请稍后重试。");
-  const data: {pages:{id:string;name:string;path?:string;time?:string;openedAt?:string}[]} = await response.json();
+  const message = "共享空间的页面列表未能加载，请重试。";
+  type Page = {id:string;name:string;path?:string;time?:string;openedAt?:string};
+  const data = await readLibraryJson<{pages?: Page[]} | null>(response, message);
+  if (!Array.isArray(data?.pages) || data.pages.some(page => !page || typeof page.id !== "string" || typeof page.name !== "string")) {
+    throw new Error(message);
+  }
   return data.pages.map(page => ({
     ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传", time:page.time || space.time, openedAt:page.openedAt,
     path:page.path || page.name, sharedPage:true, project:space.name,
