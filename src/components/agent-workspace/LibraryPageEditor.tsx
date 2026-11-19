@@ -1,12 +1,15 @@
-import { Box, Button, Flex, Input, Text, Textarea } from "@chakra-ui/react";
+import { Box, Button, Flex, Input, Text, Textarea, useMediaQuery } from "@chakra-ui/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { fromLibrary } from "@features/chat/services/libraryFileOrigin";
 import type { LibraryFile } from "@/types/library";
 
+import LibraryMarkdown from "./LibraryMarkdown";
+
 export type PageDraft = {name:string;body:string;revision:number};
 
 export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",onBack,onSaved,onChat,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;onBack:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+  const [mobileReader] = useMediaQuery("(max-width: 767px) and (pointer: coarse)");
   const [content,setContent] = useState<{name:string;body:string}>();
   const [revision,setRevision] = useState(0);
   const [conflict,setConflict] = useState<{name:string;body:string;revision:number}>();
@@ -54,7 +57,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     setStatus("尚未保存");
   }
   async function save() {
-    if (!content?.name.trim() || busy || conflict) return;
+    if (mobileReader || !content?.name.trim() || busy || conflict) return;
     setBusy(true);
     try {
       const response = await fetch(url,{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({name:content.name,body:content.body,expectedRevision:revision})});
@@ -91,7 +94,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   }}><Flex align="center" justify="space-between">
     <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button>
     <Flex align="center" gap={3}><Text role="status" fontSize="sm">{status}</Text>{onChat && <Button size="sm" variant="ghost" isLoading={openingChat} isDisabled={!content} onClick={discussPage}>{hasSelection ? "引用选中文字" : "在聊天中引用"}</Button>}
-      <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button></Flex>
+      {!mobileReader && <Button aria-keyshortcuts="Control+s Meta+s" size="sm" onClick={save} isLoading={busy} isDisabled={!content?.name.trim() || Boolean(conflict)}>保存</Button>}</Flex>
     </Flex>{loadError ? <Flex role="alert" align="center" gap={3} maxW="760px" mx="auto" mt={6} px={4} py={3} borderRadius="12px" bg="#faf5f2" color="#694332">
       <Box flex={1}><Text fontWeight="medium">无法打开页面</Text><Text fontSize="sm">{loadError}</Text></Box>
       <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>
@@ -101,13 +104,13 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         <Text fontWeight="600">最新版本 · {conflict.name}</Text><Text whiteSpace="pre-wrap" maxH="30vh" overflowY="auto" my={2}>{conflict.body}</Text>
         <Button size="sm" onClick={acknowledgeConflict}>已对照，继续编辑草稿</Button>
       </Box>}
-      <Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
+      {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" mb={5}>{content.name}</Text><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" variant="unstyled" fontSize="32px" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>
       <Textarea onSelect={event=>{
         const {selectionStart,selectionEnd} = event.currentTarget;
         setSelection({start:selectionStart,end:selectionEnd});
       }} isReadOnly={busy} aria-label="页面正文" variant="unstyled" resize="vertical" minH="58vh" mt={8} value={content.body} maxLength={500000}
-        onChange={event => {edit({...content,body:event.target.value});}}/>
+        onChange={event => {edit({...content,body:event.target.value});}}/></>}
       {subpages}
     </Box>}</Box>;
 }
