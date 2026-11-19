@@ -393,6 +393,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return "";
   }
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
+  const searchingAttachment = lookupName === query && Boolean(searchTerm);
+  function matchesSearch(file: LibraryFile) {
+    if (!searchTerm) return true;
+    if (searchingAttachment && (file.kind === "页面" || file.sharedPage) &&
+        markdownFilename(file.name).normalize("NFC").toLowerCase() === searchTerm) return true;
+    return matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation]
+      .some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm));
+  }
   const activeParentPages = new Set(files?.filter(item => item.kind === "页面" && !item.deleted).map(item => item.id));
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
@@ -401,7 +409,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
-    (!searchTerm || matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort(compareRows);
+    matchesSearch(file)).sort(compareRows);
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   useEffect(() => {
