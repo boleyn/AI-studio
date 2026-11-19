@@ -41,6 +41,7 @@ function formatFolderSize(bytes: number) {
 const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 function fileType(file: LibraryFile) {
+  if (isContainer(file)) return file.kind;
   if (file.kind === "页面" || file.sharedPage) return "页面";
   if (file.siteId) return "站点";
   const path = file.path || file.name;
