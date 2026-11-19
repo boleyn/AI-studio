@@ -1,3 +1,4 @@
+import AttachmentFilename from "@features/chat/components/AttachmentFilename";
 import LibraryMarkdown from "./LibraryMarkdown";
 import LibraryCardGrid from "./LibraryCardGrid";
 import useDriveConnected from "./useDriveConnected";
@@ -288,10 +289,12 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     {file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>}
     {file.favorite && <Bookmark role="img" aria-label="已保存到收藏夹" size={12} fill="currentColor" color="#707070" style={{flexShrink:0}}/>}
   </>;
-  function itemLink(file: LibraryFile) {
-    if (file.deleted) return <span title={file.name}>{file.name}</span>;
-    if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
-    if (file.siteId) return <Link title={file.name} href={sitePreviewPath(file.siteId,file.siteSlug)} target="_blank" rel="noopener noreferrer" onClick={()=>recordOpen(file)}>{file.name}</Link>;
+  function itemLink(file: LibraryFile, preserveExtension = false) {
+    const label = preserveExtension && (file.kind === "上传" || file.kind === "生成") && !file.sharedPage
+      ? <AttachmentFilename name={file.name} fontSize="inherit"/> : file.name;
+    if (file.deleted) return <span title={file.name}>{label}</span>;
+    if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{label}</Link>;
+    if (file.siteId) return <Link title={file.name} href={sitePreviewPath(file.siteId,file.siteSlug)} target="_blank" rel="noopener noreferrer" onClick={()=>recordOpen(file)}>{label}</Link>;
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
     return <Link title={file.name} href={href} shallow scroll={false} prefetch={false} onClick={event=>{
@@ -299,7 +302,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         setSelected([]);
         setQuery("");
       }
-    }}>{file.name}</Link>;
+    }}>{label}</Link>;
   }
   useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
   const driveConnected = useDriveConnected();
@@ -1191,7 +1194,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             onClick={event => clickItemSurface(event,file)}
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
-            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{itemMarkers(file)}</Flex></Flex></td>
+            <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file,true)}{itemMarkers(file)}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
               <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
