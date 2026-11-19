@@ -251,15 +251,27 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
   const [driveConnected,setDriveConnected] = useState(false);
-  useEffect(()=>{
-    const controller = new AbortController();
-    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) return;
-      const status = await response.json();
-      if (!controller.signal.aborted) setDriveConnected(status.connected);
-    }).catch(()=>{});
-    return ()=>controller.abort();
-  },[]);
+  useEffect(() => {
+    let pending: AbortController;
+    function refreshConnection() {
+      if (document.visibilityState !== "visible") return;
+      pending?.abort();
+      const controller = new AbortController();
+      pending = controller;
+      fetch("/api/library/connectors/google?status=1", {headers:withAuthHeaders(), signal:controller.signal})
+        .then(async response => {
+          if (!response.ok) return;
+          const status = await response.json();
+          if (!controller.signal.aborted) setDriveConnected(status.connected === true);
+        }).catch(() => {});
+    }
+    refreshConnection();
+    document.addEventListener("visibilitychange", refreshConnection);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshConnection);
+      pending?.abort();
+    };
+  }, []);
   const [sidebarWidth, setSidebarWidth] = useState<number>();
   const [sidebar, setSidebar] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
