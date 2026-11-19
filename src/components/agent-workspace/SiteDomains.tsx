@@ -8,15 +8,22 @@ export default function SiteDomains({siteId}:{siteId:string}) {
   const [draft,setDraft] = useState<string>();
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
+  const [loadError,setLoadError] = useState("");
   const [revision,refresh] = useState(0);
   const url = "/api/share/"+encodeURIComponent(siteId)+"/domains";
   useEffect(()=>{
     const controller = new AbortController();
+    setLoadError("");
     fetch(url,{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) throw new Error();
+      if (response.status === 401) throw new Error("登录已过期，请重新登录后查看域名。");
+      if (response.status === 404) throw new Error("站点不存在或你没有管理权限。");
+      if (!response.ok) throw new Error("域名列表暂时无法加载。");
       const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("域名列表暂时无法加载。");
       if (!controller.signal.aborted) setRows(data);
-    }).catch(()=>{if (!controller.signal.aborted) setError("域名列表加载失败。");});
+    }).catch(reason=>{
+      if (!controller.signal.aborted) setLoadError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason instanceof SyntaxError ? "域名列表暂时无法加载。" : reason.message);
+    });
     return ()=>controller.abort();
   },[url,revision]);
   async function change(method:string,host:string) {
@@ -31,6 +38,10 @@ export default function SiteDomains({siteId}:{siteId:string}) {
   }
   return <Box as="section" aria-label="自定义域名" mt={4}>
     <Flex justify="space-between" align="center"><Text>自定义域名</Text><Button size="sm" onClick={()=>{setDraft("");setError("");}}>添加自定义域名</Button></Flex>
+    {loadError && <Flex align="center" gap={3} mt={2}>
+      <Text role="alert" fontSize="sm">{loadError}</Text>
+      <Button size="xs" variant="outline" onClick={()=>refresh(value=>value+1)}>重新加载</Button>
+    </Flex>}
     {rows.map(row=><Box key={row.host} my={3}>
       <Text fontWeight="medium">{row.host}</Text>
       {row.verified ? <Text fontSize="sm">DNS 所有权已验证</Text> : <Box fontSize="sm" overflowWrap="anywhere">请添加 TXT 记录 <code>_bore-site.{row.host}</code>，记录值为 <code>{row.challenge}</code>。</Box>}
