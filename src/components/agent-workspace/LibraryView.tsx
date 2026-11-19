@@ -832,6 +832,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">未找到匹配结果</Heading>
             <Text fontSize="sm" color="gray.600" maxW="full" overflowWrap="anywhere">没有与“{query.trim()}”匹配的结果。<br/>请尝试使用其他搜索词。</Text>
+          </Flex> : allHome && tab === "收藏" && !filterCount ?
+          <Flex role="status" minH="max(420px, calc(100dvh - 130px))" align="center" justify="center">
+            <Text mt="88px" fontSize="18px" lineHeight="24px" fontWeight="500" textAlign="center">暂无收藏</Text>
           </Flex> : section === "全部" && tab === "与你共享" && !filterCount && !folder ?
           <Flex role="status" direction="column" align="center" textAlign="center" py={20} gap={2}>
             <Heading as="h2" fontSize="lg" fontWeight="600">文件夹为空</Heading>
