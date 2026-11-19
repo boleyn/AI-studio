@@ -217,6 +217,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     }
   }
   const router = useRouter();
+  const lookupName = router.query.librarySearch;
+  useEffect(() => {
+    if (typeof lookupName === "string") setQuery(lookupName);
+  }, [lookupName]);
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
   const section = sections.find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
@@ -248,6 +252,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     const query = {...router.query};
+    delete query.librarySearch;
     delete query.librarySiteSettings;
     delete query.siteDetail;
     if (clearTypes) {delete query.libraryType;delete query.librarySource;}
