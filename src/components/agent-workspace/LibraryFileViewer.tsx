@@ -143,7 +143,7 @@ function FilePreview({item,versions,openVersion,download,share,fileChatWidth,set
         {download}{share && <Button size="xs" variant="ghost" onClick={share}>分享</Button>}
       </Flex>
       <Flex role="group" aria-label="查看器控件" align="center" flexShrink={0}>
-        <IconButton ref={closeButton} variant="ghost" size="sm" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
+        <IconButton ref={closeButton} variant="ghost" size="sm" boxSize="36px" borderRadius="full" aria-label="关闭查看器" icon={<X size={18}/>} onClick={close}/>
       </Flex>
     </Flex>
     <Flex flex="1" minH={0} position="relative">
