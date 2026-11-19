@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { canViewRestrictedSite } from "@server/library/sites";
@@ -5,15 +6,11 @@ import { getShareLink } from "@server/shares/shareStorage";
 import { getProjectAccessState, listProjectFilesByPrefix, readProjectFile } from "@server/projects/projectStorage";
 import { isMissingStorageObject } from "@server/storage/s3";
 
-const coverFormats = [
-  ["png", "image/png"],
-  ["jpg", "image/jpeg"],
-  ["jpeg", "image/jpeg"],
-  ["webp", "image/webp"],
-  ["avif", "image/avif"],
+const coverExtensions = [
+  "png", "jpg", "jpeg", "webp", "avif",
 ] as const;
-const covers = coverFormats.flatMap(([extension, contentType]) =>
-  ["public/og-image", "og-image"].map(base => ({path:base+"."+extension, contentType})),
+const covers = coverExtensions.flatMap(extension =>
+  ["public/og-image", "og-image"].map(base => base+"."+extension),
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -37,13 +34,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch {
     return res.status(503).end();
   }
-  for (const {path, contentType} of covers) {
+  for (const path of covers) {
     if (!files.has(path)) continue;
     try {
       const {buffer} = await readProjectFile(share.projectToken, path);
-      res.setHeader("Content-Type", contentType);
+      const thumbnail = await sharp(buffer).rotate().resize({
+        width: 720, height: 480, fit: "inside", withoutEnlargement: true,
+      }).webp({quality:82}).toBuffer().catch(() => null);
+      if (!thumbnail) continue;
+      res.setHeader("Content-Type", "image/webp");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      return res.status(200).send(buffer);
+      return res.status(200).send(thumbnail);
     } catch (error) {
       if (!isMissingStorageObject(error)) return res.status(503).end();
     }
