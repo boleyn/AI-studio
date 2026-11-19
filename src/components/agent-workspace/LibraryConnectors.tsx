@@ -7,14 +7,15 @@ const providerIcons: Record<string,string> = { "Google Drive":"google-drive.png"
 
 const endpoints: Record<string, string> = {
   "Google Drive": "/api/library/connectors/google",
+  Box: "/api/library/connectors/box",
   Dropbox: "/api/library/connectors/dropbox",
 };
 type Status = { configured: boolean; connected: boolean };
 export default function LibraryConnectors({ close, callbackStatus, siteId }: { siteId?: string; close: () => void; callbackStatus?: string }) {
   const [provider, setProvider] = useState<string>();
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
-  const callbackProvider = callbackStatus?.startsWith("dropbox-") ? "Dropbox" : "Google Drive";
-  const result = callbackStatus?.replace(/^dropbox-/, "");
+  const callbackProvider = Object.keys(endpoints).find(name => callbackStatus?.startsWith(name.toLowerCase() + "-")) ?? "Google Drive";
+  const result = callbackStatus?.replace(/^(dropbox|box)-/, "");
   const [error, setError] = useState(result === "invalid-session" ? "此次授权请求已失效，请重新连接 " + callbackProvider + "。" : result === "error" ? "连接失败，请重试" : "");
   const [attempt, setAttempt] = useState(0);
   const [statusFailed, setStatusFailed] = useState<Record<string, boolean>>({});

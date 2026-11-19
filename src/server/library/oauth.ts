@@ -4,7 +4,24 @@ import { serialize } from "cookie";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
 
-type Provider = "google" | "dropbox";
+const providers = {
+  google: {
+    prefix: "GOOGLE_DRIVE", collection: "library_drive_connections",
+    authorize: "https://accounts.google.com/o/oauth2/v2/auth", token: "https://oauth2.googleapis.com/token",
+    scope: "https://www.googleapis.com/auth/drive.readonly",
+  },
+  dropbox: {
+    prefix: "DROPBOX", collection: "library_dropbox_connections",
+    authorize: "https://www.dropbox.com/oauth2/authorize", token: "https://api.dropboxapi.com/oauth2/token",
+    scope: "files.metadata.read files.content.read",
+  },
+  box: {
+    prefix: "BOX", collection: "library_box_connections",
+    authorize: "https://account.box.com/api/oauth2/authorize", token: "https://api.box.com/oauth2/token",
+    scope: "root_readonly",
+  },
+};
+type Provider = keyof typeof providers;
 
 export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest, res: NextApiResponse) {
   const auth = await requireAuth(req, res);
@@ -12,7 +29,7 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
   res.setHeader("Cache-Control", "private, no-store");
   const owner = String(auth.user._id);
   const google = provider === "google";
-  const prefix = google ? "GOOGLE_DRIVE" : "DROPBOX";
+  const { prefix, collection, authorize, token: tokenEndpoint, scope } = providers[provider];
   const clientId = process.env[prefix + "_CLIENT_ID"];
   const secret = process.env[prefix + "_CLIENT_SECRET"];
   const redirect = process.env[prefix + "_REDIRECT_URI"];
@@ -20,7 +37,7 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
   const cookiePath = "/api/library/connectors/" + provider;
   const key = Buffer.from(process.env.LIBRARY_CONNECTOR_KEY || "", "base64");
   const configured = Boolean(clientId && secret && redirect && key.length === 32);
-  const connections = (await getMongoDb()).collection<{ _id: string; token: string; canRename?: boolean }>(google ? "library_drive_connections" : "library_dropbox_connections");
+  const connections = (await getMongoDb()).collection<{ _id: string; token: string; canRename?: boolean }>(collection);
   if (req.method === "GET" && req.query.status === "1") {
     return res.json({ configured, connected: Boolean(await connections.findOne({ _id: owner }, { projection: { _id: 1 } })) });
   }
@@ -34,21 +51,20 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
     const state = randomBytes(32).toString("hex") + (siteId ? "." + siteId : "");
     res.setHeader("Set-Cookie", cookie(owner + "." + state, 600));
     const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: "code",
-      scope: google ? "https://www.googleapis.com/auth/drive.readonly" : "files.metadata.read files.content.read", state });
+      scope, state });
     if (google) {
       params.set("access_type", "offline");
       params.set("prompt", "consent");
       if (req.body?.allowRename === true) params.set("scope", params.get("scope") + " https://www.googleapis.com/auth/drive.metadata");
-    } else {
+    } else if (provider === "dropbox") {
       params.set("token_access_type", "offline");
     }
-    const authorize = google ? "https://accounts.google.com/o/oauth2/v2/auth" : "https://www.dropbox.com/oauth2/authorize";
     return res.json({ url: authorize + "?" + params });
   }
   if (req.method !== "GET") return res.setHeader("Allow", "GET, POST").status(405).end();
   const expected = Buffer.from(req.cookies[cookieName] || "");
   const provided = Buffer.from(owner + "." + req.query.state);
-  let returnTo = "/?view=library&libraryConnectors=" + (google ? "" : "dropbox-");
+  let returnTo = "/?view=library&libraryConnectors=" + (google ? "" : provider + "-");
   if (!expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return res.redirect(303, returnTo + "invalid-session");
   }
@@ -58,7 +74,7 @@ export async function handleLibraryOAuth(provider: Provider, req: NextApiRequest
   res.setHeader("Set-Cookie", cookie("", 0));
   if (typeof req.query.code !== "string") return res.redirect(303, returnTo + (req.query.error === "access_denied" ? "cancelled" : "error"));
   try {
-    const response = await fetch(google ? "https://oauth2.googleapis.com/token" : "https://api.dropboxapi.com/oauth2/token", { method: "POST", body: new URLSearchParams({
+    const response = await fetch(tokenEndpoint, { method: "POST", body: new URLSearchParams({
       client_id: clientId, client_secret: secret, code: req.query.code, grant_type: "authorization_code", redirect_uri: redirect,
     }) });
     const data = await response.json();
