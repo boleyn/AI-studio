@@ -32,7 +32,7 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse) {
     } else {
       const user = await findSpaceInviteRecipient(name.trim());
       if (!user || String(user._id) === userId) return res.status(400).json({error:"请选择有效的成员账号"});
-      const member = {username:user.username,userId:String(user._id)};
+      const member = {username:user.username,userId:String(user._id),invitedAt:new Date().toISOString()};
       await pages.updateOne({...updateFilter,"members.userId":{$ne:member.userId}},
         {$push:{members:member},$set:{sharedBy:auth.user.displayName || auth.user.username}});
     }

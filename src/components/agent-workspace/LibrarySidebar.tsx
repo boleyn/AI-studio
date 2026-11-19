@@ -35,7 +35,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
   const [spaces,setSpaces] = useState(true);
   const items = files.filter(file => !file.deleted);
   const recentItems = [...items].sort((a,b)=>libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
-  const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
+  const invitations = items.filter(file => file.shareId).sort((a,b)=>(b.invitedAt || b.time).localeCompare(a.invitedAt || a.time));
   const [activityOpen,setActivityOpen] = useState(false);
   return <Flex as="nav" aria-label="资料空间导航" position="relative" w={width === undefined ? {md:"248px",xl:"288px"} : width + "px"} flexShrink={0} direction="column" bg="#fafafa" boxShadow="inset -1px 0 #eee" p="12px" pr="8px" minH={0}>
     <Flex align="center" pl="10px" pr="4px" gap="clamp(2px, calc((100% - 188px) / 3), 8px)" mb={2}><Heading as="h1" fontSize="17px" fontWeight="600" lineHeight="24px" flex="1" display="flex" alignItems="center"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
@@ -47,7 +47,7 @@ export default function LibrarySidebar({ driveConnected, width, setWidth, create
             {invitations.map(file=><Box as="li" key={file.id}><Button variant="ghost" w="full" h="auto" py={2} justifyContent="start" gap={2} onClick={()=>{
               setActivityOpen(false); onFile(file);
             }}><LibraryItemIcon item={file}/><Box minW={0} textAlign="left">
-              <Text fontSize="sm" isTruncated>{file.name}</Text><Text fontSize="xs" fontWeight="normal" color="gray.600">{file.project} 与你共享{file.time ? " · "+formatRelativeTime(file.time) : ""}</Text>
+              <Text fontSize="sm" isTruncated>{file.name}</Text><Text fontSize="xs" fontWeight="normal" color="gray.600">{file.project} 与你共享{(file.invitedAt || file.time) ? " · "+formatRelativeTime(file.invitedAt || file.time) : ""}</Text>
             </Box></Button></Box>)}
           </Box> : <Flex flex="1" direction="column" align="center" justify="center" px={8} pb={8} textAlign="center" gap={2}>
             <Bell size={22} aria-hidden="true" />

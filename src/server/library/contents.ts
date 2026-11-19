@@ -108,12 +108,12 @@ export async function listLibraryContents(owner:string, creatorName?:string) {
       permission:"所有者",appearance:page.appearance,reference:page.reference,size:page.size,pinned:page.pinned,deletedAt:page.deletedAt,favorite:page.favorite,deleted:page.deleted});
   }
   const spaces = db.collection("library_pages").find({kind:"资料空间","members.userId":owner,deleted:{$ne:true},purging:{$ne:true}},
-    {projection:{name:1,time:1,sharedBy:1,appearance:1}});
+    {projection:{name:1,time:1,sharedBy:1,appearance:1,members:{$elemMatch:{userId:owner}}}});
   for await (const space of spaces) {
     const shareId = space._id.toHexString();
     const id = sharedSpaceLibraryId(shareId);
     rows.set(id,{id,shareId,kind:"资料空间",appearance:space.appearance,name:space.name,path:"",token:"",project:space.sharedBy || "",chatId:"",conversation:"",
-      time:space.time || "",permission:"可查看"});
+      invitedAt:space.members?.[0]?.invitedAt,time:space.time || "",permission:"可查看"});
   }
   const received = await listReceivedArtifactShares(owner);
   const sharedPageIds = received.flatMap(share => share.libraryItemId ? [new ObjectId(share.libraryItemId)] : []);
