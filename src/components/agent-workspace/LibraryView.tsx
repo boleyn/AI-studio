@@ -1134,6 +1134,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           </Box>;})}
         </LibraryCardGrid> : <Box overflowX="auto" sx={allHome ? {containerType:"inline-size"} : undefined} ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW={allHome ? 0 : "680px"} data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
           tableLayout:"fixed",
+          ...(searchResults && {
+            "& :is(col, th, td):nth-child(3)": {display:"none"},
+            "& col:nth-child(2)": {width:"auto !important"},
+            "& col:nth-child(4)": {width:"128px"},
+          }),
           ...(allHome && { "@media (min-width: 80em)": {
             "& col:nth-child(2)": {width:"auto !important"},
             "& col:nth-child(3)": {width:"256px !important"},
