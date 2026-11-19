@@ -37,8 +37,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     reference = {type, name:label.trim()};
   }
   const folderId = req.query.folderId;
-  if (folderId !== undefined && (typeof folderId !== "string" || !/^[a-f0-9]{24}$/.test(folderId) ||
-      !await items.findOne({_id:new ObjectId(folderId),owner,kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true}}))) return res.status(400).end();
+  if (folderId !== undefined && (typeof folderId !== "string" || !/^[a-f0-9]{24}$/.test(folderId))) return res.status(400).end();
+  if (folderId && !await items.findOne({_id:new ObjectId(folderId),owner,kind:{$in:["文件夹","资料空间"]},deleted:{$ne:true},purging:{$ne:true}},{projection:{_id:1}})) {
+    return res.status(404).json({error:"目标文件夹已不可用，请重新选择位置。"});
+  }
   let size = 0;
   const chunks:Buffer[] = [];
   for await (const chunk of req) {

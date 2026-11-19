@@ -100,7 +100,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         if (parentId) params.set("folderId",parentId);
         const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
         if (!response.ok) {
-          toast({status:"error",title:file.name + (response.status === 413 ? " 超过上传大小限制" : " 上传失败")});
+          const failure = await response.json().catch(()=>null);
+          toast({status:"error",title:file.name + " 上传失败",description:failure?.error});
           continue;
         }
         const item:LibraryFile = await response.json();
