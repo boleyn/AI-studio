@@ -369,7 +369,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     setFailed("");
     loadLibraryFiles(controller.signal)
       .then(data => { if (!controller.signal.aborted) setFiles(data); })
-      .catch(reason => { if (!controller.signal.aborted) setFailed(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message); });
+      .catch(reason => {
+        if (controller.signal.aborted) return;
+        if (!(reason instanceof TypeError)) setFiles(undefined);
+        setFailed(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);
+      });
     return () => controller.abort();
   }, [attempt]);
   const destinations = files?.filter(item => isContainer(item) && !item.shareId && !item.deleted) || [];
@@ -941,6 +945,10 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       </Flex>}
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
+      {!sitesSection && failed && searchTerm && <Flex role="alert" align="center" justify="center" wrap="wrap" gap="12px" py="16px">
+          <Text title={failed} fontSize="16px">{visible?.length ? "搜索结果未能刷新，正在显示上次加载的结果" : "无法加载搜索结果"}</Text>
+          <Button h="24px" minW={0} px="8px" fontSize="14px" borderRadius="full" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} onClick={()=>setAttempt(value=>value+1)}>重试</Button>
+        </Flex>}
       {sitesSection ? <Box role={siteDetails ? undefined : "tabpanel"} id="library-sites-panel" aria-labelledby={siteDetails ? undefined : "library-sites-tab-" + tabs.indexOf(tab)}>
         <LibrarySites onPluginChat={(token,name,connectedNames)=>{
           const lines = [`帮我将一个插件连接到 ${name}，让网站访客可以使用自己账户中的数据。`];
@@ -949,10 +957,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
           lines.push("请询问我想添加哪个已在工作空间中启用的插件。");
           return onChat([], lines.join("\n"), undefined, false, token);
         }} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
-      </Box> : failed && searchTerm ? <Flex role="alert" align="center" justify="center" wrap="wrap" gap="12px" py="16px">
-          <Text title={failed} fontSize="16px">无法加载搜索结果</Text>
-          <Button h="24px" minW={0} px="8px" fontSize="14px" borderRadius="full" bg="#0d0d0d" color="white" _hover={{bg:"#333"}} onClick={()=>setAttempt(value=>value+1)}>重试</Button>
-        </Flex> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
+      </Box> : failed && searchTerm && !visible?.length ? null : failed && !searchTerm ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">无法加载资料列表</Heading>
             <Text mt={1} fontSize="sm" color="gray.600">{failed}</Text></Box>
