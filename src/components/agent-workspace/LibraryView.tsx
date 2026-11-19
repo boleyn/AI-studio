@@ -976,6 +976,22 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Box>)}
           </Box>
+        </Box> : personalSection && !grid ? <Box fontSize="sm" sx={{
+          "& [data-page-row]":{display:"grid",gridTemplateColumns:"minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 64px",alignItems:"center",gap:2,px:2,minH:"48px"},
+          "& [data-page-row] > *":{minWidth:0},
+        }}>
+          <Box data-page-row="" color="#5d5d5d"><Text>名字</Text><Text>资料空间</Text><Text>更新时间</Text></Box>
+          <Box as="ul" aria-label="页面" listStyleType="none" m={0} p={0}>
+            {visible.map(file=><Box as="li" key={file.id} data-page-row="" borderTopWidth="1px">
+              <Button variant="ghost" justifyContent="start" gap={2} px={0} aria-label={file.name} onClick={()=>openItem(file)}>
+                <LibraryItemIcon item={file} compact/><Text as="span" isTruncated>{file.name}</Text>
+              </Button>
+              <Text color="#5d5d5d">个人</Text><Text as="time" color="#5d5d5d" dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</Text>
+              <Flex align="center" justify="end"><IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name}
+                aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked} icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>}
+                onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}</Flex>
+            </Box>)}
+          </Box>
         </Box> : grid ? <Box display="grid" gridTemplateColumns="repeat(auto-fill,minmax(180px,1fr))" gap={3}>
           {visible.map(file => <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
             bg={selected.includes(file.id) ? "#f3f3f3" : undefined} cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
@@ -1015,7 +1031,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <thead><tr><th scope="col"><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={picked.length ? "清除选择" : "全选"} checked={allChecked}
                 mixed={picked.length>0 && !allChecked} onChange={()=>setSelected(picked.length ? [] : visible.map(item=>item.id))}/></Flex></th>{(folder ? ["name","time","size"] as const : trashSection ? ["name","size","time"] as const : ["name", "source", "time"] as const).map(column =>
             <th key={column} scope="col" aria-sort={sort.column === column ? sort.ascending ? "ascending" : "descending" : undefined}>
-              {column === "source" ? (personalSection ? "资料空间" : "来源") : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? (personalSection ? "名字" : "名称") : column === "size" ? "大小" : personalSection ? "更新时间" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
+              {column === "source" ? "来源" : <Flex as="button" type="button" disabled={trashSection} w="full" h="42px" align="center" gap={1} onClick={() => sortBy(column)}>{column === "name" ? "名称" : column === "size" ? "大小" : folder ? "修改日期" : section === "回收站" ? "删除日期" : "上次活动时间"}{!trashSection && requestedSort?.column === column && <ArrowUp aria-hidden size={12} style={{transform:sort.ascending ? undefined : "rotate(180deg)"}}/>}</Flex>}
             </th>)}<th aria-label="文件操作"/></tr></thead>
           <tbody style={{userSelect:"none"}}
             onPointerDown={event=>{
@@ -1055,7 +1071,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file)}{itemMarkers(file)}</Flex></Flex></td>
             {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
-              <td>{formatFileSize(file.size)}</td></> : <><td>{personalSection ? "个人" : section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
+              <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
             </Button> : file.shareId ? <Text fontSize="sm" isTruncated title={file.project}>{file.project || "与你共享"}</Text> : "—"}</td>
