@@ -10,6 +10,7 @@ export type ShareLinkData = {
   shareId: string;
   projectToken: string;
   mode: ShareMode;
+  members?: { userId:string }[];
   ownerUserId: string;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +81,7 @@ export async function getShareLink(shareId: string): Promise<ShareLinkData | nul
     shareId: doc.shareId,
     projectToken: doc.projectToken,
     mode: doc.mode,
+    members: doc.members,
     ownerUserId: doc.ownerUserId,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,

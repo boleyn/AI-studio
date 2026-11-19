@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 type Member = { username: string; canEdit?: boolean };
-type Share = { id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
+type Share = { restricted?:boolean; id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
 
 export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, spaceId, displayName, onClose }: {
   token: string;
@@ -86,7 +86,18 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>
             </Flex>
             <Text mt={5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
-            {siteId ? <Text fontSize="sm">拥有链接的人可以查看</Text> : <Menu placement="bottom-start">
+            {siteId ? <select aria-label="站点链接访问权限" disabled={busy} value={share.restricted ? "invited" : "link"}
+              onChange={async event=>{
+                const restricted = event.target.value === "invited";
+                setBusy(true);
+                setError("");
+                try {
+                  const response = await fetch("/api/share/"+siteId+"/members",{method:"PATCH",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({restricted})});
+                  if (!response.ok) throw new Error();
+                  setShare(await response.json());
+                } catch { setError("访问权限保存失败，请重试。"); }
+                finally { setBusy(false); }
+              }}><option value="invited">仅限受邀者</option><option value="link">拥有链接的人</option></select> : <Menu placement="bottom-start">
               <MenuButton as={Button} variant="ghost" size="sm" mt={1} leftIcon={<LockKeyhole size={15}/>}
                 rightIcon={<ChevronDown size={14}/>}>仅限受邀者</MenuButton>
               <MenuList borderRadius="12px" shadow="lg" p={1}>

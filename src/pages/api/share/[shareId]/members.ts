@@ -4,6 +4,8 @@ import { findUserByUsername } from "@server/auth/userStore";
 import { getMongoDb } from "@server/db/mongo";
 import { getProjectAccessState } from "@server/projects/projectStorage";
 
+import { siteLibraryId, siteVisibility } from "@server/library/sites";
+
 interface SiteLink {
   shareId: string;
   ownerUserId: string;
@@ -28,7 +30,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!link || await getProjectAccessState(link.projectToken, ownerUserId) !== "ok") {
     return res.status(404).json({ error: "找不到站点" });
   }
-  if (req.method === "PATCH") {
+  if (req.method === "PATCH" && typeof req.body?.restricted === "boolean") {
+    const db = await getMongoDb();
+    await db.collection<{_id:string; owner:string; restricted:boolean}>("library_file_settings").updateOne(
+      {_id:ownerUserId+"/"+siteLibraryId(link.projectToken)}, {$set:{owner:ownerUserId,restricted:req.body.restricted}}, {upsert:true}
+    );
+  } else if (req.method === "PATCH") {
     const name = req.body?.username;
     if (typeof name !== "string" || !name.trim() || name.length > 100) return res.status(400).json({ error: "请输入账号名称" });
     if (req.body.remove === true) {
@@ -40,5 +47,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     link = await links.findOne(filter);
   }
-  return res.json({ id: shareId, owner: auth.user.username, members: link?.members || [] });
+  return res.json({ id: shareId, owner: auth.user.username, restricted:link && await siteVisibility(ownerUserId,link.projectToken), members: link?.members || [] });
 }

@@ -5,7 +5,9 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 
-interface Site { id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
+interface Site { restricted?:boolean; memberCount?:number; id: string; name: string; shared: boolean; publishedAt?: string; ownerName?: string; editUrl?: string; libraryId?: string; visitors?: number }
+
+const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
 export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab: string; query: string; grid: boolean; onSitesChanged: () => void }) {
   const toast = useToast();
@@ -90,7 +92,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     </MenuList></Portal>
   </Menu>;
   const dialog = <>
-    {sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => setSharing(undefined)}/>}
+    {sharing && <ArtifactShareDialog token="" path={sharing.name} siteId={sharing.id} onClose={() => {setSharing(undefined);setAttempt(value=>value+1);}}/>}
     <AlertDialog isOpen={Boolean(pendingDelete)} isCentered leastDestructiveRef={cancelDelete} onClose={()=>{if (!saving) setPendingDelete(undefined);}}>
       <AlertDialogOverlay><AlertDialogContent mx={4} borderRadius="20px">
         <AlertDialogHeader>删除站点</AlertDialogHeader>
@@ -126,7 +128,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
         <Button type="submit" isLoading={saving} isDisabled={!title.trim() || title.trim()===settings.name}>保存</Button></Flex>
     </Box>
     <Text mt={4}>网址</Text><Link href={siteUrl(settings)}>{siteUrl(settings)}</Link>
-    <Flex mt={4} gap={3} align="center"><Text>拥有链接的人可以查看</Text>{shareButton(settings)}</Flex>
+    <Flex mt={4} gap={3} align="center"><Text>{audience(sites.find(site=>site.id===settings.id) || settings)}</Text>{shareButton(settings)}</Flex>
     <Button mt={6} colorScheme="red" variant="outline" isDisabled={saving} onClick={()=>setPendingDelete(settings)}>删除站点</Button>
     {dialog}
   </Box>;
@@ -137,8 +139,8 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   return <Box overflowX="auto"><Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="站点"
     sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"}}}>
     <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}<th scope="col" aria-label="站点操作"/></tr></thead>
-    <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>{site.shared ? "拥有链接的人" : <Button size="sm" variant="ghost" fontWeight="normal"
-        aria-label={"拥有链接的人，打开 " + site.name + " 的共享设置"} onClick={()=>setSharing(site)}>拥有链接的人</Button>}</td>{tab !== "与你共享" && <td>{site.shared ? "—" : <Link href={"/sites/analytics/"+encodeURIComponent(site.id)} aria-label={"打开 "+site.name+" 的数据分析页面，查看过去 30 天的独立访客数"}>{site.visitors ?? 0} 位访客</Link>}</td>}
+    <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>{site.shared ? audience(site) : <Button size="sm" variant="ghost" fontWeight="normal"
+        aria-label={audience(site)+"，打开 " + site.name + " 的共享设置"} onClick={()=>setSharing(site)}>{audience(site)}</Button>}</td>{tab !== "与你共享" && <td>{site.shared ? "—" : <Link href={"/sites/analytics/"+encodeURIComponent(site.id)} aria-label={"打开 "+site.name+" 的数据分析页面，查看过去 30 天的独立访客数"}>{site.visitors ?? 0} 位访客</Link>}</td>}
       <td><IconButton as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost"
         aria-label={"在新标签页中打开 " + site.name} icon={<ExternalLink size={16} aria-hidden/>}/>{siteMenu(site)}</td>
     </tr>)}</tbody>

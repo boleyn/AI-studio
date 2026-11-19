@@ -5,6 +5,8 @@ import { SandpackProvider, SandpackPreview, SandpackStack, type SandpackPredefin
 import { githubLight } from "@codesandbox/sandpack-themes";
 
 import type { SandpackFiles } from "../../../components/StudioShell";
+import { getAuthUserFromRequest } from "@server/auth/ssr";
+import { siteVisibility } from "@server/library/sites";
 import { getProject } from "@server/projects/projectStorage";
 import { recordSiteVisit } from "@server/shares/siteVisits";
 import { getShareLink } from "@server/shares/shareStorage";
@@ -209,6 +211,13 @@ export const getServerSideProps: GetServerSideProps<SharePreviewPageProps> = asy
   const share = await getShareLink(shareId);
   if (!share || share.mode !== "preview") {
     return { notFound: true };
+  }
+
+  context.res.setHeader("Cache-Control", "private, no-store");
+  if (await siteVisibility(share.ownerUserId, share.projectToken)) {
+    const userId = getAuthUserFromRequest(context.req)?.sub;
+    if (!userId) return {redirect:{destination:"/login?lastRoute="+encodeURIComponent("/share/preview/"+shareId),permanent:false}};
+    if (userId !== share.ownerUserId && !share.members?.some(member => member.userId === userId)) return {notFound:true};
   }
 
   const project = await getProject(share.projectToken);
