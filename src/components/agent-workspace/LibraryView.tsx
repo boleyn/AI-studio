@@ -87,6 +87,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const referenceInput = useRef<HTMLInputElement>(null);
   async function uploadFiles(selected:File[], openCreated = false, reference?:ImageReference, parentId=folder?.id, fromTemplate=false) {
     if (!selected.length) return;
+    if (router.query.libraryFolder && !parentId) {
+      toast({status:"error",title:"无法上传到此位置",description:"请重新打开目标文件夹后上传。"});
+      return;
+    }
     setCreating(true);
     try {
       for (const file of selected) {
@@ -585,7 +589,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Button size="sm" variant="ghost" leftIcon={<Plus size={15}/>} isDisabled={creating} onClick={()=>createPage("无标题页","","页面",undefined,editor.id)}>创建子页面</Button>
       </Flex>}
       onSaved={(name,time) => setFiles(items => items?.map(item => item.id === editor.id ? {...item,name,time,...(item.sharedPage ? {path:name+".md"} : {})} : item))}/> :
-    files && !failed && router.query.libraryItem && !opened ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
+    files && !failed && ((router.query.libraryItem && !opened) || (router.query.libraryFolder && !folder)) ? <Flex flex="1" direction="column" align="center" justify="center" gap={3} px={4} textAlign="center">
       <CircleAlert size={22} color="#777" aria-hidden/>
       <Box role="alert"><Heading as="h2" fontSize="md">无法打开此条目</Heading>
         <Text mt={1} fontSize="sm" color="gray.600">条目可能已删除，或当前账号没有访问权限。</Text></Box>
