@@ -1,3 +1,4 @@
+import AttachmentFilename from "./AttachmentFilename";
 import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import React from "react";
@@ -358,7 +359,7 @@ const ChatItem = ({
                         ) : null
                       ) : (
                         <Flex
-                          alignItems="center"
+                          alignItems="center" gap={2}
                           as="button" type="button" aria-label={`打开 ${name}`}
                           cursor={fileUrl || isMarkdown ? "pointer" : "default"}
                           onClick={() => {
@@ -369,9 +370,7 @@ const ChatItem = ({
                           w="100%"
                         >
                           <LibraryItemIcon item={{name}}/>
-                          <Text fontSize="xs" ml={2} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
-                            {name}
-                          </Text>
+                          <AttachmentFilename name={name}/>
                         </Flex>
                       )}
                     </Box>

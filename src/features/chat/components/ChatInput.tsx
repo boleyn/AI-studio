@@ -1,3 +1,4 @@
+import AttachmentFilename from "./AttachmentFilename";
 import ImageCreationTemplates from "./ImageCreationTemplates";
 import { getCloudHostStatusMeta } from "@shared/sandbox/cloudHostStatus";
 import { ChatModeOptions, modeOptions } from "./ChatModeOptions";
@@ -670,9 +671,7 @@ const ChatInput = ({
                     <Flex align="center" gap={2} h="100%" pr={2}>
                       <LibraryItemIcon item={{name:item.file.name}}/>
                       <Box minW={0}>
-                        <Text className="textEllipsis" fontSize="xs" noOfLines={1}>
-                          {item.file.name}
-                        </Text>
+                        <AttachmentFilename name={item.file.name}/>
                         <Text
                           color="gray.500"
                           fontSize="10px"
