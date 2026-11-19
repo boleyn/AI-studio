@@ -208,7 +208,10 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
               textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
               <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
                 <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
-                  <Box mt={2} fontSize="8px" aria-hidden="true"><TemplatePreview body={body} /></Box></Box>
+                  <Box mt={2} fontSize="8px" aria-hidden="true">
+                    <Text fontSize="12px" fontWeight="600" mb="4px">{pageTitle ?? name}</Text>
+                    <TemplatePreview body={body} />
+                  </Box></Box>
               </Box>
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
             </Button>
