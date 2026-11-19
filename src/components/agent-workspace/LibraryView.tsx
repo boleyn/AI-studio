@@ -103,12 +103,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           const response = await fetch("/api/library/files?" + params,{method:"POST",headers:withAuthHeaders({"Content-Type":"application/octet-stream"}),body:file});
           if (!response.ok) {
             const failure = await response.json().catch(()=>null);
-            throw new Error(failure?.error || "请稍后重试。");
+            toast({status:"error",title:file.name + " 上传失败",description:failure?.error ||
+              (response.status === 413 ? "文件超过上传大小限制。" : response.status === 401 ? "请重新登录后上传。" : "请稍后重试。")});
+            continue;
           }
           item = await response.json();
-        } catch (reason) {
-          toast({status:"error",title:file.name + " 上传未确认",description:reason instanceof TypeError ?
-            "网络连接中断，请检查资料列表后重试。" : reason instanceof Error ? reason.message : "请稍后重试。"});
+        } catch {
+          toast({status:"warning",title:file.name + " 上传结果未确认",description:"未收到完整响应，请刷新资料列表，确认文件是否已上传。"});
           continue;
         }
         setFiles(previous => [item,...previous || []]);
