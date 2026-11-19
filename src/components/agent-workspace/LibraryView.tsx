@@ -362,6 +362,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     [file.name, file.path, file.project, file.conversation].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
+  useEffect(() => {
+    if (visible && selected.length !== picked.length) {
+      const visibleIds = new Set(visible.map(item => item.id));
+      setSelected(current => current.filter(id => visibleIds.has(id)));
+    }
+  }, [visible, selected.length, picked.length]);
   const checkItem = (id:string) => setSelected(ids => ids.includes(id) ? ids.filter(value => value!==id) : [...ids,id]);
   function clickItemSurface(event: React.MouseEvent, file: LibraryFile) {
     const target = event.target;
