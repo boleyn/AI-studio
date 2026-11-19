@@ -1,5 +1,5 @@
 import useDriveConnected from "./useDriveConnected";
-import { formatFileSize, markdownFilename } from "@/types/library";
+import { formatFileSize, markdownFilename, matchesExportedPageName } from "@/types/library";
 import { libraryActivityTime, libraryFileOrigin } from "@/types/library";
 import SpaceInviteInput from "./SpaceInviteInput";
 import SpaceIconPicker from "./SpaceIconPicker";
@@ -393,11 +393,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return "";
   }
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
-  const searchingAttachment = lookupName === query && Boolean(searchTerm);
   function matchesSearch(file: LibraryFile) {
     if (!searchTerm) return true;
-    if (searchingAttachment && (file.kind === "页面" || file.sharedPage) &&
-        markdownFilename(file.name).normalize("NFC").toLowerCase() === searchTerm) return true;
+    if (matchesExportedPageName(file, searchTerm)) return true;
     return matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation]
       .some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm));
   }

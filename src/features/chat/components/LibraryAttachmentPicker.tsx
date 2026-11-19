@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, IconButton, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import useDriveConnected from "@/components/agent-workspace/useDriveConnected";
-import { libraryActivityTime, type LibraryFile } from "@/types/library";
+import { libraryActivityTime, matchesExportedPageName, type LibraryFile } from "@/types/library";
 import { ChevronRight, CircleAlert, Search, X } from "lucide-react";
 import AttachmentFilename from "./AttachmentFilename";
 import { LibrarySelectionIndicator } from "@/components/agent-workspace/LibrarySelectionBox";
@@ -87,7 +87,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     item.version && item.time && new Date(item.time).toLocaleString("zh-CN"),
   ].filter(Boolean).join(" · ");
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
-  const visible = attachable?.filter(item => !searchTerm || matchesLibraryType(item, searchTerm) || [item.name,item.path,item.project,locationLabel(item)].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)));
+  const visible = attachable?.filter(item => !searchTerm || matchesExportedPageName(item, searchTerm) || matchesLibraryType(item, searchTerm) || [item.name,item.path,item.project,locationLabel(item)].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)));
   if (fileErrors.size) {
     visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
   }

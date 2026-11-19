@@ -52,6 +52,11 @@ export function markdownFilename(title: string) {
   return /\.(md|markdown)$/i.test(title) ? title : title + ".md";
 }
 
+export function matchesExportedPageName(file: LibraryFile, normalizedQuery: string) {
+  return (file.kind === "页面" || !!file.sharedPage) &&
+    markdownFilename(file.name).normalize("NFC").toLowerCase() === normalizedQuery;
+}
+
 export function sharedPreviewFilename(name: string, originalName?: string) {
   const extension = originalName?.match(/\.[a-z0-9]{1,12}$/i)?.[0];
   return extension && !name.toLowerCase().endsWith(extension.toLowerCase()) ? name + extension : name;
