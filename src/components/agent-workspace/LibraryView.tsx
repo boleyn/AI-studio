@@ -816,7 +816,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             {actions(file)}
           </Box>)}
         </Box> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
-          tableLayout:"fixed", "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
+          tableLayout:"fixed",
+          ...(allHome && { "@media (min-width: 80em)": {
+            "& col:nth-child(2)": {width:"auto !important"},
+            "& col:nth-child(3)": {width:"256px !important"},
+            "& col:nth-child(4)": {width:"128px"},
+            "& col:nth-child(5)": {width:"96px !important"},
+          }}),
+          "& th":{height:"42px",fontSize:"13px",fontWeight:500,color:"#656565",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& th:first-of-type, & td:first-of-type":{padding:0,textAlign:"center",verticalAlign:"middle"},
           "& th:nth-of-type(2)":{paddingInlineStart:allHome ? {base:"24px",xl:"8px"} : "8px"},
