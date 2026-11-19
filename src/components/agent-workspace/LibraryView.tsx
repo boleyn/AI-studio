@@ -1369,7 +1369,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     <Modal isOpen={confirmSpaceDiscard} initialFocusRef={continueEditing} onClose={()=>setConfirmSpaceDiscard(false)} isCentered>
       <ModalOverlay/><ModalContent mx={3} maxW="420px" p="20px" borderWidth={0} borderRadius="24px" bg="rgba(255,255,255,.9)">
         <ModalHeader as="h2" p={0} fontSize="20px" lineHeight="24px">放弃更改？</ModalHeader><ModalBody p={0} mt="4px" fontSize="14px" lineHeight="20px">你的更改将丢失</ModalBody>
-        <ModalFooter p={0} mt="20px" gap={2}><Button w="98px" h="32px" bg="rgb(13 13 13 / 5%)" color="#0d0d0d" ref={continueEditing} borderRadius="full" onClick={()=>setConfirmSpaceDiscard(false)}>继续编辑</Button>
+        <ModalFooter p={0} mt="20px" gap="12px"><Button w="98px" h="32px" bg="rgb(13 13 13 / 5%)" color="#0d0d0d" ref={continueEditing} borderRadius="full" onClick={()=>setConfirmSpaceDiscard(false)}>继续编辑</Button>
           <Button w="98px" h="32px" borderRadius="full" bg="rgb(250 66 62 / 16%)" color="#e02e2a" _hover={{bg:"rgb(250 66 62 / 24%)"}} onClick={()=>{setConfirmSpaceDiscard(false);setNewKind(undefined);}}>放弃更改</Button></ModalFooter>
       </ModalContent>
     </Modal>
