@@ -83,11 +83,14 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
 export default function SiteAnalytics({name,shareId,days,daily,visitors,views,requests,pages}:Props) {
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={"/share/preview/"+shareId}>访问</Link></Flex>
-    <Flex as="nav" aria-label="站点详情" gap={4} mt={4}>
+    <Box as="section" aria-label={name} mt={6} mb={4}>
+      <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{name}</Heading>
+      <Link href={"/share/preview/"+shareId} fontSize="sm" color="gray.600" overflowWrap="anywhere">{"/share/preview/"+shareId}</Link>
+    </Box>
+    <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" mb={4} borderBottomWidth="1px">
       <Link href={"/?"+new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId})}>设置</Link>
       <Text aria-current="page" fontWeight="semibold">分析</Text>
     </Flex>
-    <Heading as="h1" size="lg" my={6}>{name}</Heading>
     <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
       <Heading as="h2" size="md">分析</Heading>
       <Flex as="nav" aria-label="日期范围" gap={2}>{[7,30].map(n=><Link key={n} href={"?days="+n} aria-current={n===days?"page":undefined} bg={n===days?"gray.100":undefined} borderRadius="full" px={3} py={1}>{n} 天</Link>)}</Flex>

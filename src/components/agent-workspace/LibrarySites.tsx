@@ -126,8 +126,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Button as="a" size="sm" href={siteUrl(settings)} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
       {settings.editUrl && <Button as="a" size="sm" href={settings.editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>}
     </Flex>
-    <Heading as="h1" size="lg" my={4}>{settings.name}</Heading>
-    <Flex as="nav" aria-label="站点详情" gap={4} pb={3} borderBottomWidth="1px">
+    <Box as="section" aria-label={settings.name} mt={6} mb={4}>
+      <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{settings.name}</Heading>
+      <Link href={siteUrl(settings)} fontSize="sm" color="gray.600" overflowWrap="anywhere">{siteUrl(settings)}</Link>
+    </Box>
+    <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" borderBottomWidth="1px">
       <Text aria-current="page" fontWeight="semibold">设置</Text>
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
     </Flex>
