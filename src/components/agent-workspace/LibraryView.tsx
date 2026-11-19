@@ -233,6 +233,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const allHome = section === "全部" && !folder;
+  const canDropFiles = !creating && (router.query.libraryFolder
+    ? Boolean(folder && !folder.shareId)
+    : section === "全部");
   const opened = files?.find(file => file.id === router.query.libraryItem && !isContainer(file) && !file.deleted);
   const viewedId = opened?.id || (!router.query.libraryItem ? folder?.id : undefined);
   useEffect(() => {
@@ -794,9 +797,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       onDragOver={event=>{
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
-        const allowed = section === "全部" && !creating;
-        event.dataTransfer.dropEffect = allowed ? "copy" : "none";
-        setDropActive(allowed);
+        event.dataTransfer.dropEffect = canDropFiles ? "copy" : "none";
+        setDropActive(canDropFiles);
       }}
       onDragLeave={event=>{
         if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropActive(false);
@@ -805,7 +807,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         setDropActive(false);
-        if (section === "全部" && !creating) void uploadFiles(Array.from(event.dataTransfer.files));
+        if (canDropFiles) void uploadFiles(Array.from(event.dataTransfer.files));
       }}>
     <Box maxW="1440px" px={{base:4,md:8,xl:"48px"}} mx="auto">
       {!siteDetails && <Box position="sticky" top={0} bg="white" zIndex={2}><Flex align="center" minH="36px" justify="space-between" gap={4} wrap="wrap">
