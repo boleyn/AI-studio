@@ -16,7 +16,7 @@ export const specSchema = z
     endDate: z.string().date().optional(),
     firstAt: z.string().datetime({ offset: true }),
     timezone: z.string().max(80).refine(IANAZone.isValidZone),
-    repeat: z.enum(["once", "daily", "weekly"]),
+    repeat: z.enum(["once", "daily", "weekdays", "weekly", "monthly"]),
   })
   .strict();
 
@@ -47,14 +47,21 @@ export async function schedules() {
 
 export function nextOccurrence(spec: ScheduleSpec, now: number): number | null {
   const first = DateTime.fromISO(spec.firstAt, { zone: spec.timezone });
-  const withinEndDate = (candidate: DateTime) =>
-    spec.repeat !== "once" && spec.endDate && candidate.toISODate()! > spec.endDate ? null : candidate.toMillis();
+  const withinEndDate = (date: DateTime) => {
+    const candidate = spec.repeat === "weekdays" && date.weekday > 5 ? date.plus({days:8-date.weekday}) : date;
+    return spec.repeat !== "once" && spec.endDate && candidate.toISODate()! > spec.endDate ? null : candidate.toMillis();
+  };
   if (first.toMillis() > now) return withinEndDate(first);
   if (spec.repeat === "once") return null;
   const step = spec.repeat === "weekly" ? 7 : 1;
   const today = DateTime.fromMillis(now, { zone: spec.timezone }).startOf(
     "day",
   );
+  if (spec.repeat === "monthly") {
+    const months = (today.year - first.year) * 12 + today.month - first.month;
+    const candidate = first.plus({months});
+    return withinEndDate(candidate.toMillis() > now ? candidate : first.plus({months:months + 1}));
+  }
   const days =
     Math.floor(today.diff(first.startOf("day"), "days").days / step) * step;
   const candidate = first.plus({ days });

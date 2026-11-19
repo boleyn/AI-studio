@@ -81,7 +81,7 @@ const states = {
   completed: "已完成",
 };
 const taskStates = ["running", "active", "paused", "completed"] as const;
-const repeats = { once: "单次", daily: "每天", weekly: "每周" };
+const repeats = { once: "单次", daily: "每天", weekdays: "工作日", weekly: "每周", monthly: "每月" };
 
 function timing(task: Schedule) {
   if (task.state !== "active") return repeats[task.repeat];

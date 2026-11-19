@@ -93,7 +93,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
         {!context.chats.length && <Text fontSize="sm">请先在站点项目中保存一段对话。</Text>}
         <Flex align="center" justify="space-between"><label htmlFor="site-task-repeat">重复执行任务</label>
           <Switch id="site-task-repeat" isChecked={repeating} onChange={event=>setRepeating(event.target.checked)}/></Flex>
-        <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekly">每周</option></Select></label>
+        <label hidden={!repeating}>频率<Select name="repeat" defaultValue="daily"><option value="daily">每天</option><option value="weekdays">工作日</option><option value="weekly">每周</option><option value="monthly">每月</option></Select></label>
         <label>{repeating ? "首次运行日期" : "日期"}<Input type="date" defaultValue={firstTime.split("T")[0]} name="date" required/></label>
         <label>{repeating ? "时间" : "开始时间"}<Input type="time" defaultValue={firstTime.split("T")[1]} name="time" required/></label>
         {repeating && <label>结束重复<Select value={endsOnDate ? "date" : "never"} onChange={event=>setEndsOnDate(event.target.value === "date")}>
