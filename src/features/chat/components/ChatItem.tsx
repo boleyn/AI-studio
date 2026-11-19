@@ -5,7 +5,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
-import { LibraryReadError, readLibraryAttachment } from "../services/libraryAttachment";
+import { LibraryReadError, readLibraryAttachment, recordLibraryOpen } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { toProjectFileViewUrl, toStableChatFileViewUrl } from "../utils/chatPanelUtils";
@@ -121,6 +121,12 @@ const ChatItem = ({
     setPreviewError("");
     void (async () => {
       const signal = controller.signal;
+      function showContent(value: string, fromLibrary: boolean) {
+        if (signal.aborted) return;
+        setPreviewText(value);
+        setShowLibrarySource(fromLibrary);
+        if (preview?.libraryItemId) recordLibraryOpen(preview.libraryItemId);
+      }
       let response: Response | undefined;
       if (preview.url) {
         try {
@@ -139,16 +145,13 @@ const ChatItem = ({
         const item = items.find(entry => entry.id === preview.libraryItemId && !entry.deleted);
         if (item) {
           const value = await (await readLibraryAttachment(item,signal)).text();
-          if (!signal.aborted) {
-            setPreviewText(value);
-            setShowLibrarySource(true);
-          }
+          showContent(value, true);
           return;
         }
       }
       if (!response?.ok) throw new LibraryReadError(response?.status ?? 404,preview.name);
       const value = await response.text();
-      if (!controller.signal.aborted) setPreviewText(value);
+      showContent(value, false);
     })().catch(error => {
       if (controller.signal.aborted) return;
       const status = error instanceof LibraryReadError ? error.status : undefined;
