@@ -202,7 +202,7 @@ function FilePreview({item,versions,openVersion,download,downloading,share,fileC
         {versions.map((version,index) => <Button key={version.id} ref={version.id === item.id ? historySelection : undefined} variant={version.id === item.id ? "solid" : "ghost"}
           justifyContent="space-between" size="sm" aria-current={version.id === item.id ? "true" : undefined}
           onClick={()=>{if (version.id !== item.id) openVersion(version);}}>
-          {version.shareId ? "共享版本" : version.time ? new Date(version.time).toLocaleString("zh-CN") : version.name}
+          {version.kind === "生成" && !version.version ? "当前文件内容" : version.shareId ? "共享版本" : version.time ? new Date(version.time).toLocaleString("zh-CN") : version.name}
           {index === 0 ? <Text as="span" fontSize="xs">当前版本</Text> : version.id === item.id && <Text as="span" fontSize="xs">正在查看</Text>}
         </Button>)}
       </Flex> : <><Text mt={4} fontWeight="600" overflowWrap="anywhere">{item.name}</Text>
