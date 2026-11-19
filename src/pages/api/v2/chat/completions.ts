@@ -794,6 +794,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           )),
     };
 
+    const artifactSizes = new Map<string,number>();
     const artifactVersion = isProjectToken && conversationId && Object.keys(updatedFiles).length > 0
       ? randomBytes(16).toString("hex")
       : undefined;
@@ -813,6 +814,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           Object.entries(updatedFiles).map(async ([filePath, file]) => {
             const encoded = /^data:application\/octet-stream;base64,([A-Za-z0-9+/=]+)$/.exec(file.code);
             const bytes = encoded ? Buffer.from(encoded[1], "base64") : null;
+            artifactSizes.set(filePath, bytes?.byteLength ?? Buffer.byteLength(file.code));
             if (artifactVersion) await saveProjectArtifactVersion(token, artifactVersion, filePath, bytes ?? file.code);
             if (bytes) return updateBinaryFile(token, filePath, bytes);
             return updateFile(token, filePath, file.code);
@@ -866,6 +868,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         assistantStored.additional_kwargs = {
           ...assistantStored.additional_kwargs,
           workspaceArtifactPaths: Object.keys(updatedFiles).sort(),
+          workspaceArtifactSizes: [...artifactSizes].map(([path,size]) => ({path,size})),
           workspaceArtifactVersion: artifactVersion,
         };
       }

@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { "artifact.files.0": { $exists: true } },
     { "content.type": "attachment" }, { "message.content.type": "attachment" },
   ] }).project({ token: 1, chatId: 1, time: 1, "additional_kwargs.workspaceArtifactPaths": 1,
-    "additional_kwargs.workspaceArtifactVersion": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1, "artifact.files.libraryItemId":1,
+    "additional_kwargs.workspaceArtifactVersion": 1, "additional_kwargs.workspaceArtifactSizes": 1, "artifact.files.storagePath": 1, "artifact.files.name": 1, "artifact.files.size": 1, "artifact.files.libraryItemId":1,
     "content.library_item_id":1, "content.type": 1, "content.storage_path": 1, "content.source_storage_path": 1, "content.name": 1,
     "message.content.library_item_id":1, "message.content.type": 1, "message.content.storage_path": 1, "message.content.source_storage_path": 1, "message.content.name": 1 });
   for await (const msg of messages) {
@@ -81,7 +81,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
     const meta = msg.additional_kwargs;
     if (Array.isArray(meta?.workspaceArtifactPaths)) {
-      for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion);
+      const sizes = new Map<string,number>();
+      if (Array.isArray(meta.workspaceArtifactSizes)) {
+        for (const entry of meta.workspaceArtifactSizes) {
+          if (typeof entry?.path === "string" && typeof entry.size === "number") sizes.set(entry.path,entry.size);
+        }
+      }
+      for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion, sizes.get(path));
     }
     const blocks = msg.message?.content ?? msg.content;
     const attachments = [
