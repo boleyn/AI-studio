@@ -154,7 +154,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   for (const site of await listLibrarySites(owner,names)) {
     const id = siteLibraryId(site.token);
-    rows.set(id,{id,siteId:site.id,kind:"站点",name:site.name,path:"",token:"",project:"",chatId:"",conversation:"",
+    rows.set(id,{id,siteId:site.id,kind:"站点",name:site.name,path:"",token:"",project:site.ownerName || "",chatId:"",conversation:"",
+      permission:site.shared ? "可查看" : "所有者",
       ...(site.shared ? {shareId:site.id} : {}),time:site.time ? new Date(site.time).toISOString() : ""});
   }
   const restores = db.collection<LibraryFile & {_id:string; owner:string; pending?:boolean}>("library_restored_versions");
