@@ -34,9 +34,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let filename = path;
       const libraryItemId = typeof body.libraryItemId === "string" ? body.libraryItemId : undefined;
       if (libraryItemId) {
-        if (!/^[a-f0-9]{24}$/.test(libraryItemId)) return res.status(400).end();
-        const native = await (await getMongoDb()).collection("library_pages").findOne({_id:new ObjectId(libraryItemId),owner:userId,deleted:{$ne:true}});
-        if (!native || (native.kind && !["上传","页面"].includes(native.kind))) return res.status(404).end();
+        if (!/^[a-f0-9]{24}$/.test(libraryItemId)) return res.status(400).json({ error: "文件引用无效，请从资料空间重新选择文件" });
+        const native = await (await getMongoDb()).collection("library_pages").findOne({_id:new ObjectId(libraryItemId),owner:userId,deleted:{$ne:true},purging:{$ne:true}});
+        if (!native || (native.kind && !["上传","页面"].includes(native.kind))) return res.status(404).json({ error: "共享文件不可用" });
         filename = native.name;
         if (native.kind === "上传") {
           fileOrigin = native.sourceChat || native.fromTemplate ? "生成" : "上传";
@@ -48,10 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       } else {
         if (!token || !path) return res.status(400).json({ error: "缺少工作成果" });
-        if (!await canAccessArtifactSource(token,userId,body.chatUpload === true)) return res.status(404).end();
+        if (!await canAccessArtifactSource(token,userId,body.chatUpload === true)) return res.status(404).json({ error: "共享文件不可用" });
         if (body.chatUpload === true) {
           fileOrigin = "上传";
-          if (typeof body.chatId !== "string" || !body.chatId) return res.status(400).end();
+          if (typeof body.chatId !== "string" || !body.chatId) return res.status(400).json({ error: "文件引用无效，请从资料空间重新选择文件" });
           const key = assertChatScopedStoragePath({storagePath:path,token,chatId:body.chatId});
           bytes = (await getObjectFromStorage({key})).buffer;
         } else {
