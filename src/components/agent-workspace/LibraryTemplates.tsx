@@ -172,7 +172,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
   return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
-      <ModalHeader>Templates</ModalHeader>
+      <ModalHeader as="h2" fontSize="20px" lineHeight="28px" fontWeight="600" px={{base:4, md:"30px"}} pt="26px">Templates</ModalHeader>
       <ModalCloseButton aria-label="关闭对话框" />
       <Flex px={6} pb={4} gap={2} align="center" wrap="wrap">
         <Flex role="tablist" aria-label="模板分类" gap={2} maxW="full" overflowX="auto">
