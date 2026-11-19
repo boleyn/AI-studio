@@ -7,7 +7,7 @@ import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
 type IconItem = {mimeType?: string} & Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
 
-function appearance(item: IconItem) {
+export function libraryIconAppearance(item: IconItem) {
   if (item.kind === "站点") return { Icon: PanelsTopLeft };
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
@@ -30,7 +30,7 @@ function appearance(item: IconItem) {
 }
 
 export default function LibraryItemIcon({item, compact=false}:{item:IconItem; compact?:boolean}) {
-  const {Icon,color} = appearance(item);
+  const {Icon,color} = libraryIconAppearance(item);
   return <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
     flexShrink={0} boxSize={compact ? "16px" : "32px"} border={compact ? "none" : "1px solid rgba(0,0,0,.1)"}
     borderRadius="8px" bg={compact ? "transparent" : "#fcfcfc"} color={compact ? "currentColor" : color || "#0d0d0d"}>

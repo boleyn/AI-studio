@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Heading, Input, InputGroup, InputLeftElement, InputRightElement, Text, IconButton, Menu, MenuButton, MenuDivider, FormLabel, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, MenuItem, MenuList, MenuItemOption, MenuOptionGroup, Portal, SkipNavContent, SkipNavLink, useToast } from "@chakra-ui/react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import { sitePreviewPath, referenceTypes, type ImageReference, type LibraryFile } from "@/types/library";
-import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, FileArchive, Layers, Upload, Plug } from "lucide-react";
+import { BarChart3, ExternalLink, Settings, CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { fileType, matchesLibraryType } from "./libraryFileType";
 
 import { redirectedToLogin } from "@features/chat/services/files";
@@ -21,7 +21,7 @@ import { formatDeletionDate, formatRelativeTime } from "./relativeTime";
 import LibraryDrive from "./LibraryDrive";
 import LibraryConnectors from "./LibraryConnectors";
 import LibrarySites from "./LibrarySites";
-import LibraryItemIcon from "./LibraryItemIcon";
+import LibraryItemIcon, {libraryIconAppearance} from "./LibraryItemIcon";
 import LibrarySelectionBox from "./LibrarySelectionBox";
 import LibraryPageEditor, { mobilePageReaderQuery, type PageDraft } from "./LibraryPageEditor";
 import LibraryTemplates, { TemplateGallery, type SlideTemplateName } from "./LibraryTemplates";
@@ -1050,16 +1050,19 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             </Box>)}
           </Box>
         </Box> : grid ? <LibraryCardGrid masonry={allHome}>
-          {visible.map(file => allHome && !isContainer(file) && /\.(zip|rar|7z|tar|gz)$/i.test(file.name) ? (
-            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio="4/5"
+          {visible.map(file => {
+            const spreadsheet = fileType(file) === "电子表格";
+            const {Icon, color} = libraryIconAppearance(file);
+            return allHome && !isContainer(file) && (spreadsheet || /\.(zip|rar|7z|tar|gz|docx?)$/i.test(file.name)) ? (
+            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={spreadsheet ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
               cursor="pointer" onClick={event=>clickItemSurface(event,file)}
               sx={{"& > [role=checkbox]":{top:"auto",bottom:"18px",right:"18px",boxSize:"20px"}}}>
               <Flex align="center" gap="8px" px="12px" h="44px" flexShrink={0} borderBottomWidth="1px">
-                <FileArchive size={20} aria-hidden style={{flexShrink:0}}/>
+                <Icon color={color} size={20} aria-hidden style={{flexShrink:0}}/>
                 <Box minW={0} flex="1" isTruncated>{itemLink(file)}</Box>{actions(file)}
               </Flex>
-              <Flex flex="1" align="center" justify="center"><FileArchive size={56} aria-hidden/></Flex>
+              <Flex flex={spreadsheet ? undefined : "1"} aspectRatio={spreadsheet ? "16/9" : undefined} align="center" justify="center"><Icon color={color} size={56} aria-hidden/></Flex>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Flex>
           ) : <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
@@ -1067,7 +1070,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             <LibraryItemIcon item={file}/><Flex my={2} align="center" gap={1} minW={0} overflowWrap="anywhere">{itemLink(file)}{itemMarkers(file)}</Flex>
             {actions(file)}
-          </Box>)}
+          </Box>;})}
         </LibraryCardGrid> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
           tableLayout:"fixed",
           ...(allHome && { "@media (min-width: 80em)": {
