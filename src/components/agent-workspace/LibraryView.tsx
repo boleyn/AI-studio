@@ -244,12 +244,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     return { pathname: router.pathname, query };
   }
   function itemLink(file: LibraryFile) {
-    if (file.deleted) return <span>{file.name}</span>;
-    if (file.kind === "资料空间" && file.shareId) return <Link href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
-    if (file.siteId) return <Link href={"/share/preview/"+encodeURIComponent(file.siteId)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
+    if (file.deleted) return <span title={file.name}>{file.name}</span>;
+    if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{file.name}</Link>;
+    if (file.siteId) return <Link title={file.name} href={"/share/preview/"+encodeURIComponent(file.siteId)} onClick={()=>recordOpen(file)}>{file.name}</Link>;
     const container = isContainer(file);
     const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
-    return <Link href={href} shallow scroll={false} prefetch={false} onClick={event=>{
+    return <Link title={file.name} href={href} shallow scroll={false} prefetch={false} onClick={event=>{
       recordOpen(file);
       if (container && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         setSelected([]);
