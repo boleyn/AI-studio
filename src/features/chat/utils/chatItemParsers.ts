@@ -440,7 +440,7 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
   const remaining = [...attachments];
   const artifactFiles = files.filter((file): file is MessageFile => Boolean(file && typeof file === "object"));
   const reservedPaths = new Set(artifactFiles.map(file => file.storagePath?.replace(/^\/+/, ""))
-    .filter(path => path?.startsWith("chat_uploads/")));
+    .filter(Boolean));
   const reservedOrigins = new Set(artifactFiles.map(file => file.libraryItemId).filter(Boolean));
   const merged = artifactFiles.map(file => {
     const path = file.storagePath?.replace(/^\/+/, "");
@@ -448,7 +448,10 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
     if (path?.startsWith("chat_uploads/")) {
       index = remaining.findIndex(item => item.storagePath?.replace(/^\/+/, "") === path);
     } else {
-      const eligible = (item:MessageFile) => !reservedPaths.has(item.storagePath?.replace(/^\/+/, ""));
+      const eligible = (item:MessageFile) => {
+        const candidatePath = item.storagePath?.replace(/^\/+/, "");
+        return candidatePath === path || !reservedPaths.has(candidatePath);
+      };
       index = file.libraryItemId ? remaining.findIndex(item => eligible(item) && item.libraryItemId === file.libraryItemId) : -1;
       if (index < 0 && path) {
         index = remaining.findIndex(item => eligible(item) && item.storagePath?.replace(/^\/+/, "") === path &&
@@ -473,7 +476,14 @@ export const getMessageFiles = (message: ConversationMessage): MessageFile[] => 
       downloadUrl: file.downloadUrl || block.downloadUrl,
     };
   });
-  return [...merged, ...remaining.filter(item => !merged.some(file => file.name === item.name && (!item.libraryItemId || file.libraryItemId === item.libraryItemId) && !item.storagePath?.replace(/^\/+/, "").startsWith("chat_uploads/")))];
+  const unmatched = remaining.filter(item => {
+    const path = item.storagePath?.replace(/^\/+/, "");
+    if (path?.startsWith("chat_uploads/")) return true;
+    return !merged.some(file => file.name === item.name &&
+      (!path || path === file.storagePath?.replace(/^\/+/, "")) &&
+      (!item.libraryItemId || file.libraryItemId === item.libraryItemId));
+  });
+  return [...merged, ...unmatched];
 };
 
 export const isImageFile = (file: MessageFile) => {
