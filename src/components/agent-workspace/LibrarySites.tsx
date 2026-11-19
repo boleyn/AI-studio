@@ -53,7 +53,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     return <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
       <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Box>
         <Text>{site.name}</Text>
-        {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize="xs" color="#5d5d5d">
+        {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize={grid ? "xs" : "14px"} lineHeight={grid ? undefined : "20px"} color="#5d5d5d">
           {published.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})}
         </Text>}
       </Box></Flex>
@@ -137,7 +137,11 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
     {visible.map(site => <Box key={site.id} p={4} borderWidth="1px" borderRadius="14px">{siteLink(site)}{siteMenu(site)}</Box>)}
     {dialog}</Box>;
   return <Box overflowX="auto"><Box as="table" width="100%" textAlign="left" fontSize="sm" aria-label="站点"
-    sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"}}}>
+    sx={{"& th, & td": {padding:"12px 8px",borderBottom:"1px solid #eee"}, "& th": {fontWeight:500,color:"#656565"},
+      "& tbody tr": {height:"88px",position:"relative"},
+      "& tbody td:first-child a::after": {content:'""',position:"absolute",inset:0},
+      "& tbody td:not(:first-child) :is(button,a)": {position:"relative",zIndex:1},
+      "& tbody td:last-child": {whiteSpace:"nowrap",textAlign:"end"}}}>
     <thead><tr><th scope="col">站点</th>{tab === "与你共享" && <th scope="col">所有者</th>}<th scope="col">共享对象</th>{tab !== "与你共享" && <th scope="col">访客数（近 30 天）</th>}<th scope="col" aria-label="站点操作"/></tr></thead>
     <tbody>{visible.map(site => <tr key={site.id}><td>{siteLink(site)}</td>{tab === "与你共享" && <td>{site.ownerName || "—"}</td>}<td>{site.shared ? audience(site) : <Button size="sm" variant="ghost" fontWeight="normal"
         aria-label={audience(site)+"，打开 " + site.name + " 的共享设置"} onClick={()=>setSharing(site)}>{audience(site)}</Button>}</td>{tab !== "与你共享" && <td>{site.shared ? "—" : <Link href={"/sites/analytics/"+encodeURIComponent(site.id)} aria-label={"打开 "+site.name+" 的数据分析页面，查看过去 30 天的独立访客数"}>{site.visitors ?? 0} 位访客</Link>}</td>}
