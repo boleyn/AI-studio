@@ -42,6 +42,7 @@ function formatFileSize(bytes?: number) {
   const scale = Math.min(units.length-1,Math.floor(Math.log(bytes)/Math.log(1024)));
   return (bytes / 1024 ** scale).toFixed(2) + " " + units[scale];
 }
+const libraryNameOrder = new Intl.Collator("zh-CN", {numeric:true});
 const fileSources = ["已上传", "生成的文件"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 
@@ -354,9 +355,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (folder) return file.time;
     return libraryActivityTime(file);
   }
-  function sortValue(file: LibraryFile) {
-    if (folder && sort.column === "size") return String(file.size ?? 0);
-    return sort.column === "name" ? file.name : rowTime(file);
+  function compareRows(a: LibraryFile, b: LibraryFile) {
+    const pinOrder = trashSection ? 0 : Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+    if (pinOrder) return pinOrder;
+    const direction = sort.ascending ? 1 : -1;
+    if (sort.column === "size") {
+      if (a.size === undefined || b.size === undefined) return Number(a.size === undefined) - Number(b.size === undefined);
+      return direction * (a.size - b.size);
+    }
+    if (sort.column === "name") return direction * libraryNameOrder.compare(a.name, b.name);
+    return direction * rowTime(a).localeCompare(rowTime(b));
   }
   function sourceFilter(file: LibraryFile) {
     const origin = file.fileOrigin ?? (file.shareId ? undefined : file.fromTemplate ? "生成" : file.kind);
@@ -373,7 +381,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
-    (!searchTerm || matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort((a, b) => (section === "回收站" ? 0 : Number(Boolean(b.pinned))-Number(Boolean(a.pinned))) || (sort.ascending ? 1 : -1) * sortValue(a).localeCompare(sortValue(b), "zh-CN", { numeric: true }));
+    (!searchTerm || matchesLibraryType(file, searchTerm) || [file.name, file.path, file.project, file.conversation].some(value => value?.normalize("NFC").toLowerCase().includes(searchTerm)))).sort(compareRows);
   const hasPageActions = visible?.some(file => file.kind === "页面" && !file.deleted);
   const picked = visible?.filter(item => selected.includes(item.id)) || [];
   useEffect(() => {
