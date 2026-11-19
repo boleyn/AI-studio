@@ -657,7 +657,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       ).sort((a,b)=>b.time.localeCompare(a.time)) : [detail]} openVersion={openItem} restoreVersion={async (file,head)=>{
         try {
           const response = await fetch("/api/library?action=restore-version",{method:"POST",headers:withAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({id:file.id,head:head.id})});
-          if (!response.ok) throw new Error(response.status === 409 ? "文件已发生变化，请刷新后重试。" : "恢复失败，请稍后重试。");
+          if (response.status === 404 || response.status === 409) {
+            setAttempt(value => value + 1);
+            throw new Error(response.status === 404
+              ? "原版本已不可用，正在重新加载文件列表。"
+              : "文件状态已变化，正在重新加载。请核对版本后重试。");
+          }
+          if (!response.ok) throw new Error("恢复失败，请稍后重试。");
           const restored: LibraryFile = await response.json();
           setFiles(previous=>[restored,...(previous || []).filter(entry=>entry.id!==restored.id)]);
           openItem(restored);
