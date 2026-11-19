@@ -52,5 +52,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     {$group:{_id:"$members.userId",username:{$first:"$members.username"}}},
     {$sort:{username:1}}, {$project:{_id:0,username:1}}
   ]).toArray();
-  return res.json({ id: shareId, owner: auth.user.username, restricted:(await getSiteSettings(ownerUserId,link.projectToken))?.restricted === true, members });
+  const settings = await getSiteSettings(ownerUserId,link.projectToken);
+  return res.json({ slug:settings?.siteSlug, id: shareId, owner: auth.user.username, restricted:settings?.restricted === true, members });
 }

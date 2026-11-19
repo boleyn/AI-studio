@@ -50,3 +50,7 @@ export function sharedPreviewFilename(name: string, originalName?: string) {
   const extension = originalName?.match(/\.[a-z0-9]{1,12}$/i)?.[0];
   return extension && !name.toLowerCase().endsWith(extension.toLowerCase()) ? name + extension : name;
 }
+
+export function sitePreviewPath(shareId: string, slug?: string) {
+  return slug ? "/s/" + encodeURIComponent(slug) : "/share/preview/" + encodeURIComponent(shareId);
+}

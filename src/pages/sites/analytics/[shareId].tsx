@@ -1,3 +1,4 @@
+import { sitePreviewPath } from "@/types/library";
 import type { GetServerSideProps } from "next";
 import { useState } from "react";
 import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
@@ -11,6 +12,7 @@ import { getShareLink } from "@server/shares/shareStorage";
 interface Props {
   name: string;
   shareId: string;
+  previewPath: string;
   days: number;
   requests: number;
   visitors: number;
@@ -48,7 +50,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async context => {
     const row = report?.daily.find((entry:{_id:string}) => entry._id === day);
     return {day,visitors:Number(row?.visitors || 0),views:Number(row?.views || 0)};
   });
-  return {props:{shareId,name:settings?.name || project.name,days,daily,requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
+  return {props:{shareId,previewPath:sitePreviewPath(shareId, settings?.siteSlug),name:settings?.name || project.name,days,daily,requests:requestTotal?.count || 0,visitors:report?.distinct[0]?.count || 0,views:daily.reduce((sum,row)=>sum+row.views,0)}};
 };
 
 function TrafficTrend({daily}: Pick<Props,"daily">) {
@@ -82,12 +84,12 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
   </Box>;
 }
 
-export default function SiteAnalytics({name,shareId,days,daily,visitors,views,requests}:Props) {
+export default function SiteAnalytics({name,shareId,previewPath,days,daily,visitors,views,requests}:Props) {
   return <Box as="main" maxW="960px" mx="auto" p={6}>
-    <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={"/share/preview/"+shareId}>访问</Link></Flex>
+    <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={previewPath}>访问</Link></Flex>
     <Box as="section" aria-label={name} mt={6} mb={4}>
       <Heading as="h1" fontSize="24px" lineHeight="32px" fontWeight={400} overflowWrap="anywhere">{name}</Heading>
-      <Link href={"/share/preview/"+shareId} fontSize="sm" color="gray.600" overflowWrap="anywhere">{"/share/preview/"+shareId}</Link>
+      <Link href={previewPath} fontSize="sm" color="gray.600" overflowWrap="anywhere">{previewPath}</Link>
     </Box>
     <Flex as="nav" aria-label="站点详情" gap={4} align="center" minH="36px" mb={4} borderBottomWidth="1px">
       <Link href={"/?"+new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId})}>设置</Link>
@@ -112,7 +114,7 @@ export default function SiteAnalytics({name,shareId,days,daily,visitors,views,re
     <Heading as="h2" size="md" my={3}>热门路径</Heading>
     {views > 0 ? <Box as="table" width="full" mb={6} fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>
       <thead><tr><th>路径</th><th>独立访客数</th><th title="此路径的页面访问请求">请求数</th></tr></thead>
-      <tbody><tr><td><Link href={"/share/preview/"+encodeURIComponent(shareId)} aria-label="访问站点首页">/</Link></td><td>{visitors}</td><td>{views}</td></tr></tbody>
+      <tbody><tr><td><Link href={previewPath} aria-label="访问站点首页">/</Link></td><td>{visitors}</td><td>{views}</td></tr></tbody>
     </Box> : <Text mb={6}>暂无页面访问记录</Text>}
     <Heading as="h2" size="md" mb={3}>每日明细</Heading>
     <Box as="table" w="full" fontSize="sm" sx={{"& th, & td":{textAlign:"start",py:2,borderBottom:"1px solid #eee"}}}>

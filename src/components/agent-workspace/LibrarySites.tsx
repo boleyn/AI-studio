@@ -1,3 +1,4 @@
+import { sitePreviewPath } from "@/types/library";
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter, AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
 import { BarChart3, Trash2, Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
 import { useRouter } from "next/router";
@@ -58,7 +59,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
   const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
-  const siteUrl = (site: Site) => site.slug ? "/s/"+encodeURIComponent(site.slug) : "/share/preview/" + encodeURIComponent(site.id);
+  const siteUrl = (site: Site) => sitePreviewPath(site.id,site.slug);
   const siteCover = (site: Site) => <Flex position="relative" overflow="hidden" flexShrink={0}
     w={grid ? "full" : "80px"} aspectRatio={grid ? "3 / 2" : "8 / 5"} borderRadius={grid ? 0 : "6px"}
     align="center" justify="center" bg="gray.50" color="gray.400">

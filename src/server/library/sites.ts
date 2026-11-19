@@ -7,8 +7,8 @@ export function siteLibraryId(projectToken:string) {
 
 export async function getSiteSettings(owner: string, token: string) {
   const db = await getMongoDb();
-  return db.collection<{_id:string; restricted?:boolean; name?:string}>("library_file_settings")
-    .findOne({_id:owner + "/" + siteLibraryId(token)}, {projection:{restricted:1,name:1}});
+  return db.collection<{_id:string; restricted?:boolean; name?:string; siteSlug?:string}>("library_file_settings")
+    .findOne({_id:owner + "/" + siteLibraryId(token)}, {projection:{restricted:1,name:1,siteSlug:1}});
 }
 
 export async function canViewRestrictedSite(owner: string, token: string, viewer: string) {

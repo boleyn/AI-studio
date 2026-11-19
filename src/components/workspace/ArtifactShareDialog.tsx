@@ -1,3 +1,4 @@
+import { sitePreviewPath } from "@/types/library";
 import {
   Button, Flex, FormControl, FormLabel, Input, Modal, ModalBody, ModalCloseButton,
   Menu, MenuButton, MenuList, MenuItemOption, MenuOptionGroup, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Spinner, Text,
@@ -7,7 +8,7 @@ import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 type Member = { username: string; canEdit?: boolean };
-type Share = { restricted?:boolean; id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
+type Share = { slug?:string; restricted?:boolean; id: string; filename: string; owner: string; livePage?: boolean; members: Member[] };
 
 export default function ArtifactShareDialog({ token, path, version, libraryItemId, chatId, siteId, spaceId, displayName, onClose }: {
   token: string;
@@ -128,7 +129,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
         <ModalFooter gap={2} justifyContent="space-between">
           {share && <Button size="sm" borderRadius="full" variant="outline" leftIcon={<Link2 size={15} />} onClick={async () => {
             try {
-              await navigator.clipboard.writeText(new URL(spaceId ? "/share/space/"+spaceId : siteId ? `/share/preview/${siteId}` : `/share/file/${share.id}`, window.location.origin).href);
+              await navigator.clipboard.writeText(new URL(spaceId ? "/share/space/"+spaceId : siteId ? sitePreviewPath(siteId,share.slug) : `/share/file/${share.id}`, window.location.origin).href);
               setCopied(true);
             } catch {
               setError("无法复制链接");
