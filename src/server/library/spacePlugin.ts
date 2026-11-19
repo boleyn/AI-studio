@@ -28,13 +28,13 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           return {content:JSON.stringify({id:id.toHexString(),name,url:"/?view=library&libraryFolder="+id.toHexString()})};
         },
       });
-      context.registerTool<{title?:string; parentId?:string; offset?:number}>({
+      context.registerTool<{title?:string; parentId?:string; kind?:"页面"|"资料空间"|"文件夹"; offset?:number}>({
         name:"FindLibraryPages",
         toolset:"library-spaces",
-        description:"按标题关键词查找自己的页面，或传入 parentId 列出空间、文件夹或页面的直接子页面。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
+        description:"默认按标题查找个人页面。可指定 kind 按名称查找资料空间或文件夹，再用其编号作为 parentId 查找直接子项。返回页面链接和编号，可将 nextOffset 作为 offset 继续查找；若有多个同名结果，修改前先请用户确认。",
         parameters:{
           type:"object", additionalProperties:false,
-          properties:{title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
+          properties:{kind:{type:"string",enum:["页面","资料空间","文件夹"]},title:{type:"string",minLength:1,maxLength:255},parentId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
         },
         async handler(input, ctx) {
           const title = typeof input.title === "string" ? input.title.trim() : "";
@@ -44,8 +44,10 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           const pages = (await getMongoDb()).collection("library_pages");
           const offset = input.offset ?? 0;
           if (!Number.isSafeInteger(offset) || offset < 0) return {isError:true,content:"搜索起始位置无效。"};
+          const kind = input.kind ?? "页面";
+          if (!["页面","资料空间","文件夹"].includes(kind)) return {isError:true,content:"条目类型无效。"};
           const matches = await pages.find({
-            owner,kind:{$in:["页面",null]},deleted:{$ne:true},purging:{$ne:true},
+            owner,kind:kind === "页面" ? {$in:["页面",null]} : kind,deleted:{$ne:true},purging:{$ne:true},
             ...(input.parentId ? {folderId:input.parentId} : {}),
             ...(title ? {name:{$regex:title.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),$options:"i"}} : {}),
           },{projection:{name:1,folderId:1,time:1}}).sort({time:-1,_id:1}).skip(offset).limit(21).toArray();
@@ -56,8 +58,8 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
             deleted:{$ne:true},purging:{$ne:true}},{projection:{name:1}}).toArray() : [];
           const parentNames = new Map(parents.map(parent=>[parent._id.toHexString(),parent.name]));
           return {content:JSON.stringify({hasMore:matches.length > 20,nextOffset:matches.length > 20 ? offset+20 : null,pages:results.map(page=>({
-            id:page._id.toHexString(),name:page.name,modifiedAt:page.time,parentId:page.folderId,parentName:parentNames.get(page.folderId),
-            url:"/?view=library&libraryItem="+page._id.toHexString(),
+            id:page._id.toHexString(),kind,name:page.name,modifiedAt:page.time,parentId:page.folderId,parentName:parentNames.get(page.folderId),
+            url:"/?"+new URLSearchParams({view:"library",[kind === "页面" ? "libraryItem" : "libraryFolder"]:page._id.toHexString()}),
           }))})};
         },
       });
