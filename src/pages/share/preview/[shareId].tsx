@@ -2,6 +2,7 @@ import { sitePreviewPath } from "@/types/library";
 import LibraryConnectors from "@/components/agent-workspace/LibraryConnectors";
 import { getMongoDb } from "@server/db/mongo";
 import Head from "next/head";
+import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { Box, Button, Flex } from "@chakra-ui/react";
@@ -114,7 +115,18 @@ const normalizeFiles = (rawFiles: unknown): SandpackFiles => {
 };
 
 const SharePreviewPage = ({ shareId, previewPath, initialProject, driveEnabled, signedIn, connectorStatus }: SharePreviewPageProps) => {
+  const router = useRouter();
   const [connectionsOpen,setConnectionsOpen] = useState(Boolean(connectorStatus));
+  const [authorizationResult,setAuthorizationResult] = useState(connectorStatus);
+  function closeConnections() {
+    setConnectionsOpen(false);
+    setAuthorizationResult(null);
+    if (router.query.libraryConnectors !== undefined) {
+      const query = {...router.query};
+      delete query.libraryConnectors;
+      void router.replace({pathname:router.pathname, query, hash:window.location.hash}, undefined, {shallow:true, scroll:false});
+    }
+  }
   const [project, setProject] = useState<PreviewProject>({
     ...initialProject,
     files: normalizeFiles(initialProject.files),
@@ -203,7 +215,7 @@ const SharePreviewPage = ({ shareId, previewPath, initialProject, driveEnabled, 
       {driveEnabled && <Flex justify="end" px={3} py={1}>
         <Button size="sm" variant="ghost" onClick={() => signedIn ? setConnectionsOpen(true) : window.location.assign("/login?lastRoute="+encodeURIComponent(previewPath))}>连接我的 Google Drive</Button>
       </Flex>}
-      {driveEnabled && signedIn && connectionsOpen && <LibraryConnectors siteId={shareId} callbackStatus={connectorStatus || undefined} close={()=>setConnectionsOpen(false)}/>}
+      {driveEnabled && signedIn && connectionsOpen && <LibraryConnectors siteId={shareId} callbackStatus={authorizationResult || undefined} close={closeConnections}/>}
       <Box flex="1" minH="0" position="relative">
         <SandpackProvider
           key={sandpackRuntimeId}
