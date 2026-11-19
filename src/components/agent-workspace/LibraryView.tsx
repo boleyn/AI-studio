@@ -51,6 +51,8 @@ function renameSuffix(file?: LibraryFile) {
 
 const libraryNameOrder = new Intl.Collator("zh-CN", {numeric:true});
 const fileSources = ["已上传", "生成的文件"];
+const homeTypeTabs = ["推荐", "页面", "幻灯片", "电子表格", "图像", "站点"];
+const collectionTabs = ["收藏", "你的条目", "与你共享"];
 const fileTypes = ["页面", "图像", "文档", "电子表格", "演示文稿", "PDF 文件"];
 
 
@@ -248,7 +250,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const personalSection = section === "个人";
   const pagesSection = section === "页面" || personalSection;
   const slidesSection = section === "幻灯片";
-  const tabs = personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const typeNavigation = section === "全部" && !collectionTabs.includes(String(router.query.libraryTab));
+  const tabs = typeNavigation ? homeTypeTabs : personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const allHome = section === "全部" && !folder;
@@ -471,6 +474,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     (section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
+    (!typeNavigation || tab === "推荐" || fileType(file) === (tab === "幻灯片" ? "演示文稿" : tab)) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
     matchesSearch(file)).sort(compareRows);
   const hasPageActions = visible?.some(file => fileType(file) === "页面" && !file.deleted);
@@ -934,7 +938,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : personalSection ? createMenu(false) : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={personalSection ? 4 : 1} mt={personalSection ? "38px" : "4px"} pb={personalSection ? "8px" : "20px"} mb="17px" minH={personalSection ? "44px" : "56px"} align="center" justify="flex-end">
-        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
+        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : typeNavigation ? "工件类型" : "资料库分区"}>
           {personalSection && librarySearchField}
           {section !== "回收站" && !personalSection && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" id={sitesSection ? "library-sites-tab-" + index : undefined}
