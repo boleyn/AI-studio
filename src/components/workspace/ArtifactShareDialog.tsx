@@ -75,12 +75,12 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
   return (
     <Modal isOpen onClose={() => {if (!busy) onClose();}} isCentered size="md">
       <ModalOverlay />
-      <ModalContent mx={3} maxW={page ? "512px" : undefined} minH={page ? "376px" : undefined} borderRadius={page ? "16px" : "20px"}>
+      <ModalContent borderWidth={page ? 0 : undefined} mx={3} maxW={page ? "512px" : undefined} minH={page ? "376px" : undefined} borderRadius={page ? "16px" : "20px"}>
         <ModalHeader display="flex" alignItems="center" gap={2} pr={10} overflowWrap="anywhere">{page ? `分享“${displayName || path.split("/").pop()}”` : `共享 ${displayName || path.split("/").pop()}`}
           {page && <IconButton as="a" href="https://help.openai.com/en/articles/20001544" target="_blank" rel="noopener noreferrer" aria-label="了解更多关于共享数据管理的信息" icon={<CircleHelp size={16}/>} size="xs" variant="ghost" borderRadius="full" flexShrink={0}/>}
         </ModalHeader>
         <ModalCloseButton {...(page && {boxSize:"36px", top:"12px", right:"16px", borderRadius:"full"})} isDisabled={busy} aria-label={page ? "关闭对话框" : "关闭分享对话框"} />
-        <ModalBody>
+        <ModalBody pt={page ? 0 : undefined}>
           {spaceId && <Text fontSize="sm" mb={3}>访问权限适用于此资料空间中的所有页面</Text>}
           {!share && !error && <Spinner size="sm" aria-label="正在准备分享" />}
           {share && <>
@@ -91,7 +91,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
               </FormControl>
               {(!page || username.trim()) && <Button type="submit" size="sm" isDisabled={!username.trim() || busy}>邀请</Button>}
             </Flex>
-            <Text mt={5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
+            <Text mt={page ? "28px" : 5} fontSize="sm" fontWeight="semibold">链接访问权限</Text>
             {siteId ? <select aria-label="站点链接访问权限" disabled={busy} value={share.restricted ? "invited" : "link"}
               onChange={async event=>{
                 const restricted = event.target.value === "invited";
@@ -104,7 +104,7 @@ export default function ArtifactShareDialog({ token, path, version, libraryItemI
                 } catch { setError("访问权限保存失败，请重试。"); }
                 finally { setBusy(false); }
               }}><option value="invited">仅限受邀者</option><option value="link">拥有链接的人</option></select> : <Menu placement="bottom-start">
-              <MenuButton as={Button} variant="ghost" size="sm" mt={1} leftIcon={<LockKeyhole size={15}/>}
+              <MenuButton as={Button} variant="ghost" size="sm" mt={page ? "3px" : 1} {...(page && {ms:"-10px", minW:"151px", h:"36px", borderRadius:"8px"})} leftIcon={<LockKeyhole size={15}/>}
                 rightIcon={<ChevronDown size={14}/>}>仅限受邀者</MenuButton>
               <MenuList w={page ? "min(420px, calc(100vw - 40px))" : undefined} minW={page ? 0 : undefined}
                 borderRadius={page ? "20px" : "12px"} shadow="lg" p={page ? "6px" : 1}>
