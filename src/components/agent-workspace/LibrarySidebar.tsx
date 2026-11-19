@@ -3,8 +3,7 @@ import { Bell, Plus, FileText, GalleryHorizontalEnd, Image, Library, PanelLeft, 
 import { libraryActivityTime, type LibraryFile } from "@/types/library";
 import { formatRelativeTime } from "./relativeTime";
 import LibraryItemIcon from "./LibraryItemIcon";
-import { withAuthHeaders } from "@features/auth/client/authClient";
-import { type Ref, type ReactNode, useState, useEffect } from "react";
+import { type Ref, type ReactNode, useState } from "react";
 
 const categories = [
   { name: "全部", icon: Library }, { name: "页面", icon: FileText },
@@ -12,6 +11,7 @@ const categories = [
   { name: "图像", icon: Image },
 ];
 type Props = {
+  driveConnected: boolean;
   width?: number;
   setWidth: (width: number) => void;
   createMenu: ReactNode;
@@ -26,19 +26,9 @@ type Props = {
   toggleRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
+export default function LibrarySidebar({ driveConnected, width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
   const defaultWidth = useBreakpointValue({base:248,xl:288}) ?? 248;
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
-  const [driveConnected,setDriveConnected] = useState(false);
-  useEffect(()=>{
-    const controller = new AbortController();
-    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) return;
-      const status = await response.json();
-      if (!controller.signal.aborted) setDriveConnected(status.connected);
-    }).catch(()=>{});
-    return ()=>controller.abort();
-  },[]);
   const [expanded, setExpanded] = useState(false);
   const [recent, setRecent] = useState(true);
   const [spaces,setSpaces] = useState(true);

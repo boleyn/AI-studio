@@ -250,6 +250,16 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     }}>{file.name}</Link>;
   }
   useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
+  const [driveConnected,setDriveConnected] = useState(false);
+  useEffect(()=>{
+    const controller = new AbortController();
+    fetch("/api/library/connectors/google?status=1",{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
+      if (!response.ok) return;
+      const status = await response.json();
+      if (!controller.signal.aborted) setDriveConnected(status.connected);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
   const [sidebarWidth, setSidebarWidth] = useState<number>();
   const [sidebar, setSidebar] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -632,7 +642,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar driveConnected={driveConnected} width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
         <MenuList onKeyDownCapture={event=>{
           if (copyMenuId !== space.id || !["Escape","ArrowLeft"].includes(event.key)) return;
@@ -719,7 +729,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <Menu placement="bottom-start">
             <MenuButton as={IconButton} variant="ghost" size="sm" aria-label="资料空间导航" icon={<PanelLeftOpen size={18}/>}/>
             <Portal><MenuList>
-              {sections.filter(name => name !== "Google Drive").map(name =>
+              {sections.filter(name => name !== "Google Drive" || driveConnected).map(name =>
                 <MenuItem key={name} aria-current={!folder && section === name ? "page" : undefined} onClick={() => changeSection(name)}>{name}</MenuItem>)}
             </MenuList></Portal>
           </Menu>
