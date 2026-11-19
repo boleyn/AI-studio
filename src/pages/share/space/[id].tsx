@@ -13,6 +13,7 @@ export default function SharedSpace() {
   const toast = useToast();
   const [downloading,setDownloading] = useState(false);
   const [data,setData] = useState<Contents>();
+  const [attempt,setAttempt] = useState(0);
   const [error,setError] = useState("");
   useEffect(()=>{
     if (typeof id !== "string") return;
@@ -22,7 +23,7 @@ export default function SharedSpace() {
     const params = new URLSearchParams({id,contents:"1"});
     if (typeof page === "string") params.set("page",page);
     fetch("/api/library/space-share?"+params,{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (!response.ok) throw new Error(response.status === 401 ? "请登录受邀账号后查看。" : "无法访问这份共享内容。");
+      if (!response.ok) throw new Error(response.status === 401 ? "请登录受邀账号后查看。" : response.status >= 500 ? "共享服务暂时不可用，请稍后重试。" : "无法访问这份共享内容。");
       const value = await response.json();
       if (controller.signal.aborted) return;
       if (value.owner === true) {
@@ -30,12 +31,13 @@ export default function SharedSpace() {
         return;
       }
       setData(value);
-    }).catch(reason=>{if (!controller.signal.aborted) setError(reason.message);});
+    }).catch(reason=>{if (!controller.signal.aborted) setError(reason instanceof TypeError ? "连接失败，请检查网络后重试。" : reason.message);});
     return ()=>controller.abort();
-  },[id,page,router]);
+  },[id,page,router,attempt]);
   return <Box as="main" maxW="780px" mx="auto" p={6}>
     {page && <Button as="a" href={"/share/space/"+id} variant="ghost" mb={4}>返回资料空间</Button>}
-    {error ? <Text role="alert">{error}</Text> : !data ? <Text role="status">正在加载…</Text> : <>
+    {error ? <Stack role="alert" align="start" spacing={3}><Text>{error}</Text>
+      <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button></Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
         <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
