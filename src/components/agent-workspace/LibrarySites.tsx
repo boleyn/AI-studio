@@ -48,12 +48,19 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const visible = sites.filter(site => (tab === "全部" || site.shared === (tab === "与你共享")) && site.name.normalize("NFC").toLowerCase().includes(searchTerm));
   const empty = searchTerm ? "没有符合条件的站点" : tab === "与你共享" ? "没有与你共享的站点" : "没有站点";
   const siteUrl = (site: Site) => "/share/preview/" + encodeURIComponent(site.id);
+  const siteCover = (site: Site) => <Flex position="relative" overflow="hidden" flexShrink={0}
+    w={grid ? "full" : "80px"} aspectRatio={grid ? "3 / 2" : "8 / 5"} borderRadius={grid ? 0 : "6px"}
+    align="center" justify="center" bg="gray.50" color="gray.400">
+    <PanelsTopLeft size={grid ? 32 : 19} aria-hidden/>
+    <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(site.id)+"/cover"}
+      position="absolute" inset={0} w="full" h="full" objectFit="cover" onError={event=>{event.currentTarget.style.display="none";}}/>
+  </Flex>;
   const siteLink = (site: Site) => {
     const published = site.publishedAt ? new Date(site.publishedAt) : undefined;
     return <Link href={siteUrl(site)} aria-label={"访问 " + site.name}>
-      <Flex align="center" gap={3}><PanelsTopLeft size={19} aria-hidden/><Box>
+      <Flex align="center" gap={4}>{siteCover(site)}<Box>
         <Text>{site.name}</Text>
-        {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize={grid ? "xs" : "14px"} lineHeight={grid ? undefined : "20px"} color="#5d5d5d">
+        {published && Number.isFinite(published.getTime()) && <Text as="time" dateTime={published.toISOString()} fontSize="14px" lineHeight="20px" color="#5d5d5d">
           {published.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})}
         </Text>}
       </Box></Flex>
@@ -138,10 +145,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       const published = new Date(site.publishedAt || "");
       const AudienceIcon = site.restricted ? LockKeyhole : Link2;
       return <Box as="article" key={site.id} position="relative" minW={0} overflow="hidden" borderRadius="16px" boxShadow="0 2px 12px rgba(0,0,0,.07)">
-        <Flex position="relative" aspectRatio="3 / 2" align="center" justify="center" bg="gray.50" color="gray.400"><PanelsTopLeft size={32} aria-hidden/>
-          <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(site.id)+"/cover"}
-            position="absolute" inset={0} w="full" h="full" objectFit="cover" onError={event=>{event.currentTarget.style.display="none";}}/>
-        </Flex>
+        {siteCover(site)}
         <Flex px={3} py={2} minH="64px" align="center" gap={2}>
           <Box flex="1" minW={0}>
             <Link display="block" isTruncated fontSize="sm" fontWeight="medium" href={siteUrl(site)}
