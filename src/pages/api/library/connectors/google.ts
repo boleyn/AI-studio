@@ -35,11 +35,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "GET") return res.setHeader("Allow", "GET, POST").status(405).end();
   const expected = Buffer.from(req.cookies[cookieName] || "");
   const provided = Buffer.from(owner + "." + req.query.state);
-  res.setHeader("Set-Cookie", cookie("", 0));
   const returnTo = "/?view=library&libraryConnectors=";
   if (!expected.length || expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return res.redirect(303, returnTo + "invalid-session");
   }
+  // A stale tab must not clear the state for a newer authorization attempt.
+  res.setHeader("Set-Cookie", cookie("", 0));
   if (typeof req.query.code !== "string") return res.redirect(303, returnTo + (req.query.error === "access_denied" ? "cancelled" : "error"));
   try {
     const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", body: new URLSearchParams({
