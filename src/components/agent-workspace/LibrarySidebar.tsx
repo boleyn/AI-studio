@@ -45,8 +45,8 @@ export default function LibrarySidebar({ width, setWidth, createMenu, spaceActio
   const recentItems = [...items].sort((a,b)=>libraryActivityTime(b).localeCompare(libraryActivityTime(a)));
   const invitations = items.filter(file => file.shareId).sort((a,b)=>b.time.localeCompare(a.time));
   const [activityOpen,setActivityOpen] = useState(false);
-  return <Flex as="aside" position="relative" w={width === undefined ? {md:"248px",xl:"288px"} : width + "px"} flexShrink={0} direction="column" bg="#fafafa" boxShadow="inset -1px 0 #eee" p="8px" minH={0}>
-    <Flex align="center" pl="8px" pr="4px" gap="clamp(2px, calc((100% - 188px) / 3), 8px)" mb={2}><Heading fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
+  return <Flex as="nav" aria-label="资料空间导航" position="relative" w={width === undefined ? {md:"248px",xl:"288px"} : width + "px"} flexShrink={0} direction="column" bg="#fafafa" boxShadow="inset -1px 0 #eee" p="8px" minH={0}>
+    <Flex align="center" pl="8px" pr="4px" gap="clamp(2px, calc((100% - 188px) / 3), 8px)" mb={2}><Heading as="h1" fontSize="17px" fontWeight="600" lineHeight="24px" flex="1"><Button variant="unstyled" height="auto" minW={0} fontSize="inherit" fontWeight="inherit" lineHeight="inherit" onClick={() => onSection("全部")}>资料空间</Button></Heading>
       <Popover isOpen={activityOpen} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} placement="bottom-start" gutter={5} isLazy>
         <PopoverTrigger><IconButton size="sm" w="36px" h="36px" variant="ghost" color="#8f8f8f" borderRadius="8px" aria-label="动态" icon={<Bell size={20} strokeWidth={1.6}/>} /></PopoverTrigger>
         <Portal><PopoverContent aria-label="动态" width="min(384px, calc(100vw - 24px))" height="320px" borderRadius="12px" boxShadow="lg">
