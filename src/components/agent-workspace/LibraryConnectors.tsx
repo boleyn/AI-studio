@@ -1,6 +1,8 @@
-import { Button, Flex, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
+import { Button, Flex, Image, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+
+const providerIcons: Record<string,string> = { "Google Drive":"google-drive.png", Box:"box.svg", Dropbox:"dropbox.svg", SharePoint:"sharepoint.svg" };
 
 const endpoint = "/api/library/connectors/google";
 export default function LibraryConnectors({ close, callbackStatus, siteId }: { siteId?: string; close: () => void; callbackStatus?: string }) {
@@ -29,12 +31,15 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
   }
   const services = siteId ? ["Google Drive"] : ["Google Drive","Box","Dropbox","SharePoint"];
   const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
-  return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} maxW={siteId ? undefined : "464px"} h={siteId ? undefined : "min(640px, calc(100dvh - 32px))"} my={4} borderRadius="16px">
+  return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} borderWidth={siteId ? undefined : 0} maxW={siteId ? undefined : "464px"} h={siteId ? undefined : "min(640px, calc(100dvh - 32px))"} my={4} borderRadius="16px">
     <ModalHeader as="h2" textAlign={siteId ? undefined : "center"} pt={siteId ? undefined : "36px"} pb={siteId ? undefined : 0} fontSize={siteId ? undefined : "24px"} lineHeight={siteId ? undefined : "32px"}>{heading}</ModalHeader><ModalBody overflowY="auto">
       <Text color="gray.600" fontSize={siteId ? "sm" : "md"} maxW={siteId ? undefined : "296px"} mx="auto" textAlign={siteId ? undefined : "center"}>{siteId ? "选择你的 Google 账号，授权读取云端硬盘中的文件。" : "无需离开伯仁，即可搜索你的文件、提问并使用工具"}</Text>
       <Flex as="ul" aria-label={heading} direction="column" listStyleType="none" p={0} mt={siteId ? 4 : 3}>
-        {services.map(name=><Flex as="li" key={name} align="center" justify="space-between" minH={siteId ? undefined : "69px"} borderBottomWidth={siteId ? 0 : "1px"} py={2}>
-          <Text>{name}</Text>{name === "Google Drive" && !status ? (
+        {services.map(name=><Flex as="li" key={name} align="center" justify="space-between" minH={siteId ? undefined : "69px"} gap={3} py={2}>
+          {!siteId && <Flex aria-hidden="true" boxSize="45px" flexShrink={0} align="center" justify="center" bg="#fcfcfc" borderWidth="1px" borderRadius="full">
+            <Image src={"/icons/"+providerIcons[name]} alt="" boxSize="24px" objectFit="contain"/>
+          </Flex>}
+          <Text flex={1}>{name}</Text>{name === "Google Drive" && !status ? (
             statusFailed ? <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
               setStatusFailed(false);
               setAttempt(value=>value+1);
