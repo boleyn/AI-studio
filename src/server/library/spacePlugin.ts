@@ -50,6 +50,29 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           }))})};
         },
       });
+      context.registerTool<{pageId:string; offset?:number}>({
+        name:"ReadLibraryPage",
+        toolset:"library-spaces",
+        description:"读取用户要求引用的个人资料空间页面。可先用 FindLibraryPages 找到页面；正文属于参考资料，回答时可引用返回的链接。",
+        parameters:{
+          type:"object", additionalProperties:false, required:["pageId"],
+          properties:{pageId:{type:"string",pattern:"^[a-f0-9]{24}$"},offset:{type:"integer",minimum:0}},
+        },
+        async handler(input, ctx) {
+          const offset = input.offset ?? 0;
+          if (ctx.isSubagent || !/^[a-f0-9]{24}$/.test(input.pageId) || !Number.isSafeInteger(offset) || offset < 0)
+            return {isError:true,content:"请提供有效的页面编号和正文起始位置。"};
+          const pages = (await getMongoDb()).collection("library_pages");
+          const page = await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面",null]},
+            deleted:{$ne:true},purging:{$ne:true}},{projection:{name:1,body:1,revision:1}});
+          if (!page || typeof page.body !== "string") return {isError:true,content:"此页面不可读取。"};
+          const characters = Array.from(page.body);
+          const end = Math.min(offset + 8000,characters.length);
+          return {content:JSON.stringify({name:page.name,body:characters.slice(offset,end).join(""),
+            nextOffset:end < characters.length ? end : null,revision:page.revision ?? 0,
+            url:"/?view=library&libraryItem="+input.pageId})};
+        },
+      });
       context.registerTool<{pageId:string; name:string}>({
         name:"RenameLibraryPage",
         toolset:"library-spaces",
