@@ -246,6 +246,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }, [viewedId]);
   const editor = opened?.kind === "页面" || opened?.editablePageId ? opened : undefined;
   const parentPage = editor && files?.find(item=>item.id===editor.folderId && item.kind==="页面" && !item.deleted);
+  const pageContainer = editor && files?.find(item=>item.id === editor.folderId && isContainer(item) && !item.deleted);
+  function openPageLocation() {
+    if (parentPage) return openItem(parentPage);
+    if (pageContainer) return openItem(pageContainer);
+    if (editor?.shareId) return navigateList("页面","与你共享",undefined,undefined,true);
+    navigateList("个人","你的项目",undefined,undefined,true);
+  }
   const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !router.query.librarySiteSettings && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
@@ -808,7 +815,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         } catch (error) { toast({status:"error",title:"无法恢复版本",description:error instanceof Error ? error.message : undefined}); }
       }}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={()=>usePicked("download",[detail])} downloading={batchBusy} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} onLocation={!parentPage && !folder && !editor.shareId ? ()=>navigateList("个人","你的项目",undefined,undefined,true) : undefined} locationLabel={parentPage?.name || folder?.name || (editor.shareId ? "与你共享" : "Personal")} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} onLocation={openPageLocation} locationLabel={parentPage?.name || pageContainer?.name || (editor.shareId ? "与你共享" : "Personal")} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
       onCreateSubpage={editor.shareId || creating ? undefined : ()=>createPage("无标题页","","页面",undefined,editor.id)}
       subpages={!editor.shareId && <Flex as="nav" aria-label="子页面" direction="column" align="start" gap={1} mt={4}>
         {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=>
