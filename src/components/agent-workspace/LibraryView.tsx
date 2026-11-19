@@ -415,7 +415,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     finally {setBatchBusy(false);}
   }
   function startSelectionChat(selection: LibraryFile[]) {
-    return usePicked("chat", expandLibrarySelection(selection, files || []));
+    const attachments = expandLibrarySelection(selection, files || []);
+    if (!attachments.length) {
+      toast({status:"info", title:"所选位置中没有可添加的文件或页面。", isClosable:true});
+      return;
+    }
+    return usePicked("chat", attachments);
   }
   const key = (file: LibraryFile) => file.id;
   const download = (file: LibraryFile) => isArtifactImage(libraryTypeName(file)) ?
