@@ -749,17 +749,19 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const createMenu = (rail:boolean) => {
     const folderMenu = Boolean(folder && !rail);
     const personalTrigger = personalSection && !rail;
+    const homeTrigger = allHome && !rail && !personalTrigger;
     const pageItem = <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>;
     const sheetItem = <MenuItem icon={<Sheet size={20} aria-hidden/>} isDisabled>电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>;
     const slidesItem = <MenuItem icon={<Presentation size={20} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>;
-    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : !rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
+    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={homeTrigger ? {base:0,md:"16px"} : rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : homeTrigger ? {base:"36px",md:"82px"} : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
         <Flex as="span" width="max-content" mx={rail ? 0 : "auto"} align="center" gap={rail ? "6px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
         {rail && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
         </svg>}
         {personalTrigger && <Plus size={16} aria-hidden/>}
-        {folderMenu ? "新建" : "创建"}
-        {!rail && !personalTrigger && <ChevronDown size={16} aria-hidden/>}
+        {homeTrigger && <Box as="span" display={{base:"inline-flex",md:"none"}}><Plus size={20} aria-hidden/></Box>}
+        <Box as="span" display={homeTrigger ? {base:"none",md:"inline"} : undefined}>{folderMenu ? "新建" : "创建"}</Box>
+        {!rail && !personalTrigger && <Box as="span" display={homeTrigger ? {base:"none",md:"inline-flex"} : "inline-flex"}><ChevronDown size={16} aria-hidden/></Box>}
         </Flex>
       </MenuButton>
             <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{personalTrigger ? <>{pageItem}{sheetItem}{slidesItem}</> : <>{rail && <Text h="28px" px="8px" fontSize="14px" color="#707070">创建新内容</Text>}{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
