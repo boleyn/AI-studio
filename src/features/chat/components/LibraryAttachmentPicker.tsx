@@ -34,6 +34,10 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const [selected,setSelected] = useState<string[]>([]);
   const [error,setError] = useState("");
   const [fileErrors,setFileErrors] = useState(new Map<string,string>());
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (fileErrors.size) listRef.current?.scrollTo({top:0});
+  }, [fileErrors]);
   const [busy,setBusy] = useState(false);
   const [attempt,setAttempt] = useState(0);
   useEffect(() => {
@@ -55,6 +59,9 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   ].filter(Boolean).join(" · ");
   const searchTerm = query.trim().normalize("NFC").toLowerCase();
   const visible = attachable?.filter(item => [item.name,item.path,item.project,locationLabel(item)].some(value => value.normalize("NFC").toLowerCase().includes(searchTerm)));
+  if (fileErrors.size) {
+    visible?.sort((left, right) => Number(fileErrors.has(right.id)) - Number(fileErrors.has(left.id)));
+  }
   async function add() {
     if (busy || !items) return;
     setBusy(true);
@@ -69,7 +76,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         setQuery("");
         const added = picked.length - errors.size;
         setError(added
-          ? `已添加 ${added} 项。剩余 ${errors.size} 项仍已勾选，可查看原因后重试。`
+          ? `已添加 ${added} 项。${errors.size} 项未能添加，已列在最前面。`
           : `${errors.size} 项未能添加，请查看文件旁的提示后重试。`);
       } else {
         onClose();
@@ -103,7 +110,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/><Text flex="1" minW={0} overflowWrap="anywhere" fontSize="sm">{error}</Text>
         {!items && <Button size="xs" variant="outline" borderRadius="full" onClick={()=>setAttempt(value=>value+1)}>重试</Button>}
       </Flex>}
-    <ModalBody px={3} py={0} maxH="min(48dvh, 360px)">
+    <ModalBody ref={listRef} px={3} py={0} maxH="min(48dvh, 360px)">
       {!items && !error && <Text role="status" p={3}>正在加载…</Text>}
       {visible?.length === 0 && <Box role="status" px={4} py={8} textAlign="center">
         <Text fontSize="sm" fontWeight="medium">{attachable?.length ? "没有找到匹配的文件或页面" : "暂无可添加的文件或页面"}</Text>
