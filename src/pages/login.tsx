@@ -40,6 +40,7 @@ const Login = () => {
   );
 
   useEffect(() => {
+    if (!router.isReady) return;
     const token = getAuthToken();
     if (!token) return;
 
@@ -64,7 +65,7 @@ const Login = () => {
     return () => {
       cancelled = true;
     };
-  }, [lastRoute, redirectWithReload]);
+  }, [router.isReady, lastRoute, redirectWithReload]);
 
   const loginSuccess = useCallback(
     (res: AuthSuccessPayload) => {
