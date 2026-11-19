@@ -11,7 +11,7 @@ function TemplatePreview({body}: {body: string}) {
 
 export const templates = [
   { name:"页面使用指南", pageTitle:"页面入门指南", body:"在页面中，你可以写作、创作，并与团队协作。把这个页面当作你的练习场，学习基础操作。\n\n## 开始使用\n\n- [ ] 添加标题、图片、检查清单或表格。\n- [ ] 选中一段文字，在聊天中引用。", icon:GraduationCap, color:"#008cff" },
-  { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料剂量\n\n## 本周\n\n- [ ] 回顾进展", icon:ClipboardList, color:"#14b95d" },
+  { name:"待办事项清单", body:"## 今天\n\n### 首要任务\n\n- [ ] 进行推进系统测试\n- [ ] 验证航线计算结果\n- [ ] 检查燃料箱\n\n### 如果时间允许\n\n- [ ] 检查辐射防护罩\n- [ ] 测试通信系统\n- [ ] 撰写状态报告", icon:ClipboardList, color:"#14b95d" },
   { name:"项目跟踪表", body:"## 🔴 需要立即处理\n\n- 发布前通信系统测试\n\n## ⛰️ 里程碑\n\n下一阶段", icon:ChartNoAxesColumn, color:"#168cff" },
   { name:"Trip planner", body:"Travelers: Maya and Sam\nPace: One main activity a day\n\n🧭 The plan\n\nPlan two nights near a mountain observatory.", icon:Plane, color:"#168cff" },
   { name:"Weekly planner", body:"🎯 Priorities\n\n- [ ] Confirm plans\n- [ ] Review progress\n\n📅 Schedule", icon:Calendar, color:"#d26e69" },
