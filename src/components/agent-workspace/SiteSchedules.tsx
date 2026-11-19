@@ -8,7 +8,8 @@ const labels = { active: "已启用", running: "执行中", paused: "已暂停",
 
 export default function SiteSchedules({ siteId, siteName }: { siteId: string; siteName: string }) {
   const [tasks, setTasks] = useState<Schedule[]>();
-  const [context, setContext] = useState<{token:string; models:{id:string; label:string}[]; chats:{id:string; title:string}[]}>();
+  const [context, setContext] = useState<{token:string; models:{id:string; label:string; reasoning?:boolean}[]; chats:{id:string; title:string}[]}>();
+  const [model, setModel] = useState("");
   const [draft, setDraft] = useState<string>();
   const [endsOnDate, setEndsOnDate] = useState(false);
   const [repeating, setRepeating] = useState(true);
@@ -24,6 +25,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
     setZone(now.zoneName || "UTC");
     const morning = now.startOf("day").set({hour:9});
     setFirstTime((morning > now ? morning : morning.plus({days:1})).toFormat("yyyy-MM-dd'T'HH:mm"));
+    setModel("");
     setDraft(title);
   }
   const [error, setError] = useState("");
@@ -73,6 +75,7 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           body:JSON.stringify({action:"create", token:context.token, chatId:form.get("chatId"), spec:{
             title:form.get("title"), prompt:form.get("prompt"), repeat:repeating ? form.get("repeat") : "once",
             ...(form.get("model") ? {model:form.get("model")} : {}),
+            ...(form.has("effort") ? {reasoningEffort:form.get("effort")} : {}),
             newChatEachRun:form.has("newChatEachRun"),
             ...(repeating && endsOnDate ? {endDate:form.get("endDate")} : {}),
             firstAt:start.toISO(), timezone:zone,
@@ -103,9 +106,12 @@ export default function SiteSchedules({ siteId, siteName }: { siteId: string; si
           </Select></label>
           <Flex align="center" justify="space-between" mt={2}><label htmlFor="site-task-new-chat">每次运行时都开启新聊天</label>
             <Switch id="site-task-new-chat" name="newChatEachRun"/></Flex>
-          <label>模型<Select name="model" defaultValue="">
+          <label>模型<Select name="model" value={model} onChange={event=>setModel(event.target.value)}>
             <option value="">默认模型</option>
             {context.models.map(model=><option key={model.id} value={model.id}>{model.label}</option>)}
+          </Select></label>
+          <label>强度<Select key={model} aria-label="推理强度" name="effort" defaultValue="medium" isDisabled={!context.models.find(option=>option.id===model)?.reasoning}>
+            <option value="low">低</option><option value="medium">中</option><option value="high">高</option>
           </Select></label>
         </details>
         {saveError && <Text role="alert">{saveError}</Text>}

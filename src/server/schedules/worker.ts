@@ -56,6 +56,7 @@ async function reply(task: StoredSchedule) {
         ...history,
         { role: "user", content: task.prompt },
       ],
+      ...(task.reasoningEffort && catalog.models.find(option => option.id === model)?.reasoning ? { reasoning_effort: task.reasoningEffort } : {}),
       max_tokens: 2000,
     },
     AbortSignal.timeout(90_000),

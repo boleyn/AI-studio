@@ -65,7 +65,7 @@ export default async function handler(
       .toArray();
     if (filter.token) {
       const [chats, catalog] = await Promise.all([listConversations(filter.token), getChatModelCatalog()]);
-      const models = catalog.models.map(({id,label}) => ({id,label}));
+      const models = catalog.models.map(({id,label,reasoning}) => ({id,label,reasoning}));
       return res.status(200).json({ tasks, models, token: filter.token, chats: chats.map(({ id, title }) => ({ id, title })) });
     }
     return res.status(200).json({ tasks });

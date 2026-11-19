@@ -10,6 +10,7 @@ export const specSchema = z
   .object({
     title: z.string().trim().min(1).max(100),
     prompt: z.string().trim().min(1).max(4000),
+    reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
     model: z.string().trim().min(1).max(256).optional(),
     newChatEachRun: z.boolean().optional(),
     endDate: z.string().date().optional(),

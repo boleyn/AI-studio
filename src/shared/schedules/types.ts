@@ -5,6 +5,7 @@ export type ScheduleSpec = {
   endDate?: string;
   newChatEachRun?: boolean;
   model?: string;
+  reasoningEffort?: "low" | "medium" | "high";
   timezone: string;
   repeat: "once" | "daily" | "weekly";
 };
