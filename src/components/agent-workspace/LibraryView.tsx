@@ -232,6 +232,15 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   useEffect(() => {
     if (typeof lookupName === "string") setQuery(lookupName);
   }, [lookupName,setQuery]);
+  function clearLibrarySearch() {
+    setQuery("");
+    if (lookupName !== undefined) {
+      const nextQuery = {...router.query};
+      delete nextQuery.librarySearch;
+      void router.replace({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
+    }
+    search.current?.focus();
+  }
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
   const section = [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
@@ -799,7 +808,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               value={query} onChange={event => setQuery(event.target.value)}/>
             {query && <InputRightElement w={allHome ? "40px" : undefined}><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
               boxSize={allHome ? "16px" : undefined} minW={allHome ? "16px" : undefined}
-              icon={<X size={allHome ? 16 : 14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
+              icon={<X size={allHome ? 16 : 14}/>} onClick={clearLibrarySearch}/></InputRightElement>}
           </InputGroup>;
   return <Flex flex="1" minW={0} minH={0}>
     <SkipNavLink id="library-content" zIndex="skipLink">跳转到内容</SkipNavLink>
