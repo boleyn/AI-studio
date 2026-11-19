@@ -177,6 +177,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     </Flex>}
     {showDrive ? <ModalBody><LibraryDrive onBusyChange={setBusy} onAttach={async files=>{
       const errors = await onAdd(files);
+      if (!(0 in errors)) throw new Error("未收到上传结果，请重试。");
       if (errors[0]) throw new Error(errors[0]);
       if (selected.length) setShowDrive(false);
       else onClose();
