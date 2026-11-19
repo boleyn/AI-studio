@@ -93,17 +93,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       for (const path of meta.workspaceArtifactPaths) add("生成", path, undefined, meta.workspaceArtifactVersion, sizes.get(path));
     }
-    const nestedContent = msg.message?.content;
-    const blocks = Array.isArray(nestedContent) && nestedContent.some(block => block?.type === "attachment")
-      ? nestedContent
-      : msg.content;
+    const blocks = [msg.content, msg.message?.content].flatMap(content =>
+      Array.isArray(content) ? content.filter(block => block?.type === "attachment") : []
+    );
     const attachments = [
       ...(Array.isArray(msg.artifact?.files) ? msg.artifact.files.map((file: {storagePath?:string;name?:string;size?:number;libraryItemId?:string} | null) => ({
         path:file?.storagePath, name:file?.name, size:file?.size, origin:file?.libraryItemId,
       })) : []),
-      ...(Array.isArray(blocks) ? blocks.filter(block => block?.type === "attachment").map(block => ({
+      ...blocks.map(block => ({
         path:block.source_storage_path || block.storage_path, name:block.name, size:undefined, origin:block.library_item_id,
-      })) : []),
+      })),
     ];
     const referencedPaths = new Set(attachments.filter(file => file.origin && typeof file.path === "string")
       .map(file => file.path.replace(/^\/+/, "")));
