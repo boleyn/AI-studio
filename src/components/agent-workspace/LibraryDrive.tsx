@@ -1,6 +1,6 @@
 import { Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { Folder, MoreHorizontal } from "lucide-react";
+import { CircleAlert, Folder, MoreHorizontal } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import { formatRelativeTime } from "./relativeTime";
@@ -22,7 +22,7 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
   const [result,setResult] = useState<{files:DriveFile[];nextPageToken?:string}>();
   const [error,setError] = useState("");
   const [attaching,setAttaching] = useState("");
-  const [attachmentError,setAttachmentError] = useState("");
+  const [attachmentError,setAttachmentError] = useState<{file:DriveFile;message:string}>();
   const [rename,setRename] = useState<DriveFile>();
   const [name,setName] = useState("");
   const [renaming,setRenaming] = useState(false);
@@ -49,14 +49,17 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
   }
   async function attach(file: DriveFile) {
     setAttaching(file.id);
-    setAttachmentError("");
+    setAttachmentError(undefined);
     try {
       const response = await fetch("/api/library/connectors/drive-files?" + new URLSearchParams({file:file.id}),{headers:withAuthHeaders()});
-      if (!response.ok) throw new Error((await response.json()).error || "读取失败");
+      if (!response.ok) {
+        const detail = await response.json().catch(()=>null);
+        throw new Error(detail?.error || "暂时无法读取文件，请重试。");
+      }
       const encoded = response.headers.get("Content-Disposition")?.split("filename*=UTF-8''")[1];
       const name = encoded ? decodeURIComponent(encoded) : file.name;
       await onAttach([new File([await response.blob()],name,{type:response.headers.get("X-Attachment-Type") || file.mimeType})]);
-    } catch (reason) {setAttachmentError(reason instanceof Error ? reason.message : "添加失败");}
+    } catch (reason) {setAttachmentError({file,message:reason instanceof TypeError ? "请检查网络连接后重试。" : reason instanceof Error ? reason.message : "添加失败"});}
     finally {setAttaching("");}
   }
   const [attempt,setAttempt] = useState(0);
@@ -112,6 +115,11 @@ export default function LibraryDrive({connect,onAttach}:{connect?:()=>void;onAtt
         <ModalFooter gap={2}><Button onClick={()=>setRename(undefined)} isDisabled={renaming}>取消</Button>
           <Button type="submit" isDisabled={!name.trim() || name.trim()===rename.name} isLoading={renaming}>{authorize ? "前往授权" : "重命名"}</Button></ModalFooter>
       </form></ModalContent></Modal>}
-    {attachmentError && <Text role="alert">{attachmentError}</Text>}
+    {attachmentError && <Flex role="alert" align="center" gap={3} mt={3} p={3} bg="#faf5f2" color="#694332" borderRadius="10px">
+      <CircleAlert size={16} aria-hidden style={{flexShrink:0}}/>
+      <Box minW={0} flex={1}><Text fontSize="sm" fontWeight="medium" overflowWrap="anywhere">未能添加“{attachmentError.file.name}”</Text>
+        <Text fontSize="sm" overflowWrap="anywhere">{attachmentError.message}</Text></Box>
+      <Button size="xs" variant="outline" borderRadius="full" onClick={()=>attach(attachmentError.file)}>重试</Button>
+    </Flex>}
   </Box>;
 }
