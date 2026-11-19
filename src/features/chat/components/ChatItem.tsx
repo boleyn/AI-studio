@@ -277,10 +277,10 @@ const ChatItem = ({
               {(preview?.url || preview?.libraryItemId) && <Button size="sm" variant="outline" borderRadius="full" onClick={()=>preview && setPreview({...preview})}>重新加载</Button>}
             </Flex> :
               previewText === undefined ? <Spinner aria-label="正在加载附件" size="sm"/> :
-              <>{showLibrarySource && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
-                <Text>正在显示资料空间中的版本</Text>
-                {preview?.libraryItemId && <Link href={"/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
-                  isExternal textDecoration="underline">在资料空间打开</Link>}
+              <>{preview?.libraryItemId && <Flex mb={3} gap={2} align="baseline" wrap="wrap" fontSize="xs" color="gray.600">
+                {showLibrarySource && <Text>正在显示资料空间中的版本</Text>}
+                <Link href={"/?"+new URLSearchParams({view:"library",libraryItem:preview.libraryItemId})}
+                  isExternal textDecoration="underline">在资料空间打开</Link>
               </Flex>}<LibraryMarkdown>{previewText}</LibraryMarkdown></>}
           </ModalBody></ModalContent></Modal>
       <Box
