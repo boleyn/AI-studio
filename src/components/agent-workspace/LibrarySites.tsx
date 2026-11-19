@@ -1,5 +1,6 @@
 import { AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, Heading, IconButton, Input, Link, Menu, MenuButton, MenuItem, MenuList, Portal, Text, useToast } from "@chakra-ui/react";
 import { BarChart3, Trash2, Copy, ExternalLink, Link2, LockKeyhole, MoreHorizontal, PanelsTopLeft, Pencil, Settings, Share2 } from "lucide-react";
+import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
@@ -13,11 +14,19 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   const toast = useToast();
   const [pendingDelete,setPendingDelete] = useState<Site>();
   const cancelDelete = useRef<HTMLButtonElement>(null);
-  const [settings,setSettings] = useState<Site>();
+  const router = useRouter();
   const [title,setTitle] = useState("");
   const [saving,setSaving] = useState(false);
   const [sharing, setSharing] = useState<Site>();
   const [sites, setSites] = useState<Site[]>();
+  const settings = sites?.find(site=>!site.shared && site.id===router.query.librarySiteSettings);
+  useEffect(()=>setTitle(settings?.name || ""),[settings?.id,settings?.name]);
+  function navigateSettings(id?:string) {
+    const query = {...router.query};
+    if (id) query.librarySiteSettings = id;
+    else delete query.librarySiteSettings;
+    void router.push({pathname:router.pathname,query},undefined,{shallow:true,scroll:false});
+  }
   const [loadError, setLoadError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -75,7 +84,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       setPendingDelete(undefined);
       setSites(rows=>rows?.filter(row=>row.id!==site.id));
       onSitesChanged();
-      setSettings(undefined);
+      navigateSettings();
       toast({status:"success",title:"站点已删除"});
     } catch { toast({status:"error",title:"站点删除失败，请重试"}); }
     finally {setSaving(false);}
@@ -94,7 +103,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <MenuItem as="a" href={siteUrl(site)} target="_blank" rel="noopener noreferrer" icon={<ExternalLink size={16}/>}>在浏览器中打开</MenuItem>
       {!site.shared && site.editUrl && <MenuItem as="a" href={site.editUrl} icon={<Pencil size={16}/>}>编辑</MenuItem>}
       {!site.shared && <MenuItem as="a" icon={<BarChart3 size={16}/>} href={"/sites/analytics/"+encodeURIComponent(site.id)}>分析</MenuItem>}
-      {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>{setTitle(site.name);setSettings(site);}}>设置</MenuItem>}
+      {!site.shared && <MenuItem icon={<Settings size={16}/>} onClick={()=>navigateSettings(site.id)}>设置</MenuItem>}
       {!site.shared && <MenuItem icon={<Trash2 size={16}/>} color="red.600" isDisabled={saving} onClick={()=>setPendingDelete(site)}>删除站点</MenuItem>}
     </MenuList></Portal>
   </Menu>;
@@ -113,7 +122,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
   </>;
   if (settings) return <Box maxW="720px">
     <Flex align="center" gap={2}>
-      <Button variant="ghost" size="sm" mr="auto" isDisabled={saving} onClick={()=>setSettings(undefined)}>返回站点</Button>
+      <Button variant="ghost" size="sm" mr="auto" isDisabled={saving} onClick={()=>navigateSettings()}>返回站点</Button>
       <Button as="a" size="sm" href={siteUrl(settings)} target="_blank" rel="noopener noreferrer" leftIcon={<ExternalLink size={15}/>}>访问</Button>
       {settings.editUrl && <Button as="a" size="sm" href={settings.editUrl} leftIcon={<Pencil size={15}/>}>编辑</Button>}
     </Flex>
@@ -133,7 +142,6 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
         if (!response.ok) throw new Error();
         setSites(rows=>rows?.map(row=>row.id===settings.id ? {...row,name} : row));
         onSitesChanged();
-        setSettings({...settings,name});
         setTitle(name);
         toast({status:"success",title:"已保存站点名称"});
       } catch { toast({status:"error",title:"站点名称保存失败，请重试"}); }

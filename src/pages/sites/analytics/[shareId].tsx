@@ -83,6 +83,10 @@ function TrafficTrend({daily}: Pick<Props,"daily">) {
 export default function SiteAnalytics({name,shareId,days,daily,visitors,views,requests,pages}:Props) {
   return <Box as="main" maxW="960px" mx="auto" p={6}>
     <Flex justify="space-between"><Link href="/?view=library&librarySection=站点">返回站点</Link><Link href={"/share/preview/"+shareId}>访问</Link></Flex>
+    <Flex as="nav" aria-label="站点详情" gap={4} mt={4}>
+      <Link href={"/?"+new URLSearchParams({view:"library",librarySection:"站点",librarySiteSettings:shareId})}>设置</Link>
+      <Text aria-current="page" fontWeight="semibold">分析</Text>
+    </Flex>
     <Heading as="h1" size="lg" my={6}>{name}</Heading>
     <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
       <Heading as="h2" size="md">分析</Heading>

@@ -216,11 +216,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const parentPage = editor && files?.find(item=>item.id===editor.folderId && item.kind==="页面" && !item.deleted);
   const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
-    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
+    if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && !router.query.librarySiteSettings && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
     void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
   }
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     const query = {...router.query};
+    delete query.librarySiteSettings;
     if (clearTypes) {delete query.libraryType;delete query.librarySource;}
     if (folderId) query.libraryFolder = folderId;
     else delete query.libraryFolder;
