@@ -2,7 +2,7 @@ import { withAuthHeaders } from "@features/auth/client/authClient";
 import { workbookTemplates } from "@/types/libraryWorkbookTemplates";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Input, SimpleGrid, Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
-import { FileText, Presentation, Upload, BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
+import { FileText, Presentation, Upload, BookOpen, ChartNoAxesColumn, GraduationCap, Calendar, ClipboardList, Plane, Plus, MoreHorizontal, Search, Target, Wallet, X } from "lucide-react";
 
 import LibraryMarkdown from "./LibraryMarkdown";
 
@@ -206,14 +206,14 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
             <Box key={name} position="relative" role="group">
             <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
               textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
-              <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+              <Box bg="#f5f5f5" p={3} pb={0} borderRadius="24px" aspectRatio="7/5" overflow="hidden">
                 <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
                   <Box mt={2} fontSize="8px" aria-hidden="true">
                     <Text fontSize="12px" fontWeight="600" mb="4px">{pageTitle ?? name}</Text>
                     <TemplatePreview body={body} />
                   </Box></Box>
               </Box>
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
+              <Text mt="12px" pb="8px" px="8px" fontSize="14px" lineHeight="20px" textAlign="center">{name}</Text>
             </Button>
             <TemplateActions label={`Actions for ${name}`} onUse={() => onPick(pageTitle ?? name, body)} />
             </Box>
@@ -293,7 +293,7 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onEdi
         </Flex> : <IconButton ref={searchTrigger} size="sm" variant="ghost" aria-label="搜索" icon={<Search size={18} />}
           onClick={() => setSearching(true)} />}
         <Menu>
-          <MenuButton as={Button} size="sm" borderRadius="full">Template</MenuButton>
+          <MenuButton as={Button} size="sm" h="36px" px="16px" leftIcon={<Plus size={16} aria-hidden/>} borderRadius="full">Template</MenuButton>
           <MenuList aria-label="Template" minW="180px" p="10px" borderWidth={0} borderRadius="16px"
             sx={{"& [role=menuitem]": {height:"36px", padding:"6px 10px", borderRadius:"12px", fontSize:"14px"}}}>
             <MenuItem icon={<FileText size={16} aria-hidden />} onClick={() => onPick("无标题页", "")}>Page</MenuItem>
