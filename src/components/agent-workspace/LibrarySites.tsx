@@ -143,7 +143,7 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged }: { tab
       <Link href={"/sites/analytics/"+encodeURIComponent(settings.id)}>分析</Link>
       <Button variant="link" aria-current={scheduled ? "page" : undefined} onClick={()=>navigateSettings(settings.id,true)}>已安排</Button>
     </Flex>
-    {scheduled ? <SiteSchedules key={settings.id} siteId={settings.id}/> : <>
+    {scheduled ? <SiteSchedules key={settings.id} siteId={settings.id} siteName={settings.name}/> : <>
     <Heading as="h3" size="sm" mt={6} mb={3}>常规</Heading>
     <Box as="form" onSubmit={async event=>{
       event.preventDefault();
