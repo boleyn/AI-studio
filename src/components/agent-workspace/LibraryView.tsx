@@ -10,7 +10,7 @@ import { referenceTypes, type ImageReference, type LibraryFile } from "@/types/l
 import { CircleAlert, ArrowUp, Plus, Search, Pin, PinOff, Copy, FolderInput, Pencil, Share2, Download, MessageSquare, RotateCcw, Trash2, X, Bookmark, ChevronDown, ChevronRight, Folder, LayoutGrid, List, ListFilter, MoreHorizontal, PanelLeftOpen, FileText, Presentation, Sheet, PanelsTopLeft, Image as ImageIcon, Layers, Upload, Plug } from "lucide-react";
 import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 
-import { libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
+import { LibraryReadError, libraryAttachmentUrl, loadLibraryFiles, readLibraryAttachment } from "@features/chat/services/libraryAttachment";
 import ArtifactShareDialog from "../workspace/ArtifactShareDialog";
 import LibraryFileViewer from "./LibraryFileViewer";
 import { formatRelativeTime } from "./relativeTime";
@@ -476,7 +476,12 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         : pageUrl(file);
       await navigator.clipboard.writeText(value);
       toast({status:"success",title:markdown ? "已复制 Markdown" : "已复制链接"});
-    } catch {toast({status:"error",title:"复制失败，请重试"});}
+    } catch (error) {
+      const description = error instanceof LibraryReadError
+        ? (error.status === 403 ? "当前账号没有读取此页面的权限。" : error.status === 404 ? "页面已不存在。" : "暂时无法读取页面，请稍后重试。")
+        : error instanceof DOMException && error.name === "NotAllowedError" ? "请允许浏览器写入剪贴板后重试。" : "请稍后重试。";
+      toast({status:"error",title:markdown ? "未能复制 Markdown" : "未能复制链接",description});
+    }
   }
   async function copySpace(space:LibraryFile,field:"链接"|"ID") {
     try {
