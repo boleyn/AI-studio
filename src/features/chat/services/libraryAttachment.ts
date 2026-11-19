@@ -78,13 +78,14 @@ export async function loadSharedSpacePages(space: LibraryFile, signal?: AbortSig
   if (!response.ok) throw new Error("共享空间暂时无法加载，请稍后重试。");
   const message = "共享空间的页面列表未能加载，请重试。";
   type Page = {id:string;name:string;path?:string;time?:string;openedAt?:string};
-  const data = await readLibraryJson<{pages?: Page[]} | null>(response, message);
+  const data = await readLibraryJson<{name?: string; pages?: Page[]} | null>(response, message);
   if (!Array.isArray(data?.pages) || data.pages.some(page => !page || typeof page.id !== "string" || typeof page.name !== "string")) {
     throw new Error(message);
   }
+  const spaceName = typeof data.name === "string" && data.name.trim() ? data.name : space.name;
   return data.pages.map(page => ({
     ...space, id:`space-${space.shareId}-${page.id}`, name:page.name, kind:"上传", time:page.time || space.time, openedAt:page.openedAt,
-    path:page.path || page.name, sharedPage:true, project:space.name,
+    path:page.path || page.name, sharedPage:true, project:spaceName,
   }));
 }
 
