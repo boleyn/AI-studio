@@ -17,7 +17,7 @@ const formattingCommands = [
 
 export type PageDraft = {name:string;body:string;revision:number};
 
-export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
+export default function LibraryPageEditor({page,shareId,backLabel="返回资料空间",locationLabel,onLocation,onBack,onSaved,onChat,onShare,onCreateSubpage,subpages,drafts}:{page:Pick<LibraryFile,"id">;shareId?:string;backLabel?:string;locationLabel?:string;onLocation?:()=>void;onBack:()=>void;onShare?:()=>void;onCreateSubpage?:()=>void;subpages?:ReactNode;drafts?:Map<string,PageDraft>;onChat?:(file:File,quote?:string)=>Promise<void>;onSaved:(name:string,time:string)=>void}) {
   const bodyInput = useRef<HTMLTextAreaElement>(null);
   const [mobileReader] = useMediaQuery(mobilePageReaderQuery);
   const [content,setContent] = useState<{name:string;body:string}>();
@@ -126,7 +126,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
   }
   const locationNav = locationLabel && <Flex as="nav" aria-label="面包屑导航" align="center" color="#5d5d5d" fontSize="14px" gap="4px" mt={2}>
     <Text as="span">In</Text>
-    <Button variant="link" size="sm" color="inherit" fontWeight="normal" minW={0} onClick={onBack}>
+    <Button variant="link" size="sm" color="inherit" fontWeight="normal" minW={0} onClick={onLocation ?? onBack}>
       <Text as="span" isTruncated>{locationLabel}</Text>
     </Button>
   </Flex>;

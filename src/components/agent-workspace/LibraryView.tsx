@@ -222,13 +222,14 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     if (typeof lookupName === "string") setQuery(lookupName);
   }, [lookupName]);
   const sections = ["全部", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
-  const section = sections.find(value => value === router.query.librarySection) || "全部";
+  const section = [...sections, "个人"].find(value => value === router.query.librarySection) || "全部";
   const imageSection = section === "图像";
   const sitesSection = section === "站点";
   const siteDetails = sitesSection && Boolean(router.query.librarySiteSettings);
-  const pagesSection = section === "页面";
+  const personalSection = section === "个人";
+  const pagesSection = section === "页面" || personalSection;
   const slidesSection = section === "幻灯片";
-  const tabs = slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
+  const tabs = personalSection ? ["你的项目"] : slidesSection ? ["全部","已置顶","我的","与你共享"] : pagesSection ? ["全部","你的项目","与你共享"] : sitesSection ? ["你的网站", "与你共享", "全部"] : imageSection ? ["你的作品", "已上传"] : ["推荐", "收藏", "你的条目", "与你共享"];
   const tab = tabs.find(value => value === router.query.libraryTab) || tabs[0];
   const folder = files?.find(file => file.id === router.query.libraryFolder && isContainer(file) && !file.deleted);
   const allHome = section === "全部" && !folder;
@@ -412,8 +413,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   const activeParentPages = new Set(files?.filter(item => item.kind === "页面" && !item.deleted).map(item => item.id));
   const visible = files?.filter(file => Boolean(file.deleted) === (section === "回收站") &&
     (!folder || file.folderId === folder.id) &&
+    (!personalSection || (!file.folderId && !file.shareId)) &&
     (!pagesSection || folder || searchTerm || !file.folderId || !activeParentPages.has(file.folderId)) &&
-    (section === "全部" || section === "回收站" || fileType(file) === (section === "幻灯片" ? "演示文稿" : section)) &&
+    (section === "全部" || section === "回收站" || fileType(file) === (personalSection ? "页面" : section === "幻灯片" ? "演示文稿" : section)) &&
     (!imageSection || (!file.shareId && sourceFilter(file) === (tab === "已上传" ? "已上传" : "生成的文件"))) &&
     (!sources.length || sources.includes(sourceFilter(file))) &&
     (tab !== "已置顶" || file.pinned) && (tab !== "收藏" || file.favorite) && (tab === "与你共享" ? Boolean(file.shareId) : !["你的条目","你的项目","我的","你的网站"].includes(tab) || !file.shareId) && (!types.length || types.includes(fileType(file))) &&
@@ -801,7 +803,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         } catch (error) { toast({status:"error",title:"无法恢复版本",description:error instanceof Error ? error.message : undefined}); }
       }}
       fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth} fileChatOpen={fileChatOpen} resumeFileChat={resumeFileChat} askAboutFile={question=>usePicked("chat",[detail],question,detail.id)} share={detail.shareId ? undefined : ()=>setSharing(detail)} download={()=>usePicked("download",[detail])} downloading={batchBusy} openLibrary={()=>navigateList("全部","推荐",undefined,undefined,true)} close={()=>navigateList(section, tab, folder?.id)} openSource={()=>onOpen(detail.token,detail.chatId)}
-      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} locationLabel={parentPage?.name || folder?.name || (editor.shareId ? "与你共享" : "Personal")} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
+      toggleFavorite={()=>update(detail,{favorite:!files?.find(item=>item.id===detail.id)?.favorite})}/> : editor ? <LibraryPageEditor drafts={pageDrafts.current} key={editor.id} page={{id:editor.editablePageId || editor.id}} shareId={editor.shareId} onShare={editor.shareId ? undefined : () => setSharing(editor)} onLocation={!parentPage && !folder && !editor.shareId ? ()=>navigateList("个人","你的项目",undefined,undefined,true) : undefined} locationLabel={parentPage?.name || folder?.name || (editor.shareId ? "与你共享" : "Personal")} backLabel={parentPage ? "返回「"+parentPage.name+"」" : folder ? "返回「"+folder.name+"」" : "返回资料空间"} onChat={(file,quote)=>onChat([file],quote,editor.id)} onBack={() => parentPage ? openItem(parentPage) : navigateList(section, tab, folder?.id)}
       onCreateSubpage={editor.shareId || creating ? undefined : ()=>createPage("无标题页","","页面",undefined,editor.id)}
       subpages={!editor.shareId && <Flex as="nav" aria-label="子页面" direction="column" align="start" gap={1} mt={4}>
         {files?.filter(item=>item.folderId===editor.id && item.kind==="页面" && !item.deleted).map(item=>
@@ -852,8 +854,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
               {item.id===folder.id ? <Text as="span" isTruncated title={item.name}>{item.name}</Text> : <Button variant="link" minW={0} fontSize="inherit" title={item.name} onClick={()=>navigateList("全部","推荐",item.id,undefined,true)}><Text as="span" isTruncated>{item.name}</Text></Button>}</Flex>)}</> : section}</Heading></Flex>
         {section !== "回收站" && <Flex align="center" gap={3}><InputGroup size="sm" w={allHome ? {base:"min(46vw, 241px)",md:"241px"} : undefined} maxW={allHome ? "241px" : "240px"} sx={allHome ? {"& input, & .chakra-input__left-element, & .chakra-input__right-element":{height:"36px"}} : undefined}>
             <InputLeftElement pointerEvents="none" w={allHome ? "44px" : undefined} color="gray.500"><Search size={allHome ? 20 : 16} aria-hidden/></InputLeftElement>
-            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
-              placeholder={sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "40px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
+            <Input ref={search} borderRadius="full" type={allHome ? "text" : "search"} autoComplete={allHome ? "off" : undefined} aria-label={personalSection ? "搜索个人页面" : allHome ? "搜索" : sitesSection ? "搜索站点" : "搜索文件、项目或会话"}
+              placeholder={personalSection ? "搜索个人页面" : sitesSection ? "搜索站点" : "搜索"} pl={allHome ? "40px" : undefined} pr={allHome && !query ? "12px" : 8} borderColor={allHome ? "rgba(0,0,0,.15)" : undefined} sx={{"&::-webkit-search-cancel-button":{WebkitAppearance:"none"}}}
               value={query} onChange={event => setQuery(event.target.value)}/>
             {query && <InputRightElement><IconButton aria-label="清空搜索" size="xs" variant="ghost" borderRadius="full"
               icon={<X size={14}/>} onClick={() => {setQuery(""); search.current?.focus();}}/></InputRightElement>}
@@ -862,8 +864,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             onClick={() => startCreativeChat("图像")}>创建图像</Button> : pagesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createPage("无标题页","")}>创建页面</Button> : slidesSection ? <Button size="sm" borderRadius="full" bg="#111" color="white" _hover={{bg:"#333"}} isLoading={creating} onClick={()=>createSlides()}>新建幻灯片</Button> : createMenu(false)}</Flex>}
       </Flex>
       <Flex gap={1} mt="4px" pb="20px" mb="17px" minH="56px" align="center" justify="flex-end">
-        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
-          {section !== "回收站" && !folder && tabs.map((name,index) =>
+        <Flex flex="1" gap={slidesSection ? 0 : 1} wrap="wrap" role={section === "回收站" || personalSection || folder ? undefined : "tablist"} aria-label={section === "回收站" ? undefined : pagesSection ? "页面集合" : slidesSection ? "幻灯片集合" : imageSection ? "图像来源" : sitesSection ? "站点视图" : "资料库分区"}>
+          {section !== "回收站" && !personalSection && !folder && tabs.map((name,index) =>
             <Button key={name} role="tab" id={sitesSection ? "library-sites-tab-" + index : undefined}
               aria-controls={sitesSection && tab === name ? "library-sites-panel" : undefined} aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
               size="sm" h="36px" minW={allHome && name === "推荐" ? "90px" : undefined} px={slidesSection || allHome ? "16px" : "18px"} borderRadius="full" variant={tab === name ? "solid" : "ghost"}
