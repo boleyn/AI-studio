@@ -5,6 +5,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import type { LibraryFile } from "@/types/library";
+import { redirectedToLogin } from "../services/files";
 import { LibraryReadError, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
@@ -134,8 +135,8 @@ const ChatItem = ({
           const url = new URL(preview.url,window.location.href);
           const externalAttachment = url.origin !== window.location.origin;
           const response = await fetch(url, {signal,headers:externalAttachment ? undefined : withAuthHeaders()});
-          const redirectedToLogin = response.redirected && new URL(response.url).pathname === "/login";
-          if (redirectedToLogin || !response.ok) throw new LibraryReadError(redirectedToLogin ? 401 : response.status, preview.name);
+          const needsLogin = redirectedToLogin(response);
+          if (needsLogin || !response.ok) throw new LibraryReadError(needsLogin ? 401 : response.status, preview.name);
           showContent(await response.text(), false);
           return;
         } catch (error) {

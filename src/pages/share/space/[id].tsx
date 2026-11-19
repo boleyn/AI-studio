@@ -1,6 +1,6 @@
 import { Box, Button, Heading, Link, Stack, Text, useToast } from "@chakra-ui/react";
 import { recordLibraryOpen } from "@features/chat/services/libraryAttachment";
-import { downloadAuthenticatedFile } from "@features/chat/services/files";
+import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
 import { markdownFilename } from "@/types/library";
 import LibraryMarkdown from "@/components/agent-workspace/LibraryMarkdown";
 import { useRouter } from "next/router";
@@ -24,7 +24,7 @@ export default function SharedSpace() {
     const params = new URLSearchParams({id,contents:"1"});
     if (typeof page === "string") params.set("page",page);
     fetch("/api/library/space-share?"+params,{headers:withAuthHeaders(),signal:controller.signal}).then(async response=>{
-      if (response.status === 401) {
+      if (response.status === 401 || redirectedToLogin(response)) {
         if (!controller.signal.aborted) setError({message:"请登录受邀账号后查看。",login:true});
         return;
       }

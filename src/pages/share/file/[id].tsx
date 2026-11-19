@@ -3,7 +3,7 @@ import { Box, Button, Flex, Spinner, Text, useToast } from "@chakra-ui/react";
 import { Download } from "lucide-react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { downloadAuthenticatedFile } from "@features/chat/services/files";
+import { downloadAuthenticatedFile, redirectedToLogin } from "@features/chat/services/files";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import { PreviewZoomMenu } from "@/components/workspace/PreviewZoomMenu";
@@ -30,7 +30,7 @@ export default function SharedArtifactPage() {
     const controller = new AbortController();
     void fetch(endpoint, { headers: withAuthHeaders(), signal: controller.signal })
       .then(async (response) => {
-        if (response.status === 401) {
+        if (response.status === 401 || redirectedToLogin(response)) {
           if (!controller.signal.aborted) {
             setResult({ id, needsLogin: true, error: "请登录受邀账号后查看文件。" });
           }

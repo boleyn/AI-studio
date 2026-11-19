@@ -266,8 +266,13 @@ export async function downloadWorkspaceArtifact(token: string, path: string, ver
   return downloadAuthenticatedFile(`/api/code?${query}`, filename || path.split("/").pop() || "file");
 }
 
+export function redirectedToLogin(response: Response) {
+  return response.redirected && new URL(response.url).pathname === "/login";
+}
+
 export async function downloadAuthenticatedFile(endpoint: string, filename: string) {
   const response = await fetch(endpoint, { headers: withAuthHeaders() });
+  if (redirectedToLogin(response)) throw new Error("请重新登录后下载。");
   if (!response.ok) {
     const message = response.status === 401 ? "请重新登录后下载。" :
       response.status === 403 ? "当前账号没有下载权限。" :
