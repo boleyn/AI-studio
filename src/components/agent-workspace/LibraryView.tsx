@@ -950,7 +950,8 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <ModalHeader as="h2" fontSize="20px">创建资料空间</ModalHeader><ModalCloseButton boxSize="36px" aria-label="关闭对话框" isDisabled={creating}/>
         <form onSubmit={event=>{event.preventDefault();if (title.trim() && !creating) void createPage(title.trim(),"","资料空间");}}>
           <ModalBody><Flex align="center" gap={4}><SpaceIconPicker value={appearance} onChange={setAppearance}/><Input autoFocus aria-label="资料空间名称" placeholder="为话题或群组命名" value={title} maxLength={255} onChange={event=>setTitle(event.target.value)}/></Flex>
-            <Button size="sm" variant="ghost" mt={3} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
+            <Button size="sm" variant="ghost" mt={3} h="26px" px="0.76em" borderRadius="full" color="#5d5d5d" fontWeight="500"
+              iconSpacing="4px" rightIcon={<ChevronRight size={16} aria-hidden style={{transform:inviteOpen ? "rotate(90deg)" : undefined}}/>} aria-expanded={inviteOpen} onClick={()=>setInviteOpen(!inviteOpen)}>邀请用户</Button>
             {inviteOpen && <Box mt={2}><SpaceInviteInput query={inviteQuery} setQuery={setInviteQuery} accounts={invitees} onChange={setInvitees}/><Text fontSize="sm" mt={2}>访问权限适用于此资料空间中的所有页面</Text></Box>}
           </ModalBody><ModalFooter gap={2}><Button w="60px" h="36px" borderRadius="full" isDisabled={creating} onClick={closeSpaceDialog}>取消</Button><Button w="60px" h="36px" borderRadius="full" type="submit" isDisabled={!title.trim()} isLoading={creating}>创建</Button></ModalFooter>
         </form></ModalContent></Modal>
