@@ -3,7 +3,7 @@ import { Box, Button, Flex, Heading, IconButton, Text } from "@chakra-ui/react";
 import { RefreshCw } from "lucide-react";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
-export default function SitePlugins({siteId, onAdd}:{siteId:string; onAdd?:()=>Promise<void>}) {
+export default function SitePlugins({siteId, onAdd}:{siteId:string; onAdd?:(connectedNames:string[])=>Promise<void>}) {
   const [plugins,setPlugins] = useState<{id:string;name:string}[]>();
   const [error,setError] = useState(false);
   const [opening,setOpening] = useState(false);
@@ -51,9 +51,9 @@ export default function SitePlugins({siteId, onAdd}:{siteId:string; onAdd?:()=>P
     <Flex gap={2} align="center"><Box flex="1"><Heading size="sm">站点插件</Heading>
       <Text fontSize="sm" color="gray.600">查看并管理此站点所用的插件</Text></Box>
       <IconButton size="sm" variant="ghost" aria-label="刷新插件" icon={<RefreshCw size={16}/>} isDisabled={loading || Boolean(removing)} onClick={refresh}/>
-      {onAdd && <Button size="sm" isLoading={opening} isDisabled={loading} onClick={async ()=>{
+      {onAdd && <Button size="sm" isLoading={opening} isDisabled={!plugins || Boolean(removing)} onClick={async ()=>{
         setOpening(true); setOpenError(false);
-        try { await onAdd(); } catch { setOpenError(true); } finally { setOpening(false); }
+        try { await onAdd((plugins || []).map(plugin => plugin.name)); } catch { setOpenError(true); } finally { setOpening(false); }
       }}>添加</Button>}</Flex>
     {openError && <Text role="alert" mt={2}>无法打开站点对话，请重试。</Text>}
     {removeError && <Text role="alert" mt={2}>{removeError}</Text>}

@@ -837,7 +837,13 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       <Box>{showTemplates && !router.query.libraryFolder && !folder && ((section === "全部" && tab === "推荐") || ((pagesSection || slidesSection) && tab === "全部")) && !searchTerm && !filterCount &&
         <LibraryTemplates collection={slidesSection ? "幻灯片" : pagesSection ? "页面" : "全部"} onSlides={createSlides} onPick={createPage} onClose={() => setShowTemplates(false)}/>}</Box>
       {sitesSection ? <Box role={siteDetails ? undefined : "tabpanel"} id="library-sites-panel" aria-labelledby={siteDetails ? undefined : "library-sites-tab-" + tabs.indexOf(tab)}>
-        <LibrarySites onPluginChat={(token,name)=>onChat([], `帮我将一个插件连接到 ${name}，让网站访客可以使用自己账户中的数据。请询问我想连接哪个已在工作空间中启用的插件。`, undefined, false, token)} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
+        <LibrarySites onPluginChat={(token,name,connectedNames)=>{
+          const lines = [`帮我将一个插件连接到 ${name}，让网站访客可以使用自己账户中的数据。`];
+          if (connectedNames.length) lines.push("此站点已连接：" + connectedNames.join("、") + "。");
+          if (driveConnected) lines.push("我已在资料空间连接 Google Drive。");
+          lines.push("请询问我想添加哪个已在工作空间中启用的插件。");
+          return onChat([], lines.join("\n"), undefined, false, token);
+        }} tab={tab} query={query} grid={grid} onSitesChanged={()=>setAttempt(value=>value+1)}/>
       </Box> : failed ? <Flex direction="column" align="center" textAlign="center" gap={3} py={16}>
           <CircleAlert size={22} color="#777" aria-hidden/>
           <Box role="alert"><Heading as="h2" fontSize="md">{searchTerm ? "无法加载搜索结果" : "无法加载资料列表"}</Heading>
