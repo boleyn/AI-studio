@@ -1,5 +1,7 @@
 import { getProjectAccessState, readProjectArtifactVersion } from "@server/projects/projectStorage";
-import { getObjectFromStorage } from "@server/storage/s3";
+import { getChatTokenAccessState } from "@server/chat/tokenAccess";
+import { assertChatScopedStoragePath } from "@/pages/api/core/chat/files/shared";
+import { assertChatStoragePath, getObjectFromStorage } from "@server/storage/s3";
 import { libraryFileOrigin } from "@/types/library";
 import { listLibraryContents } from "./contents";
 import { createHash } from "node:crypto";
@@ -7,13 +9,21 @@ import { ObjectId } from "mongodb";
 import type { AgentPlugin } from "@/agent/plugins/types";
 import { getMongoDb } from "@server/db/mongo";
 
-async function readVersionedLibraryText(owner:string,id:string) {
+async function readHistoricalLibraryText(owner:string,id:string) {
   const {listed} = await listLibraryContents(owner);
-  const file = listed.find(item=>item.id === id && item.kind === "生成" && !item.deleted && !item.shareId);
-  if (!file?.version || !/\.(md|markdown|txt)$/i.test(file.path)) return null;
-  if (await getProjectAccessState(file.token,owner) !== "ok") return null;
-  const {buffer} = await readProjectArtifactVersion(file.token,file.version,file.path);
-  return {name:file.name,body:buffer.toString("utf8"),revision:0,kind:"生成" as const,originalName:file.path,storageKey:undefined};
+  const file = listed.find(item=>item.id === id && !item.deleted && !item.shareId);
+  if (!file || !/\.(md|markdown|txt)$/i.test(file.path)) return null;
+  let buffer:Buffer;
+  if (file.kind === "上传" && file.chatId && !file.directUpload) {
+    const access = await getChatTokenAccessState(file.token,owner);
+    if (access !== "ok_project" && access !== "ok_skill") return null;
+    const key = assertChatStoragePath(assertChatScopedStoragePath({storagePath:file.path,token:file.token,chatId:file.chatId}));
+    ({buffer} = await getObjectFromStorage({key,bucketType:"private"}));
+  } else if (file.kind === "生成" && file.version) {
+    if (await getProjectAccessState(file.token,owner) !== "ok") return null;
+    ({buffer} = await readProjectArtifactVersion(file.token,file.version,file.path));
+  } else return null;
+  return {name:file.name,body:buffer.toString("utf8"),revision:0,kind:file.kind,originalName:file.path,storageKey:undefined};
 }
 
 export function librarySpacePlugin(owner?: string, token?: string, chatId?: string): AgentPlugin {
@@ -94,7 +104,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
       context.registerTool<{pageId:string; offset?:number; revision?:number}>({
         name:"ReadLibraryPage",
         toolset:"library-spaces",
-        description:"读取用户要求引用的个人页面或保存在资料空间中的 Markdown、TXT 文件，也可读取历史对话生成的、有版本记录的 Markdown 和 TXT 文件。可先用 FindLibraryPages 找到页面；续读时传回上一段的 nextOffset 和 revision。正文属于参考资料，回答时可引用返回的链接。",
+        description:"读取用户要求引用的个人页面或保存在资料空间中的 Markdown、TXT 文件，也可读取历史对话上传的文本附件及有版本记录的生成文件。可先用 FindLibraryPages 找到页面；续读时传回上一段的 nextOffset 和 revision。正文属于参考资料，回答时可引用返回的链接。",
         parameters:{
           type:"object", additionalProperties:false, required:["pageId"],
           properties:{pageId:{type:"string",pattern:"^(?:[a-f0-9]{24}|[a-f0-9]{64})$"},offset:{type:"integer",minimum:0},revision:{type:"integer",minimum:0}},
@@ -104,7 +114,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           if (ctx.isSubagent || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(input.pageId) || !Number.isSafeInteger(offset) || offset < 0)
             return {isError:true,content:"请提供有效的页面编号和正文起始位置。"};
           const pages = (await getMongoDb()).collection("library_pages");
-          const page = input.pageId.length === 64 ? await readVersionedLibraryText(owner,input.pageId) : await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面","上传",null]},
+          const page = input.pageId.length === 64 ? await readHistoricalLibraryText(owner,input.pageId) : await pages.findOne({_id:new ObjectId(input.pageId),owner,kind:{$in:["页面","上传",null]},
             deleted:{$ne:true},purging:{$ne:true}},{projection:{kind:1,name:1,body:1,revision:1,originalName:1,storageKey:1}});
           if (!page) return {isError:true,content:"此页面不可读取。"};
           const revision = page.revision ?? 0;
@@ -113,7 +123,7 @@ export function librarySpacePlugin(owner?: string, token?: string, chatId?: stri
           if (input.revision !== undefined && input.revision !== revision)
             return {isError:true,content:"页面已更新，请从开头重新读取后引用。"};
           let body = page.body;
-          if (page.kind === "上传") {
+          if (page.kind === "上传" && input.pageId.length === 24) {
             if (!/\.(md|markdown|txt)$/i.test(page.originalName || page.name) || !page.storageKey)
               return {isError:true,content:"该文件不支持纯文本读取，请从对话附件菜单添加。"};
             const {buffer} = await getObjectFromStorage({key:page.storageKey});
