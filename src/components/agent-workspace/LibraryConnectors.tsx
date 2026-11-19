@@ -6,6 +6,8 @@ const endpoint = "/api/library/connectors/google";
 export default function LibraryConnectors({ close, callbackError }: { close: () => void; callbackError: boolean }) {
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean }>();
   const [error, setError] = useState(callbackError ? "连接失败，请重试" : "");
+  const [attempt, setAttempt] = useState(0);
+  const [statusFailed, setStatusFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -14,9 +16,9 @@ export default function LibraryConnectors({ close, callbackError }: { close: () 
         if (!response.ok) throw new Error();
         const result = await response.json();
         if (!controller.signal.aborted) setStatus(result);
-      }).catch(() => { if (!controller.signal.aborted) setError("无法读取连接状态"); });
+      }).catch(() => { if (!controller.signal.aborted) setStatusFailed(true); });
     return () => controller.abort();
-  }, []);
+  }, [attempt]);
   async function connect() {
     setBusy(true);
     try {
@@ -30,7 +32,12 @@ export default function LibraryConnectors({ close, callbackError }: { close: () 
       <Text color="gray.600" fontSize="sm">连接文件服务，在资料空间中使用你的文件。</Text>
       <Flex as="ul" aria-label="连接你的文件" direction="column" listStyleType="none" mt={4}>
         {["Google Drive","Box","Dropbox","SharePoint"].map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
-          <Text>{name}</Text>{name === "Google Drive" && status?.connected ? <Flex align="center" gap={2}>
+          <Text>{name}</Text>{name === "Google Drive" && !status ? (
+            statusFailed ? <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
+              setStatusFailed(false);
+              setAttempt(value=>value+1);
+            }}>重试读取状态</Button> : <Text role="status" fontSize="sm" color="gray.600">正在读取…</Text>
+          ) : name === "Google Drive" && status?.connected ? <Flex align="center" gap={2}>
             <Text fontSize="sm" color="gray.600">已连接</Text>
             <Button size="sm" variant="outline" borderRadius="full" isDisabled={!status.configured} isLoading={busy}
               aria-label="重新连接 Google Drive" onClick={connect}>重新连接</Button>
