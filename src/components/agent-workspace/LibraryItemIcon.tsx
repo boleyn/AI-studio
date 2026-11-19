@@ -8,7 +8,7 @@ import { isArtifactImage } from "../workspace/ArtifactFileIcon";
 type IconItem = {mimeType?: string} & Pick<LibraryFile,"name"> & Partial<Pick<LibraryFile,"path" | "kind" | "sharedPage" | "appearance">>;
 
 export function libraryIconAppearance(item: IconItem) {
-  if (item.kind === "站点") return { Icon: PanelsTopLeft };
+  if (item.kind === "站点") return { Icon: PanelsTopLeft, color: "#8754ce" };
   if (item.kind === "文件夹") return { Icon: Folder };
   if (item.kind === "资料空间") return { Icon: Layers };
   if (item.kind === "页面" || item.sharedPage) return { Icon: NotebookText, color: "#168aff" };

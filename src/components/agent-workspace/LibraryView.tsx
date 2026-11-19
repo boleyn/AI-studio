@@ -1053,7 +1053,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         </Box> : grid ? <LibraryCardGrid masonry={allHome} selecting={picked.length > 0}>
           {visible.map(file => {
             const type = fileType(file);
-            const spreadsheet = type === "电子表格";
+            const widePreview = type === "电子表格" || type === "站点";
             const path = libraryTypeName(file);
             const documentCard = type === "文档" && /\.(doc[xm]?|dot[xm]|odt)$/i.test(path);
             const archiveCard = type === "其他" && /\.(zip|rar|7z|tar|gz)$/i.test(path);
@@ -1074,15 +1074,15 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>} onClick={()=>update(file,{pinned:!file.pinned})}/>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择 "+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Box>;
-            return allHome && (spreadsheet || documentCard || archiveCard) ? (
-            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={spreadsheet ? undefined : "4/5"}
+            return allHome && (widePreview || documentCard || archiveCard) ? (
+            <Flex key={key(file)} role="group" position="relative" direction="column" minW={0} aspectRatio={widePreview ? undefined : "4/5"}
               borderWidth="1px" borderRadius="16px" bg={selected.includes(file.id) ? "#f3f3f3" : undefined}
               cursor="pointer" onClick={event=>clickItemSurface(event,file)}>
               <Flex align="center" gap="8px" ps="12px" pe="48px" h="44px" flexShrink={0} borderBottomWidth="1px">
                 <Icon color={color} size={20} aria-hidden style={{flexShrink:0}}/>
                 <Box minW={0} flex="1" isTruncated>{itemLink(file)}</Box>{actions(file)}
               </Flex>
-              <Flex flex={spreadsheet ? undefined : "1"} aspectRatio={spreadsheet ? "16/9" : undefined} align="center" justify="center"><Icon color={color} size={56} aria-hidden/></Flex>
+              <Flex flex={widePreview ? undefined : "1"} aspectRatio={widePreview ? "16/9" : undefined} align="center" justify="center"><Icon color={color} size={56} aria-hidden/></Flex>
               <LibrarySelectionBox disabled={selectionLocked} card label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/>
             </Flex>
           ) : <Box key={key(file)} position="relative" p={4} borderWidth="1px" borderRadius="14px"
