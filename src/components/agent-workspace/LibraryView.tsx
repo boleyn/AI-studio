@@ -467,6 +467,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     setDestination("");
   }
   const downloadableSelection = picked.filter(item => !item.siteId && !item.deleted && !isContainer(item));
+  const includesPage = picked.some(item => item.kind === "页面" || item.sharedPage);
   const onlySitesSelected = picked.length > 0 && picked.every(item => item.siteId);
   const key = (file: LibraryFile) => file.id;
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
@@ -985,7 +986,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Button size="sm" minW={{md:"102px"}} bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         {onlySitesSelected ? <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<FolderInput size={18}/>} isDisabled={selectionLocked} onClick={moveSelection}>移动</Button> : <Button size="sm" minW={{md:"78px"}} bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || !downloadableSelection.length} onClick={()=>usePicked("download",downloadableSelection)}>下载</Button>}
         <Button size="sm" minW={{md:"74px"}} bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>删除</Button>
-        {!onlySitesSelected && <Menu placement="top-end" gutter={5}><MenuButton as={IconButton} size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800" w="180px" minW={0} p="10px" borderWidth={0} borderRadius="16px"><MenuItem h="36px" px="10px" borderRadius="12px" icon={<FolderInput size={20}/>} isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={moveSelection}>移动</MenuItem></MenuList></Menu>}
+        {!onlySitesSelected && !includesPage && <Menu placement="top-end" gutter={5}><MenuButton as={IconButton} size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800" w="180px" minW={0} p="10px" borderWidth={0} borderRadius="16px"><MenuItem h="36px" px="10px" borderRadius="12px" icon={<FolderInput size={20}/>} isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={moveSelection}>移动</MenuItem></MenuList></Menu>}
         </>}
         <IconButton size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
