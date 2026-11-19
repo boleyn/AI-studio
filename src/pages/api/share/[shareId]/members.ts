@@ -40,7 +40,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const name = req.body?.username;
     if (typeof name !== "string" || !name.trim() || name.length > 100) return res.status(400).json({ error: "请输入账号名称" });
     if (req.body.remove === true) {
-      await links.updateMany(siteLinks, { $pull: { members: { username: name } } });
+      const userId = req.body.userId;
+      if (userId !== undefined && (typeof userId !== "string" || !userId.trim())) return res.status(400).json({error:"请选择有效成员"});
+      await links.updateMany(siteLinks, { $pull: { members: userId ? {userId} : {username:name} } });
     } else {
       const member = await findUserByUsername(name.trim());
       if (!member || String(member._id) === ownerUserId) return res.status(400).json({ error: "请选择其他有效账号" });
@@ -50,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const members = await links.aggregate([
     {$match:siteLinks}, {$unwind:"$members"},
     {$group:{_id:"$members.userId",username:{$first:"$members.username"}}},
-    {$sort:{username:1}}, {$project:{_id:0,username:1}}
+    {$sort:{username:1}}, {$project:{_id:0,userId:"$_id",username:1}}
   ]).toArray();
   const settings = await getSiteSettings(ownerUserId,link.projectToken);
   return res.json({ slug:settings?.siteSlug, id: shareId, owner: auth.user.username, restricted:settings?.restricted === true, members });
