@@ -24,7 +24,7 @@ const getPreviewKind = (filePath: string): PreviewKind => {
   if (imageExtSet.has(extension)) return "image";
   if (extension === "pdf") return "pdf";
   if (extension === "docx") return "docx";
-  if (extension === "xlsx" || extension === "xls" || extension === "csv") return "spreadsheet";
+  if (["xlsx", "xls", "xlsm", "csv", "tsv", "ods"].includes(extension)) return "spreadsheet";
   if (extension === "pptx" || extension === "ppt") return "presentation";
   return "unknown";
 };
