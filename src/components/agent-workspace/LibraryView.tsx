@@ -725,7 +725,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     const folderMenu = Boolean(folder && !rail);
     return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [15, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} onFocus={(event: React.FocusEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} onClick={(event: React.MouseEvent<HTMLButtonElement>) => { galleryTrigger.current = event.currentTarget; }} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : allHome ? "36px" : undefined} minW={!rail && allHome ? "82px" : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}
       sx={{ "& > span:last-child": { display: "inline-flex", flex: "0 0 auto", alignItems: "center", gap: rail ? "6px" : "4px", whiteSpace: "nowrap", lineHeight: "20px" } }}>
-        {rail && <Plus size={20} aria-hidden/>}
+        {rail && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+        </svg>}
         {folderMenu ? "新建" : "创建"}
         {!rail && <ChevronDown size={16} aria-hidden/>}
       </MenuButton>
