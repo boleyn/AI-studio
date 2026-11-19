@@ -196,10 +196,13 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
             <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
             </Box>) : [];
   const slideCards = shows("幻灯片") ? slides.map(name =>
-            <Button key={name} aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
+            <Box key={name} position="relative" role="group">
+            <Button w="full" aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
               <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
               <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
-            </Button>) : [];
+            </Button>
+            <TemplateActions label={`Actions for ${name}`} onUse={() => onSlides(name)} />
+            </Box>) : [];
   const imageCards = shows("图像") ? images.map(({name, cover}) =>
             <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
               <Flex aspectRatio="7/5" align="center" justify="center" bg="gray.50" borderRadius="24px">
