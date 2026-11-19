@@ -27,11 +27,13 @@ export default function LibraryConnectors({ close, callbackStatus, siteId }: { s
       window.location.assign((await response.json()).url);
     } catch { setBusy(false); setError("无法启动连接，请重试"); }
   }
+  const services = siteId ? ["Google Drive"] : ["Google Drive","Box","Dropbox","SharePoint"];
+  const heading = siteId ? "连接我的 Google Drive" : "连接你的文件";
   return <Modal isOpen onClose={close} isCentered><ModalOverlay/><ModalContent mx={3} borderRadius="16px">
-    <ModalHeader>连接你的文件</ModalHeader><ModalBody>
-      <Text color="gray.600" fontSize="sm">连接文件服务，在资料空间中使用你的文件。</Text>
-      <Flex as="ul" aria-label="连接你的文件" direction="column" listStyleType="none" mt={4}>
-        {["Google Drive","Box","Dropbox","SharePoint"].map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
+    <ModalHeader>{heading}</ModalHeader><ModalBody>
+      <Text color="gray.600" fontSize="sm">{siteId ? "选择你的 Google 账号，授权读取云端硬盘中的文件。" : "连接文件服务，在资料空间中使用你的文件。"}</Text>
+      <Flex as="ul" aria-label={heading} direction="column" listStyleType="none" mt={4}>
+        {services.map(name=><Flex as="li" key={name} align="center" justify="space-between" py={2}>
           <Text>{name}</Text>{name === "Google Drive" && !status ? (
             statusFailed ? <Button size="sm" variant="outline" borderRadius="full" onClick={()=>{
               setStatusFailed(false);
