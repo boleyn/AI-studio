@@ -1,7 +1,7 @@
 import { sharedPreviewFilename, markdownFilename } from "@/types/library";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "@server/db/mongo";
-import { getObjectFromStorage } from "@server/storage/s3";
+import { getObjectFromStorage, isMissingStorageObject, isStorageUnavailable } from "@server/storage/s3";
 import { assertChatScopedStoragePath } from "./core/chat/files/shared";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
@@ -55,8 +55,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const key = assertChatScopedStoragePath({storagePath:path,token,chatId:body.chatId});
           bytes = (await getObjectFromStorage({key})).buffer;
         } else {
-          const source = await (version ? readProjectArtifactVersion(token,version,path) : readProjectFile(token,path)).catch(()=>null);
-          if (!source) return res.status(404).json({error:"工作成果不存在"});
+          if (version && !/^[a-f0-9]{32}$/.test(version)) return res.status(400).json({error:"无效的成果版本"});
+          const source = await (version ? readProjectArtifactVersion(token,version,path) : readProjectFile(token,path));
           bytes = source.buffer;
         }
       }
@@ -114,6 +114,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({ filename, previewName, owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
   } catch (error) {
+    if (isMissingStorageObject(error)) return res.status(404).json({error:"共享文件不存在"});
+    if (isStorageUnavailable(error)) return res.status(503).json({error:"文件存储暂时不可用，请稍后重试"});
     console.error("Artifact share request failed", error);
     return res.status(500).json({ error: "暂时无法处理共享文件" });
   }
