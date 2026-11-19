@@ -84,6 +84,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const filename = share.livePage && native ? markdownFilename(native.name) : share.filename;
 
+    const previewName = sharedPreviewFilename(filename,native?.originalName);
+
     if (req.method === "PATCH") {
       if (!owner) return res.status(403).json({ error: "仅所有者可管理访问权限" });
       const username = typeof body.username === "string" ? body.username.trim() : "";
@@ -105,11 +107,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const markdown = share.livePage || /\.(md|markdown)$/i.test(native?.originalName || filename);
       res.setHeader("Content-Type", markdown ? "text/markdown; charset=utf-8" : "application/octet-stream");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16))}`);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(previewName).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16))}`);
       return res.status(200).send(buffer);
     }
 
-    return res.status(200).json({ filename, previewName:sharedPreviewFilename(filename,native?.originalName), owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
+    return res.status(200).json({ filename, previewName, owner: share.ownerName, editablePageId:share.livePage && (owner || share.members.some(m => m.userId === userId && m.canEdit)) ? share.libraryItemId : undefined });
   } catch (error) {
     console.error("Artifact share request failed", error);
     return res.status(500).json({ error: "暂时无法处理共享文件" });
