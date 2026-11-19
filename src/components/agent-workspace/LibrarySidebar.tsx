@@ -12,6 +12,8 @@ const categories = [
   { name: "图像", icon: Image },
 ];
 type Props = {
+  width?: number;
+  setWidth: (width: number) => void;
   createMenu: ReactNode;
   spaceActions:(space:LibraryFile)=>ReactNode;
   onNewSpace: () => void;
@@ -24,8 +26,7 @@ type Props = {
   toggleRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 };
-export default function LibrarySidebar({ createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
-  const [width, setWidth] = useState<number>();
+export default function LibrarySidebar({ width, setWidth, createMenu, spaceActions, onNewSpace, section, activeSpaceId, files, onSection, onFile, onSearch, toggleRef, onCollapse }: Props) {
   const resize = (value: number) => setWidth(Math.max(220, Math.min(420, value)));
   const [driveConnected,setDriveConnected] = useState(false);
   useEffect(()=>{

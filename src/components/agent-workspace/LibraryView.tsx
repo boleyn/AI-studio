@@ -247,6 +247,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
     }}>{file.name}</Link>;
   }
   useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
+  const [sidebarWidth, setSidebarWidth] = useState<number>();
   const [sidebar, setSidebar] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
   function toggleSidebar() {
@@ -625,7 +626,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       event.target.value = "";
       void uploadFiles(selected);
     }}/>
-    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
+    {sidebar && <Box display={{base:"none",md:"flex"}}><LibrarySidebar width={sidebarWidth} setWidth={setSidebarWidth} spaceActions={space=><Menu placement="bottom-end" onClose={()=>setCopyMenuId(undefined)}>
         <MenuButton as={IconButton} size="xs" variant="ghost" aria-label={space.name+" 资料空间的操作"} icon={<MoreHorizontal size={16}/>}/>
         <MenuList onKeyDownCapture={event=>{
           if (copyMenuId !== space.id || !["Escape","ArrowLeft"].includes(event.key)) return;
