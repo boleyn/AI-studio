@@ -437,7 +437,9 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
   }
   async function startSelectionChat(selection: LibraryFile[]) {
     const shared = new Map<string, LibraryFile>();
-    let attachments = expandLibrarySelection(selection, files || [], shared);
+    const siteLinks = selection.flatMap(item => item.siteId
+      ? [item.name + " " + new URL(sitePreviewPath(item.siteId,item.siteSlug),window.location.origin).href] : []);
+    let attachments = expandLibrarySelection(selection.filter(item => !item.siteId), files || [], shared);
     if (shared.size) {
       setBatchBusy(true);
       try {
@@ -451,12 +453,20 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         setBatchBusy(false);
       }
     }
-    if (!attachments.length) {
+    if (!attachments.length && !siteLinks.length) {
       toast({status:"info", title:"所选位置中没有可添加的文件或页面。", isClosable:true});
       return;
     }
-    return usePicked("chat", attachments);
+    return usePicked("chat", attachments, siteLinks.length ? siteLinks.join("\n") : undefined);
   }
+  function moveSelection() {
+    setBatchMove(true);
+    setNewDestinationName(undefined);
+    setMoveFailures([]);
+    setMove(picked[0]);
+    setDestination("");
+  }
+  const onlySitesSelected = picked.length > 0 && picked.every(item => item.siteId);
   const key = (file: LibraryFile) => file.id;
   async function update(file: LibraryFile, changes: Partial<Pick<LibraryFile, "name" | "favorite" | "pinned" | "deleted" | "folderId">>, notifyFailure = true) {
     setSaving(true);
@@ -971,10 +981,10 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
           <Button size="sm" minW="78px" bg="white" color="black" leftIcon={<RotateCcw size={16}/>} isDisabled={selectionLocked} onClick={changeTrashSelection}>恢复</Button>
           <Button size="sm" minW="106px" bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={selectionLocked} onClick={()=>setPurge({scope:"selection",items:picked})}>永久删除</Button>
         </> : <>
-        <Button size="sm" minW={{md:"102px"}} bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
-        <Button size="sm" minW={{md:"78px"}} bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
+        <Button size="sm" minW={{md:"102px"}} bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.deleted)} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
+        {onlySitesSelected ? <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<FolderInput size={18}/>} isDisabled={selectionLocked} onClick={moveSelection}>移动</Button> : <Button size="sm" minW={{md:"78px"}} bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>}
         <Button size="sm" minW={{md:"74px"}} bg="#fa423e" color="white" _hover={{filter:"brightness(.9)"}} leftIcon={<Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>删除</Button>
-        <Menu placement="top-end" gutter={5}><MenuButton as={IconButton} size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800" w="180px" minW={0} p="10px" borderWidth={0} borderRadius="16px"><MenuItem h="36px" px="10px" borderRadius="12px" icon={<FolderInput size={20}/>} isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
+        {!onlySitesSelected && <Menu placement="top-end" gutter={5}><MenuButton as={IconButton} size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800" w="180px" minW={0} p="10px" borderWidth={0} borderRadius="16px"><MenuItem h="36px" px="10px" borderRadius="12px" icon={<FolderInput size={20}/>} isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={moveSelection}>移动</MenuItem></MenuList></Menu>}
         </>}
         <IconButton size="sm" boxSize="36px" variant="ghost" color="inherit" _hover={{bg:"#444"}} isDisabled={batchBusy || saving} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
