@@ -912,14 +912,25 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
             if (!purge || saving) return;
             setSaving(true);
             try {
-              const pending = [...purge].sort((a,b) => Number(isContainer(a)) - Number(isContainer(b)));
-              for (const item of pending) {
+              const byId = new Map(purge.map(item => [item.id, item]));
+              const depth = (item: LibraryFile) => {
+                const parents = new Set<string>();
+                let parentId = item.folderId;
+                while (parentId && byId.has(parentId) && !parents.has(parentId)) {
+                  parents.add(parentId);
+                  parentId = byId.get(parentId)?.folderId;
+                }
+                return parents.size;
+              };
+              const pending = purge.map(item => ({item, depth:depth(item)}))
+                .sort((left,right) => right.depth - left.depth);
+              for (const {item} of pending) {
                 const response = await fetch("/api/library?id=" + encodeURIComponent(item.id), {method:"DELETE", headers:withAuthHeaders({})});
                 if (response.status === 404) {
                   // Another tab may already have restored or removed this item.
                   setAttempt(value => value + 1);
                 } else if (!response.ok) {
-                  throw new Error(response.status === 409 ? "请先移出或删除文件夹中的条目" : "删除失败，请重试");
+                  throw new Error(response.status === 409 ? "请先恢复此条目并移出其中的资料，或先永久删除已在回收站中的子项。" : "删除失败，请重试");
                 }
                 setPurge(items => items?.filter(entry => entry.id !== item.id));
                 if (response.ok) setFiles(items => items?.filter(entry => entry.id !== item.id));

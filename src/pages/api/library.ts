@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const id = req.query.id;
     if (typeof id !== "string" || !/^(?:[a-f0-9]{24}|[a-f0-9]{64})$/.test(id)) return res.status(400).end();
     const status = await purgeLibraryItem(db, owner, id);
-    return status === 409 ? res.status(status).json({error:"请先移出或删除文件夹中的条目"}) : res.status(status).end();
+    return status === 409 ? res.status(status).json({error:"请先恢复此条目并移出其中的资料，或先永久删除已在回收站中的子项。"}) : res.status(status).end();
   }
   if (req.method === "POST") {
     const operation = z.object({openedId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/)}).safeParse(req.body);
