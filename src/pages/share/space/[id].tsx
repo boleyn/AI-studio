@@ -50,7 +50,7 @@ export default function SharedSpace() {
         <Button size="sm" variant="outline" borderRadius="full" onClick={()=>setAttempt(previous=>previous+1)}>重新加载</Button>}</Stack> : !data ? <Text role="status">正在加载…</Text> : <>
       <Heading size="lg" mb={5}>{data.name}</Heading>
       {data.pages ? <Stack>{data.pages.length ? data.pages.map(item=><Link key={item.id} href={"?page="+item.id} overflowWrap="anywhere">{item.path || item.name}</Link>) : <Text>暂无页面</Text>}</Stack> :
-        <><LibraryMarkdown>{data.body || ""}</LibraryMarkdown>
+        <><LibraryMarkdown interactivePages>{data.body || ""}</LibraryMarkdown>
           {typeof id === "string" && typeof page === "string" && <Button size="sm" variant="outline" mt={6} isLoading={downloading} onClick={async () => {
             setDownloading(true);
             try {

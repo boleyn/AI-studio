@@ -44,10 +44,11 @@ async function validateOfficePackage(blob: Blob, name: string) {
   if (!isZip && !isEncryptedContainer) throw new Error("Invalid Office file header");
 }
 
-export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onStateChange }: {
+export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onStateChange, interactivePages }: {
   url: string;
   name: string;
   onRetry: () => void;
+  interactivePages?: boolean;
   viewerRef?: ViewerProps["viewerRef"];
   onStateChange?: FileViewerProps["onStateChange"];
 }) {
@@ -100,7 +101,7 @@ export default function ExtendedFilePreview({ url, name, onRetry, viewerRef, onS
   }
 
   if ("html" in result) return <InteractiveHtmlPreview name={name} body={result.html}/>;
-  if ("markdown" in result) return <Box h="full" overflowY="auto" px={4} py={6}><Box maxW="760px" mx="auto"><LibraryMarkdown>{result.markdown}</LibraryMarkdown></Box></Box>;
+  if ("markdown" in result) return <Box h="full" overflowY="auto" px={4} py={6}><Box maxW="760px" mx="auto"><LibraryMarkdown interactivePages={interactivePages}>{result.markdown}</LibraryMarkdown></Box></Box>;
 
   return <FileViewer file={result.file} viewerRef={viewerRef} onStateChange={handleViewerState}
     options={isArtifactImage(name) ? imageOptions : viewerRef ? documentOptions : options} style={{ width: "100%", height: "100%" }} />;

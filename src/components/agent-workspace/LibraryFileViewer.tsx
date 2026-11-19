@@ -165,7 +165,7 @@ function FilePreview({item,versions,openVersion,restoreVersion,download,download
         <InteractiveHtmlPreview name={item.name} body={body}/>
         : markdown || plain ? <Box mx="auto" maxW="820px" px={{base:5,md:10}} py={8}>
         {error ? previewFailure : body===undefined ? <Spinner size="sm" aria-label="读取文件"/> :
-          markdown ? <LibraryMarkdown>{body}</LibraryMarkdown> :
+          markdown ? <LibraryMarkdown interactivePages={item.sharedPage}>{body}</LibraryMarkdown> :
           <Text as="pre" whiteSpace="pre-wrap">{body}</Text>}
       </Box> : image ? <Flex minH="full" minW="full" w="max-content" align="center" justify="center">
         {error ? previewFailure : !imageUrl ? <Spinner size="sm" aria-label="读取图片"/> :
