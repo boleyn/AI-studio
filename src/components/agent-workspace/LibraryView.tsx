@@ -408,7 +408,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const childFolders = destinations.filter(item => (item.folderId || "") === destination);
   function rowTime(file: LibraryFile) {
     if (section === "回收站") return file.deletedAt || "";
-    if (folder || personalSection) return file.time;
+    if (folder || personalSection) return file.sharedPageUpdatedAt || file.time;
     return libraryActivityTime(file);
   }
   function compareRows(a: LibraryFile, b: LibraryFile) {
@@ -1043,7 +1043,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               <Flex align="center" gap={2} fontSize="16px" pointerEvents="none">
                 <LibraryItemIcon item={file} compact/><Text as="span" isTruncated>{file.name}</Text>
               </Flex>
-              <Text data-personal-location="" color="#5d5d5d">个人</Text><Text data-personal-time="" as="time" color="#5d5d5d" dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</Text>
+              <Text data-personal-location="" color="#5d5d5d">个人</Text><Text data-personal-time="" as="time" color="#5d5d5d" dateTime={rowTime(file)}>{formatRelativeTime(rowTime(file),listTime)}</Text>
               <Flex position="relative" align="center" justify="end" pointerEvents="none" sx={{"& button":{pointerEvents:"auto"}}}><IconButton size="xs" variant="ghost" aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name}
                 aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked} icon={file.pinned ? <PinOff size={16}/> : <Pin size={16}/>}
                 onClick={()=>update(file,{pinned:!file.pinned})}/>{actions(file)}</Flex>
@@ -1063,7 +1063,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 </Flex>
               </Flex>
               <Flex mt="4px" align="center" justify="space-between" fontSize="14px" lineHeight="22px" color="#5d5d5d" pointerEvents="none">
-                <Text>个人</Text><time dateTime={file.time}>{formatRelativeTime(file.time,listTime)}</time>
+                <Text>个人</Text><time dateTime={rowTime(file)}>{formatRelativeTime(rowTime(file),listTime)}</time>
               </Flex>
             </Box>)}
           </Box>
@@ -1196,7 +1196,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             cursor={file.deleted ? undefined : "pointer"}>
             <td><Flex align="center" justify="center"><LibrarySelectionBox disabled={selectionLocked} label={"选择"+file.name} checked={selected.includes(file.id)} onChange={()=>checkItem(file.id)}/></Flex></td>
             <td><Flex align="center" py="4px" gap={3}><LibraryItemIcon item={file}/><Flex data-item-name="" align="center" gap={1} minW={0}>{itemLink(file,true)}{itemMarkers(file)}</Flex></Flex></td>
-            {folder ? <><td><time dateTime={file.time}>{formatRelativeTime(file.time,listTime) || "—"}</time></td>
+            {folder ? <><td><time dateTime={rowTime(file)}>{formatRelativeTime(rowTime(file),listTime) || "—"}</time></td>
               <td>{formatFileSize(file.size)}</td></> : <><td>{section === "回收站" ? formatFileSize(file.size) : file.chatId && file.conversation ? <Button variant="link" fontSize="inherit" lineHeight="inherit" fontWeight="normal" color="inherit" title={file.conversation}
               aria-label={"打开来源会话「"+file.conversation+"」"} onClick={() => onOpen(file.token,file.chatId)}>
               <Text as="span" isTruncated>{file.conversation}</Text>
