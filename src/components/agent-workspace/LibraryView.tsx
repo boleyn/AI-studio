@@ -1110,7 +1110,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             <LibraryItemIcon item={file}/><Flex my={2} align="center" gap={1} minW={0} overflowWrap="anywhere">{itemLink(file)}{itemMarkers(file)}</Flex>
             {actions(file)}
           </Box>;})}
-        </LibraryCardGrid> : <Box overflowX="auto" ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW="680px" data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
+        </LibraryCardGrid> : <Box overflowX="auto" sx={allHome ? {containerType:"inline-size"} : undefined} ms={allHome ? {base:0,xl:"-40px"} : undefined}><Box as="table" minW={allHome ? 0 : "680px"} data-selecting={picked.length > 0} width="100%" textAlign="left" fontSize="sm" aria-label={folder?.name || (pagesSection ? (tab === "全部" ? "你的项目" : tab) : section === "全部" ? (tab === "推荐" ? "推荐内容" : tab) : section)} sx={{
           tableLayout:"fixed",
           ...(allHome && { "@media (min-width: 80em)": {
             "& col:nth-child(2)": {width:"auto !important"},
@@ -1121,6 +1121,17 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
             "& :is(th,td):nth-child(n+3)":{paddingInlineStart:0},
             "& :is(th,td):last-child":{paddingInlineEnd:0},
           }}),
+          ...(allHome && {
+            "@container (max-width: 679px)": {
+              "& :is(col, th, td):nth-child(3)": {display:"none"},
+              "& col:nth-child(2)": {width:"auto !important"},
+              "& col:nth-child(4)": {width:"112px"},
+              "& col:last-child": {width:hasPageActions ? "64px !important" : "32px !important"},
+            },
+            "@container (max-width: 511px)": {
+              "& :is(col, th, td):nth-child(4)": {display:"none"},
+            },
+          }),
           "& th":{height:"42px",fontSize:"14px",lineHeight:"20px",fontWeight:400,color:"#5d5d5d",textAlign:"left"},
           "& td":{height:"50px",lineHeight:"20px",verticalAlign:"middle"},
           "& tbody td:not(:first-child)":{position:"relative","&::after":{content:'""',position:"absolute",pointerEvents:"none",bottom:0,insetInline:0,borderBottom:"1px solid rgb(0 0 0 / 5%)"}},
