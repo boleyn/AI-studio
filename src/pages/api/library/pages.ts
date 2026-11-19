@@ -72,20 +72,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const {expectedRevision,...changes} = patch.data;
     if (typeof changes.deleted === "boolean" && Object.keys(patch.data).length === 1 &&
-        await pages.findOne({...filter, kind:{$in:["页面", null]}}, {projection:{_id:1}})) {
+        await pages.findOne({...filter, kind:{$in:["页面", "文件夹", "资料空间", null]}}, {projection:{_id:1}})) {
       const root = req.query.id;
+      const settings = db.collection("library_file_settings");
       if (changes.deleted) {
         const seen = new Set([root]);
         let parents = [root];
         while (parents.length) {
-          const children = await pages.find({owner, folderId:{$in:parents}, kind:{$in:["页面", null]},
+          const children = await pages.find({owner, folderId:{$in:parents},
             deleted:{$ne:true}, purging:{$ne:true}}, {projection:{_id:1}}).toArray();
           parents = children.map(child => child._id.toHexString()).filter(id => !seen.has(id));
           for (const id of parents) seen.add(id);
         }
+        await settings.updateMany({owner, folderId:{$in:[...seen]}, deleted:{$ne:true}, purged:{$ne:true}},
+          {$set:{deleted:true, deletedAt:time, trashRoot:root}});
         await pages.updateMany({owner, _id:{$in:[...seen].map(id => new ObjectId(id))}, deleted:{$ne:true}, purging:{$ne:true}},
           {$set:{deleted:true, deletedAt:time, trashRoot:root, time}});
       } else {
+        await settings.updateMany({owner, deleted:true, purged:{$ne:true}, trashRoot:root},
+          {$set:{deleted:false, deletedAt:null}, $unset:{trashRoot:""}});
         await pages.updateMany({owner, deleted:true, purging:{$ne:true}, $or:[{_id:filter._id}, {trashRoot:root}]},
           {$set:{deleted:false, deletedAt:null, time}, $unset:{trashRoot:""}});
       }

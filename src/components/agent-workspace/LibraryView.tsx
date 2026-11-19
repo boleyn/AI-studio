@@ -619,7 +619,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       if (changes.deleted && isContainer(file) && folder?.id === file.id && window.location.search === new URL(router.asPath, window.location.origin).search) {
         navigateList("你的条目", "全部", file.folderId || undefined, undefined, true);
       }
-      if (file.kind === "页面" && changes.deleted !== undefined) setAttempt(value => value + 1);
+      if ((file.kind === "页面" || isContainer(file)) && changes.deleted !== undefined) setAttempt(value => value + 1);
       if (changes.name !== undefined) setRename(undefined);
       return true;
     } catch {
@@ -634,7 +634,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     const noticeKey = restoring ? "restore" : "trash";
     clearBatchNotice(noticeKey);
     const failed: LibraryFile[] = [];
-    const parents = new Map(files?.filter(item => item.kind === "页面").map(item => [item.id, item.folderId]));
+    const parents = new Map(files?.filter(item => item.kind === "页面" || isContainer(item)).map(item => [item.id, item.folderId]));
     function pageDepth(file: LibraryFile) {
       const seen = new Set<string>();
       let parent = file.folderId;
