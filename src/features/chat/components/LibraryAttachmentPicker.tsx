@@ -190,8 +190,8 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
       if (selected.length) setShowDrive(false);
       else onClose();
     }}/></ModalBody> : <><Flex mx={5} mb={3} px={3} h="38px" flexShrink={0} gap={2} align="center" bg="#f5f5f5" borderRadius="12px" _focusWithin={{boxShadow:"inset 0 0 0 1px #aaa"}}>
-      <Search size={16} color="#777"/><Input ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件、页面或文件夹" value={query} onChange={event=>setQuery(event.target.value)}/>
-      {query && <IconButton size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
+      <Search size={16} color="#777" aria-hidden style={{flexShrink:0}}/><Input flex="1" minW={0} ref={searchRef} variant="unstyled" fontSize="sm" aria-label="搜索资料空间" placeholder="搜索文件、页面或文件夹" value={query} onChange={event=>setQuery(event.target.value)}/>
+      {query && <IconButton flexShrink={0} size="xs" variant="ghost" borderRadius="full" aria-label="清空搜索" icon={<X size={14}/>}
         onClick={()=>{setQuery("");searchRef.current?.focus();}}/>}
     </Flex>
       {error && <Flex role="alert" mx={5} mb={2} p={3} flexShrink={0} gap={2} align="center" bg="#faf5f2" color="#694332" borderRadius="10px">
