@@ -255,7 +255,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       }
     }}>{file.name}</Link>;
   }
-  useEffect(() => { setSelected([]); }, [section, tab]);
+  useEffect(() => { setSelected([]); }, [section, tab, router.query.libraryFolder]);
   const [sidebar, setSidebar] = useState(true);
   const search = useRef<HTMLInputElement>(null);
   const [sharing,setSharing] = useState<LibraryFile>();
