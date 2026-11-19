@@ -36,6 +36,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     (!currentBody[selection.end] || currentBody[selection.end] === "\n") &&
     commandPrefix.startsWith("/");
   const matchingFormats = showCommands ? formattingCommands.filter(item=>item.command.startsWith(commandPrefix)) : [];
+  const suggestVisualize = showCommands && onChat && "/visualize".startsWith(commandPrefix);
   const suggestSubpage = showCommands && onCreateSubpage && "/page".startsWith(commandPrefix);
   const hasSelection = Boolean(selectedText?.trim());
   const [openingChat,setOpeningChat] = useState(false);
@@ -155,9 +156,12 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
       </Box>}
       {mobileReader ? <><Text as="h1" fontSize="2xl" fontWeight="600" >{content.name}</Text>{locationNav}<Box mt={5}/><LibraryMarkdown>{content.body}</LibraryMarkdown></> : <><Input isReadOnly={busy} aria-label="页面标题" placeholder="无标题页" variant="unstyled" fontSize="30px" lineHeight="1.1875" fontWeight="600" value={content.name} maxLength={255}
         onChange={event => {edit({...content,name:event.target.value});}}/>{locationNav}
-      {(suggestSubpage || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
+      {(suggestSubpage || suggestVisualize || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
         onClick={()=>insertFormatting(lineStart, selection.end, item.markdown)}>{item.label} · {item.command}</Button>)}
+      {suggestVisualize && <Button size="sm" variant="outline" mt={3} onClick={()=>insertFormatting(lineStart, selection.end, "/visualize ")}>
+        交互式可视化 · /visualize
+      </Button>}
       {suggestSubpage && <Button size="sm" variant="outline" mt={3} onClick={()=>createSubpageFromLine(lineStart, selection.end)}>
         创建子页面 · /page
       </Button>}</Flex>}
@@ -175,7 +179,8 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
           insertFormatting(lineStart, selectionStart, format.markdown);
           return;
         }
-        const request = /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
+        const visualization = /^\/visualize\s+(.+)$/i.exec(line)?.[1].trim();
+        const request = visualization ? "请根据附件页面创建一个可交互的 HTML 可视化文件，并提供可打开的成品。\n\n" + visualization : /^@ChatGPT\s+(.+)$/i.exec(line)?.[1].trim();
         if (request && onChat) {
           event.preventDefault();
           void discussPage(request, value.slice(0, lineStart) + value.slice(selectionStart));
