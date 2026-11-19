@@ -169,6 +169,48 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
     }
   }
 
+  const pageCards = shows("页面") ? pages.map(({name, pageTitle, body, icon: Icon, color}) =>
+            <Box key={name} position="relative" role="group">
+            <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
+              textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
+              <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+                <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
+                  <Box mt={2} fontSize="8px" aria-hidden="true"><TemplatePreview body={body} /></Box></Box>
+              </Box>
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
+            </Button>
+            <TemplateActions label={`Actions for ${name}`} onUse={() => onPick(pageTitle ?? name, body)} />
+            </Box>
+          ) : [];
+  const workbookCards = shows("电子表格") ? workbooks.map(template =>
+            <Box key={template.name} position="relative" role="group">
+            <Button w="full" aria-label={`Use ${template.name}`} isLoading={building === template.name} isDisabled={Boolean(building)} variant="unstyled" height="auto"
+              textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
+              <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
+                <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
+                <Flex bg="white">{template.columns.map(column =>
+                  <Text key={column} flex={1} p={1} fontSize="8px" border="1px solid #ddd">{column}</Text>)}</Flex>
+              </Box>
+              <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
+            </Button>
+            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
+            </Box>) : [];
+  const slideCards = shows("幻灯片") ? slides.map(name =>
+            <Button key={name} aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
+              <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
+            </Button>) : [];
+  const imageCards = shows("图像") ? images.map(({name, cover}) =>
+            <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
+              <Flex aspectRatio="7/5" align="center" justify="center" bg="gray.50" borderRadius="24px">
+                <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="72%" h="72%" objectFit="contain" />
+              </Flex>
+              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
+            </Button>) : [];
+  const groups = [pageCards, slideCards, workbookCards, imageCards];
+  const cards = Array.from({length: Math.max(...groups.map(group => group.length))},
+    (_, index) => groups.flatMap(group => group[index] ? [group[index]] : [])).flat();
+
   return <Modal initialFocusRef={firstCategory} finalFocusRef={triggerRef} isOpen isCentered onClose={onClose} size="full" scrollBehavior="inside">
     <ModalOverlay />
     <ModalContent maxW="min(960px, calc(100vw - 32px))" h="min(740px, calc(100dvh - 32px))" minH={0} borderRadius="16px">
@@ -212,46 +254,9 @@ export function TemplateGallery({ onClose, onPick, triggerRef, onWorkbook, onUpl
       <ModalBody px={{base:4, md:8}} id="gallery-results" role="tabpanel" aria-labelledby={`gallery-tab-${galleryCategories.indexOf(category)}`} tabIndex={0}>
         {buildError && <Text role="alert" fontSize="sm" mb={3} color="red.700">{buildError}</Text>}
         <SimpleGrid columns={{base:2, md:3}} columnGap={{base:3, md:6}} rowGap={{base:6, md:10}}>
-          {shows("页面") && pages.map(({name, pageTitle, body, icon: Icon, color}) =>
-            <Box key={name} position="relative" role="group">
-            <Button w="full" aria-label={name} variant="unstyled" display="block" h="auto" minW={0} whiteSpace="normal"
-              textAlign="left" onClick={() => onPick(pageTitle ?? name, body)}>
-              <Box bg="#f5f5f5" p={3} pb={0} borderRadius="12px" aspectRatio="16/10" overflow="hidden">
-                <Box bg="white" p={3} h="full"><Icon size={16} color={color} />
-                  <Box mt={2} fontSize="8px" aria-hidden="true"><TemplatePreview body={body} /></Box></Box>
-              </Box>
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Page</Text>
-            </Button>
-            <TemplateActions label={`Actions for ${name}`} onUse={() => onPick(pageTitle ?? name, body)} />
-            </Box>
-          )}
-          {shows("电子表格") && workbooks.map(template =>
-            <Box key={template.name} position="relative" role="group">
-            <Button w="full" aria-label={`Use ${template.name}`} isLoading={building === template.name} isDisabled={Boolean(building)} variant="unstyled" height="auto"
-              textAlign="left" whiteSpace="normal" onClick={() => createWorkbook(template)}>
-              <Box p={3} bg="#f1f6f2" borderRadius="12px" aspectRatio="16/10" overflow="hidden">
-                <Text bg="#21684c" color="white" p={2} fontSize="xs">{template.name}</Text>
-                <Flex bg="white">{template.columns.map(column =>
-                  <Text key={column} flex={1} p={1} fontSize="8px" border="1px solid #ddd">{column}</Text>)}</Flex>
-              </Box>
-              <Text mt={2} fontSize="sm">{template.name}</Text><Text color="gray.500" fontSize="xs">Sheets</Text>
-            </Button>
-            <TemplateActions label={`More actions for ${template.name}`} onUse={() => createWorkbook(template)} />
-            </Box>)}
-          {shows("幻灯片") && slides.map(name =>
-            <Button key={name} aria-label={name} variant="unstyled" h="auto" whiteSpace="normal" textAlign="left" onClick={() => onSlides(name)}>
-              <Box as="img" src={`/library-templates/${name.toLowerCase().replaceAll(" ", "-")}-cover.png`} alt="" w="full" aspectRatio="16/10" objectFit="cover" borderRadius="12px" />
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Slides</Text>
-            </Button>)}
-          {shows("图像") && images.map(({name, cover}) =>
-            <Button key={name} aria-label={name} variant="unstyled" h="auto" textAlign="left" onClick={() => onImage(name)}>
-              <Flex aspectRatio="7/5" align="center" justify="center" bg="gray.50" borderRadius="24px">
-                <Box as="img" src={`/library-templates/image-${cover}.webp`} alt="" loading="lazy" w="72%" h="72%" objectFit="contain" />
-              </Flex>
-              <Text mt={2} fontSize="sm">{name}</Text><Text fontSize="xs" color="gray.500">Image</Text>
-            </Button>)}
+          {cards}
         </SimpleGrid>
-        {!(shows("页面") && pages.length || shows("幻灯片") && slides.length || shows("电子表格") && workbooks.length || shows("图像") && images.length) && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
+        {!cards.length && <Text textAlign="center" color="gray.500" py={8}>没有找到模板</Text>}
       </ModalBody>
     </ModalContent>
   </Modal>;
