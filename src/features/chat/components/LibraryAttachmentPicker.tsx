@@ -40,16 +40,18 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
   const listRef = useRef<HTMLDivElement>(null);
   const rootScroll = useRef(0);
   const focusFailedItem = useRef(false);
+  const [busy,setBusy] = useState(false);
   useEffect(() => {
     if (items) listRef.current?.scrollTo({top:space ? 0 : rootScroll.current});
   }, [items,space]);
   useEffect(() => {
-    if (!fileErrors.size || !focusFailedItem.current) return;
+    if (busy || !fileErrors.size || !focusFailedItem.current) return;
+    const failedRow = listRef.current?.querySelector<HTMLButtonElement>("button[data-attachment-error]");
+    if (!failedRow) return;
     focusFailedItem.current = false;
     listRef.current?.scrollTo({top:0});
-    listRef.current?.querySelector<HTMLButtonElement>("button[data-attachment-error]")?.focus({preventScroll:true});
-  }, [fileErrors]);
-  const [busy,setBusy] = useState(false);
+    failedRow.focus({preventScroll:true});
+  }, [fileErrors,busy,items]);
   const [attempt,setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
