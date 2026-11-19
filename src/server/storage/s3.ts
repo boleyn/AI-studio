@@ -12,6 +12,18 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+const transientStorageCodes = new Set([
+  "TimeoutError", "NetworkingError", "ECONNRESET", "ETIMEDOUT",
+  "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN",
+]);
+
+export function isStorageUnavailable(error: unknown) {
+  const failure = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } } | null;
+  const status = failure?.$metadata?.httpStatusCode ?? 0;
+  return status === 429 || status >= 500 ||
+    transientStorageCodes.has(failure?.name ?? "") || transientStorageCodes.has(failure?.code ?? "");
+}
+
 export type StorageBucketType = "public" | "private";
 
 const parseBoolean = (value: string | undefined, fallback: boolean) => {

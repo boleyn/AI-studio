@@ -1,3 +1,4 @@
+import { isStorageUnavailable } from "@server/storage/s3";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { SandpackPredefinedTemplate } from "@codesandbox/sandpack-react";
 import type { SandpackCompileInfo } from "@shared/sandpack/compileInfo";
@@ -144,10 +145,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           }
           res.status(200).send(buffer);
         } catch (error) {
-          const storageError = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } };
-          const status = storageError?.$metadata?.httpStatusCode;
-          if (status === 429 || (status !== undefined && status >= 500) ||
-              ["TimeoutError","NetworkingError","ECONNRESET","ETIMEDOUT","ECONNREFUSED","ENOTFOUND","EAI_AGAIN"].includes(storageError?.code || storageError?.name || "")) {
+          if (isStorageUnavailable(error)) {
             res.status(503).json({error:"文件存储暂时不可用，请稍后重试。"});
           } else {
             res.status(404).json({ error: req.query.version ? "文件版本不存在" : "文件不存在" });

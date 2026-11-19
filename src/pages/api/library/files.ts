@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { ObjectId } from "mongodb";
 import { requireAuth } from "@server/auth/session";
 import { getMongoDb } from "@server/db/mongo";
-import { deleteStorageObjects, getObjectFromStorage, uploadObjectToStorage } from "@server/storage/s3";
+import { deleteStorageObjects, getObjectFromStorage, isStorageUnavailable, uploadObjectToStorage } from "@server/storage/s3";
 import { MAX_FILE_SIZE } from "../core/chat/files/shared";
 import { referenceTypes, type LibraryFile, type ImageReference } from "@/types/library";
 
@@ -19,7 +19,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (typeof id !== "string" || !/^[a-f0-9]{24}$/.test(id)) return res.status(400).end();
     const item = await items.findOne({_id:new ObjectId(id),owner,kind:"上传",deleted:{$ne:true}});
     if (!item) return res.status(404).end();
-    const {buffer} = await getObjectFromStorage({key:item.storageKey});
+    let buffer: Buffer;
+    try {
+      ({ buffer } = await getObjectFromStorage({ key: item.storageKey }));
+    } catch (error) {
+      if (isStorageUnavailable(error)) return res.status(503).json({ error: "文件存储暂时不可用，请稍后重试。" });
+      throw error;
+    }
     res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(item.name));
     res.setHeader("Content-Type","application/octet-stream");
     res.setHeader("X-Content-Type-Options","nosniff");
