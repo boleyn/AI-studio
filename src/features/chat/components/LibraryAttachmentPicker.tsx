@@ -127,8 +127,9 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
     setBusy(true);
     setError("");
     try {
-      const files = await includeSharedPages(picked, sharedSpaces.values());
-      if (!files.length) {
+      const failedSpaces = new Map<string,string>();
+      const files = await includeSharedPages(picked, sharedSpaces.values(), failedSpaces);
+      if (!files.length && !failedSpaces.size) {
         setError("所选位置中没有可添加的文件或页面。");
         return;
       }
@@ -147,12 +148,13 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         }
         recordLibraryOpen(folders.filter(folder => used.has(folder.id)).map(folder => folder.id));
       }
+      const added = files.length - errors.size;
+      for (const [id,message] of failedSpaces) errors.set(id,message);
       focusFailedItem.current = errors.size > 0;
       setFileErrors(errors);
       if (errors.size) {
-        setSelected(files.filter(item => errors.has(item.id)));
+        setSelected([...files, ...sharedSpaces.values()].filter(item => errors.has(item.id)));
         setQuery("");
-        const added = files.length - errors.size;
         setError(added
           ? `已添加 ${added} 项。${errors.size} 项未能添加，已列在最前面。`
           : `${errors.size} 项未能添加，请查看文件旁的提示后重试。`);
@@ -202,7 +204,7 @@ export default function LibraryAttachmentPicker({initialQuery="",onClose,onAdd}:
         <Text mt={1} fontSize="xs" color="gray.600">{attachable?.length ? "试试其他文件名或来源会话名称。" : "上传文件或创建页面后，就可以在这里引用。"}</Text>
       </Box>}
       {visible?.map(item=>{
-        if (item.kind === "资料空间" && item.shareId) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
+        if (item.kind === "资料空间" && item.shareId && !fileErrors.has(item.id)) return <Button key={item.id} variant="ghost" w="full" h="auto" px={2} py={2} gap={3} borderRadius="10px" fontSize="sm" fontWeight="normal"
           justifyContent="start" isDisabled={busy} onClick={()=>browseSpace(item)}>
           <Box aria-hidden="true" w="16px" flexShrink={0}/><LibraryItemIcon item={item}/><Text flex="1" minW={0} textAlign="left" isTruncated title={item.name}>{item.name}</Text><ChevronRight size={16} strokeWidth={1.75} aria-hidden style={{flexShrink:0}}/>
         </Button>;

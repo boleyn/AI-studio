@@ -34,7 +34,7 @@ export function expandLibrarySelection(selection: LibraryFile[], files: LibraryF
     return [...attachments.values()];
   }
 
-export async function includeSharedPages(files: LibraryFile[], spaces: Iterable<LibraryFile>) {
+export async function includeSharedPages(files: LibraryFile[], spaces: Iterable<LibraryFile>, failedSpaces?: Map<string,string>) {
   const uniqueFiles = new Map(files.map(file => [file.id, file]));
   for (const space of spaces) {
     try {
@@ -43,7 +43,8 @@ export async function includeSharedPages(files: LibraryFile[], spaces: Iterable<
     } catch (error) {
       const reason = error instanceof TypeError ? "连接失败，请检查网络后重试。" :
         error instanceof Error ? error.message : "暂时无法读取，请稍后重试。";
-      throw new Error(`无法读取「${space.name}」：${reason}`);
+      if (!failedSpaces) throw new Error(`无法读取「${space.name}」：${reason}`);
+      failedSpaces.set(space.id, reason);
     }
   }
   return [...uniqueFiles.values()];
