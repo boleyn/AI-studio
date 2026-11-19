@@ -435,6 +435,29 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
       return false;
     } finally { setSaving(false); }
   }
+  async function changeTrashSelection() {
+    if (batchBusy || !picked.length) return;
+    const restoring = section === "回收站";
+    const failed: LibraryFile[] = [];
+    setBatchBusy(true);
+    try {
+      for (const file of picked) {
+        if (!await update(file, {deleted:!restoring}, false)) failed.push(file);
+      }
+      if (failed.length) {
+        const action = restoring ? "恢复" : "移入回收站";
+        const succeeded = picked.length - failed.length;
+        toast({
+          status:succeeded ? "warning" : "error", isClosable:true,
+          title:succeeded ? `${succeeded} 项已${action}，${failed.length} 项失败` : `${failed.length} 项未能${action}`,
+          description:<Box><Text>以下条目仍已勾选，可重试。</Text>
+            <Text maxH="8rem" overflowY="auto" overflowWrap="anywhere">{failed.map(file => file.name).join("、")}</Text></Box>,
+        });
+      }
+    } finally {
+      setBatchBusy(false);
+    }
+  }
   async function moveToDestination() {
     if (!move || batchBusy) return;
     const targets = (batchMove ? picked : [move]).filter(item => (item.folderId || "") !== destination);
@@ -803,7 +826,7 @@ export default function LibraryView({ fileChatWidth, setFileChatWidth, fileChatO
         <Text fontSize="sm" minW={{base:"auto",md:"96px"}} whiteSpace="nowrap">已选择 {picked.length} 个</Text>
         <Button size="sm" bg="white" color="black" _hover={{bg:"#ededed"}} leftIcon={<MessageSquare size={16}/>} isDisabled={batchBusy || picked.some(item=>item.siteId || item.deleted || (isContainer(item) && item.shareId))} onClick={()=>startSelectionChat(picked)}>开始聊天</Button>
         <Button size="sm" bg="#303030" color="inherit" _hover={{bg:"#444"}} leftIcon={<Download size={18}/>} isDisabled={batchBusy || picked.some(item=>isContainer(item)||item.siteId||item.deleted)} onClick={()=>usePicked("download")}>下载</Button>
-        <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={async()=>{setBatchBusy(true);try {for(const item of picked) await update(item,{deleted:section!=="回收站"});}finally{setBatchBusy(false);}}}>{section==="回收站" ? "恢复" : "删除"}</Button>
+        <Button size="sm" bg={section==="回收站" ? "#303030" : "#fa423e"} color="white" _hover={{filter:"brightness(.9)"}} leftIcon={section==="回收站" ? <RotateCcw size={16}/> : <Trash2 size={16}/>} isDisabled={saving || batchBusy} onClick={changeTrashSelection}>{section==="回收站" ? "恢复" : "删除"}</Button>
         <Menu><MenuButton as={IconButton} size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="更多操作" icon={<MoreHorizontal size={16}/>}/><MenuList color="gray.800"><MenuItem isDisabled={picked.some(item=>isContainer(item)||item.deleted)} onClick={()=>{setBatchMove(true);setNewDestinationName(undefined);setMoveFailures([]);setMove(picked[0]);setDestination("");}}>移动</MenuItem></MenuList></Menu>
         <IconButton size="sm" variant="ghost" color="inherit" _hover={{bg:"#444"}} aria-label="清除选择" icon={<X size={20}/>} onClick={()=>setSelected([])}/>
       </Flex>}
