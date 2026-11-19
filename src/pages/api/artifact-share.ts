@@ -96,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const buffer = share.livePage && native
         ? Buffer.from("# " + native.name + "\n\n" + native.body)
         : (await readArtifactShareSnapshot(id)).buffer;
-      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Type", share.livePage && native ? "text/markdown; charset=utf-8" : "application/octet-stream");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16))}`);
       return res.status(200).send(buffer);
