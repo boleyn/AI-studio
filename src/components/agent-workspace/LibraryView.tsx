@@ -1,3 +1,4 @@
+import LibraryMarkdown from "./LibraryMarkdown";
 import LibraryCardGrid from "./LibraryCardGrid";
 import useDriveConnected from "./useDriveConnected";
 import { formatFileSize, markdownFilename, matchesExportedPageName } from "@/types/library";
@@ -1062,7 +1063,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
               onClick={event=>clickItemSurface(event,file)}>
               <Flex as="header" align="center" gap={2} ps="12px" pe="76px" h="44px" borderBottomWidth="1px"><Icon size={18} color={color} style={{flexShrink:0}}/>
                 <Box minW={0} isTruncated>{itemLink(file)}</Box></Flex>
-              <Box position="absolute" insetInline="12px" top="48px" bottom="44px" overflow="hidden" whiteSpace="pre-line" overflowWrap="anywhere" fontSize="sm">{file.pageExcerpt}</Box>
+              {file.pageExcerpt && <Box position="absolute" insetInline={0} top="44px" bottom={0} overflow="hidden"
+                borderBottomRadius="inherit" pointerEvents="none" aria-hidden="true" ref={node=>{node?.setAttribute("inert","");}}
+                sx={{containerType:"inline-size", "& blockquote":{borderInlineStart:"2px solid #ddd",paddingInlineStart:"1.5em"}}}>
+                <Box p="7.143cqw" fontSize="3.348cqw" lineHeight="1.625"><LibraryMarkdown>{file.pageExcerpt}</LibraryMarkdown></Box>
+              </Box>}
               {actions(file)}
               <IconButton data-page-pin="" size="xs" boxSize="32px" minW="32px" borderRadius="full" position="absolute" insetInlineEnd="8px" top="6px" variant="ghost"
                 aria-label={(file.pinned ? "取消置顶 " : "置顶 ") + file.name} aria-pressed={Boolean(file.pinned)} isDisabled={selectionLocked}
