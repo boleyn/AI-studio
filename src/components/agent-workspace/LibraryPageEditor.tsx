@@ -13,6 +13,7 @@ export const mobilePageReaderQuery = "(max-width: 767px) and (pointer: coarse)";
 const formattingCommands = [
   {command:"/heading", label:"标题", markdown:"## "},
   {command:"/checklist", label:"检查清单", markdown:"- [ ] "},
+  {command:"/image", label:"图片链接", markdown:"![图片说明]()", cursorBack:1},
   {command:"/table", label:"表格", markdown:"| 列一 | 列二 |\n| --- | --- |\n|  |  |"},
 ];
 
@@ -92,12 +93,13 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
     drafts?.set(url,{...next,revision});
     setStatus("尚未保存");
   }
-  function insertFormatting(start:number, end:number, markdown:string) {
+  function insertFormatting(start:number, end:number, markdown:string, cursorBack = 0) {
     if (!content) return;
     edit({...content, body:content.body.slice(0,start) + markdown + content.body.slice(end)});
     requestAnimationFrame(()=>{
       bodyInput.current?.focus();
-      bodyInput.current?.setSelectionRange(start + markdown.length, start + markdown.length);
+      const cursor = start + markdown.length - cursorBack;
+      bodyInput.current?.setSelectionRange(cursor,cursor);
     });
   }
   function createSubpageFromLine(start:number, end:number) {
@@ -190,7 +192,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         onChange={event => {edit({...content,name:event.target.value});}}/>{locationNav}
       {(suggestSubpage || suggestVisualize || matchingFormats.length > 0) && <Flex wrap="wrap" gap={2} role="group" aria-label="页面命令">
       {matchingFormats.map(item=><Button key={item.command} size="sm" variant="outline" mt={3}
-        onClick={()=>insertFormatting(lineStart, selection.end, item.markdown)}>{item.label} · {item.command}</Button>)}
+        onClick={()=>insertFormatting(lineStart, selection.end, item.markdown, item.cursorBack)}>{item.label} · {item.command}</Button>)}
       {suggestVisualize && <Button size="sm" variant="outline" mt={3} onClick={()=>insertFormatting(lineStart, selection.end, "/visualize ")}>
         交互式可视化 · /visualize
       </Button>}
@@ -208,7 +210,7 @@ export default function LibraryPageEditor({page,shareId,backLabel="返回资料�
         const format = formattingCommands.find(item=>item.command === line);
         if (format) {
           event.preventDefault();
-          insertFormatting(lineStart, selectionStart, format.markdown);
+          insertFormatting(lineStart, selectionStart, format.markdown, format.cursorBack);
           return;
         }
         const visualization = /^\/visualize\s+(.+)$/i.exec(line)?.[1].trim();

@@ -16,7 +16,9 @@ function FormattedMarkdown({children, showImages, interactivePages}: MarkdownPro
     "& th, & td":{border:"1px solid",borderColor:"gray.200",px:3,py:2,textAlign:"start"}
   }}>
     <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
-      ...(!showImages && {img: ({alt}: {alt?: string}) => <span>{alt}</span>}),
+      img:({src,alt,title})=> (showImages || interactivePages) && src
+        ? <img src={src} alt={alt ?? ""} title={title} loading="lazy" referrerPolicy="no-referrer" style={{maxWidth:"100%",height:"auto"}}/>
+        : <span>{alt}</span>,
       pre:({node,children})=>{
         const code = node?.children[0];
         if (interactivePages && code?.type === "element" && code.tagName === "code" &&
