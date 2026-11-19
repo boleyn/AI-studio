@@ -278,20 +278,23 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
   }
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
-    const query = {...router.query};
-    delete query.librarySearch;
-    delete query.librarySiteSettings;
-    delete query.siteDetail;
-    if (clearTypes) {delete query.libraryType;delete query.librarySource;}
-    if (folderId) query.libraryFolder = folderId;
-    else delete query.libraryFolder;
-    if (itemId) query.libraryItem = itemId;
-    else delete query.libraryItem;
-    if (nextSection === "全部") delete query.librarySection;
-    else query.librarySection = nextSection;
-    if (nextTab === "推荐") delete query.libraryTab;
-    else query.libraryTab = nextTab;
-    return { pathname: router.pathname, query };
+    const routeQuery = {...router.query};
+    const keepSearch = !clearTypes && nextSection === section && nextTab === tab &&
+      folderId === router.query.libraryFolder && Boolean(itemId || router.query.libraryItem);
+    if (keepSearch && query.trim()) routeQuery.librarySearch = query;
+    else delete routeQuery.librarySearch;
+    delete routeQuery.librarySiteSettings;
+    delete routeQuery.siteDetail;
+    if (clearTypes) {delete routeQuery.libraryType;delete routeQuery.librarySource;}
+    if (folderId) routeQuery.libraryFolder = folderId;
+    else delete routeQuery.libraryFolder;
+    if (itemId) routeQuery.libraryItem = itemId;
+    else delete routeQuery.libraryItem;
+    if (nextSection === "全部") delete routeQuery.librarySection;
+    else routeQuery.librarySection = nextSection;
+    if (nextTab === "推荐") delete routeQuery.libraryTab;
+    else routeQuery.libraryTab = nextTab;
+    return { pathname: router.pathname, query:routeQuery };
   }
   const itemMarkers = (file: LibraryFile) => <>
     {file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>}
