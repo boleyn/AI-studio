@@ -5,6 +5,7 @@ import { listLibrarySites, siteLibraryId } from "@server/library/sites";
 import { listProjectOverviewItems } from "@server/projects/projectStorage";
 
 import { countRecentSiteVisitors } from "@server/shares/siteVisits";
+import { removeStaticSiteBuild } from "@server/shares/staticSiteBuilder";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const auth = await requireAuth(req, res);
@@ -42,6 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shareIds = await links.distinct("shareId", publications);
     await db.collection("site_domains").deleteMany({shareId:{$in:shareIds}});
     await links.deleteMany({...publications, shareId:{$in:shareIds}});
+    await Promise.all(shareIds.filter((s): s is string => typeof s === "string").map((s) => removeStaticSiteBuild(s)));
     return res.status(204).end();
   }
   if (req.method !== "GET") {

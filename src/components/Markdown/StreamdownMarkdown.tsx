@@ -62,6 +62,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
   resolveWorkspaceImage,
   resolveWorkspaceFile,
 }) => {
+  const safeSource = typeof source === "string" ? source : String(source ?? "");
   const rehypePlugins = useMemo(() => resolveWorkspaceImage || resolveWorkspaceFile ? [
     defaultRehypePlugins.raw,
     () => (tree: Root) => {
@@ -233,7 +234,7 @@ const StreamdownMarkdown: React.FC<StreamdownMarkdownProps> = ({
         }}
         components={components}
       >
-        {source}
+        {safeSource}
       </Streamdown>
     </Box>
   );

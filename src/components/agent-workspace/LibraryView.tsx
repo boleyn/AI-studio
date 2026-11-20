@@ -31,6 +31,8 @@ import LibraryGlobalSearch from "./LibraryGlobalSearch";
 import type { ProjectWithConversations } from "../AgentWorkspace";
 import type { FileChatSizing } from "./FileChatDivider";
 import LibrarySidebar from "./LibrarySidebar";
+import { SIDEBAR_ICON_SIZE, sidebarActionButtonProps } from "./WorkspaceSidebar";
+import { buildWorkspaceLocation } from "@shared/workspaceRoute";
 
 const isNative = (file:LibraryFile) => !file.shareId && (file.kind === "页面" || isContainer(file));
 function LibraryImageThumbnail({file,src}:{file:LibraryFile;src:string}) {
@@ -242,7 +244,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     if (lookupName !== undefined && value !== lookupName) {
       const nextQuery = {...router.query};
       delete nextQuery.librarySearch;
-      void router.replace({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
+      const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: nextQuery });
+      void router.replace(loc.href, loc.as, {shallow:true,scroll:false});
     }
   }
   const sections = ["全部", "你的条目", "与你共享", "页面", "幻灯片", "站点", "图像", "Google Drive", "回收站"];
@@ -285,7 +288,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
   const detail = editor ? undefined : opened;
   function navigateList(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     if (nextSection === section && nextTab === tab && router.query.libraryFolder === folderId && router.query.libraryItem === itemId && router.query.librarySearch === undefined && !router.query.librarySiteSettings && !router.query.siteDetail && !(clearTypes && (router.query.libraryType || router.query.librarySource))) return;
-    void router.push(listUrl(nextSection, nextTab, folderId, itemId, clearTypes), undefined, {shallow:true, scroll:false});
+    const loc = listUrl(nextSection, nextTab, folderId, itemId, clearTypes);
+    void router.push(loc.href, loc.as, {shallow:true, scroll:false});
   }
   function listUrl(nextSection: string, nextTab: string, folderId?:string, itemId?:string, clearTypes = false) {
     const routeQuery = {...router.query};
@@ -304,7 +308,7 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     else routeQuery.librarySection = nextSection;
     if (nextTab === "推荐") delete routeQuery.libraryTab;
     else routeQuery.libraryTab = nextTab;
-    return { pathname: router.pathname, query:routeQuery };
+    return buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: routeQuery });
   }
   const itemMarkers = (file: LibraryFile) => <>
     {file.pinned && <Pin role="img" aria-label="已置顶" size={12} style={{flexShrink:0}}/>}
@@ -317,8 +321,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     if (file.kind === "资料空间" && file.shareId) return <Link title={file.name} href={"/share/space/"+file.shareId} onClick={()=>recordOpen(file)}>{label}</Link>;
     if (file.siteId) return <Link title={file.name} href={sitePreviewPath(file.siteId,file.siteSlug)} target="_blank" rel="noopener noreferrer" onClick={()=>recordOpen(file)}>{label}</Link>;
     const container = isContainer(file);
-    const href = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
-    return <Link title={file.name} href={href} shallow scroll={false} prefetch={false} onClick={event=>{
+    const loc = container ? listUrl("全部", "推荐", file.id, undefined, true) : listUrl(section, tab, folder?.id, file.id);
+    return <Link title={file.name} href={loc.href} as={loc.as} shallow scroll={false} prefetch={false} onClick={event=>{
       if (container && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         setSelected([]);
         setQuery("");
@@ -392,7 +396,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     else delete routeQuery.librarySource;
     if (nextGrid) routeQuery.libraryLayout = "grid";
     else delete routeQuery.libraryLayout;
-    void router.push({pathname:router.pathname, query:routeQuery}, undefined, {shallow:true, scroll:false});
+    const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: routeQuery });
+    void router.push(loc.href, loc.as, {shallow:true, scroll:false});
   }
   const [listSorts, setListSorts] = useState<Record<string, {column: "name" | "time" | "size"; ascending: boolean}>>({});
   const sortKey = allHome ? "全部/" + tab : "list";
@@ -793,7 +798,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
         <MenuItem as="a" href={"/sites/analytics/"+encodeURIComponent(file.siteId)} icon={<BarChart3 size={20}/>}>分析</MenuItem>
         <MenuItem icon={<Settings size={20}/>} onClick={()=>{
           const target = listUrl("站点","你的网站",undefined,undefined,true);
-          void router.push({...target,query:{...target.query,librarySiteSettings:file.siteId}},undefined,{shallow:true,scroll:false});
+          const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: {...target.href.query, librarySiteSettings: file.siteId} });
+          void router.push(loc.href, loc.as, {shallow:true,scroll:false});
         }}>设置</MenuItem>
       </> : isContainer(file) ? <MenuItem icon={<LibraryItemIcon item={file} compact/>} onClick={() => openItem(file)}>打开{file.kind}</MenuItem> :
         <MenuItem icon={<Download size={20}/>} isDisabled={batchBusy} onClick={()=>usePicked("download",[file])}>下载</MenuItem>}
@@ -820,13 +826,13 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
     const pageItem = <MenuItem icon={<FileText size={20} aria-hidden/>} onClick={() => createPage("无标题页","")}>页面</MenuItem>;
     const sheetItem = <MenuItem icon={<Sheet size={20} aria-hidden/>} isDisabled aria-label="电子表格 即将推出">电子表格<Text as="span" ml="auto" fontSize="xs">即将推出</Text></MenuItem>;
     const slidesItem = <MenuItem icon={<Presentation size={20} aria-hidden/>} onClick={() => createSlides()}>幻灯片</MenuItem>;
-    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} size="sm" aria-label={!rail && folder ? "新建" : "创建"} borderRadius={rail ? "8px" : "full"} px={homeTrigger ? {base:0,md:"16px"} : rail ? "8px" : allHome ? "16px" : undefined} h={rail ? "35px" : personalTrigger ? "36px" : allHome ? "36px" : undefined} minW={personalTrigger ? "74px" : homeTrigger ? {base:"36px",md:"82px"} : undefined} fontWeight={rail ? 400 : allHome ? 500 : undefined} bg={rail ? "transparent" : "#0d0d0d"} color={rail ? "inherit" : "white"} justifyContent={rail ? "start" : "center"} _hover={{bg:rail ? "#eee" : "#333"}} _active={{bg:rail ? "#eee" : "#333"}} isLoading={creating}>
-        <Flex as="span" width="max-content" mx={rail ? 0 : "auto"} align="center" gap={rail ? "6px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
-        {rail && <Plus size={20} strokeWidth={1.6} aria-hidden/>}
+    return <Menu placement={rail ? "bottom" : allHome ? "bottom-end" : undefined} offset={rail ? [13, 5] : allHome ? [-1, 5] : undefined}><MenuButton as={Button} {...(rail ? sidebarActionButtonProps : { size:"sm", borderRadius:"full", px:homeTrigger ? {base:0,md:"16px"} : allHome ? "16px" : undefined, h:personalTrigger || allHome ? "36px" : undefined, minW:personalTrigger ? "74px" : homeTrigger ? {base:"36px",md:"82px"} : undefined, fontWeight:allHome ? 500 : undefined, bg:"#0d0d0d", color:"white", justifyContent:"center", _hover:{bg:"#333"}, _active:{bg:"#333"} })} aria-label={!rail && folder ? "新建" : "创建"} isLoading={creating}>
+        <Flex as="span" width="max-content" mx={rail ? 0 : "auto"} align="center" gap={rail ? "8px" : "4px"} whiteSpace="nowrap" lineHeight="20px">
+        {rail && <Plus size={SIDEBAR_ICON_SIZE} aria-hidden/>}
         {personalTrigger && <Plus size={16} aria-hidden/>}
         {homeTrigger && <Box as="span" display={{base:"inline-flex",md:"none"}}><Plus size={20} aria-hidden/></Box>}
         <Box as="span" display={homeTrigger ? {base:"none",md:"inline"} : undefined}>{folderMenu ? "新建" : "创建"}</Box>
-        {!rail && !personalTrigger && <Box as="span" display={homeTrigger ? {base:"none",md:"inline-flex"} : "inline-flex"}><ChevronDown size={16} aria-hidden/></Box>}
+        {!folderMenu && !rail && !personalTrigger && <Box as="span" display={homeTrigger ? {base:"none",md:"inline-flex"} : "inline-flex"}><ChevronDown size={16} aria-hidden/></Box>}
         </Flex>
       </MenuButton>
             <MenuList w="240px" minW="0" p="10px" borderWidth={0} borderRadius="16px" boxShadow="0 0 0 0.5px rgba(0,0,0,.1), 0 0 0 0.5px rgba(0,0,0,.1), 0 8px 16px -4px rgba(0,0,0,.12)" sx={{"& [role=menuitem]":{height:"36px",minHeight:"36px",padding:"6px 10px",borderRadius:"12px",fontSize:"14px"},"& .chakra-menu__icon-wrapper":{marginInlineEnd:"10px"}}}>{personalTrigger ? <>{pageItem}{sheetItem}{slidesItem}</> : <>{rail && <Text h="28px" px="8px" fontSize="14px" color="#707070">创建新内容</Text>}{!folderMenu && <MenuItem icon={<LayoutGrid size={20} aria-hidden/>} onClick={() => setGalleryOpen(true)}>从模板开始</MenuItem>}
@@ -985,9 +991,11 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
                 setSelected([]);
                 if (name === tab) return;
                 const target = listUrl(section,name,undefined,undefined,allHome);
-                if (ownItems && sources.length) target.query.librarySource = sources;
-                if (query.trim()) target.query.librarySearch = query;
-                void router.push(target,undefined,{shallow:true,scroll:false});
+                const nextQuery = {...target.href.query};
+                if (ownItems && sources.length) nextQuery.librarySource = sources;
+                if (query.trim()) nextQuery.librarySearch = query;
+                const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: nextQuery });
+                void router.push(loc.href, loc.as, {shallow:true,scroll:false});
               }}>{allHome && searchTerm && name === "推荐" ? "所有结果" : name}</Button>)}
         </Flex>
         {showListFilters && filterCount > 0 && <Flex gap={1} wrap="wrap" justify="end">
@@ -1346,7 +1354,8 @@ export default function LibraryView({ query, setQuery, sidebar, onCollapseSideba
       if (router.query.libraryConnectors) {
         const query = {...router.query};
         delete query.libraryConnectors;
-        void router.replace({pathname:router.pathname,query},undefined,{shallow:true});
+        const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: query });
+        void router.replace(loc.href, loc.as, {shallow:true});
       }
     }}/>}
     {globalSearch && <LibraryGlobalSearch projects={projects} files={files} error={failed} retry={()=>setAttempt(value=>value+1)} onProject={onProject} onChat={onOpen} onFile={openFileInContainingFolder} close={() => setGlobalSearch(false)} />}

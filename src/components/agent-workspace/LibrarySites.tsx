@@ -17,6 +17,8 @@ interface Site { projectToken?:string; slug?:string; restricted?:boolean; member
 
 const audience = (site:Site) => site.restricted ? (site.memberCount ? "仅限受邀者" : "仅自己可见") : "拥有链接的人";
 
+import { buildWorkspaceLocation } from "@shared/workspaceRoute";
+
 export function SiteCoverImage({siteId}:{siteId:string}) {
   return <Box as="img" alt="" loading="lazy" src={"/api/share/"+encodeURIComponent(siteId)+"/cover"}
       position="absolute" inset={0} w="full" h="full" objectFit="cover" onLoad={event=>{event.currentTarget.style.removeProperty("display");}} onError={event=>{event.currentTarget.style.display="none";}}/>;
@@ -44,7 +46,8 @@ export default function LibrarySites({ tab, query, grid, onSitesChanged, onPlugi
     else delete query.siteDetail;
     if (id) query.librarySiteSettings = id;
     else delete query.librarySiteSettings;
-    void router.push({pathname:router.pathname,query},undefined,{shallow:true,scroll:false});
+    const loc = buildWorkspaceLocation(router.pathname, { view: "library", extraQuery: query });
+    void router.push(loc.href, loc.as, {shallow:true,scroll:false});
   }
   const [loadError, setLoadError] = useState("");
   const [attempt, setAttempt] = useState(0);

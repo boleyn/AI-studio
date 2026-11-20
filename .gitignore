@@ -42,6 +42,7 @@ copilot-messages.log
 # Project data files (keep directory structure)
 data/projects/*
 !data/projects/.gitkeep
+data/published-sites/
 
 # Archive formats
 *.zip

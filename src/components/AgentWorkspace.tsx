@@ -70,8 +70,20 @@ import ProjectSettingsModal from "./agent-workspace/ProjectSettingsModal";
 import ProjectsDirectoryView from "./agent-workspace/ProjectsDirectoryView";
 import type { Schedule } from "@/shared/schedules/types";
 import SchedulesView from "./agent-workspace/SchedulesView";
+import WorkspaceSidebar, {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_ICON_SIZE,
+  SidebarActionButton,
+  SidebarHeaderIconButton,
+  SidebarSectionHeader,
+} from "./agent-workspace/WorkspaceSidebar";
 import FloatingResourcesCard from "./agent-workspace/FloatingResourcesCard";
 import { withAuthHeaders } from "@features/auth/client/authClient";
+import {
+  buildWorkspaceLocation,
+  parseWorkspaceRoute,
+  type WorkspaceView,
+} from "@shared/workspaceRoute";
 import ChatPanel, { type ConversationResources } from "@features/chat/components/ChatPanel";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -133,7 +145,12 @@ export default function AgentWorkspace({
   const [activeChatId, setActiveChatId] = useState<string | undefined>(undefined);
   const router = useRouter();
   const { query } = router;
-  const visibleChatId = typeof query.conversation === "string" ? query.conversation : activeChatId;
+  const parsedRoute = parseWorkspaceRoute(router.asPath, query);
+  const activeNav: WorkspaceView = parsedRoute.view;
+  const visibleChatId =
+    parsedRoute.view === "chat"
+      ? (parsedRoute.conversationId || activeChatId)
+      : activeChatId;
   const visibleChatIdRef = useRef(visibleChatId);
   visibleChatIdRef.current = visibleChatId;
   const [libraryDraft,setLibraryDraft] = useState<{chatId:string;files:File[];text?:string;imageMode?:boolean}>();
@@ -188,9 +205,6 @@ export default function AgentWorkspace({
   const deleteConfirmModal = useDisclosure();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<{ token: string; name: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  type WorkspaceView = "chat" | "schedules" | "projects" | "library";
-  const activeNav: WorkspaceView = query.view === "library" || query.view === "projects" || query.view === "schedules"
-    ? query.view : "chat";
   const [fileChat,setFileChat] = useState<{itemId:string;chatId:string;projectToken:string;minimized:boolean}>();
   const [fileChatWidth, setFileChatWidth] = useState(38);
   const currentFileChat = fileChat && activeNav === "library" && fileChat?.itemId === query.libraryItem &&
@@ -210,31 +224,23 @@ export default function AgentWorkspace({
     }
     setLibrarySearch("");
     setLibrarySidebarOpen(true);
-    const nextQuery = {...router.query, view:"library"} as typeof router.query;
-    for (const key of Object.keys(nextQuery)) {
-      if (key.startsWith("library") || key === "siteDetail") delete nextQuery[key];
-    }
-    void router.push({pathname:router.pathname,query:nextQuery},undefined,{shallow:true,scroll:false});
+    const loc = buildWorkspaceLocation(router.pathname, {
+      view: "library",
+      extraQuery: router.pathname === "/project/[di]" ? { di: router.query.di } : undefined,
+    });
+    void router.push(loc.href, loc.as, { shallow: true, scroll: false });
   }
-  function setActiveNav(view: WorkspaceView, conversation?:string) {
+  function setActiveNav(view: WorkspaceView, conversation?: string) {
     if (view === activeNav && !conversation) return;
-    const nextQuery = {...router.query};
-    if (conversation) nextQuery.conversation = conversation;
     if (view !== "library") {
       setLibrarySearch("");
-      delete nextQuery.librarySearch;
-      delete nextQuery.libraryItem;
-      delete nextQuery.libraryFolder;
-      delete nextQuery.librarySection;
-      delete nextQuery.libraryTab;
-      delete nextQuery.libraryConnectors;
-      delete nextQuery.librarySource;
-      delete nextQuery.libraryType;
-      delete nextQuery.libraryLayout;
     }
-    if (view === "chat") delete nextQuery.view;
-    else nextQuery.view = view;
-    return router.push({pathname:router.pathname, query:nextQuery}, undefined, {shallow:true, scroll:false});
+    const loc = buildWorkspaceLocation(router.pathname, {
+      view,
+      conversationId: view === "chat" ? (conversation ?? activeChatId) : undefined,
+      extraQuery: router.pathname === "/project/[di]" ? { di: router.query.di } : undefined,
+    });
+    return router.push(loc.href, loc.as, { shallow: true, scroll: false });
   }
 
   const [scheduleConversation, setScheduleConversation] = useState<Pick<Schedule, "_id" | "token" | "chatId" | "lastResult" | "nextAt" | "state"> | null>(null);
@@ -395,6 +401,13 @@ export default function AgentWorkspace({
     setActiveToken(token);
     setActiveChatId(undefined);
     setExpandedProjects((prev) => ({ ...prev, [token]: true }));
+    if (activeNav === "chat") {
+      const loc = buildWorkspaceLocation(router.pathname, {
+        view: "chat",
+        extraQuery: router.pathname === "/project/[di]" ? { di: router.query.di } : undefined,
+      });
+      void router.push(loc.href, loc.as, { shallow: true, scroll: false });
+    }
   };
 
   const handleSelectConversation = (token: string, chatId: string) => {
@@ -403,6 +416,14 @@ export default function AgentWorkspace({
     setActiveToken(token);
     setActiveChatId(chatId);
     setExpandedProjects((prev) => ({ ...prev, [token]: true }));
+    if (activeNav === "chat") {
+      const loc = buildWorkspaceLocation(router.pathname, {
+        view: "chat",
+        conversationId: chatId,
+        extraQuery: router.pathname === "/project/[di]" ? { di: router.query.di } : undefined,
+      });
+      void router.push(loc.href, loc.as, { shallow: true, scroll: false });
+    }
   };
 
   const handleNewConversationInProject = (token: string) => {
@@ -411,6 +432,11 @@ export default function AgentWorkspace({
     setActiveToken(token);
     setActiveChatId(undefined);
     setNewConvSignal((n) => n + 1);
+    const loc = buildWorkspaceLocation(router.pathname, {
+      view: "chat",
+      extraQuery: router.pathname === "/project/[di]" ? { di: router.query.di } : undefined,
+    });
+    void router.push(loc.href, loc.as, { shallow: true, scroll: false });
   };
 
   const directoryRequest = useRef(0);
@@ -864,8 +890,16 @@ export default function AgentWorkspace({
             />
           </Tooltip>
           <Tooltip label="资料空间" placement="right">
-            <IconButton ref={libraryNavButton} aria-label="资料空间" icon={<Library size={17} />} size="sm" variant="ghost"
-              bg={activeNav === "library" ? "surface.active" : "transparent"} onClick={openLibraryHome} />
+            <IconButton
+              ref={libraryNavButton}
+              aria-label="资料空间"
+              icon={<Library size={17} />}
+              size="sm"
+              variant="ghost"
+              color={activeNav === "library" ? "ink.primary" : "ink.secondary"}
+              bg={activeNav === "library" ? "surface.active" : "transparent"}
+              onClick={openLibraryHome}
+            />
           </Tooltip>
           <Tooltip label="项目" placement="right">
             <IconButton
@@ -970,36 +1004,30 @@ export default function AgentWorkspace({
         {...(fileChatOpen ? {role:"region", "aria-label":"聊天", inset:{base:0,md:"auto"},zIndex:4,bg:"white",borderLeftWidth:"1px"} : {})}
       >
         {fileChatOpen && <FileChatDivider fileChatWidth={fileChatWidth} setFileChatWidth={setFileChatWidth}/>}
-        {/* 次级侧边栏（1:1 对齐 ChatGPT 左侧栏） */}
+        {/* 次级侧边栏（使用共享 WorkspaceSidebar 组件） */}
           {sidebarOpen && !fileChatOpen ? (
-        <Flex
+        <WorkspaceSidebar
           position={{ base: "absolute", md: "relative" }}
           insetY={0}
           left={0}
           zIndex={3}
           boxShadow={{ base: "xl", md: "none" }}
-          w={{ base: "min(280px, 85vw)", md: "244px" }}
-          flexShrink={0}
-          direction="column"
-          bg="surface.sidebar"
-          borderRight="1px solid"
-          borderColor="stroke.light"
-        >
-          <Flex px={3.5} pt={3} pb={2} align="center" justify="space-between">
-            <HStack spacing={2.5} minW={0}>
-              <Box as="img" src="/icon/logo.svg" w="30px" h="30px" borderRadius="8px" alt="伯仁" flexShrink={0} />
-              <Text fontWeight="600" fontSize="16px" color="ink.primary" noOfLines={1}>
+          w={{ base: "min(280px, 85vw)", md: `${SIDEBAR_DEFAULT_WIDTH}px` }}
+          title={
+            <HStack spacing={2} minW={0}>
+              <Box as="img" src="/icon/logo.svg" w="24px" h="24px" borderRadius="6px" alt="伯仁" flexShrink={0} />
+              <Text fontSize="inherit" fontWeight="inherit" color="inherit" noOfLines={1}>
                 伯仁
               </Text>
             </HStack>
-            <HStack spacing={0.5}>
+          }
+          headerActions={
+            <>
               <Tooltip label="搜索">
-                <IconButton
+                <SidebarHeaderIconButton
                   aria-label="搜索项目或会话"
-                  icon={<Search size={15} />}
-                  size="xs"
-                  variant="ghost"
-                  color="ink.secondary"
+                  aria-expanded={searchOpen}
+                  icon={<Search size={SIDEBAR_ICON_SIZE} />}
                   onClick={() => {
                     setSearchOpen((v) => !v);
                     if (searchOpen) setSearchQuery("");
@@ -1007,56 +1035,54 @@ export default function AgentWorkspace({
                 />
               </Tooltip>
               <Tooltip label="收起侧边栏">
-                <IconButton
+                <SidebarHeaderIconButton
                   aria-label="收起侧边栏"
-                  icon={<PanelLeftClose size={15} />}
-                  size="xs"
-                  variant="ghost"
-                  color="ink.secondary"
+                  icon={<PanelLeftClose size={SIDEBAR_ICON_SIZE} />}
                   onClick={() => setSidebarOpen(false)}
                 />
               </Tooltip>
-            </HStack>
-          </Flex>
-
-          {searchOpen && (
-            <Box px={3} pb={2}>
+            </>
+          }
+          search={
+            searchOpen ? (
               <InputGroup size="sm">
-                <InputLeftElement pointerEvents="none">
-                  <Search size={13} color="#8f8f8f" />
+                <InputLeftElement pointerEvents="none" color="ink.muted">
+                  <Search size={14} />
                 </InputLeftElement>
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="搜索项目或会话..."
                   fontSize="13px"
+                  borderRadius="8px"
                   autoFocus
                 />
               </InputGroup>
-            </Box>
-          )}
-
-          <Box px={2} pb={2}>
-            <Button
-              size="sm"
-              w="full"
-              justifyContent="flex-start"
-              fontWeight="400"
-              fontSize="13.5px"
-              variant="ghost"
-              borderRadius="10px"
-              px={2.5}
-              leftIcon={<SquarePen size={15} />}
+            ) : undefined
+          }
+          primaryAction={
+            <SidebarActionButton
+              leftIcon={<SquarePen size={SIDEBAR_ICON_SIZE} />}
               onClick={() => {
                 if (activeProject) handleNewConversationInProject(activeProject.token);
                 else createModal.onOpen();
               }}
             >
               新聊天
-            </Button>
-          </Box>
-
-          <Box flex="1" overflowY="auto" px={2} pb={4}>
+            </SidebarActionButton>
+          }
+          footer={
+            <>
+              <Button variant="ghost" size="sm" leftIcon={<Library size={16} />} onClick={() => { closeMobileSidebar(); setActiveNav("library"); }}>资料空间</Button>
+              <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings />
+            </>
+          }
+          footerProps={{
+            display: { base: "block", md: "none" },
+            borderTop: "1px solid",
+            borderColor: "stroke.light",
+          }}
+        >
             {loadingProjects ? (
               <Flex justify="center" py={8}>
                 <Spinner size="sm" color="gray.500" />
@@ -1074,22 +1100,25 @@ export default function AgentWorkspace({
               <VStack align="stretch" spacing={2}>
                 {/* 按项目文件夹分类展示对话（类似文件夹与文件树） */}
                 <Box>
-                  <HStack justify="space-between" px={2.5} pb={1.5}>
-                    <Text fontSize="11.5px" fontWeight="500" color="ink.muted">
-                      项目
-                    </Text>
-                    <Tooltip label="新建项目">
-                      <IconButton
-                        aria-label="新建项目"
-                        icon={<FolderPlus size={13} />}
-                        size="xs"
-                        variant="ghost"
-                        color="ink.muted"
-                        _hover={{ color: "ink.primary" }}
-                        onClick={createModal.onOpen}
-                      />
-                    </Tooltip>
-                  </HStack>
+                  <SidebarSectionHeader
+                    label="项目"
+                    action={
+                      <Tooltip label="新建项目">
+                        <IconButton
+                          aria-label="新建项目"
+                          icon={<FolderPlus size={14} />}
+                          size="xs"
+                          boxSize="24px"
+                          minW="24px"
+                          borderRadius="6px"
+                          variant="ghost"
+                          color="ink.muted"
+                          _hover={{ bg: "surface.hover", color: "ink.primary" }}
+                          onClick={createModal.onOpen}
+                        />
+                      </Tooltip>
+                    }
+                  />
                   <VStack align="stretch" spacing={0.5}>
                     {(showAllProjects || searchQuery.trim() ? filteredProjects : filteredProjects.slice(0, 8)).map((project) => {
                       const isActiveProject = activeToken === project.token && !visibleChatId;
@@ -1294,18 +1323,7 @@ export default function AgentWorkspace({
                 </Box>
               </VStack>
             )}
-          </Box>
-          <Box
-            display={{ base: "block", md: "none" }}
-            px={2}
-            py={2}
-            borderTop="1px solid"
-            borderColor="stroke.light"
-          >
-            <Button variant="ghost" size="sm" leftIcon={<Library size={16} />} onClick={() => { closeMobileSidebar(); setActiveNav("library"); }}>资料空间</Button>
-            <UserAccountMenu user={user} loadingUser={false} showWorkspaceSettings />
-          </Box>
-        </Flex>
+        </WorkspaceSidebar>
       ) : null}
 
       {activeNav !== "schedules" && router.isReady && (chatWasOpened || activeNav === "chat" || fileChatOpen) && conversationPane}

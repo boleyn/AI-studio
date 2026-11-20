@@ -1,6 +1,7 @@
 import Router, { type NextRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createChatId } from "@shared/chat/ids";
+import { buildWorkspaceLocation, parseWorkspaceRoute } from "@shared/workspaceRoute";
 
 
 import {
@@ -51,9 +52,10 @@ export function useConversations(
   const activeConversationIdRef = useRef<string | null>(null);
   const initKeyRef = useRef<string | null>(null);
 
+  const parsedRoute = parseWorkspaceRoute(router.asPath, router.query);
   const queryConversationId =
-    router.isReady && typeof router.query.conversation === "string"
-      ? router.query.conversation
+    router.isReady && parsedRoute.view === "chat"
+      ? parsedRoute.conversationId ?? null
       : null;
 
   const refreshConversations = useCallback(async (): Promise<ConversationSummary[]> => {
@@ -105,15 +107,18 @@ export function useConversations(
             }
             return [conversation, ...prev];
           });
-          if (Router.asPath === initialPath && Router.query.conversation !== conversation.id) {
-            router.replace(
-              {
-                pathname: router.pathname,
-                query: { ...router.query, conversation: conversation.id },
-              },
-              undefined,
-              { shallow: true }
-            );
+          const currentRoute = parseWorkspaceRoute(Router.asPath, Router.query);
+          if (
+            Router.asPath === initialPath &&
+            currentRoute.view === "chat" &&
+            currentRoute.conversationId !== conversation.id
+          ) {
+            const loc = buildWorkspaceLocation(router.pathname, {
+              view: "chat",
+              conversationId: conversation.id,
+              extraQuery: router.query,
+            });
+            router.replace(loc.href, loc.as, { shallow: true });
           }
         }
       } finally {
@@ -148,15 +153,14 @@ export function useConversations(
       return prev.filter((item) => item.id !== conversation.id);
     });
 
-    if (queryConversationId !== conversation.id) {
-      router.replace(
-        {
-          pathname: router.pathname,
-          query: { ...router.query, conversation: conversation.id },
-        },
-        undefined,
-        { shallow: true }
-      );
+    const currentRoute = parseWorkspaceRoute(Router.asPath, Router.query);
+    if (currentRoute.view === "chat" && queryConversationId !== conversation.id) {
+      const loc = buildWorkspaceLocation(router.pathname, {
+        view: "chat",
+        conversationId: conversation.id,
+        extraQuery: router.query,
+      });
+      router.replace(loc.href, loc.as, { shallow: true });
     }
 
     return conversation;

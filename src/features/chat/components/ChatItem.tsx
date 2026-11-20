@@ -4,7 +4,6 @@ import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import React from "react";
 import { Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
-import type { LibraryFile } from "@/types/library";
 import { redirectedToLogin } from "../services/files";
 import { LibraryReadError, libraryReadMessage, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -215,27 +214,6 @@ const ChatItem = ({
     isLatestRun,
     messageId,
   });
-
-  const toast = useToast();
-  const [creatingPage,setCreatingPage] = React.useState(false);
-  const [savedPage,setSavedPage] = React.useState<string>();
-  const pageBody = timelineHasAnswer
-    ? timelineItems.flatMap(item => item.type === "answer" && item.text?.trim() ? [item.text] : []).join("\n\n")
-    : content;
-  async function saveAnswerPage() {
-    if (!pageBody.trim() || creatingPage || savedPage) return;
-    setCreatingPage(true);
-    try {
-      const name = pageBody.trim().split("\n")[0].replace(/^#{1,6}\s+/, "").slice(0, 100) || "无标题页";
-      const response = await fetch("/api/library/pages", {method:"POST",
-        headers:withAuthHeaders({"Content-Type":"application/json"}), body:JSON.stringify({name,body:pageBody,kind:"页面",sourceChat:token && activeConversationId ? {token,chatId:activeConversationId} : undefined})});
-      if (!response.ok) throw new Error();
-      const page: LibraryFile = await response.json();
-      setSavedPage(page.id);
-    } catch {
-      toast({status:"error",title:"未能将回复保存为页面",description:"请稍后重试。"});
-    } finally {setCreatingPage(false);}
-  }
 
   const artifactVersion = message.additional_kwargs?.workspaceArtifactVersion;
   const artifactPaths = message.additional_kwargs?.workspaceArtifactPaths;
@@ -711,10 +689,6 @@ const ChatItem = ({
               )
             ) : null}
 
-            {isWorkspaceChat && isAssistant && !isStreaming && pageBody.trim() && <Box>
-              {savedPage ? <Link fontSize="sm" href={"/?" + new URLSearchParams({view:"library",libraryItem:savedPage})}>打开已保存的页面</Link> :
-                <Button size="xs" variant="ghost" isLoading={creatingPage} onClick={saveAnswerPage}>保存为资料空间页面</Button>}
-            </Box>}
             {isWorkspaceChat && isStreaming && !hasActivity && (
               <Flex role="status" align="center" gap={2} py={2} color="gray.600">
                 <Spinner size="xs" aria-hidden="true" />

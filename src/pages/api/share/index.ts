@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAuth } from "@server/auth/session";
 import { getProject } from "@server/projects/projectStorage";
 import { createShareLink, type ShareMode } from "@server/shares/shareStorage";
+import { buildStaticSite } from "@server/shares/staticSiteBuilder";
 
 type CreateShareBody = {
   token?: string;
@@ -61,10 +62,12 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
       mode,
       ownerUserId: userId,
     });
+    const build = mode === "preview" ? await buildStaticSite(link.shareId, project).catch(() => null) : null;
     res.status(201).json({
       shareId: link.shareId,
       mode: link.mode,
       url: buildShareUrl(req, mode, link.shareId),
+      ...(build ? { buildStatus: build.status, buildErrors: build.errors } : {}),
     });
   } catch (error) {
     console.error("Failed to create share link:", error);

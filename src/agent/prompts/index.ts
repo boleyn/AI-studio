@@ -39,7 +39,12 @@ export function buildSystemPrompt(params: PromptContext): string {
       ...(params.toolNames.has("ScheduleTask") ? ["For reminders and recurring conversation tasks, discover ScheduleTask. Confirm the user’s intended time zone and report the actual activation state."] : []),
       ...(params.toolNames.has("compile_project")
         ? [
-            "For frontend preview/compile, use `compile_project`. Do not start dev servers via Bash.",
+            "Project runtime: published sites are statically built (esbuild bundle or static HTML) and hosted directly by this platform (no persistent backend server process). Write self-contained frontend code in workspace files; do not start dev servers via Bash or point iframes at localhost/127.0.0.1. For editor preview compile logs, use `compile_project`.",
+          ]
+        : []),
+      ...(params.toolNames.has("get_site_status") || params.toolNames.has("publish_site") || params.toolNames.has("unpublish_site")
+        ? [
+            "For published site status, static build verification, or publishing/unpublishing the site, discover and use `get_site_status` / `publish_site` / `unpublish_site` instead of probing localhost ports.",
           ]
         : []),
       ...(params.toolNames.has("Read")

@@ -3,8 +3,17 @@ const nextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["127.0.0.1"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  serverExternalPackages: ["esbuild"],
   typescript: {
     ignoreBuildErrors: true,
+  },
+  async rewrites() {
+    return [
+      { source: "/c/:conversationId", destination: "/" },
+      { source: "/library", destination: "/" },
+      { source: "/projects", destination: "/" },
+      { source: "/schedules", destination: "/" },
+    ];
   },
   webpack(config, { webpack }) {
     // libarchive ships a minified module worker as a static asset. SWC treats

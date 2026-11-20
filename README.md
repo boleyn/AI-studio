@@ -74,6 +74,14 @@ flowchart LR
 
 - **会话与模型**：按项目管理会话和输出文件，配置模型连接、查看用量，也可以在会话中创建定时任务。
 
+## 站点静态构建与托管
+
+项目工作区中的前端代码可直接构建并发布为平台托管的静态站点，不依赖外部 Sandpack 服务或常驻后端进程：
+
+- **构建机制（`src/server/shares/staticSiteBuilder.ts`）**：发布或访问站点时，服务端根据工作区文件自动识别纯静态 HTML 或 React / TypeScript / JavaScript 入口，使用 `esbuild` 打包静态资源并输出至 `data/published-sites/<shareId>/`；源码保存更新后会在访问或重新发布时自动增量重建。
+- **静态托管与权限（`src/pages/api/sites/[shareId]/[[...assetPath]].ts`、`src/pages/share/preview/[shareId].tsx`）**：通过同源隔离 `iframe` 直接提供静态 HTML/JS/CSS 与静态资源，支持公开访问、受限成员校验与自定义短链（`/s/<slug>`）。
+- **对话内管理（`src/server/library/sitePlugin.ts`）**：智能体可通过 `get_site_status`、`publish_site`、`unpublish_site` 工具在对话中直接查询静态构建与发布状态、发布/重建站点或取消发布并清理产物。
+
 ## 本地运行
 
 准备 Node.js 24、Bun、MongoDB 和可用的模型服务。附件上传与对象存储功能还需要 S3 兼容服务和相应的存储桶。

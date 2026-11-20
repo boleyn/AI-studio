@@ -18,6 +18,9 @@ describe("capability-aware prompt composition", () => {
     const prompt = buildSystemPrompt({ ...context, toolNames: new Set() });
     for (const name of [
       "compile_project",
+      "get_site_status",
+      "publish_site",
+      "unpublish_site",
       "AskUserQuestion",
       "ExitPlanMode",
       "`Skill`",
@@ -37,6 +40,17 @@ describe("capability-aware prompt composition", () => {
     expect(prompt).toContain("AskUserQuestion");
     expect(prompt).not.toContain("Trusted plugin instruction");
     expect(prompt).not.toContain("ExitPlanMode");
+  });
+  test("includes static site runtime and site tool guidance when enabled", () => {
+    const prompt = buildSystemPrompt({
+      ...context,
+      toolNames: new Set(["compile_project", "get_site_status", "publish_site", "unpublish_site"]),
+    });
+    expect(prompt).toContain("statically built");
+    expect(prompt).toContain("compile_project");
+    expect(prompt).toContain("get_site_status");
+    expect(prompt).toContain("publish_site");
+    expect(prompt).toContain("unpublish_site");
   });
 });
 

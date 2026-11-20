@@ -34,6 +34,7 @@ import {
   Spinner,
   Text,
   Textarea,
+  Tooltip,
   VStack,
   useToast,
 } from "@chakra-ui/react";
@@ -60,6 +61,13 @@ import type { Schedule, ScheduleSpec } from "@/shared/schedules/types";
 import { withAuthHeaders } from "@features/auth/client/authClient";
 
 import { AppDialog } from "../ui";
+import WorkspaceSidebar, {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_ICON_SIZE,
+  SidebarActionButton,
+  SidebarHeaderIconButton,
+  SidebarSectionHeader,
+} from "./WorkspaceSidebar";
 
 type Chat = { token: string; id: string; label: string };
 type Props = {
@@ -255,33 +263,30 @@ export default function SchedulesView({
         base: "minmax(0, 1fr)",
         md: hideDesktopList
           ? "minmax(0, 1fr)"
-          : "minmax(240px, 288px) minmax(0, 1fr)",
+          : `${SIDEBAR_DEFAULT_WIDTH}px minmax(0, 1fr)`,
       }}
       templateRows="minmax(0, 1fr)"
     >
-      <Flex
-        direction="column"
+      <WorkspaceSidebar
+        w="full"
         display={{
           base: showMobileDetail ? "none" : "flex",
           md: hideDesktopList ? "none" : "flex",
         }}
-        bg="surface.sidebar"
-        borderInlineEndWidth={{ md: "1px" }}
-        borderColor="stroke.subtle"
-        minH={0}
-      >
-        <Box px={3} pt={3} pb={3}>
-          <Flex align="center" gap={1} mb={2} px={1}>
-            <Heading as="h1" size="sm" flex="1">
-              定时任务
-            </Heading>
+        borderRightWidth={{ base: 0, md: "1px" }}
+        title={
+          <Heading as="h1" fontSize="inherit" fontWeight="inherit" lineHeight="inherit">
+            定时任务
+          </Heading>
+        }
+        headerActions={
+          <>
             <Menu placement="bottom-end" isLazy>
               <MenuButton
-                as={IconButton}
-                size="sm"
-                variant="ghost"
+                as={SidebarHeaderIconButton}
                 aria-label="筛选任务"
-                icon={<ListFilter size={17} />}
+                title="筛选任务"
+                icon={<ListFilter size={SIDEBAR_ICON_SIZE} />}
                 color={filter === "all" ? "ink.secondary" : "ink.primary"}
                 bg={filter === "all" ? undefined : "surface.active"}
               />
@@ -302,61 +307,57 @@ export default function SchedulesView({
                 </MenuList>
               </Portal>
             </Menu>
-            <IconButton
-              size="sm"
-              variant="ghost"
-              aria-label={searchOpen ? "关闭搜索" : "搜索定时任务"}
-              aria-expanded={searchOpen}
-              icon={<Search size={17} />}
-              color="ink.secondary"
-              onClick={() => {
-                setSearchOpen(!searchOpen);
-                if (searchOpen) setSearch("");
-              }}
-            />
-            <IconButton
-              display={{ base: "none", md: "inline-flex" }}
-              size="sm"
-              variant="ghost"
-              aria-label="收起任务列表"
-              isDisabled={!selected}
-              icon={<PanelLeftClose size={17} />}
-              color="ink.secondary"
-              onClick={() => setSidebarCollapsed(true)}
-            />
-          </Flex>
-          {searchOpen && (
-            <InputGroup size="sm" mb={2}>
-              <InputLeftElement pointerEvents="none" color="ink.secondary">
+            <Tooltip label={searchOpen ? "关闭搜索" : "搜索"}>
+              <SidebarHeaderIconButton
+                aria-label={searchOpen ? "关闭搜索" : "搜索定时任务"}
+                aria-expanded={searchOpen}
+                icon={<Search size={SIDEBAR_ICON_SIZE} />}
+                onClick={() => {
+                  setSearchOpen(!searchOpen);
+                  if (searchOpen) setSearch("");
+                }}
+              />
+            </Tooltip>
+            <Tooltip label="收起侧边栏">
+              <SidebarHeaderIconButton
+                display={{ base: "none", md: "inline-flex" }}
+                aria-label="收起任务列表"
+                isDisabled={!selected}
+                icon={<PanelLeftClose size={SIDEBAR_ICON_SIZE} />}
+                onClick={() => setSidebarCollapsed(true)}
+              />
+            </Tooltip>
+          </>
+        }
+        search={
+          searchOpen ? (
+            <InputGroup size="sm">
+              <InputLeftElement pointerEvents="none" color="ink.muted">
                 <Search size={14} aria-hidden="true" />
               </InputLeftElement>
               <Input
                 ref={searchRef}
                 type="search"
                 aria-label="任务名称"
-                placeholder="搜索任务"
+                placeholder="搜索任务..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                borderRadius="md"
+                fontSize="13px"
+                borderRadius="8px"
               />
             </InputGroup>
-          )}
-          <Button
-            w="full"
-            variant="ghost"
-            size="sm"
-            h={10}
-            justifyContent="flex-start"
-            borderRadius="lg"
-            leftIcon={<Plus size={17} />}
+          ) : undefined
+        }
+        primaryAction={
+          <SidebarActionButton
+            leftIcon={<Plus size={SIDEBAR_ICON_SIZE} />}
             onClick={() => edit()}
             isDisabled={!chats.length || busy}
           >
             新建任务
-          </Button>
-        </Box>
-
-        <Box overflowY="auto" px={3} pb={4}>
+          </SidebarActionButton>
+        }
+      >
           {error && (
             <Text role="alert" color="red.700" fontSize="sm" px={2} mb={3}>
               {error}
@@ -402,19 +403,12 @@ export default function SchedulesView({
                 key={state}
                 as="section"
                 aria-labelledby={`schedule-group-${state}`}
-                mb={4}
+                mb={3}
               >
-                <Heading
+                <SidebarSectionHeader
                   id={`schedule-group-${state}`}
-                  as="h2"
-                  fontSize="xs"
-                  fontWeight="600"
-                  color="ink.secondary"
-                  px={2}
-                  py={2}
-                >
-                  {states[state]}
-                </Heading>
+                  label={states[state]}
+                />
                 <VStack
                   as="ul"
                   role="list"
@@ -548,8 +542,7 @@ export default function SchedulesView({
               </Box>
             );
           })}
-        </Box>
-      </Flex>
+      </WorkspaceSidebar>
 
       <Flex
         as="article"
