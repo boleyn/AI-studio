@@ -31,6 +31,7 @@ import {
   RotateCcw,
   Laptop,
   Layers,
+  MessageSquareText,
   Plus,
   Square,
   Settings2,
@@ -86,6 +87,9 @@ const ChatInput = ({
   skillOptions = [],
   fileOptions = [],
   addFileRequest,
+  selectionQuotes = [],
+  onRemoveSelectionQuote,
+  focusInputSignal,
   prefillText,
   prefillVersion,
   onChangeModel,
@@ -163,6 +167,13 @@ const ChatInput = ({
     );
     textAreaRef.current?.focus();
   }, [addFileRequest]);
+  useEffect(() => {
+    if (!focusInputSignal) return;
+    const frame = requestAnimationFrame(() => {
+      textAreaRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusInputSignal]);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [fileRange, setFileRange] = useState<{ start: number; end: number } | null>(null);
   const inputBaseHeight = 50;
@@ -221,8 +232,8 @@ const ChatInput = ({
       !isSubmitting &&
       !hasUploadingFiles &&
       !hasUploadErrors &&
-      (text.trim().length > 0 || files.length > 0 || selectedFilePaths.length > 0),
-    [conversationLoading, files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, selectedFilePaths.length, text]
+      (text.trim().length > 0 || files.length > 0 || selectedFilePaths.length > 0 || selectionQuotes.length > 0),
+    [conversationLoading, files.length, hasUploadErrors, hasUploadingFiles, isSending, isSubmitting, selectedFilePaths.length, selectionQuotes.length, text]
   );
   const selectedSkillList = useMemo(() => {
     if (Array.isArray(selectedSkills) && selectedSkills.length > 0) {
@@ -573,6 +584,7 @@ const ChatInput = ({
       selectedSkill: selectedSkillList[0] || undefined,
       selectedSkills: selectedSkillList.length > 0 ? selectedSkillList : undefined,
       selectedFilePaths: selectedFilePaths.length > 0 ? selectedFilePaths : undefined,
+      selectionQuotes: selectionQuotes.length > 0 ? selectionQuotes : undefined,
       thinkingEnabled: showThinkingToggle ? thinkingEnabled : undefined,
       reasoningEffort: workspaceLayout || showThinkingToggle ? reasoningEffort : undefined,
     };
@@ -593,7 +605,7 @@ const ChatInput = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [canSend, imageMode, draftStorageKey, files, onSend, toast, reasoningEffort, resetTextareaHeight, selectedFilePaths, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
+  }, [canSend, imageMode, draftStorageKey, files, onSend, toast, reasoningEffort, resetTextareaHeight, selectedFilePaths, selectionQuotes, text, selectedSkillList, thinkingEnabled, showThinkingToggle, workspaceLayout]);
 
   return (
     <Box px={4} py={3}>
@@ -623,6 +635,76 @@ const ChatInput = ({
         minH={workspaceLayout ? "96px" : "116px"}
         overflow="visible"
       >
+        {selectionQuotes.length > 0 ? (
+          <Flex gap={2.5} px={3.5} pt={3} pb={0.5} wrap="wrap" userSelect="none">
+            {selectionQuotes.map((quote) => (
+              <Box
+                key={quote.id}
+                position="relative"
+                w="162px"
+                minH="114px"
+                bg="white"
+                border="1px solid"
+                borderColor="rgba(0, 0, 0, 0.11)"
+                borderRadius="16px"
+                px={3}
+                py={2.5}
+                display="flex"
+                flexDirection="column"
+                justifyContent="space-between"
+                transition="border-color 0.15s, box-shadow 0.15s"
+                _hover={{
+                  borderColor: "rgba(0, 0, 0, 0.2)",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                }}
+                sx={{
+                  "@media (hover: hover) and (pointer: fine)": {
+                    "&:not(:hover):not(:focus-within) .quote-card-close": { opacity: 0 },
+                  },
+                }}
+              >
+                <CloseButton
+                  className="quote-card-close"
+                  aria-label="移除选中引用"
+                  size="sm"
+                  w="20px"
+                  h="20px"
+                  fontSize="9px"
+                  position="absolute"
+                  top="-7px"
+                  right="-7px"
+                  bg="#18181b"
+                  color="white"
+                  borderRadius="full"
+                  boxShadow="0 1px 4px rgba(0,0,0,0.2)"
+                  _hover={{ bg: "#3f3f46" }}
+                  transition="opacity 0.12s ease"
+                  onClick={() => {
+                    onRemoveSelectionQuote?.(quote.id);
+                    textAreaRef.current?.focus();
+                  }}
+                />
+                <Text
+                  fontSize="12.5px"
+                  lineHeight="1.45"
+                  color="#3f3f46"
+                  noOfLines={4}
+                  wordBreak="break-word"
+                  title={quote.text}
+                >
+                  {quote.text}
+                </Text>
+                <Flex align="center" gap={1.5} mt={2.5} color="#52525b">
+                  <MessageSquareText size={13} strokeWidth={1.9} />
+                  <Text fontSize="11.5px" fontWeight="500" color="#3f3f46">
+                    选中引用
+                  </Text>
+                </Flex>
+              </Box>
+            ))}
+          </Flex>
+        ) : null}
+
         {previewFiles.length > 0 ? (
           <Flex gap="6px" mb={2} pt={2} px={3} userSelect="none" wrap="wrap">
             {previewFiles.map((item) => item.uploadState === "error" ? (

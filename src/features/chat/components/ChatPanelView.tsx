@@ -4,12 +4,15 @@ import { Box, Flex, IconButton, Spinner, Text } from "@chakra-ui/react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
 import ChatHeader from "./ChatHeader";
 import ChatInput from "./ChatInput";
+import SelectionPopover from "./SelectionPopover";
+import SideChatPanel from "./SideChatPanel";
 import ChatInteractionSurface from "./message/ChatInteractionSurface";
 import ChatMessageTimeline from "./message/ChatMessageTimeline";
 
 const ChatPanelView = () => {
   const context = useChatPanelViewContext();
   const scrolledElement = useRef<HTMLDivElement | null>(null);
+  const selectionScopeRef = useRef<HTMLDivElement | null>(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   useEffect(() => {
     setAwayFromBottom(false);
@@ -53,7 +56,10 @@ const ChatPanelView = () => {
         title={context.activeConversationTitle}
       />}
 
-      <Flex direction="column" flex="1" minH={0} overflow="hidden"
+      <Flex flex="1" minH={0} overflow="hidden" position="relative">
+      <Flex direction="column" flex="1" minW={0} minH={0} overflow="hidden" position="relative">
+        {context.customHeader}
+      <Flex direction="column" flex="1" minW={0} minH={0} overflow="hidden" position="relative"
         justify={centeredComposer ? "center" : undefined} pb={centeredComposer ? { base: 10, md: 24 } : 0}>
         <Box
           ref={context.scrollRef}
@@ -77,6 +83,7 @@ const ChatPanelView = () => {
             setAwayFromBottom(element.scrollHeight - element.scrollTop - element.clientHeight > 160);
           }}
         >
+          <Box ref={selectionScopeRef} h={context.messages.length === 0 ? "full" : undefined}>
           {context.showInitialLoading ? (
             <Flex align="center" color="gray.600" gap={2} h="full" justify="center">
               <Spinner size="sm" />
@@ -116,7 +123,25 @@ const ChatPanelView = () => {
               />
             </Flex>
           )}
+          </Box>
         </Box>
+
+        <SelectionPopover
+          containerRef={selectionScopeRef}
+          onAskInMain={(selection) => {
+            context.onAddSelectionQuote({
+              text: selection.text,
+              messageId: selection.messageId,
+              role: selection.role,
+            });
+          }}
+          onAskInSideChat={(selection) => {
+            context.onOpenSideChatForSelection({
+              text: selection.text,
+              messageId: selection.messageId,
+            });
+          }}
+        />
 
         <Box w="full" maxW="832px" mx="auto" position="relative" pt={centeredComposer ? 2 : 0}>
         {context.hideHeader && awayFromBottom && context.messages.length > 0 && (
@@ -161,6 +186,9 @@ const ChatPanelView = () => {
           skillOptions={context.skillOptions}
           fileOptions={context.fileOptions}
           addFileRequest={context.addFileRequest}
+          selectionQuotes={context.selectionQuotes}
+          onRemoveSelectionQuote={context.onRemoveSelectionQuote}
+          focusInputSignal={context.focusInputSignal}
           onChangeModel={context.onChangeModel}
           onChangeMode={context.onChangeMode}
           onChangeThinkingEnabled={context.onChangeThinkingEnabled}
@@ -171,6 +199,29 @@ const ChatPanelView = () => {
           onStop={context.onStop}
         />
         </Box>
+      </Flex>
+      </Flex>
+
+      {context.sideChatOpen && context.activeSideChat ? (
+        <SideChatPanel
+          thread={context.activeSideChat}
+          pendingQuote={context.sideChatPendingQuote}
+          focusSignal={context.sideChatFocusSignal}
+          isStreaming={context.isSideChatStreaming}
+          errorMessage={context.sideChatError}
+          model={context.model}
+          modelLoading={context.modelLoading}
+          modelOptions={context.modelOptions}
+          modelGroups={context.modelGroups}
+          onChangeModel={context.onChangeModel}
+          onClearPendingQuote={context.onClearSideChatPendingQuote}
+          onNewThread={context.onNewSideChat}
+          onDeleteThread={(threadId) => void context.onDeleteSideChatThread(threadId)}
+          onSend={context.onSendSideChatMessage}
+          onStop={context.onStopSideChat}
+          onClose={context.onCloseSideChat}
+        />
+      ) : null}
       </Flex>
     </Flex>
   );

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import type { TFunction } from "next-i18next";
 import type { LegacyRef } from "react";
 import type { ConversationMessage } from "@/types/conversation";
@@ -13,10 +13,12 @@ import type {
   WorkspaceComposerConfig,
 } from "../types/chatInput";
 import type { UploadedFileArtifact } from "../types/fileArtifact";
+import type { SelectionQuote, SideChatThread } from "../types/selectionChat";
 
 export type ChatPanelViewContextValue = {
   height: string;
   hideHeader: boolean;
+  customHeader?: ReactNode;
   t: TFunction;
   activeConversationId?: string;
   conversations: ConversationSummary[];
@@ -83,6 +85,25 @@ export type ChatPanelViewContextValue = {
   onOpenWorkspaceFile?: (filePath: string, version?: string) => boolean;
   onUseSkill: (skillName: string) => void;
   workspaceComposer?: WorkspaceComposerConfig;
+  selectionQuotes: SelectionQuote[];
+  focusInputSignal: number;
+  onAddSelectionQuote: (quote: Omit<SelectionQuote, "id">) => void;
+  onRemoveSelectionQuote: (id: string) => void;
+  sideChatOpen: boolean;
+  sideChatThreads: SideChatThread[];
+  activeSideChat: SideChatThread | null;
+  sideChatPendingQuote: string | null;
+  sideChatFocusSignal: number;
+  isSideChatStreaming: boolean;
+  sideChatError: string | null;
+  onOpenSideChatForSelection: (selection: { text: string; messageId?: string }) => void;
+  onNewSideChat: () => void;
+  onOpenSideChatById: (threadId: string) => void;
+  onCloseSideChat: () => void;
+  onClearSideChatPendingQuote: () => void;
+  onSendSideChatMessage: (prompt: string) => Promise<void>;
+  onStopSideChat: () => void;
+  onDeleteSideChatThread: (threadId: string) => Promise<void>;
 };
 
 const ChatPanelViewContext = createContext<ChatPanelViewContextValue | null>(null);

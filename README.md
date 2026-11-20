@@ -74,6 +74,14 @@ flowchart LR
 
 - **会话与模型**：按项目管理会话和输出文件，配置模型连接、查看用量，也可以在会话中创建定时任务。
 
+## 选中引用与侧边聊天
+
+在对话消息中选中任意文本片段时，浮层工具栏提供两种上下文交互方式，兼顾主线推进与局部深挖：
+
+- **向 AI 提问（选中引用）**：将选中文本以引用卡片形式附加到主输入框（`src/features/chat/components/SelectionPopover.tsx`、`ChatInput.tsx`）。发送后，消息气泡展示精简引用块，底层（`src/pages/api/v2/chat/completions.ts`）通过 `meta.selectionQuotes` 持久化并在模型输入中自动注入结构化引用上下文，保持展示正文与 Prompt 解耦。
+- **在侧边聊天中提问（Side Chat）**：在右侧展开与主对话顶栏齐平的独立分栏（`src/features/chat/components/SideChatPanel.tsx`），支持左右拖拽分割线调节宽度（双击还原 50/50）、加宽/还原、切换模型、查看输出与来源以及独立多轮追问。
+- **底层流式推理与持久化**：侧边聊天通过独立 SSE 接口（`src/pages/api/v2/chat/side-completions.ts`）读取主对话近期背景与当前选中引用片段进行快速流式回复，不污染主对话上下文；记录按会话持久化在 MongoDB `conversation_side_chats` 集合（`src/server/conversations/sideChatStorage.ts`、`src/pages/api/v2/chat/side-chats.ts`）。
+
 ## 站点静态构建与托管
 
 项目工作区中的前端代码可直接构建并发布为平台托管的静态站点，不依赖外部 Sandpack 服务或常驻后端进程：

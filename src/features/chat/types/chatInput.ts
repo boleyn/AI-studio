@@ -1,5 +1,6 @@
 import type { CloudHostStatus } from "@shared/sandbox/cloudHostStatus";
 import type { UploadedFileArtifact } from "./fileArtifact";
+import type { SelectionQuote } from "./selectionChat";
 
 export type ReasoningEffortLevel = "off" | "low" | "medium" | "high" | "xhigh";
 
@@ -54,6 +55,7 @@ export interface ChatInputSubmitPayload {
   selectedSkill?: string;
   selectedSkills?: string[];
   selectedFilePaths?: string[];
+  selectionQuotes?: SelectionQuote[];
   thinkingEnabled?: boolean;
   reasoningEffort?: ReasoningEffortLevel;
 }
@@ -129,6 +131,9 @@ export interface ChatInputProps {
   prefillText?: string;
   prefillVersion?: number;
   addFileRequest?: { path: string; version: number } | null;
+  selectionQuotes?: SelectionQuote[];
+  onRemoveSelectionQuote?: (id: string) => void;
+  focusInputSignal?: number;
   onChangeModel: (model: string) => void;
   onChangeMode?: (mode: "default" | "plan" | "goal") => void;
   onChangeThinkingEnabled?: (enabled: boolean) => void;

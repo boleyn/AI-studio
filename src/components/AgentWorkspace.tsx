@@ -638,10 +638,7 @@ export default function AgentWorkspace({
   const currentResources = conversationResources?.token === activeToken &&
     conversationResources.conversationId === visibleChatId ? conversationResources : undefined;
 
-  const conversationPane = (
-      <Flex flex="1" direction="column" minW={0} bg="#ffffff">
-        {fileChatOpen && <Flex align="center" justify="space-between" px={4} h="52px"><Text fontWeight="600">聊天</Text><Button size="sm" variant="ghost" onClick={()=>setFileChat(prev=>prev && {...prev,minimized:true})}>最小化聊天窗口</Button></Flex>}
-        {activeNav !== "schedules" && !fileChatOpen && (
+  const workspaceChatHeader = activeNav !== "schedules" && !fileChatOpen ? (
         <Flex
           minH="52px"
           flexWrap="wrap"
@@ -768,8 +765,12 @@ export default function AgentWorkspace({
             </Popover>
           )}
         </Flex>
+  ) : null;
 
-        )}
+  const conversationPane = (
+      <Flex flex="1" direction="column" minW={0} bg="#ffffff">
+        {fileChatOpen && <Flex align="center" justify="space-between" px={4} h="52px"><Text fontWeight="600">聊天</Text><Button size="sm" variant="ghost" onClick={()=>setFileChat(prev=>prev && {...prev,minimized:true})}>最小化聊天窗口</Button></Flex>}
+        {!activeProject && workspaceChatHeader}
 
         {/* 对话内容区 + 可选右侧文件抽屉 */}
         <Flex flex="1" minH={0} overflow="hidden" position="relative">
@@ -779,6 +780,7 @@ export default function AgentWorkspace({
                 key={activeProject.token}
                 token={activeProject.token}
                 hideHeader
+                customHeader={workspaceChatHeader}
                 emptyStateTitle="我们要做什么？"
                 hideSkillsManager
                 defaultHeaderTitle={activeProject.name}

@@ -2,8 +2,9 @@ import AttachmentFilename from "./AttachmentFilename";
 import { Box, Button, Collapse, Flex, Grid, Icon, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Spinner, Text, useToast } from "@chakra-ui/react";
 import LibraryItemIcon from "@/components/agent-workspace/LibraryItemIcon";
 import React from "react";
-import { Download } from "lucide-react";
+import { CornerDownRight, Download } from "lucide-react";
 import { useChatPanelViewContext } from "../context/ChatPanelViewContext";
+import { extractSelectionQuotesFromMessage } from "../types/selectionChat";
 import { redirectedToLogin } from "../services/files";
 import { LibraryReadError, libraryReadMessage, loadLibraryFiles, readLibraryAttachment, recordLibraryOpen, sharedSpacePageLocation } from "../services/libraryAttachment";
 import { withAuthHeaders } from "@features/auth/client/authClient";
@@ -284,7 +285,12 @@ const ChatItem = ({
     : `用时 ${seconds} 秒`;
   const showElapsedLabel = isWorkspaceChat && !isStreaming && duration !== undefined;
 
-  if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0) return null;
+  const selectionQuotes = React.useMemo(
+    () => (isUser ? extractSelectionQuotesFromMessage(message) : []),
+    [isUser, message]
+  );
+
+  if (!content.trim() && !isStreaming && files.length === 0 && workspaceArtifacts.length === 0 && timelineItems.length === 0 && selectionQuotes.length === 0) return null;
 
   const markdownSx = {
     "& .markdown": { fontSize: "15px", lineHeight: 1.75, color: "#0d0d0d" },
@@ -324,6 +330,9 @@ const ChatItem = ({
                 <Text textAlign="center" py={6} fontSize="sm" color="gray.600">此附件没有正文。</Text>}</>}
           </ModalBody></ModalContent></Modal>
       <Box
+        data-chat-selectable-message="true"
+        data-message-id={messageId}
+        data-message-role={message.role}
         bg={isUser ? "#f4f4f4" : isSystem || usePlainAnswer ? "transparent" : "myWhite.100"}
         border={!isWorkspaceChat && isAssistant ? "1px solid" : "none"}
         borderColor={isUser ? "myGray.300" : isAssistant ? "myGray.200" : "transparent"}
@@ -350,6 +359,36 @@ const ChatItem = ({
       >
         {isUser ? (
           <Flex direction="column" gap={2}>
+            {selectionQuotes.length > 0 ? (
+              <Flex direction="column" gap={1.5}>
+                {selectionQuotes.map((quote) => (
+                  <Flex
+                    key={quote.id}
+                    align="flex-start"
+                    gap={1.5}
+                    bg="rgba(0, 0, 0, 0.04)"
+                    borderLeft="2.5px solid rgba(0, 0, 0, 0.22)"
+                    borderRadius="8px"
+                    px={2.5}
+                    py={1.5}
+                  >
+                    <Box mt="3px" color="#71717a" flexShrink={0}>
+                      <CornerDownRight size={12} />
+                    </Box>
+                    <Text
+                      fontSize="12.5px"
+                      lineHeight="1.5"
+                      color="#52525b"
+                      noOfLines={3}
+                      wordBreak="break-word"
+                      title={quote.text}
+                    >
+                      {quote.text}
+                    </Text>
+                  </Flex>
+                ))}
+              </Flex>
+            ) : null}
             {sortedFiles.length > 0 ? (
               <Grid alignItems="flex-start" gap={3} gridTemplateColumns={{ base: "1fr", md: sortedFiles.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" }}>
                 {sortedFiles.map((file, index) => {

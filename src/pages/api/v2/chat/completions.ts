@@ -44,6 +44,10 @@ import { SdkStreamEventEnum, type SdkStreamEventName } from "@shared/network/sdk
 import { sendSseEvent, startSse, startSseHeartbeat } from "@server/http/sse";
 import { getObjectFromStorage, normalizeStorageKey } from "@server/storage/s3";
 import { saveBackgroundUsage } from "@server/usage/modelUsageEventStorage";
+import {
+  formatSelectionQuotesForPrompt,
+  normalizeSelectionQuotes,
+} from "@features/chat/types/selectionChat";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type RequestBodyMessage = {
@@ -244,6 +248,16 @@ const toSdkMessages = (messages: unknown): SdkMessage[] => {
       const msg = item as RequestBodyMessage;
       const role = (msg.type || msg.role || msg.message?.role || "").trim();
       if (!role || !["user", "assistant", "system", "tool"].includes(role)) return null;
+      const selectionQuotes = normalizeSelectionQuotes(
+        msg.meta?.selectionQuotes ?? msg.additional_kwargs?.selectionQuotes
+      );
+      const mergedMeta =
+        msg.meta || selectionQuotes.length > 0
+          ? {
+              ...(msg.meta || {}),
+              ...(selectionQuotes.length > 0 ? { selectionQuotes } : {}),
+            }
+          : undefined;
       return createSdkMessage({
         type: role === "tool" ? "assistant" : (role as SdkMessage["type"]),
         uuid: typeof msg.uuid === "string" ? msg.uuid : undefined,
@@ -257,7 +271,7 @@ const toSdkMessages = (messages: unknown): SdkMessage[] => {
             return extractText(raw);
           })(),
         },
-        ...(msg.meta ? { meta: msg.meta } : {}),
+        ...(mergedMeta ? { meta: mergedMeta } : {}),
       });
     })
     .filter((item): item is SdkMessage => Boolean(item));
@@ -278,6 +292,33 @@ const toAgentMessages = (messages: SdkMessage[]): ChatCompletionMessageParam[] =
           content: sdkContentToText(content),
         } as ChatCompletionMessageParam;
       }
+      const selectionQuotes =
+        role === "user"
+          ? normalizeSelectionQuotes(message.meta?.selectionQuotes)
+          : [];
+      const quotePrefix =
+        selectionQuotes.length > 0
+          ? formatSelectionQuotesForPrompt(selectionQuotes)
+          : "";
+      if (quotePrefix) {
+        if (typeof content === "string") {
+          return {
+            role,
+            content: content.trim() ? `${quotePrefix}\n\n${content}` : quotePrefix,
+          } as ChatCompletionMessageParam;
+        }
+        if (Array.isArray(content)) {
+          return {
+            role,
+            content: [{ type: "text", text: quotePrefix }, ...content],
+          } as ChatCompletionMessageParam;
+        }
+        const extracted = sdkContentToText(content);
+        return {
+          role,
+          content: extracted.trim() ? `${quotePrefix}\n\n${extracted}` : quotePrefix,
+        } as ChatCompletionMessageParam;
+      }
       return {
         role,
         content:
@@ -293,6 +334,7 @@ const toAgentMessages = (messages: SdkMessage[]): ChatCompletionMessageParam[] =
 const toConversationMessage = (message: SdkMessage): ConversationMessage => {
   const role = message.message?.role || "assistant";
   const content = message.message?.content ?? "";
+  const selectionQuotes = normalizeSelectionQuotes(message.meta?.selectionQuotes);
   const usage = message.message?.usage as { input_tokens?: unknown; output_tokens?: unknown } | undefined;
   const model = message.message?.model;
   const promptTokens = usage?.input_tokens;
@@ -316,6 +358,7 @@ const toConversationMessage = (message: SdkMessage): ConversationMessage => {
     additional_kwargs: {
       sdkMessage: message,
       ...(contextWindow ? { contextWindow } : {}),
+      ...(selectionQuotes.length > 0 ? { selectionQuotes } : {}),
     },
   };
 };

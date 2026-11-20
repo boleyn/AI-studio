@@ -11,7 +11,7 @@ import { streamFetch } from "@shared/network/streamFetch";
 import { SdkStreamEventEnum } from "@shared/network/sdkStreamEvents";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChatPanelViewProvider } from "../context/ChatPanelViewContext";
 import { useConversations } from "../hooks/useConversations";
@@ -64,7 +64,9 @@ import { useChatModels } from "../hooks/useChatModels";
 import { useChatMessageActions } from "../hooks/useChatMessageActions";
 import { useChatPlanInteractions } from "../hooks/useChatPlanInteractions";
 import { useChatSkills } from "../hooks/useChatSkills";
+import { useSideChats } from "../hooks/useSideChats";
 import { useChatStreamFlusher } from "../hooks/useChatStreamFlusher";
+import type { SelectionQuote } from "../types/selectionChat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import { updatePrimaryModel } from "../services/models";
 import { mergeSdkBlock } from "../utils/sdkBlockMerge";
@@ -559,6 +561,7 @@ const ChatPanel = ({
   externalNewConversationSignal,
   onConversationsChanged,
   hideHeader = false,
+  customHeader,
   workspaceComposer,
 }: {
   token: string;
@@ -590,6 +593,7 @@ const ChatPanel = ({
   externalNewConversationSignal?: number;
   onConversationsChanged?: () => void;
   hideHeader?: boolean;
+  customHeader?: ReactNode;
   workspaceComposer?: WorkspaceComposerConfig;
 }) => {
   const libraryToast = useToast();
@@ -755,6 +759,39 @@ const ChatPanel = ({
     const selected = modelCatalog?.models?.find((item) => item.id === model);
     return selected?.reasoning === true;
   }, [model, modelCatalog]);
+  const selectedModelChannel = useMemo(() => {
+    const found = modelOptions.find((item) => item.value === model);
+    return found?.scope || found?.channel;
+  }, [model, modelOptions]);
+
+  const [selectionQuotes, setSelectionQuotes] = useState<SelectionQuote[]>([]);
+  const [focusInputSignal, setFocusInputSignal] = useState(0);
+  useEffect(() => {
+    setSelectionQuotes([]);
+  }, [activeConversation?.id]);
+
+  const handleAddSelectionQuote = useCallback((quote: Omit<SelectionQuote, "id">) => {
+    const text = quote.text.trim();
+    if (!text) return;
+    setSelectionQuotes((prev) => {
+      if (prev.some((item) => item.text === text && item.messageId === quote.messageId)) {
+        return prev;
+      }
+      return [...prev, { ...quote, text, id: createDataId() }];
+    });
+    setFocusInputSignal((prev) => prev + 1);
+  }, []);
+
+  const handleRemoveSelectionQuote = useCallback((id: string) => {
+    setSelectionQuotes((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const sideChats = useSideChats({
+    token,
+    conversationId: activeConversation?.id,
+    model,
+    modelChannel: selectedModelChannel,
+  });
 
   const upsertPendingInteraction = useCallback((interaction: PendingChatInteraction) => {
     const nextKey = getPendingInteractionKey(interaction);
@@ -1092,8 +1129,9 @@ const ChatPanel = ({
         finalArtifacts.push(file);
       });
       const hasArtifacts = finalArtifacts.length > 0;
+      const selectionQuotesPayload = payload.selectionQuotes?.length ? payload.selectionQuotes : undefined;
       if (hasArtifacts) onAttachmentsAvailable?.(finalArtifacts);
-      if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length) || isSending) return;
+      if ((text.length === 0 && !hasArtifacts && !payload.selectedFilePaths?.length && !selectionQuotesPayload?.length) || isSending) return;
       const echoUserMessage = options?.echoUserMessage ?? true;
       const persistIncomingMessages = options?.persistIncomingMessages ?? true;
       const continueAssistantMessageId = (options?.continueAssistantMessageId || "").trim();
@@ -1123,9 +1161,12 @@ const ChatPanel = ({
 
       const displayText =
         text ||
+        (selectionQuotesPayload?.length ? "请帮我解析以上引用的内容" : "") ||
         (payload.selectedFilePaths?.length ? `已选择 ${payload.selectedFilePaths.length} 个文件` : "") ||
         `已上传 ${finalArtifacts.length} 个文件`;
-      const nextConversationTitle = buildConversationTitle(text);
+      const nextConversationTitle = buildConversationTitle(
+        text || selectionQuotesPayload?.[0]?.text || ""
+      );
       const userCreatedAt = new Date().toISOString();
 
       const userMessageId = createDataId();
@@ -1140,6 +1181,10 @@ const ChatPanel = ({
             id: userMessageId,
             time: userCreatedAt,
             subtype: effectiveMode === "plan" ? "plan_user" : "user",
+            ...(selectionQuotesPayload ? { meta: { selectionQuotes: selectionQuotesPayload } } : {}),
+            additional_kwargs: selectionQuotesPayload
+              ? { selectionQuotes: selectionQuotesPayload }
+              : undefined,
             artifact:
               hasArtifacts
                 ? {
@@ -1174,11 +1219,13 @@ const ChatPanel = ({
         content: userContentBlocks.length > 0 ? userContentBlocks : userBubbleContent || displayText,
         id: userMessageId,
         time: userCreatedAt,
+        ...(selectionQuotesPayload ? { meta: { selectionQuotes: selectionQuotesPayload } } : {}),
         artifact: hasArtifacts ? { files: finalArtifacts } : undefined,
         additional_kwargs: {
           ...(echoUserMessage ? {} : { hiddenFromTimeline: true }),
           chatMode: effectiveMode,
           planModeState: effectiveMode === "plan",
+          ...(selectionQuotesPayload ? { selectionQuotes: selectionQuotesPayload } : {}),
           ...(payload.planModeApprovalResponse
             ? { planModeApprovalResponse: payload.planModeApprovalResponse }
             : {}),
@@ -1198,6 +1245,9 @@ const ChatPanel = ({
             return userMessage;
           })
         );
+      }
+      if (selectionQuotesPayload) {
+        setSelectionQuotes([]);
       }
       options?.onAccepted?.();
       setIsSending(true);
@@ -2323,6 +2373,7 @@ const ChatPanel = ({
     () => ({
       height,
       hideHeader,
+      customHeader,
       t,
       activeConversationId: activeConversation?.id,
       conversations,
@@ -2388,10 +2439,30 @@ const ChatPanel = ({
       onOpenWorkspaceFile,
       onUseSkill: handleUseSkill,
       workspaceComposer,
+      selectionQuotes,
+      focusInputSignal,
+      onAddSelectionQuote: handleAddSelectionQuote,
+      onRemoveSelectionQuote: handleRemoveSelectionQuote,
+      sideChatOpen: sideChats.isOpen,
+      sideChatThreads: sideChats.threads,
+      activeSideChat: sideChats.activeThread,
+      sideChatPendingQuote: sideChats.pendingQuote,
+      sideChatFocusSignal: sideChats.focusSignal,
+      isSideChatStreaming: sideChats.isStreaming,
+      sideChatError: sideChats.errorMessage,
+      onOpenSideChatForSelection: sideChats.openSideChatForSelection,
+      onNewSideChat: sideChats.startNewSideChat,
+      onOpenSideChatById: sideChats.openSideChatById,
+      onCloseSideChat: sideChats.closeSideChat,
+      onClearSideChatPendingQuote: sideChats.clearPendingQuote,
+      onSendSideChatMessage: sideChats.sendMessage,
+      onStopSideChat: sideChats.stopSideChat,
+      onDeleteSideChatThread: sideChats.deleteThread,
     }),
     [
       height,
       hideHeader,
+      customHeader,
       t,
       activeConversation?.id,
       conversations,
@@ -2448,6 +2519,25 @@ const ChatPanel = ({
       onOpenWorkspaceFile,
       handleUseSkill,
       workspaceComposer,
+      selectionQuotes,
+      focusInputSignal,
+      handleAddSelectionQuote,
+      handleRemoveSelectionQuote,
+      sideChats.isOpen,
+      sideChats.threads,
+      sideChats.activeThread,
+      sideChats.pendingQuote,
+      sideChats.focusSignal,
+      sideChats.isStreaming,
+      sideChats.errorMessage,
+      sideChats.openSideChatForSelection,
+      sideChats.startNewSideChat,
+      sideChats.openSideChatById,
+      sideChats.closeSideChat,
+      sideChats.clearPendingQuote,
+      sideChats.sendMessage,
+      sideChats.stopSideChat,
+      sideChats.deleteThread,
     ]
   );
 
